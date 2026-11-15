@@ -1,4 +1,4 @@
-/*! 4eNEXT to owlbear · background.bundle.js  (v1.7.6)
+/*! 4eNEXT to owlbear · background.bundle.js  (v1.7.10)
  * ---------------------------------------------------------------------------
  * 这是后台页唯一加载的脚本：纯「经典脚本」，没有 type="module"，没有 import/export，
  * 不依赖任何 CDN。内容是：
@@ -7,7 +7,7 @@
  *
  * 不要手改本文件。改逻辑请改 assets/background.core.js，然后：
  *     node dev/build-background.mjs
- * 生成时间：2026-11-15T13:22:19.410Z
+ * 生成时间：2026-11-15T14:17:57.561Z
  * --------------------------------------------------------------------------- */
 (function () {
 "use strict";
@@ -57,8 +57,8 @@ if (!OBR || typeof OBR.onReady !== "function") {
  *   · 设置/关于 /settings-window（页面 settings.html，左侧分栏 + 右侧内容，同样可拖动 / 视口夹紧）。
  * v1.4.0：先攻条（按 docs/spec-initiative.md 实现）
  *   · 工具栏「先攻」不再打开 880×640 的大窗口，而是打开**屏幕顶部的先攻条**：
- *     popover id /initiative-strip、CENTER/TOP 锚点、top 45、默认 720×129（展开）、120×40（折叠）；
- *     宽度 **v1.6.2 起固定 720**（只有视口太窄时才缩，下限 410；不再按控制行测量），高度按 phase 三档 129 / 139 / 159；
+ *     modal id /initiative-strip（v1.7.10 起全屏透明 modal）、顶部 45、默认 720×170（展开）、120×40（折叠）；
+ *     宽度 **v1.6.2 起固定 720**（只有视口太窄时才缩，下限 410；不再按控制行测量），高度按 phase 三档 170 / 180 / 200（v1.7.10 加高）；
  *     位置只记「相对屏幕中线的偏移」（localStorage["4enext/strip-pos"]），整条可拖动、双击拖动柄回中。
  *   · 原来的列表窗口还留着（?view=list，id 仍是 /initiative-window），先攻条上的「≡」打开它：
  *     重掷全部 / 同步加值 / 上下移 / 删除 / 清空这些管理动作在那里。
@@ -70,8 +70,8 @@ if (!OBR || typeof OBR.onReady !== "function") {
  *   · **四防四角盾**（AC / 强韧 / 反射 / 意志，直径 30s）：SDK 3.1.0 没有 RING / 盾牌图元，
  *     全部用 buildCurve().points() 手绘（盾形多边形 / 环形扇区 / 名牌 / 锁）；
  *   · 右键菜单新增「添加 / 移除血条组件」（独立键 hp-bar/enabled，关闭写 false 不 delete）
- *     与「显示为 Boss / 隐藏 Boss」（hp.boss，布尔或对象都读，写回一律对象）；
- *   · Boss 样式（方案 A）：环形血条（48 段）+ 名牌 + 分段线 + 锁，**压制 HP 普通条**
+ *     与「显示为 Boss / 隐藏 Boss」（hp.boss，布尔或对象都读，写回一律对象；**v1.7.9 已整组删除**）；
+ *   · Boss 样式（方案 A，**v1.7.9 已删**，环改成所有 token 的默认血条）：环形血条（48 段）+ 名牌 + 分段线 + 锁，压制 HP 普通条
  *     （回复力条与四防保留）；玩家端 locked 时按 25% 阶梯向上取整、不画数字与四防。
  * v1.6.1：四防从「四角」改「一排」（用户截图对照 Full Suite 图 2，真机 v1.6.0 已跑通）
  *   · 顺序固定 **强韧 → 反射 → 意志 → AC**（AC 永远最右，半透明白色图标：fill 白 @0.18 + 白描边 @0.85），
@@ -120,6 +120,29 @@ if (!OBR || typeof OBR.onReady !== "function") {
  *     间距按 `(可用宽 − 枚数×直径) / (枚数−1)` **均分**（四枚时 = (可用宽 − 4d)/3），不再「挤在中间」；
  *   · 退化顺序不变（先丢意志 → 反射 → 强韧，AC 最后）；判据改成「枚数 × 30s ≤ 可用宽」；
  *   · 记录窗口改成**骰子窗口页面直接 popover.open**（后台新增 adopt / force-open 两个 op）。
+ * v1.7.7：选中「没绑定卡但有血条」的 token 也弹血条编辑窗（用户：改血量只能右键「添加血条组件」，太绕）
+ *   · 「选中即弹」从「只有速览」变成两支（单选才判断，多选一律不弹）：
+ *       已绑定角色卡 → 速览 /info（v1.2 起的老行为，没变）；
+ *       没绑定卡、但有血条数据（com.4enext-owlbear/hp 里有值）或开关（hp-bar/enabled === true）
+ *         → 血条编辑窗 /hp-edit（v1.7.2 那个 340×150 的窗，这回从选中直接进）；
+ *       没卡也没血条 → 什么都不弹（老行为）。
+ *   · **同一个 token 只自动弹一次**（hpAutoPopped；token 换了 / 取消选中就清空）：
+ *     用户把编辑窗关掉 / 缩放地图 / 保存血量引起的 selection / scene 事件都不会把它弹回来，
+ *     想再改就右键「编辑血条」（新增的菜单项）或工具栏「添血条」那一套。
+ *   · 右键新增「编辑血条」（hp-bar/enabled === true 时出现）：不看选中，直接开这枚 token 的编辑窗。
+ *   · Boss 锁（hp.locked）在**玩家端**让编辑窗只读（藏保存 + 提示「已锁定」，见 hp-edit-core.js
+ *     的 hpEditReadOnly）；城主不受这条限制 —— locked 的语义是「玩家端隐藏精确数字」，
+ *     默认还是 true，若据此把城主的编辑窗也锁死，用户点开就改不了（真机一定会报）。
+ * v1.7.9：**血条全部改成环形 + 去掉 Boss 模式 + 去掉回复力蓝条 + 四防回到四角**（用户 2026-11-15 定稿）
+ *   · 去掉 Boss 模式：右键「显示为 Boss / 隐藏 Boss 血条」两项、速览窗里的「显示为 Boss」开关、
+ *     以及 token 上的**名牌 / 分段线 / 锁**全部删除；hp.boss 字段只为旧数据兼容而保留（不再读 / 不再画）；
+ *   · **所有**带血量的 token 都画**环形血条**（原来只有 Boss 画）：Ro = 半短边 − 2s、环厚 10s、48 段，
+ *     直接复用 ringSectorPoints；空余部分是暗色底环，血量按 cur/max 从 12 点顺时针填；
+ *     **直的 HP 条 / 蓝色回复力条不再画**（回复力仍可在速览 / 编辑窗里看）；
+ *   · HP 数字（cur/max，含临时生命 +N）保留，放在**环内正中**（带描边，压得住 token 图）；
+ *   · 四防回到**四角**：左上黄=强韧 / 右上绿=反射 / 左下紫=意志 / 右下=AC（半透明白盾，shieldPoints），
+ *     直径 30s、字 15s、贴 token 四角内侧 4s；窄 token 退化仍是**AC 优先保留**（先丢意志 → 反射 → 强韧）；
+ *   · 环形的像素常数在 barLayout() 顶部常量区（RING_THICK / RING_INSET / RING_SEGMENTS），真机微调只改那里。
  * v1.7.3：先攻条「移除 / 常驻 / 透明」三件事
  *   · 右键菜单**动态互斥**：这个 token 已在先攻里 → 只显示「移出先攻」（点了从 entries 删掉 + 刷新条 +
  *     通知「已移出」）；不在 → 显示「加入先攻」「隐形加入先攻」。
@@ -135,7 +158,7 @@ if (!OBR || typeof OBR.onReady !== "function") {
  * v1.6.2：两处收尾修复
  *   ① 速览弹窗删掉 HP 绿条下面那条「彩色四防箭头条」（assets/glance.js 的 .gl4-def-row）——
  *      四防数值仍由下面的四张数值卡（.gl4-defs）显示；token 上的四防一排（v1.6.1）一个字没动；
- *   ② 先攻条**宽高改成常量**：折叠 120×40 / 展开 720（仅视口太窄时缩）×(129|139|159)。
+ *   ② 先攻条**宽高改成常量**：折叠 120×40 / 展开 720（仅视口太窄时缩）×(170|180|200)。
  *      v1.6.1 的页面量的是控制行 scrollWidth → 投骰后点数 / 名字一变整条就变窄（用户报的 bug）。
  *      现在页面只算常量，本文件的 snapStripSize() 再把页面报上来的尺寸兜回常量；
  *      卡片区 .strip-items 内部横向滚动，条右侧空列表区域保持深色（不透明）。
@@ -150,6 +173,8 @@ if (!OBR || typeof OBR.onReady !== "function") {
  *   2) OBR.tool.create×5 → 左侧工具栏：速览 / 角色卡 / 先攻 / 骰子 / 设置（各开各的窗口）
  *   3) OBR.popover.open  → 右下角浮动 4E 按钮（角色卡面板，与参考实现 character-cards 相同写法）
  *   4) 右键 IMAGE token   → 绑定角色卡 / 加入先攻 / 隐形加入先攻 / 移出先攻（仅 GM，菜单随先攻名单动态变）
+ *                          + 添加 / 移除血条组件 / 编辑血条（v1.7.7）
+ *                            （v1.7.9：「显示为 Boss」「隐藏 Boss 血条」两项已删除）
  * 外加玩家「结束我的回合」请求（只由 GM 客户端落笔）。
  * 参考实现 FullPeople/obr-suite 也是「一个功能一个 popover」：inINIT 与 dice 各自有
  * POPOVER_ID + registerPanelBbox，面板之间靠 id 区分、可同时打开。
@@ -189,7 +214,7 @@ var TOOL_SETTINGS_ID = NS + "/settings-tool";
 var CH_HELLO = NS + "/diag-hello"; /* background → 各页面：我起来了 */
 var CH_PING = NS + "/diag-ping";   /* 页面 → background：在吗 */
 var CH_PONG = NS + "/diag-pong";   /* background → 页面：在，状态如下 */
-var PLUGIN_VERSION = "1.7.6";
+var PLUGIN_VERSION = "1.7.10";
 /* token 上的血量（与 assets/track.js 的 KEY_HP 必须一字不差）。 */
 var KEY_HP = NS + "/hp";
 /* v1.6.0：血条组件开关。**独立键**，不塞进 hp（hp 是数值容器，写开关会误触发判空）；
@@ -200,83 +225,66 @@ var KEY_HPBAR = NS + "/hp-bar/enabled";
 var KEY_PLAYER_THRESHOLD = NS + "/settings.playerThreshold";
 
 /* ---------------------------------------------------------------------------
- * v1.6.0 / v1.6.1 像素常数集中区（s = 1 时的数值；真机微调只改这里 + barLayout()）
+ * 像素常数集中区（s = 1 时的数值；真机微调只改这里 + barLayout()）
  * ---------------------------------------------------------------------------
- * 说明见 docs/hpbar-boss-v16.md §3「像素常数集中表」。所有几何都由 s 缩放，
- * s = min(token 渲染宽, 高) / 网格 dpi，并夹在 0.2~6（上界防止 4×4 巨图把条画到屏外）。
- *   · HP 条 20 高、回复力条 12 高、两行间距 3（规格 §6.4 A）
- *   · 四防离 token 内边 4；**v1.6.1 起是一排**（强韧 / 反射 / 意志 + AC 最右），
- *     整排在 HP 条上方 3（gap）处（规格 §6.4 B 的四角已被 v1.6.1 取代）；
- *     **v1.7.6 起四枚同直径 30**：强韧 / 反射 / 意志 是直径 30 的**圆**，AC 是直径 30 的**盾**，
- *     整排铺满 token 宽（左右各留 4）并**均分**（v1.7.5 是 22 圆 + 30 盾、固定 6 间距、居中）
- *   · Boss 环厚 10、内缩 2、48 段；名牌 26 高、离 token 顶 6（规格 §6.4 C/D）
- * zIndex 全部固定并 disableAutoZIndex：盾 15000 / 填充 20000 / 数值 30000，向下加密到 9500~31050。
+ * 所有几何都由 s 缩放：s = min(token 渲染宽, 高) / 网格 dpi，并夹在 0.2~6
+ * （上界防止 4×4 巨图把环画到屏外）。常数表见 docs/NOTES.md「关键常量在哪」。
+ *   · **v1.7.9 起 HP 只有环形血条**（直的 HP 条 / 蓝条已删）：
+ *     Ro = 半短边 − 2s、环厚 10s、48 段（复用 ringSectorPoints，见 barLayout 顶部）
+ *   · 四防回到**四角**：左上强韧 / 右上反射 / 左下意志 / 右下 AC 盾，
+ *     直径 30s、贴 token 四角内侧 4s（v1.6.1~v1.7.8 的「一排」已删）
+ *   · v1.6.0 的 Boss 环 / 名牌 / 分段线 / 锁**全部删除**（hp.boss 字段只为旧数据兼容而保留，不再读）
+ * zIndex 全部固定并 disableAutoZIndex：环底 9500 / 环填充 9800 / 盾 15000 / 盾数字 16000 / HP 数字 30000。
  * ------------------------------------------------------------------------- */
-var BAR_HP_H = 20;
-var BAR_SURGE_H = 12;
-var BAR_GAP = 3;
-var BAR_PAD = 2;
 /* v1.7.6（用户按参考图 15）：三防圆 22 → **30**，与 AC 盾**同直径**（参考图里四个肉眼一样大）。 */
 var SHIELD_DIAMETER = 30;
 var DEF_CIRCLE_DIAMETER = 30;
 /* 圆的折线段数：24 段在 token 尺寸下已经看不出多边形角，点数只有盾形（87 点）的 1/4。 */
 var DEF_CIRCLE_SEGMENTS = 24;
-/* 四防离 token 内边 4s：v1.7.6 起整排**左右也按这个 4s 贴 token 边缘**（左缘 + 4s / 右缘 − 4s）。 */
+/* 四防离 token 内边 4s（v1.7.9：贴四个角内侧）。 */
 var SHIELD_INSET = 4;
-/* v1.6.1 的固定间距 6s。v1.7.6 起整排改成「按可用宽均分」（见 defRowGap），不再用固定值；
- * 常量留着当参照线（docs/hpbar-boss-v16.md §3 与自测里仍拿 6s 对照「老版的间距」）。 */
+/* v1.6.1 的固定间距 6s。v1.7.9 四角摆位不再用间距；常量留作对照（老文档 / 自测里的参照线）。 */
 var DEF_GAP = 6;
 /* v1.6.1：AC 用半透明白色图标（强韧 / 反射 / 意志 仍是各自的实色）。 */
 var DEF_AC_FILL_OPACITY = 0.18;
 var DEF_AC_STROKE_OPACITY = 0.85;
 var DEF_FILL_OPACITY = 0.9;
 var DEF_STROKE_OPACITY = 0.45;
-var BOSS_RING_THICK = 10;
-var BOSS_RING_INSET = 2;
-var BOSS_RING_SEGMENTS = 48;
-var BOSS_PLATE_H = 26;
-var BOSS_PLATE_GAP = 6;
-var BOSS_MAX_SEGMENTS = 5;
+/* v1.7.9：环形血条（原来只有 Boss 才画，现在所有带血量的 token 都画）。
+ * 常量放在这里、barLayout() 顶部再取一次，真机微调只改这两处。 */
+var HP_RING_THICK = 10;     /* 环厚 10s */
+var HP_RING_INSET = 2;      /* Ro = 半短边 − 2s */
+var HP_RING_SEGMENTS = 48;  /* 48 段（不要 128：脏矩形重绘翻倍） */
+var HP_RING_BG_OPACITY = 0.55;
 var PLAYER_THRESHOLD_DEFAULT = 25;
 
 /* 颜色一律取 assets/ui.css 的 :root（--blue / --green / --red / --orange / --line / --bg），
  * 不引入第二套色板（规格 §6.4 E 的结论）。 */
-var COLOR_HP_BG = "#A4A4A4";
 var COLOR_HP_FILL = "#a52424";
-var COLOR_SURGE_BG = "#1a222c";
-var COLOR_SURGE_FILL = "#58a6ff";
-var COLOR_BOSS_BG = "#0b0f14";
-var COLOR_PLATE_STROKE = "#253040";
-var COLOR_PLATE_TEXT = "#e6edf3";
-var COLOR_PHASE_TEXT = "#e3b341";
-var COLOR_LOCK_ON = "#f85149";
-var COLOR_LOCK_OFF = "#93a1b0";
-var COLOR_DIVIDER = "#281719";
+/* v1.7.9：环的暗色底（空余部分）——原来 Boss 环用的那个深色，去掉 Boss 后改成通用底色。 */
+var COLOR_RING_BG = "#0b0f14";
 var DEF_KEYS = ["ac", "fort", "reflex", "will"];
-/* v1.6.1：摆位顺序（从左到右）——**AC 永远在最右边**。DEF_KEYS 是读取 / 签名顺序，不要混用。 */
+/* 读取 / 摆放顺序：左上强韧 → 右上反射 → 左下意志 → 右下 AC。
+ * DEF_KEYS 是读取 / 签名顺序，不要混用（签名要稳定，摆位要按四角）。 */
 var DEF_ROW = ["fort", "reflex", "will", "ac"];
-/* v1.6.1：窄 token 放不下时的**丢弃顺序**（先丢意志 → 再丢反射 → 再丢强韧；AC 不在这张表里 = 最后才丢）。 */
+/* v1.7.9：四防回到**四角**（用户指定坐标）—— 左上黄=强韧 / 右上绿=反射 / 左下紫=意志 / 右下盾=AC。 */
+var DEF_CORNER = {
+  fort: "left-top",
+  reflex: "right-top",
+  will: "left-bottom",
+  ac: "right-bottom"
+};
+/* 窄 token 放不下时的**丢弃顺序**（先丢意志 → 再丢反射 → 再丢强韧；AC 不在这张表里 = 最后才丢）。 */
 var DEF_DROP = ["will", "reflex", "fort"];
 /* v1.6.1：AC 改成「半透明白」（fill 白 + 白描边），三防沿用 v1.6.0 的橙 / 绿 / 紫。 */
 var DEF_COLORS = { ac: "#ffffff", fort: "#e3b341", reflex: "#56d364", will: "#a371f7" };
-/* role → zIndex（规格 §6.3） */
+/* role → zIndex：环底 9500 / 环填充 9800 / 盾 15000 / 盾数字 16000 / HP 数字 30000。 */
 var BAR_Z = {
   "ring-bg": 9500,
   "ring-fill": 9800,
-  "bar-bg": 10000,
-  "surge-bg": 10500,
-  "plate": 12000,
-  "plate-text": 12400,
-  "plate-phase": 12450,
   "shield": 15000,
   "shield-text": 16000,
-  "bar-fill": 20000,
-  "surge-fill": 20500,
-  "divider": 22000,
-  "bar-text": 30000,
-  "surge-text": 30500,
-  "lock-body": 31000,
-  "lock-shackle": 31050
+  "bar-text": 30000
 };
 /* v1.3.0：token 上的先攻加值 / 房间数据里的先攻状态 / 玩家结束回合请求频道
  * （与 assets/common.js、assets/initiative.js 里的同名常量必须一字不差）。 */
@@ -340,7 +348,8 @@ var HPE_H = 150;
 
 /* v1.4.0：先攻条（规格 §3.1 / §3.2）。
  * 与 assets/initiative.js 里的 STRIP_* 必须一字不差（dev/check.mjs 会对比两边的数字）。
- *   · 折叠 120×40；展开 720×(129 idle / 139 preparing / 159 combat)，最小 410，按视口 −32 夹紧
+ *   · 折叠 120×40；展开 720×(170 idle / 180 preparing / 200 combat)，最小 410，按视口 −32 夹紧
+ *     **v1.7.10：高度加高到 ≥170**（用户截图：卡片 + 掷骰按钮被裁掉下半截）
  *     **v1.6.2：宽高是常量，不按内容测量**（v1.6.1 按 .strip-ctl 的 scrollWidth 算宽度，
  *     投骰后点数 / 名字一变整条就跟着变窄 —— 现在页面报上来的尺寸还会被 snapStripSize() 兜一道，
  *     内容再长由 .strip-items 内部横向滚动）
@@ -350,9 +359,11 @@ var STRIP_COLLAPSED_W = 120;
 var STRIP_COLLAPSED_H = 40;
 var STRIP_EXPANDED_W = 720;
 var STRIP_MIN_EXPANDED_W = 410;
-var STRIP_H_IDLE = 129;
-var STRIP_H_PREPARING = 139;
-var STRIP_H_COMBAT = 159;
+/* v1.7.10：展开高度按内容算 —— 控制行 36 + 卡片 80（当前回合 100）+ 掷骰按钮行 24 + padding 16。
+ * 三档都 ≥ 170（idle 170 / preparing 180 / combat 200），卡片与底下的 d20 按钮不再被裁切。 */
+var STRIP_H_IDLE = 170;
+var STRIP_H_PREPARING = 180;
+var STRIP_H_COMBAT = 200;
 var STRIP_TOP_OFFSET = 45;
 var STRIP_SIDE_MARGIN = 16;
 var STRIP_POS_KEY = "4enext/strip-pos";
@@ -367,6 +378,10 @@ var STRIP_CLOSED_KEY = "4enext/strip-closed-this-session";
 var STRIP_COLLAPSED_KEY = "4enext/strip-collapsed";
 var CH_STRIP_DRAG = NS + "/strip-drag";
 var CH_STRIP_CMD = NS + "/strip-cmd";
+/* v1.7.10：窗口 ✕ 的双保险频道。页面先 OBR.popover.close(自己的 id)，再发
+ * {op:"close-win", name:"panel|initiative|dice|diceHistory|settings|hpEdit|info"}；
+ * 后台按名字再关一次（panel 退化成全屏 modal 时 popover.close 关不掉，这里补 modal.close）。 */
+var CH_WIN_CLOSE = NS + "/win-close";
 
 /* v1.5.0：骰子（团队共享）。
  * 与 assets/common.js 的 CH_ROLL / CH_ROLL_CLEAR / CH_ROLL_SAVED / KEY_ROLLS / ROLL_MAX_ROWS
@@ -461,9 +476,19 @@ function diagNotifyEnabled() {
   try { return localStorage.getItem("4enext/diag") !== "0"; } catch (e) { return true; }
 }
 
+/**
+ * 通知中心一条（v1.7.8：**只发 ERROR / WARNING**）。
+ * 用户嫌提示太多 → 成功 / 普通提示一律不弹（「已加入先攻」「已移出先攻」「已自动移出」
+ * 「结束回合 → 第 N 轮」这些调用都已删掉）；断线、写盘失败、开窗失败、权限不足照旧弹。
+ * 传别的 variant 只写页面日志（background.html 的自检区仍能看到，方便排查）。
+ */
 function notify(msg, variant) {
+  if (variant !== "ERROR" && variant !== "WARNING") {
+    pageLog("info", msg);
+    return null;
+  }
   try {
-    return OBR.notification.show(msg, variant || "DEFAULT");
+    return OBR.notification.show(msg, variant);
   } catch (e) {
     pageLog("err", "OBR.notification.show 失败：" + (e && e.message ? e.message : e));
     return null;
@@ -527,7 +552,8 @@ var WINS = {
    * 仍然走 winSize() 夹紧：小屏（如 1366×768）下实际尺寸 ≤ 视口 − 2×WIN_MARGIN。 */
   dice: { id: ID_DICE_WIN, url: URL_DICE, width: 320, height: 620 },
   /* v1.7.0：独立记录窗口（默认只显示最近 4 条，可展开全部；位置按窗口名单独记住）。 */
-  diceHistory: { id: ID_DICE_HIST, url: URL_DICE_HIST, width: 380, height: 380 },
+  /* v1.7.10：记录窗口 380×380 → **300×240**（只显示最近 4 条；「展开全部」时页面自己调高）。 */
+  diceHistory: { id: ID_DICE_HIST, url: URL_DICE_HIST, width: 300, height: 240 },
   /* v1.3.2：设置 / 关于。左侧分栏 + 右侧内容，860×620 在 1366×768 上也放得下。 */
   settings: { id: ID_SETTINGS_WIN, url: URL_SETTINGS, width: 860, height: 620 },
   /* v1.7.2：血条组件编辑小窗（右键「添加血条组件」→ 填生命 / 四防 / 回复力）。
@@ -556,7 +582,7 @@ function winSize(def, vp) {
 
 /** 没有记住过位置时的默认点：水平居中、稍微偏上（不挡住 token 区）。
  *  v1.7.4：**记录窗口**优先贴着骰子窗口开（右 → 左 → 下 → 上），不再正好叠在骰子窗口里。
- *  原因：骰子窗口 320×620、记录窗口 380×380，两者都按「水平居中 + 偏上」摆时会**整块重叠**，
+ *  原因：骰子窗口 320×620、记录窗口 300×240，两者都按「水平居中 + 偏上」摆时会**整块重叠**，
  *  看起来就像「点了没反应」（用户 v1.7.4 报的「记录窗口打不开」）。位置仍会被 clampInfoPos 夹进视口。 */
 function winDefaultPos(name, size, vp) {
   var vw = vp && vp.width > 0 ? vp.width : size.width + WIN_MARGIN * 2;
@@ -678,6 +704,37 @@ async function closeWin(name) {
   var def = winDef(name);
   if (!def) return;
   try { await OBR.popover.close(def.id); } catch (e) { /* 已经关了 */ }
+}
+
+/**
+ * v1.7.10：页面 ✕ 的**后台兜底**（频道 CH_WIN_CLOSE，payload = {op:"close-win", name}）。
+ * 页面自己已经试过 OBR.popover.close(正确的 id)，这里再按名字关一次：
+ *   · panel 在 openPanel 里有可能退化成**全屏 modal**（popover 打不开时），popover.close 关不掉，
+ *     所以 modal.close 也要试；
+ *   · 顺手把 winOpen / infoOpen 的状态清掉，后台不会以为窗口还开着（下一次点击才会真的重开）。
+ */
+async function closeWinById(name) {
+  var def = name === "info" ? { id: ID_INFO } : winDef(name);
+  if (!def) return false;
+  if (name === "info") {
+    infoOpen = false;
+    infoItemId = null;
+    infoGeom = null;
+  } else {
+    var st = winOpen[name];
+    if (st && st.timer) { clearTimeout(st.timer); st.timer = null; }
+    delete winOpen[name];
+  }
+  try { await OBR.popover.close(def.id); } catch (e) { /* 已经关了 */ }
+  try { if (OBR.modal && typeof OBR.modal.close === "function") await OBR.modal.close(def.id); } catch (e2) { /* 不是 modal */ }
+  pageLog("info", "窗口 ✕（后台兜底）：" + name);
+  return true;
+}
+
+function onWinClose(ev) {
+  var data = ev && ev.data !== undefined ? ev.data : ev;
+  if (!data || data.op !== "close-win" || typeof data.name !== "string") return;
+  void closeWinById(data.name);
 }
 
 /** 「回到默认位置」：清掉记住的位置，重新居中摆一次。 */
@@ -1047,6 +1104,13 @@ async function onDiceHistCmd(ev) {
  * ------------------------------------------------------------------------- */
 var hpEditSession = "";   /* 每次后台加载一个新 session：页面靠它拒绝上一轮的残包 */
 var hpEditTarget = { session: "", version: 0, itemId: null, pending: false };
+/* v1.7.7：「选中即弹编辑窗」的去重状态（只在本机内存里，不落盘）。
+ *   hpAutoSel    上一次判定时的单选 token id（null = 没选中 / 多选）——一变就把 hpAutoPopped 清空；
+ *   hpAutoPopped tokenId -> true，记住「已经为这枚 token 弹过编辑窗」。
+ * 为什么需要：弹窗一开一关之间，selection / scene.items / room 事件都会走 scheduleRefresh，
+ * 没有这层记忆的话用户点 ✕ 关掉之后，下一次事件立刻把它弹回来（真实机器上就是这样「关不掉」）。 */
+var hpAutoSel = null;
+var hpAutoPopped = {};
 
 /** 新会话 id：优先 crypto.randomUUID，不可用时退回时间戳 + 随机串。 */
 function newHpEditSession() {
@@ -1073,12 +1137,15 @@ function publishHpEditTarget(itemId, pending) {
   return sendHello(CH_HP_EDIT_TARGET, hpEditTarget);
 }
 
-/** 打开血条编辑小窗：写开关由调用方负责（右键菜单先写 true 再开窗）。 */
+/** 打开血条编辑小窗：写开关由调用方负责（右键菜单先写 true 再开窗）。
+ *  v1.7.7：这里顺手记一笔「已经为这枚 token 开过窗」（hpAutoPopped），
+ *  这样「选中即弹」不会在窗口已经开过 / 用户刚关掉之后又弹一次。 */
 async function openHpEdit(itemId) {
   if (!itemId) {
     notify("没有读到要编辑的 token，右键请对着一个图片 token 再试", "WARNING");
     return false;
   }
+  hpAutoPopped[itemId] = true;
   if (!hpEditSession) hpEditSession = newHpEditSession();
   var url = URL_HP_EDIT + "?item=" + encodeURIComponent(itemId) +
     "&session=" + encodeURIComponent(hpEditSession);
@@ -1196,19 +1263,25 @@ function stripPosFor(dx, dy, size, vp) {
   return { left: cx, top: top };
 }
 
-/** popover 参数：POSITION + CENTER/TOP + top 45（规格 §3.2）。 */
-function stripPopoverOptions(pos, size) {
+/**
+ * v1.7.10：先攻条改用 **OBR.modal.open**（真透明）。
+ *
+ * 为什么换掉 popover：用户两次截图「整条仍是深色矩形」——popover 的 hidePaper 在真机上
+ * 压不住宿主的纸张底（v1.7.3 / v1.7.6 都试过），而 Modal 才有 hideBackdrop / hidePaper /
+ * disablePointerEvents 这三个开关（参考投骰动画 / Full Suite 的 boss bar，都是全屏透明 modal）。
+ *   · fullScreen + hideBackdrop + hidePaper + disablePointerEvents：宿主不画底、鼠标空白处穿透；
+ *   · 页面自己把 html/body 透明、只画条本身（initiative.html + ui.css 的 strip 段）；
+ *   · modal 没有 width/height / anchorPosition → 条的位置与尺寸由页面自己算
+ *     （initiative-page.js 的 layoutStrip：顶部居中 + 记住的偏移，宽高仍是 stripSizeFor 的常量）。
+ */
+function stripModalOptions() {
   return {
     id: ID_STRIP,
     url: URL_INITIATIVE,
-    width: size.width,
-    height: size.height,
-    anchorReference: "POSITION",
-    anchorPosition: { left: pos.left, top: pos.top },
-    anchorOrigin: { horizontal: "CENTER", vertical: "TOP" },
-    transformOrigin: { horizontal: "CENTER", vertical: "TOP" },
-    disableClickAway: true,
-    hidePaper: true
+    fullScreen: true,
+    hideBackdrop: true,
+    hidePaper: true,
+    disablePointerEvents: true
   };
 }
 
@@ -1227,7 +1300,7 @@ async function openStrip() {
     : { width: stripWidthFor(vp), height: STRIP_H_IDLE };
   var offset = readStripOffset();
   var pos = stripPosFor(offset.dx, offset.dy, size, vp);
-  await OBR.popover.open(stripPopoverOptions(pos, size));
+  await OBR.modal.open(stripModalOptions());
   stripOpen = true;
   /* v1.7.3：重新打开 = 这次会话又要它 → 清掉「本次已关掉」标记（下个房间照样自动开）。 */
   markStripClosed(false);
@@ -1256,7 +1329,9 @@ async function closeStrip() {
   stripDragWanted = null;
   stripOpen = false;
   stripGeom = null;
-  try { await OBR.popover.close(ID_STRIP); } catch (e) { /* 已经关了 */ }
+  /* v1.7.10：条是 modal 开的 → 先 modal.close；再 popover.close 兜一层（旧缓存页面 / 退化路径）。 */
+  try { await OBR.modal.close(ID_STRIP); } catch (e) { /* 已经关了 */ }
+  try { await OBR.popover.close(ID_STRIP); } catch (e2) { /* 不是 popover */ }
 }
 
 /* ---------------------------------------------------------------------------
@@ -1294,26 +1369,14 @@ async function maybeAutoOpenStrip(where) {
   return openStripOrNotify(where || "进入房间自动打开先攻条");
 }
 
-/** 「回到顶部中间」：清掉偏移再摆一次。 */
+/** 「回到顶部中间」：清掉偏移。
+ *  v1.7.10：条在 modal 里由**页面自己**定位（拖动时页面直接改 left/top），
+ *  这里只清掉本机偏移并记账 —— 页面收到 drag reset 会立刻重排，不再重开宿主窗口。 */
 async function resetStrip() {
   if (!stripOpen) return;
   clearStripOffset();
-  var vp = await infoViewport();
-  var size = stripGeom
-    ? { width: stripGeom.width, height: stripGeom.height }
-    : { width: stripWidthFor(vp), height: STRIP_H_IDLE };
-  var pos = stripPosFor(0, 0, size, vp);
-  try {
-    await OBR.popover.open(stripPopoverOptions(pos, size));
-    stripGeom = {
-      left: pos.left, top: pos.top, width: size.width, height: size.height,
-      offset: { dx: 0, dy: 0 },
-      vp: { width: vp.width, height: vp.height }
-    };
-    pageLog("info", "先攻条已回到顶部中间");
-  } catch (e) {
-    stepFail("把先攻条移回顶部中间", e);
-  }
+  if (stripGeom) stripGeom.offset = { dx: 0, dy: 0 };
+  pageLog("info", "先攻条已回到顶部中间");
 }
 
 /** 拖动：页面只发累计位移；这里换算 / 夹紧 / 落盘（只存偏移）。 */
@@ -1333,19 +1396,14 @@ async function pumpStripDrag() {
       var vp = await infoViewport();
       var size = { width: stripGeom.width, height: stripGeom.height };
       var pos = stripPosFor(job.dx, job.dy, size, vp);
-      try {
-        await OBR.popover.open(stripPopoverOptions(pos, size));
-        stripGeom.left = pos.left;
-        stripGeom.top = pos.top;
-        stripGeom.vp = { width: vp.width, height: vp.height };
-        stripGeom.offset = {
-          dx: pos.left - Math.round((vp.width || 0) / 2),
-          dy: pos.top - STRIP_TOP_OFFSET
-        };
-      } catch (e) {
-        pageLog("err", "拖动先攻条失败：" + errText(e));
-        break;
-      }
+      /* v1.7.10：modal 不能重开定位 —— 页面自己已经跟手移动了，这里只更新记账 + 夹紧后的偏移。 */
+      stripGeom.left = pos.left;
+      stripGeom.top = pos.top;
+      stripGeom.vp = { width: vp.width, height: vp.height };
+      stripGeom.offset = {
+        dx: pos.left - Math.round((vp.width || 0) / 2),
+        dy: pos.top - STRIP_TOP_OFFSET
+      };
     }
   } finally {
     stripDragBusy = false;
@@ -1402,16 +1460,14 @@ async function reclampStrip() {
   var off = stripGeom.offset || readStripOffset();
   var pos = stripPosFor(off.dx, off.dy, size, vp);
   if (pos.left === stripGeom.left && pos.top === stripGeom.top) return;
-  try {
-    await OBR.popover.open(stripPopoverOptions(pos, size));
-    stripGeom.left = pos.left;
-    stripGeom.top = pos.top;
-    stripGeom.vp = { width: vp.width, height: vp.height };
-    stripGeom.offset = {
-      dx: pos.left - Math.round((vp.width || 0) / 2),
-      dy: pos.top - STRIP_TOP_OFFSET
-    };
-  } catch (e) { /* 先攻条已经关了，忽略 */ }
+  /* v1.7.10：modal 全屏、位置由页面自己算 —— 后台只更新偏移记账（页面自己有 viewport.onChange 重排）。 */
+  stripGeom.left = pos.left;
+  stripGeom.top = pos.top;
+  stripGeom.vp = { width: vp.width, height: vp.height };
+  stripGeom.offset = {
+    dx: pos.left - Math.round((vp.width || 0) / 2),
+    dy: pos.top - STRIP_TOP_OFFSET
+  };
 }
 
 /** 频道：com.4enext-owlbear/strip-cmd —— list / size / close。 */
@@ -1733,43 +1789,20 @@ async function onHpBarAdd(context) {
   await openHpEdit(ids[0]);
 }
 
-/** v1.6.0：「显示为 Boss / 隐藏 Boss」。写 hp.boss 对象（保留 segments / phase / exact），
- *  首次开启用时间戳当 order，保证新 Boss 排在已有之后；之后不再动。 */
-async function writeBossFlag(context, on) {
+/** v1.7.7：右键「编辑血条」—— 不看当前选中，直接开这枚 token 的编辑窗。
+ *  用途：「选中即弹」只在第一次选中时弹（关掉后不再弹），要再改就走这一项；
+ *  与「添加血条组件」的区别：**不改开关**（已经开着的就照旧），只开窗。 */
+async function onHpBarEdit(context) {
   var item = context && context.items && context.items[0] ? context.items[0] : null;
-  if (!item) {
-    notify("没有读到选中的 token，右键请对着一个图片 token 再试", "WARNING");
+  if (!item || !item.id) {
+    notify("没有读到要编辑的 token，右键请对着一个图片 token 再试", "WARNING");
     return;
   }
-  var hp = readHpMeta(item);
-  if (on && (!hp || !(hp.max > 0))) {
-    notify("这枚 token 还没有生命上限：先在速览弹窗里加减过血量，再「显示为 Boss」", "WARNING");
+  if (item.type !== "IMAGE") {
+    notify("只有图片 token 能编辑血条", "WARNING");
     return;
   }
-  try {
-    await OBR.scene.items.updateItems([item.id], function (drafts) {
-      for (var i = 0; i < drafts.length; i++) {
-        var d = drafts[i];
-        if (!d.metadata || typeof d.metadata !== "object") d.metadata = {};
-        var raw = d.metadata[KEY_HP];
-        if (!raw || typeof raw !== "object") raw = {};
-        var conf = readBoss(raw.boss);
-        raw.boss = {
-          enabled: !!on,
-          segments: conf.segments,
-          phase: conf.phase,
-          exact: conf.exact,
-          order: conf.order || (on ? Date.now() : 0)
-        };
-        raw.updatedAt = Date.now();
-        d.metadata[KEY_HP] = raw;
-      }
-    });
-    scheduleBars();
-    stepOk("Boss 样式：" + (on ? "已开启 " : "已关闭 ") + (item.name || item.id));
-  } catch (e) {
-    notify("改不了 Boss 开关：" + errText(e), "ERROR");
-  }
+  await openHpEdit(item.id);
 }
 
 async function registerContextMenu() {
@@ -1814,9 +1847,11 @@ async function registerContextMenu() {
    * （ContextMenuIconFilter 没有 none，也没法读房间数据 —— 详见 5.1 的说明）。菜单只注册这一次。 */
   await registerInitMenus();
 
-  /* 3) v1.6.0：血条组件（Full Suite 同款两项）+ Boss 两项。
+  /* 3) v1.6.0：血条组件（Full Suite 同款两项）；v1.7.7 再加「编辑血条」一项。
+   *    v1.7.9：**Boss 两项（显示为 Boss / 隐藏 Boss）已删除**（用户明确不要 Boss 模式）。
    *    每一项单独 create（现有风格）：filter 不同、回调不用猜 elementId。
-   *    「添加」用 operator:"!=" 同时覆盖 undefined 与 false；「移除」写 false 抑制自动重开。 */
+   *    「添加」用 operator:"!=" 同时覆盖 undefined 与 false；「移除」写 false 抑制自动重开；
+   *    「编辑血条」只要开关是 true（= 这枚 token 上确实有一条血条）就出现。 */
   await createContextMenu({
     id: NS + "/hpbar-add",
     icons: [{
@@ -1846,43 +1881,22 @@ async function registerContextMenu() {
     }],
     onClick: function (context) { return writeHpBarFlag(context, false); }
   });
+  /* v1.7.7：「编辑血条」—— 只在血条**开着**（hp-bar/enabled === true）的 token 上出现，
+   * 与「移除血条组件」同一套 filter。它不改开关，只把 340×150 的编辑窗开出来
+   * （用户把「选中即弹」的窗口关掉之后，要再改就点这里）。 */
   await createContextMenu({
-    id: NS + "/boss-show",
+    id: NS + "/hpbar-edit",
     icons: [{
       icon: ICON_URL,
-      label: "显示为 Boss",
+      label: "编辑血条",
       filter: {
         roles: ["GM"],
         max: 1,
-        every: [
-          { key: "type", value: "IMAGE" },
-          { key: "layer", value: "CHARACTER" },
-          { key: ["metadata", KEY_HP, "boss"], operator: "!=", value: true },
-          { key: ["metadata", KEY_HP, "boss", "enabled"], operator: "!=", value: true }
-        ]
+        every: [{ key: "type", value: "IMAGE" }],
+        some: [{ key: ["metadata", KEY_HPBAR], value: true }]
       }
     }],
-    onClick: function (context) { return writeBossFlag(context, true); }
-  });
-  await createContextMenu({
-    id: NS + "/boss-hide",
-    icons: [{
-      icon: ICON_URL,
-      label: "隐藏 Boss 血条",
-      filter: {
-        roles: ["GM"],
-        max: 1,
-        every: [
-          { key: "type", value: "IMAGE" },
-          { key: "layer", value: "CHARACTER" }
-        ],
-        some: [
-          { key: ["metadata", KEY_HP, "boss"], value: true },
-          { key: ["metadata", KEY_HP, "boss", "enabled"], value: true }
-        ]
-      }
-    }],
-    onClick: function (context) { return writeBossFlag(context, false); }
+    onClick: function (context) { return onHpBarEdit(context); }
   });
 }
 
@@ -2196,25 +2210,37 @@ async function resetInfoToToken() {
 }
 
 /**
- * 当前选中的**唯一** token 的绑定：{ itemId, cardId } 或 null。
- * 「选中即弹」与工具栏「速览」共用这一份判定，免得两边对「算不算绑定」看法不一致。
+ * 当前选中的**唯一** token（多选 / 没选中 / 读不到 → null）。
+ * v1.7.7：「选中即弹」现在要看两支（速览 / 血条编辑窗），所以先只取 token 本身，
+ * 「算不算绑定」交给下面的 boundCardId —— 两边不会再各读一遍 selection。
  */
-async function selectedBinding() {
+async function selectedItem() {
   var sel = null;
   try { sel = await OBR.player.getSelection(); } catch (e) { return null; }
   if (!sel || sel.length !== 1) return null;
-  var item = null;
   try {
     var items = await OBR.scene.items.getItems([sel[0]]);
-    item = items[0] || null;
+    return items && items[0] ? items[0] : null;
   } catch (e) {
     return null;
   }
+}
+
+/** token 上记的卡 id（只在卡真的还在房间里时才算数）。 */
+async function boundCardId(item) {
   if (!item || !item.metadata) return null;
   var cardId = item.metadata[KEY_BIND];
   if (typeof cardId !== "string" || !cardId) return null;
   var cards = await getCards();
   if (!findCard(cards, cardId)) return null;
+  return cardId;
+}
+
+async function selectedBinding() {
+  var item = await selectedItem();
+  if (!item) return null;
+  var cardId = await boundCardId(item);
+  if (!cardId) return null;
   return { itemId: item.id, cardId: cardId };
 }
 
@@ -2244,18 +2270,45 @@ async function openGlance(where) {
 }
 
 var infoErrorShown = false;
+/**
+ * v1.7.7：「选中即弹」分两支（单选才判断；多选 / 没选中一律什么都不弹）。
+ *   ① 已绑定角色卡 → 速览 /info（v1.2 起的老行为，一个字没改）；
+ *   ② 没绑定卡、但有血条数据或开关 → 血条编辑窗 /hp-edit（用户要的：点一下就能改 HP / 四防）；
+ *   ③ 没卡也没血条 → 什么都不弹（老行为）。
+ * ②的「只弹一次」靠 hpAutoPopped / hpAutoSel（见上面 hpEditTarget 附近的说明）。
+ */
 async function refreshInfo() {
-  var bind = await selectedBinding();
-  if (!bind) return closeInfo();
-  if (infoOpen && infoItemId === bind.itemId && infoCardId === bind.cardId) return;
-  if (infoOpen) await closeInfo();
-  try {
-    await openInfo(bind.itemId, bind.cardId);
-  } catch (e) {
-    if (!infoErrorShown) {
-      infoErrorShown = true;
-      stepFail("打开速览弹窗", e);
+  var item = await selectedItem();
+  var selId = item && item.id ? item.id : null;
+  if (selId !== hpAutoSel) {
+    hpAutoSel = selId;   /* token 换了 / 取消选中 / 变多选 → 忘掉上一枚弹过没 */
+    hpAutoPopped = {};
+  }
+  if (!item) return closeInfo();
+
+  var cardId = await boundCardId(item);
+  if (cardId) {
+    if (infoOpen && infoItemId === item.id && infoCardId === cardId) return;
+    if (infoOpen) await closeInfo();
+    try {
+      await openInfo(item.id, cardId);
+    } catch (e) {
+      if (!infoErrorShown) {
+        infoErrorShown = true;
+        stepFail("打开速览弹窗", e);
+      }
     }
+    return;
+  }
+
+  /* 没绑定卡：速览照旧收起来（老行为），但只要这枚 token 有血条，就把编辑窗弹出来。 */
+  await closeInfo();
+  if (!hasHpBarData(item)) return;
+  if (hpAutoPopped[item.id]) return;
+  try {
+    await openHpEdit(item.id);
+  } catch (e) {
+    stepFail("选中 token 打开血条编辑窗", e);
   }
 }
 
@@ -2352,25 +2405,30 @@ function readDefenses(raw) {
   return out;
 }
 
-/** Boss 开关：布尔（roadmap 里写的 boss:true）与对象两种都读，统一归一化成对象。
- *  这样以后加 segments / phase 不用二次迁移。 */
-function readBoss(raw) {
-  var out = { enabled: false, segments: 1, phase: "", exact: false, order: 0 };
-  if (typeof raw === "boolean") { out.enabled = raw; return out; }
-  if (!raw || typeof raw !== "object") return out;
-  out.enabled = raw.enabled === true;
-  out.segments = typeof raw.segments === "number" && isFinite(raw.segments)
-    ? Math.max(1, Math.min(BOSS_MAX_SEGMENTS, Math.round(raw.segments))) : 1;
-  out.phase = typeof raw.phase === "string" ? raw.phase.slice(0, 48) : "";
-  out.exact = raw.exact === true;
-  out.order = typeof raw.order === "number" && isFinite(raw.order) ? raw.order : 0;
-  return out;
-}
-
 /** 血条组件开关：只有显式 false 才不画（undefined / true 都画）。 */
 function hpBarEnabled(item) {
   var flag = item && item.metadata ? item.metadata[KEY_HPBAR] : undefined;
   return flag !== false;
+}
+
+/** v1.7.7：这枚 token「有血条」吗 —— 选中即弹编辑窗的判据（与 hpBarEnabled 不是一回事：
+ *  hpBarEnabled 说的是「画不画」，这里说的是「有没有值得编辑的东西」）。
+ *  有 hp 数据（生命 / 回复力 / 四防 / 临时生命 / 旧数据里的 boss 里任意一项）**或**开关被显式打开 → true。
+ *  只看「有字段」不看数值大小：cur=0（倒地）也是要能改的。
+ *  ⚠ v1.7.9：boss 字段只为旧数据兼容（老 token 上可能还留着），**不再读取 / 绘制**；
+ *  这里仍把它当「有数据」，是因为有 hp 对象就值得让用户点开编辑窗看一眼。 */
+function hasHpBarData(item) {
+  if (!item || !item.metadata) return false;
+  if (item.metadata[KEY_HPBAR] === true) return true;
+  var m = item.metadata[KEY_HP];
+  if (!m || typeof m !== "object") return false;
+  if (readIntOrNull(m.cur) !== null) return true;
+  if (typeof m.max === "number" && isFinite(m.max) && m.max > 0) return true;
+  if (readIntOrNull(m.temp) !== null) return true;
+  if (readIntOrNull(m.surges) !== null) return true;
+  if (m.defenses && typeof m.defenses === "object" && Object.keys(m.defenses).length) return true;
+  if (m.boss) return true;
+  return false;
 }
 
 /** 玩家端比例量化：锁定时按 25% 阶梯**向上**取整（与参考实现 display-policy 同一套）。
@@ -2396,7 +2454,7 @@ function readHpMeta(item) {
     cur: cur, max: max, temp: temp,
     surges: surges, surgesMax: surgesMax,
     defenses: readDefenses(m.defenses),
-    boss: readBoss(m.boss),
+    /* v1.7.9：hp.boss 只为旧数据兼容而保留，这里**不再读**（不再画 Boss 环 / 名牌 / 锁）。 */
     locked: m.locked !== false,
     name: item && typeof item.name === "string" ? item.name.trim().slice(0, 120) : ""
   };
@@ -2413,13 +2471,14 @@ async function sceneDpi() {
   return cachedDpi;
 }
 
-/** 环形扇区多边形（v1.6.0 Boss 环）。
+/** 环形扇区多边形（v1.6.0 Boss 环；v1.7.9 起是**所有 token 的 HP 环**，直接复用）。
  *  SDK 3.1.0 的 ShapeType 只有 RECTANGLE / CIRCLE / TRIANGLE / HEXAGON —— **没有 RING**，
  *  所以环必须用 Curve 的 points() 手绘：外弧 t=0→1 + 内弧 t=1→0，closed=true、tension=0。
  *  坐标以 token 中心为原点（item.position 放中心），这样 token 移动时位置平移、形状不变。
- *  规格 §6.4 C：a0 = -90°（12 点方向），sweep = ratio × 360°，N = 48 段（不要 128：脏矩形重绘翻倍）。 */
+ *  a0 = -90°（12 点方向），sweep = ratio × 360°，N = 48 段（不要 128：脏矩形重绘翻倍）。
+ *  ratio = 1 画满整圈（暗色底环），ratio = cur/max 画血量的那一圈。 */
 function ringSectorPoints(radiusOuter, radiusInner, ratio, segments) {
-  var n = Math.max(8, Math.round(segments || BOSS_RING_SEGMENTS));
+  var n = Math.max(8, Math.round(segments || HP_RING_SEGMENTS));
   var sweep = Math.max(0.0001, Math.min(1, ratio)) * Math.PI * 2;
   var a0 = -Math.PI / 2;
   var pts = [];
@@ -2433,17 +2492,6 @@ function ringSectorPoints(radiusOuter, radiusInner, ratio, segments) {
     pts.push({ x: Math.cos(b) * radiusInner, y: Math.sin(b) * radiusInner });
   }
   return pts;
-}
-
-/** 圆弧折线（锁梁用；closed=false、只描边）。 */
-function arcPoints(cx, cy, r, from, to, seg) {
-  var out = [];
-  var n = Math.max(2, seg || 16);
-  for (var i = 0; i <= n; i++) {
-    var a = from + (to - from) * (i / n);
-    out.push({ x: cx + Math.cos(a) * r, y: cy + Math.sin(a) * r });
-  }
-  return out;
 }
 
 /** 盾形多边形（照抄参考实现 bubbles/index.ts 的 shieldPoints，完整公式在规格 §5.4）。
@@ -2488,7 +2536,7 @@ function shieldPoints(W, H, segments) {
 }
 
 /** 圆形折线（v1.7.5：强韧 / 反射 / 意志 从盾形改成圆）。
- *  SDK 3.1.0 确实有 ShapeType.CIRCLE，但本文件的盾 / 环 / 锁 / 名牌全走 buildCurve().points()
+ *  SDK 3.1.0 确实有 ShapeType.CIRCLE，但本文件的盾 / 环全走 buildCurve().points()
  *  （同一套「锚点在左上角、y 向下」的坐标），圆也照这个来：closed=true、tension=0，
  *  一个直径 D 的圆用 N 段折线，外接盒就是 [0,D]×[0,D]，position 放左上角即可。
  *  参数与 shieldPoints 同形（D, segments），调用处一眼能看出哪个是盾、哪个是圆。 */
@@ -2503,79 +2551,21 @@ function circlePoints(D, segments) {
   return out;
 }
 
-/** 圆角矩形（锚点在左上角、y 向下，与参考实现的 roundedRectanglePoints 同构）。 */
-function roundRectPoints(w, h, r, fill) {
-  if (r * 2 > h) r = h / 2;
-  if (r * 2 > w) r = w / 2;
-  var seg = 6;
-  function arc(cx, cy, from, to) {
-    var out = [];
-    if (r <= 0) {
-      for (var k = 0; k <= seg; k++) out.push({ x: cx, y: cy });
-      return out;
-    }
-    for (var i = 0; i <= seg; i++) {
-      var t = i / seg;
-      var a = from + (to - from) * t;
-      out.push({ x: cx + Math.cos(a) * r, y: cy + Math.sin(a) * r });
-    }
-    return out;
-  }
-  var f = typeof fill === "number" ? Math.max(0.0001, Math.min(1, fill)) : 1;
-  var filled = Math.max(0, Math.min(w, f * w));
-  if (f >= 1) {
-    return [].concat(
-      arc(r, r, -Math.PI, -Math.PI / 2),
-      arc(w - r, r, -Math.PI / 2, 0),
-      arc(w - r, h - r, 0, Math.PI / 2),
-      arc(r, h - r, Math.PI / 2, Math.PI)
-    );
-  }
-  if (filled <= r) {
-    return [].concat(
-      arc(r, r, -Math.PI, -Math.PI / 2),
-      [{ x: r, y: 0 }, { x: r, y: h }],
-      arc(r, h - r, Math.PI / 2, Math.PI)
-    );
-  }
-  return [].concat(
-    arc(r, r, -Math.PI, -Math.PI / 2),
-    [{ x: filled - r, y: 0 }],
-    arc(filled - r, r, -Math.PI / 2, 0),
-    arc(filled - r, h - r, 0, Math.PI / 2),
-    [{ x: filled - r, y: h }],
-    arc(r, h - r, Math.PI / 2, Math.PI)
-  );
-}
-
-/** v1.7.6：一排的**均分间距** = (可用宽 − 枚数×直径) / (枚数−1)。
- *  用户按参考图 15 的要求：整排**左右铺满** token（左缘 + 4s / 右缘 − 4s），间距随 token 宽自适应，
- *  不再像 v1.7.5 那样「四枚挤在中间」。
- *  四枚时正好是 brief 的 `gap = (可用宽 − 4×d) / 3`；只剩一枚时没有间距（0）。
- *  放不下（枚数×直径 > 可用宽）时由 barLayout 先按 DEF_DROP 丢，这个函数只负责「放得下之后怎么铺」。 */
-function defRowGap(count, d, availW) {
-  if (count <= 1) return 0;
-  return Math.max(0, (availW - count * d) / (count - 1));
-}
-
-/** v1.7.6：一排的总宽 = 枚数×直径 + (枚数−1)×均分间距。
- *  放得下时它**恒等于可用宽**（= token 宽 − 两侧各 4s）→ 左缘贴左、右缘贴右。 */
-function defRowWidth(count, d, availW) {
-  if (count <= 0) return 0;
-  return count * d + (count - 1) * defRowGap(count, d, availW);
-}
-
 /** v1.7.5：一枚四防的外形 —— AC 是盾（shieldPoints），三防是圆（circlePoints）。
  *  构建（buildBarItems）与增量刷新（patchBar）共用这一处，换形状只改这里。 */
 function defShapePoints(sh) {
   return sh.circle ? circlePoints(sh.d, DEF_CIRCLE_SEGMENTS) : shieldPoints(sh.d, sh.d);
 }
 
-/** 由 token 的世界包围盒推出「一组几何」：HP 行 / 回复力行 / 四防一排 / Boss 环+名牌。
- *  v1.6.0 只是**加字段**，syncBars 的调用方式不变（规格 §6.4 / 附录 B 第 2 条）；
- *  v1.6.1 只改四防的摆位与 AC 样式（HP 行 / 回复力行 / Boss 几何一个字没动）。
+/** 由 token 的世界包围盒推出「一组几何」：**环形血条** + HP 数字 + **四角四防**。
+ *  v1.7.9：所有 token 都画环形血条（原来只有 Boss 画），直的 HP 条 / 蓝条 / 名牌 / 锁全部删除。
  *  viewer = { exact, threshold }：exact=false 时（其他玩家 + locked）比例按阶梯量化、不画数字与四防。 */
 function barLayout(bounds, dpi, hp, viewer) {
+  /* ---- v1.7.9 环形血条的像素常数（真机微调只改这几行 / 上面的 HP_RING_*） ---- */
+  var RING_THICK = HP_RING_THICK;        /* 环厚 10s */
+  var RING_INSET = HP_RING_INSET;        /* Ro = 半短边 − 2s */
+  var RING_SEGMENTS = HP_RING_SEGMENTS;  /* 48 段 */
+
   var max = hp.max > 0 ? hp.max : (hp.cur !== null ? Math.max(1, hp.cur) : 1);
   var cur = hp.cur === null ? max : hp.cur;
   var ratio = Math.max(0, Math.min(1, cur / max));
@@ -2587,64 +2577,50 @@ function barLayout(bounds, dpi, hp, viewer) {
   var threshold = viewer && typeof viewer.threshold === "number" ? viewer.threshold : PLAYER_THRESHOLD_DEFAULT;
   var shownRatio = exact ? ratio : quantiseRatio(ratio, threshold);
 
-  var hHp = BAR_HP_H * s;
-  var hSurge = BAR_SURGE_H * s;
-  var gap = BAR_GAP * s;
-  var pad = BAR_PAD * s;
-  var w = Math.max(hHp * 2, bounds.width - pad * 2);
-  var left = bounds.center.x - w / 2;
+  /* A. 环形血条（v1.7.9：把原来 Boss 专属的环套到所有 token 上）
+   *    · 圆心 = token 中心；Ro = 半短边 − 2s；环厚 10s；48 段（ringSectorPoints 复用）；
+   *    · 底环画满一整圈（暗色），血量那圈按 cur/max 从 12 点方向顺时针填；
+   *    · 不再画直的 HP 条 / 蓝色回复力条（用户：「所有血条改成环形」「token 上不画蓝条」）。 */
+  var halfShort = Math.min(bounds.width, bounds.height) / 2;
+  var ringRo = Math.max(3 * s, halfShort - RING_INSET * s);
+  var ringT = Math.max(1 * s, Math.min(RING_THICK * s, ringRo * 0.8));
+  var ringRi = Math.max(1 * s, ringRo - ringT);
+  var ring = {
+    cx: bounds.center.x, cy: bounds.center.y,
+    Ro: ringRo, Ri: ringRi, T: ringT,
+    ratio: shownRatio, segments: RING_SEGMENTS
+  };
 
-  /* A. 两行条：底边内侧先放蓝条，蓝条上方 gap 再放红条（规格 §6.4 A）。
-   *    没有回复力数据时 HP 条仍贴底边内侧 —— 老 token 升级后血条位置不变。 */
-  var showSurge = hp.surges !== null;
-  var surgeTop = bounds.max.y - pad - hSurge;
-  var hpTop = showSurge ? surgeTop - gap - hHp : bounds.max.y - pad - hHp;
-
+  /* HP 数字（`cur/max`，临时生命仍是 ` +N`）：放在**环内底部** —— 不压 token 脸，
+   * 位置和以前的底部条接近；带描边，窄 token 上字号跟着环内径缩。
+   *   纵向中心 = 环心 + Ri×0.52（环内偏下），宽度按 Ri 收一点，保证整串字都在环内。 */
   var hpText = exact ? (String(cur) + "/" + max + (hp.temp > 0 ? " +" + hp.temp : "")) : "";
-  var hpFont = Math.min(hHp * 1.05, (w / Math.max(4, hpText.length || 4)) * 1.5);
-  hpFont = Math.max(6 * s, hpFont);
+  var hpTextW = Math.max(14 * s, ringRi * 1.4);
+  var hpFont = Math.max(6 * s, Math.min(ringRi * 0.62, (hpTextW / Math.max(4, hpText.length || 4)) * 1.4));
+  var hpTextH = Math.max(8 * s, hpFont * 1.35);
+  var hpTextX = bounds.center.x - hpTextW / 2;
+  var hpTextY = bounds.center.y + ringRi * 0.52 - hpTextH / 2;
 
-  var surgeMax = hp.surgesMax !== null ? hp.surgesMax : (hp.surges !== null ? Math.max(hp.surges, 1) : 1);
-  var surgeValue = hp.surges === null ? 0 : hp.surges;
-  /* 老 token 没有 surgesMax：分母回落 max(surges,1) 并把条画满、只显示一个数字（规格 §6.1） */
-  var surgeRatio = hp.surgesMax !== null ? Math.max(0, Math.min(1, surgeValue / surgeMax)) : 1;
-  var surgeText = exact && hp.surges !== null
-    ? (String(surgeValue) + (hp.surgesMax !== null ? "/" + hp.surgesMax : "")) : "";
-  var surgeFont = Math.max(5 * s, Math.min(hSurge * 0.95, (w / Math.max(3, surgeText.length || 3)) * 1.4));
-
-  /* B. v1.6.1：四防**一排**（原来四角的那套已删）；v1.7.5 三防改圆；v1.7.6 按参考图 15 重排
-   *    顺序固定 强韧 → 反射 → 意志 → AC（AC 永远最右、半透明白色盾牌图标）；
-   *    整排贴在 HP 红条上方 gap 处（同一行，圆心 / 盾心 y 相同 = rowCY），按 s 缩放。
-   *    v1.7.6（用户按参考图 15：「三个圆更大 → 整排左右铺满均分 → AC 半透明白盾在最右」）：
-   *      · 四枚**同直径 30s**（三防圆 22 → 30），数字跟着放大到 ≈15s（三位 ≈14s）；
-   *      · 整排**铺满 token 宽**：左缘 = token 左缘 + 4s、右缘 = token 右缘 − 4s；
-   *        间距 = (可用宽 − 枚数×直径) / (枚数−1)（见 defRowGap；四枚时就是 (可用宽 − 4×d)/3）；
-   *      · 不再「四枚挤在中间」：第一枚圆心 = 左缘 + 半径，最后一枚的右边缘正好落在右缘上。
-   *    退化（写死规则，选「丢盾」而不是「整体缩小」）：
-   *      枚数 × 直径放不进可用宽时，**AC 优先保留**，其余按 DEF_DROP 丢（先丢意志 → 再丢反射 → 再丢强韧）；
-   *      剩下的枚数按同一个公式重新铺满（不留空档）；一枚都放不下、或这一排会顶出 token 上沿（矮 token）
-   *      → 整排不画，四防仍能在速览面板里看。 */
+  /* B. 四防回到**四角**（v1.7.9，用户明确坐标）：
+   *      左上 = 强韧（黄 #e3b341）/ 右上 = 反射（绿 #56d364）/
+   *      左下 = 意志（紫 #a371f7）/ 右下 = AC（半透明白**盾**，shieldPoints）。
+   *    直径 30s、贴 token 四角内侧 4s（按 token bounds 算，不再看 HP 条的位置）。
+   *    退化（写死规则）：两枚并排 / 两行叠放放不下时**AC 优先保留**，
+   *    其余按 DEF_DROP 丢（先丢意志 → 再丢反射 → 再丢强韧）；连 AC 都放不下就整组不画
+   *    （四防仍能在速览面板 / 编辑窗里看）。 */
   var dAc = SHIELD_DIAMETER * s;
   var dDef = DEF_CIRCLE_DIAMETER * s;
-  var dRow = Math.max(dAc, dDef);        /* v1.7.6：两枚一样大（都是 30s） */
+  var dRow = Math.max(dAc, dDef);        /* v1.7.6 起两枚一样大（都是 30s） */
   var inset = SHIELD_INSET * s;
-  var rowCY = hpTop - gap - dRow / 2;
-  /* v1.7.6：可用宽度取 **token 自己的宽**（不再是 HP 条的宽）—— 整排要铺满 token。 */
-  var rowLeft = bounds.min.x + inset;
-  var rowRight = bounds.max.x - inset;
-  var availW = Math.max(0, rowRight - rowLeft);
+  var needTwo = 2 * dRow + inset * 2;    /* 两枚并排（左上 / 右上）所需的宽（= 两行所需的高） */
   var rowKeys = [];
   var i;
   if (hp.defenses) {
-    /* 先把「真的有数字」的那几项按 DEF_ROW 的顺序收下：先丢意志 → 再丢反射 → 再丢强韧
-     * （AC 不在 DEF_DROP 里 = **最后才丢 / 优先保留**）。 */
     for (i = 0; i < DEF_ROW.length; i++) {
       if (typeof hp.defenses[DEF_ROW[i]] === "number") rowKeys.push(DEF_ROW[i]);
     }
   }
-  /* v1.7.6：放不放得下只看「枚数 × 直径」—— 间距是剩下的宽度均分出来的，
-   * 所以不再像 v1.7.5 那样把 6s 固定间距也加进判据（否则同一枚 token 会白丢一枚盾）。 */
-  while (rowKeys.length > 1 && rowKeys.length * dRow > availW) {
+  while (rowKeys.length > 1 && (needTwo > bounds.width || needTwo > bounds.height)) {
     var dropped = false;
     for (i = 0; i < DEF_DROP.length; i++) {
       var at = rowKeys.indexOf(DEF_DROP[i]);
@@ -2653,109 +2629,73 @@ function barLayout(bounds, dpi, hp, viewer) {
       dropped = true;
       break;
     }
-    if (!dropped) break;   /* 只剩 AC 了：AC 最后才丢（连它都放不下时下面整排不画） */
+    if (!dropped) break;   /* 只剩 AC 了：连它都放不下时下面整组不画 */
   }
+  var needOne = dRow + inset * 2;
   var showDefenses = !!hp.defenses && exact && rowKeys.length > 0 &&
-    rowKeys.length * dRow <= availW && rowCY - dRow / 2 >= bounds.min.y + inset;
-  /* 均分间距 / 整排宽度：放得下时 rowW === availW（左右各贴 4s）。 */
-  var shieldGap = defRowGap(rowKeys.length, dRow, availW);
-  var rowW = defRowWidth(rowKeys.length, dRow, availW);
+    needOne <= bounds.width && needOne <= bounds.height;
   var shields = [];
   if (showDefenses) {
-    /* 从左到右铺满：第一枚圆心 = 左缘 + 半径（左对齐），每枚前进「直径 + 均分间距」。 */
-    var cursor = rowLeft + dRow / 2;
-    for (i = 0; i < rowKeys.length; i++) {
-      var k = rowKeys[i];
+    /* 按 DEF_ROW（左上 → 右上 → 左下 → 右下）出，顺序与四角一致，肉眼也好对。 */
+    for (i = 0; i < DEF_ROW.length; i++) {
+      var k = DEF_ROW[i];
+      if (rowKeys.indexOf(k) < 0) continue;
       var val = hp.defenses[k];
       var txt = String(val);
-      /* AC = 半透明白色**盾**（fill 白 @0.18 + 白描边 @0.85）；三防 = 30s 的**圆**（实色 @0.9 + 淡白描边） */
+      /* AC = 半透明白色**盾**（fill 白 @0.18 + 白描边 @0.85）；三防 = 30s 的实色**圆**。 */
       var ghost = k === "ac";
       var dk = ghost ? dAc : dDef;
+      var corner = DEF_CORNER[k] || "left-top";
+      var onLeft = corner.indexOf("left") === 0;
+      var onTop = corner.indexOf("top") >= 0;
       shields.push({
-        key: k, value: val, text: txt, x: cursor, y: rowCY, d: dk,
+        key: k, value: val, text: txt, d: dk, corner: corner,
+        x: onLeft ? bounds.min.x + inset + dk / 2 : bounds.max.x - inset - dk / 2,
+        y: onTop ? bounds.min.y + inset + dk / 2 : bounds.max.y - inset - dk / 2,
         circle: !ghost,
         color: DEF_COLORS[k], ghost: ghost,
         fillOpacity: ghost ? DEF_AC_FILL_OPACITY : DEF_FILL_OPACITY,
         strokeOpacity: ghost ? DEF_AC_STROKE_OPACITY : DEF_STROKE_OPACITY,
-        /* v1.7.6：四枚同直径 → **同一个字号公式**（两位 ≈15s、三位 ≈14s），
-         * 与参考图 15 一致（四个数字肉眼一样大）。 */
+        /* 四枚同直径 → 同一个字号公式（两位 ≈15s、三位 ≈14s），四个数字肉眼一样大。 */
         fontSize: Math.max(8 * s, dk * (txt.length > 2 ? 0.46 : 0.5))
       });
-      cursor += dk + shieldGap;
     }
   }
 
-  /* C/D. Boss（方案 A）：环 + 名牌 + 分段线 + 锁 */
-  var boss = hp.boss || readBoss(null);
-  var bossOn = boss.enabled === true;
-  var bossL = {
-    enabled: bossOn, segments: boss.segments, phase: boss.phase, exact: boss.exact,
-    locked: hp.locked, cx: bounds.center.x, cy: bounds.center.y,
-    Ro: 0, Ri: 0, T: 0, ringRatio: shownRatio,
-    name: hp.name || "", plateX: 0, plateY: 0, plateW: 0, plateH: 0,
-    nameFont: 14 * s, phaseFont: 10 * s, phaseW: 0,
-    lockX: 0, lockY: 0, lockBodyW: 10 * s, lockBodyH: 8 * s, lockR: 3.2 * s,
-    lockColor: hp.locked ? COLOR_LOCK_ON : COLOR_LOCK_OFF,
-    dividerCount: 0
-  };
-  if (bossOn) {
-    bossL.Ro = Math.max(4 * s, Math.min(bounds.width, bounds.height) / 2 - BOSS_RING_INSET * s);
-    bossL.T = Math.max(6 * s, Math.min(BOSS_RING_THICK * s, bossL.Ro * 0.30));
-    bossL.Ri = Math.max(1 * s, bossL.Ro - bossL.T);
-    bossL.plateH = BOSS_PLATE_H * s;
-    bossL.plateY = bounds.min.y - BOSS_PLATE_GAP * s - bossL.plateH;
-    bossL.plateW = Math.min(w, Math.max(140 * s, 0.62 * bossL.nameFont * Math.max(1, bossL.name.length)));
-    bossL.plateX = bounds.center.x - bossL.plateW / 2;
-    bossL.phaseW = (bossL.phase && bossL.plateW >= 120 * s) ? Math.min(90 * s, bossL.plateW * 0.32) : 0;
-    bossL.lockX = bossL.plateX + bossL.plateW - 13 * s;
-    bossL.lockY = bossL.plateY + bossL.plateH / 2;
-    bossL.dividerCount = boss.segments > 1 ? boss.segments - 1 : 0;
-  }
-
   return {
-    scale: s, exact: exact, w: w, left: left, pad: pad, gap: gap,
-    hHp: hHp, hSurge: hSurge, hpTop: hpTop, surgeTop: surgeTop,
-    hpRadius: hHp / 2, surgeRadius: hSurge / 2,
+    scale: s, exact: exact,
     ratio: shownRatio, rawRatio: ratio,
-    hpText: hpText, hpFont: hpFont,
-    showSurge: showSurge, surgeRatio: surgeRatio, surgeText: surgeText, surgeFont: surgeFont,
+    ring: ring,
+    hpText: hpText, hpFont: hpFont, hpTextW: hpTextW, hpTextH: hpTextH,
+    hpTextX: hpTextX, hpTextY: hpTextY,
     showDefenses: showDefenses, shields: shields, d: dRow, dAc: dAc, dDef: dDef,
-    /* v1.7.6：整排的几何（左缘 / 右缘 / 均分间距 / 总宽）也放进布局结果，便于自测与文档对照。 */
-    rowLeft: rowLeft, rowRight: rowRight, rowGap: shieldGap, rowW: rowW, availW: availW,
-    boss: bossL,
-    /* Boss 模式压制普通 HP 条（bg / fill / text 三件保留但隐藏 → 关掉 Boss 时不用重建） */
-    hpVisible: !bossOn,
-    textVisible: exact
+    cornerInset: inset, textVisible: exact
   };
 }
 
-/** 角色集合指纹：一变就整体重建（Boss 开关 / 分段数 / 有无蓝条 / 画了哪几枚盾 / 是否画数字）。
- *  v1.6.1：盾要带上 **key 列表**而不只是数量 —— 窄 token 退化会改数量，换一组四防也可能「数量不变、key 变了」，
- *  只比数量会让 patchBar 找不到对应的盾（数字就停在旧位置）。 */
+/** 角色集合指纹：一变就整体重建（画了哪几枚盾 / 是否画数字）。
+ *  环永远画（固定 2 件），所以不进 key；盾要带上 **key 列表**而不只是数量 ——
+ *  窄 token 退化会改数量，换一组四防也可能「数量不变、key 变了」，只比数量会让 patchBar 找不到对应的盾。 */
 function barRolesKey(L) {
   return [
-    L.boss.enabled ? "B" + L.boss.segments + (L.boss.phaseW > 0 ? "p" : "") : "",
-    L.showSurge ? "S" : "",
     L.shields.length ? "D" + L.shields.map(function (x) { return x.key; }).join("") : "",
     L.textVisible ? "T" : ""
   ].join("");
 }
-
 /** 状态签名：只在真正影响画面时写盘。**不放 bounds 的全部字段**
- *  （旋转 / 位移每帧都变，放进来会导致每条血条每帧重写）；几何只取几个整数（规格 §6.5）。 */
+ *  （旋转 / 位移每帧都变，放进来会导致每条血条每帧重写）；几何只取几个整数。
+ *  v1.7.9：环的 Ro / 环厚 / s 变了才重画；token 位移不算（item 挂在 token 上会跟着走）。 */
 function barSig(hp, L) {
   var d = hp.defenses;
   return [
-    hp.cur, hp.max, hp.temp, hp.surges, hp.surgesMax, hp.name,
+    hp.cur, hp.max, hp.temp,
     d ? [d.ac, d.fort, d.reflex, d.will].join(",") : "",
-    L.boss.enabled ? 1 : 0, L.boss.segments, L.boss.phase, hp.locked ? 1 : 0,
-    L.exact ? 1 : 0,
-    Math.round(L.w), Math.round(L.left), Math.round(L.hpTop), Math.round(L.surgeTop),
-    Math.round(L.boss.plateY), Math.round(L.boss.plateW), Math.round(L.scale * 1000),
+    hp.locked ? 1 : 0, L.exact ? 1 : 0,
+    Math.round(L.ring.Ro * 10), Math.round(L.ring.T * 10),
+    Math.round(L.scale * 1000),
     L.shields.length ? Math.round(L.shields[0].d) : 0
   ].join("|");
 }
-
 function barMeta(tokenId, role, extra) {
   var box = {};
   var tag = { owner: tokenId, role: role };
@@ -2801,22 +2741,6 @@ function barTextItem(tokenId, role, text, font, color, x, y, w, h, opt) {
   return b.build();
 }
 
-/** 环上的分段线：沿环厚画一小段径向四边形（N 段只做视觉，不改血量）。 */
-function ringDividerPoints(bossL, i) {
-  var seg = Math.max(1, bossL.segments);
-  var a = -Math.PI / 2 + (Math.PI * 2) * (i / seg);
-  var rMid = (bossL.Ri + bossL.Ro) / 2;
-  var half = (bossL.T * 0.18) / Math.max(1, rMid);
-  var a1 = a - half;
-  var a2 = a + half;
-  return [
-    { x: Math.cos(a1) * bossL.Ri, y: Math.sin(a1) * bossL.Ri },
-    { x: Math.cos(a1) * bossL.Ro, y: Math.sin(a1) * bossL.Ro },
-    { x: Math.cos(a2) * bossL.Ro, y: Math.sin(a2) * bossL.Ro },
-    { x: Math.cos(a2) * bossL.Ri, y: Math.sin(a2) * bossL.Ri }
-  ];
-}
-
 function findShield(L, key) {
   for (var i = 0; i < L.shields.length; i++) if (L.shields[i].key === key) return L.shields[i];
   return null;
@@ -2836,57 +2760,28 @@ function barCommon(builder, tokenId, role, z) {
     .metadata(barMeta(tokenId, role));
 }
 
-/** 构建一个 token 的全部本地图形 item（role 表见规格 §6.3）。
- *  只在有数据时创建：没有 surges 不建蓝条、没有 defenses 不建盾、不是 Boss 不建环/牌/锁。
- *  角色集合一变（例如刚打开 Boss）由 syncBars 整体重建；只是数值变化走 patchBar。 */
+/** 构建一个 token 的全部本地图形 item（v1.7.9 的 role 表只剩 5 种）。
+ *  环永远 2 件、HP 数字 1 件、四防按**四角**各 1 盾 + 1 数字。
+ *  角色集合一变（窄 token 退化掉盾 / 精确度变化）由 syncBars 整体重建；只是数值变化走 patchBar。 */
 function buildBarItems(tokenId, L) {
   var items = [];
-  var B = L.boss;
+  var R = L.ring;
   var i;
 
-  /* 1) Boss 环（zIndex 9500 / 9800） */
-  if (B.enabled) {
-    items.push(barCurveItem(tokenId, "ring-bg",
-      ringSectorPoints(B.Ro, B.Ri, 1, BOSS_RING_SEGMENTS), B.cx, B.cy,
-      { fill: COLOR_BOSS_BG, fillOpacity: 0.55 }));
-    items.push(barCurveItem(tokenId, "ring-fill",
-      ringSectorPoints(B.Ro, B.Ri, B.ringRatio, BOSS_RING_SEGMENTS), B.cx, B.cy,
-      { fill: COLOR_HP_FILL, fillOpacity: 0.9, visible: B.ringRatio > 0 }));
-  }
+  /* 1) 环形血条（zIndex 9500 / 9800）：暗色底环画满一整圈，血量那一圈按 cur/max 从 12 点填 */
+  items.push(barCurveItem(tokenId, "ring-bg",
+    ringSectorPoints(R.Ro, R.Ri, 1, R.segments), R.cx, R.cy,
+    { fill: COLOR_RING_BG, fillOpacity: HP_RING_BG_OPACITY }));
+  items.push(barCurveItem(tokenId, "ring-fill",
+    ringSectorPoints(R.Ro, R.Ri, R.ratio, R.segments), R.cx, R.cy,
+    { fill: COLOR_HP_FILL, fillOpacity: 0.9, visible: R.ratio > 0 }));
 
-  /* 2) HP 胶囊底 / 填充（Boss 模式下隐藏，但保留 item → 关掉 Boss 不用重建） */
-  items.push(barCurveItem(tokenId, "bar-bg", roundRectPoints(L.w, L.hHp, L.hpRadius, 1), L.left, L.hpTop,
-    { fill: COLOR_HP_BG, fillOpacity: 0.6, visible: L.hpVisible }));
-  items.push(barCurveItem(tokenId, "bar-fill", roundRectPoints(L.w, L.hHp, L.hpRadius, L.ratio), L.left, L.hpTop,
-    { fill: COLOR_HP_FILL, fillOpacity: 0.85, visible: L.hpVisible && L.ratio > 0 }));
+  /* 2) HP 数字（环内正中，zIndex 30000）：`12/20`，有临时生命时 `12/20 +3` */
+  items.push(barTextItem(tokenId, "bar-text", L.hpText, L.hpFont, "#ffffff",
+    L.hpTextX, L.hpTextY, L.hpTextW, L.hpTextH,
+    { strokeWidth: Math.max(0.4, L.hpFont * 0.09), visible: L.textVisible }));
 
-  /* 3) 回复力蓝条（zIndex 10500 / 20500 / 30500） */
-  if (L.showSurge) {
-    items.push(barCurveItem(tokenId, "surge-bg", roundRectPoints(L.w, L.hSurge, L.surgeRadius, 1), L.left, L.surgeTop,
-      { fill: COLOR_SURGE_BG, fillOpacity: 0.85 }));
-    items.push(barCurveItem(tokenId, "surge-fill", roundRectPoints(L.w, L.hSurge, L.surgeRadius, L.surgeRatio), L.left, L.surgeTop,
-      { fill: COLOR_SURGE_FILL, fillOpacity: 0.9, visible: L.surgeRatio > 0 }));
-  }
-
-  /* 4) Boss 名牌（zIndex 12000 / 12400 / 12450） */
-  if (B.enabled) {
-    items.push(barCurveItem(tokenId, "plate",
-      roundRectPoints(B.plateW, B.plateH, 4 * L.scale, 1), B.plateX, B.plateY,
-      { fill: COLOR_BOSS_BG, fillOpacity: 0.78, stroke: COLOR_PLATE_STROKE, strokeOpacity: 0.9, strokeWidth: Math.max(0.5, 1 * L.scale) }));
-    items.push(barTextItem(tokenId, "plate-text", B.name, B.nameFont, COLOR_PLATE_TEXT,
-      B.plateX + 4 * L.scale, B.plateY,
-      Math.max(24 * L.scale, B.plateW - 26 * L.scale - B.phaseW), B.plateH,
-      { align: "CENTER", strokeWidth: Math.max(0.4, 0.9 * L.scale) }));
-    if (B.phaseW > 0) {
-      items.push(barTextItem(tokenId, "plate-phase", B.phase, B.phaseFont, COLOR_PHASE_TEXT,
-        B.plateX + B.plateW - 28 * L.scale - B.phaseW, B.plateY, B.phaseW, B.plateH,
-        { align: "RIGHT", weight: 600, strokeWidth: Math.max(0.3, 0.6 * L.scale) }));
-    }
-  }
-
-  /* 5) 四防一排（v1.6.1；v1.7.5 三防改圆、AC 仍是盾）+ 数字（zIndex 15000 / 16000）
-   *    一排四枚：强韧 / 反射 / 意志 是 22s 的**圆**（实色），AC 最右且是 30s 的**半透明白色盾**
-   *    （fill 白 @0.18 + 白描边 @0.85）；外形统一由 defShapePoints 决定。 */
+  /* 3) 四防四角（zIndex 15000 / 16000）：左上强韧 / 右上反射 / 左下意志 / 右下 AC（盾） */
   for (i = 0; i < L.shields.length; i++) {
     var sh = L.shields[i];
     items.push(barCurveItem(tokenId, "shield", defShapePoints(sh), sh.x - sh.d / 2, sh.y - sh.d / 2,
@@ -2899,39 +2794,8 @@ function buildBarItems(tokenId, L) {
       { strokeWidth: Math.max(0.4, sh.d * 0.02), strokeOpacity: sh.ghost ? 0.85 : 0.7, extra: { key: sh.key } }));
   }
 
-  /* 6) Boss 分段线（zIndex 22000；只做视觉，不改血量） */
-  if (B.enabled && B.dividerCount > 0) {
-    for (i = 1; i <= B.dividerCount; i++) {
-      items.push(barCurveItem(tokenId, "divider", ringDividerPoints(B, i), B.cx, B.cy,
-        { fill: COLOR_DIVIDER, fillOpacity: 0.85, extra: { index: i } }));
-    }
-  }
-
-  /* 7) 数值（zIndex 30000 / 30500） */
-  if (typeof buildText === "function") {
-    items.push(barTextItem(tokenId, "bar-text", L.hpText, L.hpFont, "#ffffff", L.left, L.hpTop, L.w, L.hHp,
-      { strokeWidth: Math.max(0.4, L.hHp * 0.075), visible: L.hpVisible && L.textVisible }));
-    if (L.showSurge) {
-      items.push(barTextItem(tokenId, "surge-text", L.surgeText, L.surgeFont, "#ffffff", L.left, L.surgeTop, L.w, L.hSurge,
-        { strokeWidth: Math.max(0.3, L.hSurge * 0.06), visible: L.textVisible }));
-    }
-  }
-
-  /* 8) 锁（zIndex 31000 / 31050；body + shackle 两件） */
-  if (B.enabled) {
-    items.push(barCurveItem(tokenId, "lock-body",
-      roundRectPoints(B.lockBodyW, B.lockBodyH, 2 * L.scale, 1),
-      B.lockX - B.lockBodyW / 2, B.lockY - B.lockBodyH / 2,
-      { fill: B.lockColor, fillOpacity: 0.9, stroke: "#ffffff", strokeOpacity: 0.45, strokeWidth: Math.max(0.5, 0.8 * L.scale) }));
-    items.push(barCurveItem(tokenId, "lock-shackle",
-      arcPoints(0, 0, B.lockR, Math.PI, Math.PI * 2, 16),
-      B.lockX, B.lockY - B.lockBodyH / 2,
-      { fillOpacity: 0, closed: false, stroke: B.lockColor, strokeOpacity: 0.9, strokeWidth: Math.max(0.8, 1.6 * L.scale) }));
-  }
-
   return items;
 }
-
 async function addBar(tokenId, L) {
   var items = buildBarItems(tokenId, L);
   await OBR.scene.local.addItems(items);
@@ -2941,9 +2805,9 @@ async function addBar(tokenId, L) {
 }
 
 /** 就地刷新：按 role 分发（switch，不写一条长 if 链；未知 role 直接跳过 → 老 item 兼容）。
- *  v1.6.0 的 role 表见规格 §6.3：环 2 + 条 4 + 牌 3 + 盾 8 + 分段 ≤4 + 锁 2 = 最多 23 件。 */
+ *  v1.7.9 的 role 表只有 5 种：环底 / 环填充 / HP 数字 / 四防盾 / 四防数字（Boss 的牌 / 分段 / 锁已删）。 */
 async function patchBar(entry, L) {
-  var B = L.boss;
+  var R = L.ring;
   await OBR.scene.local.updateItems(entry.ids, function (drafts) {
     for (var i = 0; i < drafts.length; i++) {
       var d = drafts[i];
@@ -2951,57 +2815,23 @@ async function patchBar(entry, L) {
       var role = tag && tag.role ? tag.role : "";
       switch (role) {
         case "ring-bg":
-          d.position = { x: B.cx, y: B.cy };
-          d.points = ringSectorPoints(B.Ro, B.Ri, 1, BOSS_RING_SEGMENTS);
-          d.visible = B.enabled;
+          d.position = { x: R.cx, y: R.cy };
+          d.points = ringSectorPoints(R.Ro, R.Ri, 1, R.segments);
+          d.visible = true;
           break;
         case "ring-fill":
-          d.position = { x: B.cx, y: B.cy };
-          d.points = ringSectorPoints(B.Ro, B.Ri, B.ringRatio, BOSS_RING_SEGMENTS);
-          d.visible = B.enabled && B.ringRatio > 0;
+          d.position = { x: R.cx, y: R.cy };
+          d.points = ringSectorPoints(R.Ro, R.Ri, R.ratio, R.segments);
+          d.visible = R.ratio > 0;
           break;
-        case "bar-bg":
-          d.position = { x: L.left, y: L.hpTop };
-          d.points = roundRectPoints(L.w, L.hHp, L.hpRadius, 1);
-          d.visible = L.hpVisible;
-          break;
-        case "bar-fill":
-          d.position = { x: L.left, y: L.hpTop };
-          d.points = roundRectPoints(L.w, L.hHp, L.hpRadius, L.ratio);
-          d.visible = L.hpVisible && L.ratio > 0;
-          break;
-        case "surge-bg":
-          d.position = { x: L.left, y: L.surgeTop };
-          d.points = roundRectPoints(L.w, L.hSurge, L.surgeRadius, 1);
-          d.visible = L.showSurge;
-          break;
-        case "surge-fill":
-          d.position = { x: L.left, y: L.surgeTop };
-          d.points = roundRectPoints(L.w, L.hSurge, L.surgeRadius, L.surgeRatio);
-          d.visible = L.showSurge && L.surgeRatio > 0;
-          break;
-        case "plate":
-          d.position = { x: B.plateX, y: B.plateY };
-          d.points = roundRectPoints(B.plateW, B.plateH, 4 * L.scale, 1);
-          d.visible = B.enabled;
-          break;
-        case "plate-text":
+        case "bar-text":
           if (!d.text) break;
-          d.text.plainText = B.name;
-          d.text.style.fontSize = B.nameFont;
-          d.text.width = Math.max(24 * L.scale, B.plateW - 26 * L.scale - B.phaseW);
-          d.text.height = B.plateH;
-          d.position = { x: B.plateX + 4 * L.scale, y: B.plateY };
-          d.visible = B.enabled;
-          break;
-        case "plate-phase":
-          if (!d.text) break;
-          d.text.plainText = B.phase;
-          d.text.style.fontSize = B.phaseFont;
-          d.text.width = B.phaseW;
-          d.text.height = B.plateH;
-          d.position = { x: B.plateX + B.plateW - 28 * L.scale - B.phaseW, y: B.plateY };
-          d.visible = B.enabled && B.phaseW > 0;
+          d.text.plainText = L.hpText;
+          d.text.style.fontSize = L.hpFont;
+          d.text.width = L.hpTextW;
+          d.text.height = L.hpTextH;
+          d.position = { x: L.hpTextX, y: L.hpTextY };
+          d.visible = L.textVisible;
           break;
         case "shield": {
           var sh = findShield(L, tag.key);
@@ -3022,49 +2852,12 @@ async function patchBar(entry, L) {
           d.visible = true;
           break;
         }
-        case "divider": {
-          var idx = typeof tag.index === "number" ? tag.index : 1;
-          if (!B.enabled || idx < 1 || idx > B.dividerCount) { d.visible = false; break; }
-          d.points = ringDividerPoints(B, idx);
-          d.position = { x: B.cx, y: B.cy };
-          d.visible = true;
-          break;
-        }
-        case "bar-text":
-          if (!d.text) break;
-          d.text.plainText = L.hpText;
-          d.text.style.fontSize = L.hpFont;
-          d.text.width = L.w;
-          d.text.height = L.hHp;
-          d.position = { x: L.left, y: L.hpTop };
-          d.visible = L.hpVisible && L.textVisible;
-          break;
-        case "surge-text":
-          if (!d.text) break;
-          d.text.plainText = L.surgeText;
-          d.text.style.fontSize = L.surgeFont;
-          d.text.width = L.w;
-          d.text.height = L.hSurge;
-          d.position = { x: L.left, y: L.surgeTop };
-          d.visible = L.showSurge && L.textVisible;
-          break;
-        case "lock-body":
-          d.position = { x: B.lockX - B.lockBodyW / 2, y: B.lockY - B.lockBodyH / 2 };
-          d.fillColor = B.lockColor;
-          d.visible = B.enabled;
-          break;
-        case "lock-shackle":
-          d.position = { x: B.lockX, y: B.lockY - B.lockBodyH / 2 };
-          d.strokeColor = B.lockColor;
-          d.visible = B.enabled;
-          break;
         default:
           break;
       }
     }
   });
 }
-
 async function removeBar(tokenId) {
   var entry = barEntries[tokenId];
   if (!entry) return;
@@ -3538,7 +3331,7 @@ async function pruneMissingInitEntries() {
     for (var k = 0; k < missing.length; k++) next = initRemove(next, missing[k]);
     await initWrite(next);
     stepOk("先攻自动清理：" + missing.join(" / "));
-    notify("有 " + missing.length + " 枚 token 已被删除，先攻条里对应的条目已自动移出", "INFO");
+    /* v1.7.8：自动清理不再弹通知（条上少了一张卡，玩家自己看得见；只写页面日志）。 */
     await syncInitFlags(initEntryIdsOf(next));
     return missing.length;
   } finally {
@@ -3573,7 +3366,7 @@ async function onInitRemoveClick(context) {
     var next = initRemove(state, picked.id);
     await initWrite(next);
     stepOk("移出先攻：" + entry.name);
-    notify("「" + entry.name + "」已移出先攻", "SUCCESS");
+    /* v1.7.8：「已移出先攻」不再弹（卡片立刻从条上消失，就是反馈）。 */
     await syncInitFlags(initEntryIdsOf(next));
   } catch (e) {
     stepFail("移出先攻", e);
@@ -3597,9 +3390,9 @@ async function onInitMenuClick(context, hidden) {
     try { fresh = (await OBR.scene.items.getItems([picked.id]))[0] || null; } catch (e) { fresh = null; }
     var res = await initAdd(fresh || picked, hidden);
     if (!res) return;
-    stepOk("加入先攻：" + res.entry.name + (hidden ? "（隐形）" : ""));
-    notify("「" + res.entry.name + "」" + (hidden ? "已隐形加入先攻" : "已加入先攻") +
-      "（先攻 " + Math.round(res.entry.init) + "）", "SUCCESS");
+    stepOk("加入先攻：" + res.entry.name + (hidden ? "（隐形）" : "") +
+      "（先攻 " + Math.round(res.entry.init) + "）");
+    /* v1.7.8：「已加入先攻」不再弹（条上会立刻出现这张卡）。 */
     /* v1.7.3：这枚 token 现在「在先攻里」了 → 写 in-init 镜像，右键菜单随之换成「移出先攻」。 */
     initKnownTokens[String(picked.id)] = true;
     await syncInitFlags(initEntryIdsOf(res.state));
@@ -3692,8 +3485,7 @@ async function onInitRequest(ev) {
     }
     var next = initAdvance(state, 1);
     await initWrite(next);
-    notify("「" + active.name + "」结束回合 → " +
-      (next.surprise ? "突袭轮" : "第 " + next.round + " 轮"), "INFO");
+    /* v1.7.8：「结束回合 → 第 N 轮」不再弹（条上的当前回合卡已经换人 + 轮数就在条上）。 */
   } catch (e) {
     pageLog("err", "处理结束回合请求失败：" + errText(e));
   } finally {
@@ -4065,6 +3857,10 @@ async function boot() {
   await attempt("订阅 " + CH_STRIP_CMD + "（先攻条命令：列表 / 尺寸）", function () {
     OBR.broadcast.onMessage(CH_STRIP_CMD, onStripCmd);
   });
+  /* v1.7.10：窗口 ✕ 的后台兜底（页面先 popover.close，再发 {op:"close-win", name} 到这里）。 */
+  await attempt("订阅 " + CH_WIN_CLOSE + "（窗口 ✕ 兜底）", function () {
+    OBR.broadcast.onMessage(CH_WIN_CLOSE, onWinClose);
+  });
   await attempt("订阅 " + CH_ROLL + "（骰子落库：仅城主处理）", function () {
     OBR.broadcast.onMessage(CH_ROLL, onRoll);
   });
@@ -4113,7 +3909,8 @@ async function boot() {
     " · 浮动按钮" + (bootStatus.scene ? mark(bootStatus.button) : "（等进地图）");
   var allOk = bootStatus.tool && bootStatus.menu;
   pageLog(allOk ? "ok" : "err", okLine + "；耗时 " + (Date.now() - t0) + "ms");
-  if (diagNotifyEnabled()) notify(okLine, allOk ? "INFO" : "WARNING");
+  /* v1.7.8：启动成功不再弹「已加载 …」（用户嫌提示太多）；只有**某个入口没注册上**才 WARNING。 */
+  if (diagNotifyEnabled() && !allOk) notify(okLine, "WARNING");
 
   /* 7.7 心跳：告诉面板「后台活着」，面板也会 ping 回来 */
   await sendHello(CH_HELLO, { version: PLUGIN_VERSION, status: bootStatus, at: Date.now(), href: location.href });

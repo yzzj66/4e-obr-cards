@@ -243,6 +243,23 @@ export function applyHpEdit(rawMeta, patch, now) {
   return out;
 }
 
+/* ---------------------------------------------------------------------------
+ * 2.5) v1.7.7：Boss 锁（hp.locked）→ 编辑窗只读
+ * ---------------------------------------------------------------------------
+ * locked 的语义（v1.6.0 起，规格 §6.8「玩家可见性」）：**玩家端**看不到精确数字与四防，
+ * 默认 true。所以这里按「锁是给玩家看的」来判：
+ *   · **城主不受这条限制** —— locked 默认就是 true，如果连城主都锁死，那「点开编辑窗改血量」
+ *     对绝大多数 token 都是灰的（真机截图里那枚 Boss 就是锁着的），等于这次要的功能没做；
+ *   · **其他玩家**：hp.locked === true → 只读（藏保存 + 提示「已锁定」）；
+ *     只看**显式** true（undefined = 从没锁过），保住 v1.7.2「创建者能改自己放上桌的 token」。
+ * 只读只管「输入 + 保存」：✕ / 取消 / Esc 照旧能关窗（见 hp-edit-page.js 的 setEditable）。
+ */
+export function hpEditReadOnly(meta, role) {
+  if (!meta || typeof meta !== "object") return false;
+  if (role === "GM") return false;
+  return meta.locked === true;
+}
+
 /** 权限：城主能改一切；玩家只能改自己放上桌的 token（Owlbear 的 item 权限就是这样）。 */
 export function mayEditToken(item, role, playerId) {
   if (!item || !item.id) return false;

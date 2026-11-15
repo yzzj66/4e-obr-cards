@@ -254,8 +254,9 @@
 .gl4-surgefill { height: 100%; background: linear-gradient(90deg, #1f6feb, var(--gl4-blue)); transition: width .2s; }
 
 /* ---- v1.6.0：锁 / Boss 开关一排 ---- */
-.gl4-boss-row { display: flex; gap: 6px; flex-wrap: wrap; }
-.gl4-boss-row .gl4-mini-btn { padding: 3px 8px; }
+/* v1.7.9：这一排只剩「玩家端隐藏数字」一个按钮（原来的「显示为 Boss」开关已删）。 */
+.gl4-lock-row { display: flex; gap: 6px; flex-wrap: wrap; }
+.gl4-lock-row .gl4-mini-btn { padding: 3px 8px; }
 .gl4-mini-btn.on { color: var(--gl4-green); border-color: rgba(86, 211, 100, .55); background: rgba(46, 160, 67, .16); }
 
 /* ---- 回复力圆点 ---- */

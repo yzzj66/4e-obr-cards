@@ -34,6 +34,9 @@ var els = {
 };
 
 var MODE_LABEL = { attack: "攻击", damage: "伤害", save: "豁免", skill: "技能", init: "先攻", free: "投掷" };
+/** v1.7.10：窗口默认 300×240（4 条 × 26 行高刚好放下）；「展开全部」才临时变高。 */
+var HIST_H = 240;
+var EXPANDED_H = 520;
 var rows = [];
 var expanded = false;
 /** 本机暂存的提示是「常驻」的（后台恢复在线也不该把它盖掉）。 */
@@ -102,14 +105,14 @@ function renderRows() {
     var r = rows[i];
     var mode = r.mode && r.mode !== "free" ? MODE_LABEL[r.mode] || "" : "";
     var lab = [mode, r.label].filter(Boolean).join(" · ");
-    html += '<div class="hist-row dh-row" title="' + esc(r.expression || "") + '">' +
+    /* v1.7.10：紧凑行 —— 「名字 · 公式 + 点数 + 时间」，行高 26 / 字号 11（骰子明细收进 title）。 */
+    html += '<div class="hist-row dh-row" title="' + esc([lab, r.expression, chipsHTML(r).replace(/<[^>]+>/g, " ")].filter(Boolean).join(" · ")) + '">' +
       '<div class="hist-top">' +
       '<span class="hist-who" style="color:' + esc(r.rollerColor || "#5dade2") + '">' + esc(r.rollerName || "某人") + "</span>" +
-      (lab ? '<span class="hist-lab">' + esc(lab) + "</span>" : "") +
+      '<span class="hist-expr">' + esc(r.expression || lab || "投掷") + "</span>" +
       '<span class="hist-total">' + esc(String(r.total)) + "</span>" +
       '<span class="hist-time">' + esc(clockOf(r.ts)) + "</span>" +
       "</div>" +
-      '<div class="hist-chips">' + chipsHTML(r) + "</div>" +
       "</div>";
   }
   els.list.innerHTML = html;
@@ -181,7 +184,8 @@ function closeHistoryWindow() {
     var p = OBR.broadcast.sendMessage(CH_DICE_HIST_CMD, { op: "close", at: Date.now() }, { destination: "LOCAL" });
     if (p && typeof p.catch === "function") p.catch(function () { /* 后台没起来 */ });
   } catch (e) { /* 忽略 */ }
-  closeSelf(ID_DICE_HIST);
+  /* v1.7.10：再走一次「popover.close(正确 id) + 后台 {op:"close-win"}」双保险。 */
+  closeSelf(ID_DICE_HIST, "diceHistory");
 }
 
 function wireEvents() {
@@ -190,6 +194,11 @@ function wireEvents() {
     els.toggle.addEventListener("click", function () {
       expanded = !expanded;
       renderRows();
+      /* v1.7.10：默认 240 高只显示 4 条；「展开全部」才临时变高（最多 40 条，列表内滚动）。 */
+      try {
+        var p = OBR.popover.setHeight(ID_DICE_HIST, expanded ? EXPANDED_H : HIST_H);
+        if (p && typeof p.catch === "function") p.catch(function () { /* 不是 popover 时忽略 */ });
+      } catch (e) { /* 忽略 */ }
     });
   }
 }
@@ -225,7 +234,7 @@ onReady(function () {
       rows = [];
       renderRows();
       showWarn("");
-      feedback("全桌记录已被城主清空", "INFO");
+      /* v1.7.8：「全桌记录已被城主清空」不再弹（列表当场清空，看得见）。 */
     });
   } catch (e3) { /* 忽略 */ }
 

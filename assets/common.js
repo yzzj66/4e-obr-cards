@@ -31,7 +31,7 @@ export const ID_SETTINGS_WIN = NS + "/settings-window";
  * id 与其它窗口都不同 → 可以和速览 / 先攻条同时开着；位置按窗口名 "hpEdit" 单独记。 */
 export const ID_HP_EDIT = NS + "/hp-edit";
 
-export const PLUGIN_VERSION = "1.7.6";
+export const PLUGIN_VERSION = "1.7.10";
 
 /**
  * 站点根地址。
@@ -162,6 +162,10 @@ export const INFO_DRAG_THROTTLE_MS = 33;
 export const WIN_POS_KEY = "4enext/win-pos";
 export const CH_WIN_DRAG = NS + "/win-drag";
 export const WIN_DRAG_THROTTLE_MS = 33;
+/* v1.7.10：窗口 ✕ 的双保险频道（页面先 OBR.popover.close(自己的 id)，再发 {op:"close-win", name}）。
+ * 后台按名字再关一次，并补 modal.close —— panel 退化成全屏 modal 时只 popover.close 关不掉。
+ * 与 assets/background.core.js 的 CH_WIN_CLOSE 必须一字不差。 */
+export const CH_WIN_CLOSE = NS + "/win-close";
 
 /**
  * 自检：问后台「在吗」。
@@ -228,11 +232,21 @@ export function onReady(cb) {
   setTimeout(run, 1500);
 }
 
+/**
+ * 通知中心一条（v1.7.8：**只发 ERROR / WARNING**）。
+ * 用户反馈「这种提示太多了，不要吧」→ 成功 / 普通提示一律不弹；断线、写盘失败、窗打不开、
+ * 锁定这类错误照旧弹。传别的 variant（或干脆不传）只写一条控制台日志，不再打扰全桌。
+ */
 export function notify(msg, variant) {
+  if (variant !== "ERROR" && variant !== "WARNING") {
+    try { console.log("[4enext]", msg); } catch (e) { /* 忽略 */ }
+    return null;
+  }
   try {
-    OBR.notification.show(msg, variant || "DEFAULT");
+    return OBR.notification.show(msg, variant);
   } catch (e) {
     console.log("[4enext]", msg);
+    return null;
   }
 }
 

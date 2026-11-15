@@ -13,7 +13,9 @@
      选中 token → 弹一个可拖动的小面板，里面就是「生命 / 四防 / 回复力」三个输入。
      尺寸 340×150（参考实现只有一条 HP，所以它是 320×78；我们多一排四防 + 回复力）。
      窗口壳（拖动 / 位置记忆 / 后台在线检测 / 统一反馈）与其它窗口共用 assets/window.js；
-     语法解析 / 夹取 / 权限 / 写盘在 assets/hp-edit-core.js（纯函数，Node 可测）。 -->
+     语法解析 / 夹取 / 权限 / 写盘在 assets/hp-edit-core.js（纯函数，Node 可测）。
+     v1.7.7：**选中**一枚「没绑定卡但有血条」的 token 也会自动开这个窗（不必先右键）；
+     Boss 锁（hp.locked）时对非城主只读：输入框 readonly、藏「保存」、下面提示「已锁定」。 -->
 <div class="win hpe">
   <div class="win-head hpe-head" id="head" title="按住这里拖动窗口（位置会记住）">
     <span class="grip" aria-hidden="true">⠿</span>

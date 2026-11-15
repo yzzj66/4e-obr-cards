@@ -58,7 +58,7 @@ function renderList() {
 async function doBind(cardId) {
   try {
     await bindToken(itemId, cardId);
-    notify(cardId ? "已绑定角色卡" : "已解除绑定", "SUCCESS");
+    /* v1.7.8：「已绑定角色卡 / 已解除绑定」不再弹（窗一关就能在速览 / 面板里看到结果）。 */
     closeSelf();
   } catch (e) {
     console.error("[4enext] 绑定失败", e);

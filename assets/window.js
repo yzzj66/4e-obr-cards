@@ -11,11 +11,11 @@
 //      并把窗口里的交互元素置灰（硬依赖 data-bg → 真 disabled；软依赖
 //      data-bg-soft → 只弱化外观，因为那些操作其实只写房间数据 / 场景，不靠后台）。
 //      目的只有一个：**不允许点了没反应**。
-//   3) 反馈：feedback() 同时发 OBR.notification.show 和窗口内的状态行，
-//      成功 / 失败 / 警告都有回音。
+//   3) 反馈：feedback() 只在**出错 / 警告**时发 OBR.notification.show + 窗口内状态行
+//      （v1.7.8：成功 / 普通提示不再弹 —— 用户嫌提示太多）。
 import OBR from "../vendor/obr-sdk.js";
 import {
-  CH_HELLO, CH_WIN_DRAG, WIN_DRAG_THROTTLE_MS,
+  CH_HELLO, CH_WIN_CLOSE, CH_WIN_DRAG, WIN_DRAG_THROTTLE_MS,
   notify, onReady, pingBackground
 } from "./common.js";
 
@@ -48,13 +48,15 @@ function flashText(msg, tone) {
 
 /**
  * 统一反馈：通知中心一条 + 窗口内状态行一条。
- * 所有按钮回调都应该走这里（成功 SUCCESS / 失败 ERROR / 提醒 WARNING / 普通 INFO），
- * 这样就不会再出现「点了一下什么都没有」。
+ * v1.7.8：**只有 ERROR / WARNING 才出声**（用户：「这种提示太多了，不要吧」）——
+ * 成功 / 普通提示直接丢掉，连窗口内状态行都不写；失败 / 只读 / 锁定照旧保留。
+ * 页面里成功类的 feedback(...) 调用也都删掉了，这里再兜一道，防止以后又加回来。
  */
 export function feedback(msg, tone) {
   if (!msg) return;
+  if (tone !== "ERROR" && tone !== "WARNING") return;
   flashText(msg, tone);
-  notify(msg, tone || "INFO");
+  notify(msg, tone);
 }
 
 /** 标题栏上的按钮 / 输入框不触发拖动。 */
@@ -156,8 +158,8 @@ export function createWindow(opts) {
     }
     if (res) {
       setState(BG_OK, res);
-      /* 只有用户「点重试」才回一句结果；不带版本号 / 工具栏打勾那一串（v1.7.6 删小字）。 */
-      if (withFeedback) feedback("后台已恢复：可以继续操作了", "SUCCESS");
+      /* v1.7.8：重试成功也不再弹「后台已恢复」——状态条自己会消失，不打扰。
+       * （失败仍要说话：下面 setState(BG_BAD) 之后的 ERROR 提示保留。） */
       return state;
     }
     setState(BG_BAD, {});
@@ -240,7 +242,7 @@ export function createWindow(opts) {
         ev.preventDefault();
         ev.stopPropagation();
         send("reset", 0, 0);
-        feedback("窗口已回到默认位置", "INFO");
+        /* v1.7.8：「窗口已回到默认位置」这类成功回音不再弹（窗口自己就移动了）。 */
       });
     }
   }
@@ -283,10 +285,36 @@ export function createWindow(opts) {
   };
 }
 
-/** 关闭本窗口（popover 页：能关就关，关不掉就忽略）。 */
-export function closeSelf(popoverId) {
-  try {
-    const p = OBR.popover.close(popoverId);
-    if (p && typeof p.catch === "function") p.catch(function () { /* 不是 popover 时忽略 */ });
-  } catch (e) { /* 忽略 */ }
+/**
+ * 关闭本窗口（v1.7.10：✕ 统一走**双保险**）。
+ *
+ * 用户截图：角色卡面板右上角的 ✕ 点了关不掉。根因是 panel 可能不是 popover ——
+ * openPanel() 在 popover 打不开时会退化成 **全屏 modal**（同一个 id），
+ * OBR.popover.close(id) 对 modal 完全无效，页面又只调了它。
+ *
+ * 现在的顺序：
+ *   ① OBR.popover.close(本窗**正确的** id)（面板 / 先攻列表 / 骰子 / 记录 / 设置 / 编辑窗都传自己的 id）；
+ *   ② OBR.modal.close(同一个 id) 兜住「其实是 modal」的情况；
+ *   ③ 再给后台发 {op:"close-win", name} —— 后台按窗口名再关一次并清掉 winOpen 状态
+ *      （双保险；页面被卸载也不会留一个「以为还开着」的假状态）。
+ */
+export function closeSelf(popoverId, winName) {
+  if (popoverId) {
+    try {
+      const p = OBR.popover.close(popoverId);
+      if (p && typeof p.catch === "function") p.catch(function () { /* 不是 popover 时忽略 */ });
+    } catch (e) { /* 忽略 */ }
+    try {
+      if (OBR.modal && typeof OBR.modal.close === "function") {
+        const m = OBR.modal.close(popoverId);
+        if (m && typeof m.catch === "function") m.catch(function () { /* 不是 modal 时忽略 */ });
+      }
+    } catch (e2) { /* 忽略 */ }
+  }
+  if (winName) {
+    try {
+      const b = OBR.broadcast.sendMessage(CH_WIN_CLOSE, { op: "close-win", name: String(winName), at: Date.now() }, { destination: "LOCAL" });
+      if (b && typeof b.catch === "function") b.catch(function () { /* 后台没起来就算了 */ });
+    } catch (e3) { /* 忽略 */ }
+  }
 }

@@ -9,6 +9,8 @@
 import OBR from "../vendor/obr-sdk.js";
 import { CH_INFO_DRAG, ID_INFO, ID_PANEL, INFO_DRAG_THROTTLE_MS, URL_PANEL, KEY_BIND, getCards, findCard, esc, onReady, notify } from "./common.js";
 import { renderGlanceHTML, deriveGlance, magicItemDailyUses } from "./glance.js";
+/* v1.7.10：✕ 统一走「OBR.popover.close(正确 id) + OBR.modal.close + 后台 {op:"close-win"}」双保险。 */
+import { closeSelf } from "./window.js";
 import { KEY_HP, applyAction, hpView, loadState, mayEditItem, readItem, scopeText, syncTokenStats } from "./track.js";
 
 const params = new URLSearchParams(location.search);
@@ -155,8 +157,9 @@ function paintScope() {
 function render() {
   if (!card) return;
   derived = deriveGlance(card.char);
+  /* v1.7.9：hp.boss 不再参与（Boss 模式已删，速览里没有那个开关了）。 */
   const sig = JSON.stringify([card.id, itemId, token ? 1 : 0, hp.cur, hp.max, hp.temp, hp.surges, hp.surgesMax,
-    hp.defenses, hp.locked, hp.boss && hp.boss.enabled, state, scope, canHp]);
+    hp.defenses, hp.locked, state, scope, canHp]);
   if (sig === lastSig) return;
   lastSig = sig;
   try {
@@ -249,7 +252,8 @@ async function runAction(act, el) {
     if (res.hp) hp = hpView(res.hp, { maxHp: derived.hpMax, surges: derived.surges });
     if (res.state) state = res.state;
     if (res.scope) scope = res.scope;
-    if (res.message) notify(res.message, res.tone || "INFO");
+    /* v1.7.8：成功 / 普通提示不再弹；只有 applyAction 报的 WARNING（写不进房间数据 → 降级本机）才出声。 */
+    if (res.message && res.tone === "WARNING") notify(res.message, "WARNING");
     render();
   } catch (e) {
     notify("操作失败：" + (e && e.message ? e.message : e), "ERROR");
@@ -272,15 +276,11 @@ bodyEl.addEventListener("change", function (ev) {
 /* ---------------- 事件 ---------------- */
 
 document.getElementById("close").addEventListener("click", async function () {
-  try {
-    await OBR.popover.close(ID_INFO);
-  } catch (e) { /* ignore */ }
+  closeSelf(ID_INFO, "info");
 });
 
 document.getElementById("panel").addEventListener("click", async function () {
-  try {
-    await OBR.popover.close(ID_INFO);
-  } catch (e) { /* ignore */ }
+  closeSelf(ID_INFO, "info");
   try {
     await OBR.modal.open({ id: ID_PANEL, url: URL_PANEL, fullScreen: true });
   } catch (e) {

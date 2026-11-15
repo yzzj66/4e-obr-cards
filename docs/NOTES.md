@@ -27,7 +27,19 @@ dev/      开发自测脚本（不上传也能跑，node dev/selftest.mjs）
 
 | 要调什么 | 去哪改 |
 |---|---|
-| token 血条/四防的位置与尺寸 | `assets/background.core.js` 顶部 `DEF_*` / `rowCY` / `barLayout()` |
+| token 血条/四防的位置与尺寸 | `assets/background.core.js` 顶部 `HP_RING_*`（环厚 **10s** / `Ro = 半短边 − 2s` / 48 段）与 `DEF_*`（直径 **30s** / 四角内缩 **4s** / 橙绿紫+白盾），几何全在 `barLayout()`；v1.7.9 起**只有环形血条 + 四角四防**（直条 / 蓝条 / Boss 名牌 / 锁已删） |
 | 骰子动画手感 | `assets/dice-core.js` 的 `FX_*` + `assets/ui.css` 末尾 `@keyframes fx-*` |
-| 先攻条尺寸 | `assets/background.core.js` 的 `STRIP_H_ALLOWED` / `stripSizeFor` |
+| 先攻条尺寸 / 外壳 | `assets/background.core.js` 的 `STRIP_H_ALLOWED` / `stripSizeFor`（折叠 120×40，展开 720×**170/180/200**）；v1.7.10 起先攻条是 **全屏透明 modal**（`stripModalOptions`：`fullScreen + hideBackdrop + hidePaper + disablePointerEvents`），尺寸 / 位置由 `assets/initiative-page.js` 的 `layoutStrip()` 写成 inline style |
 | 窗口默认尺寸 | `assets/background.core.js` 的 `WINS` |
+
+
+## 先攻条透明怎么验证（v1.7.10）
+
+- 静态：`node dev/check.mjs` 断言 `stripModalOptions()` 带 `fullScreen / hideBackdrop / hidePaper / disablePointerEvents`，
+  且页面把 html / body 设成透明、只有 `.strip` 自己 `pointer-events:auto`。
+- 页面单独打开：直接开 `initiative.html`（**不带** `?view=list`）→ 整页应当完全透出背景；
+  DevTools 里 html / body / #app / .strip-root / .strip 的 computed `background-color` 都是 `rgba(0, 0, 0, 0)`，
+  只有 `.strip-ctl`（半透明）与 `.initiative-item`（不透明卡片）有底色。
+- 在 OBR 里：`OBR.modal.open` 若仍是深色块 → 说明宿主没吃 `hidePaper` / `hideBackdrop`（换 `color-scheme: normal` 已经写在 CSS）。
+- 尺寸：`.strip` 的 inline width/height 来自 `stripSizeFor`（720×170/180/200），位置 = 顶部 45 + 记住的偏移；
+  拖动由页面自己改 `left/top`（modal 不能像 popover 那样重开定位），后台只把偏移落盘到 `4enext/strip-pos`。

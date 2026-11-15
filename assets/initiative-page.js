@@ -1,7 +1,7 @@
 // v1.4.0：先攻条（默认视图）与列表窗口（?view=list）的页面脚本。
 // ---------------------------------------------------------------------------
 // 先攻条（initiative.html，popover id = common.js 的 ID_STRIP）：
-//   · 折叠 120×40 小药丸 / 展开 720×(129|139|159)，高度随 phase 三档（规格 §3.1）；
+//   · 折叠 120×40 小药丸 / 展开 720×(170|180|200)，高度随 phase 三档（v1.7.10 加高）；
 //     **v1.6.2：宽高是常量**（applySize 不量 DOM）；内容变化只重绘卡片，不再改 popover 尺寸；
 //   · 控制行：战斗准备 / 突袭 / 一键清空（二次确认）、准备态「开始战斗 / 取消」、
 //     战斗态「上一回合 / 下一回合 / 结束战斗」；
@@ -14,14 +14,15 @@
 import OBR from "../vendor/obr-sdk.js";
 import {
   CH_HELLO, CH_INIT_REQUEST, CH_STRIP_CMD, CH_STRIP_DRAG, ID_INIT_WIN, ID_STRIP,
-  STRIP_DRAG_THROTTLE_MS, getCards, onReady, pingBackground
+  STRIP_DRAG_THROTTLE_MS, STRIP_POS_KEY, getCards, onReady, pingBackground
 } from "./common.js";
 import { createWindow, feedback, closeSelf } from "./window.js";
 import {
-  INIT_MAX_ENTRIES, LS_STRIP_COLLAPSED, advanceInitiative, bonusOfItem, clearInitiative,
+  INIT_MAX_ENTRIES, LS_STRIP_COLLAPSED, advanceInitiative, bonusOfItem, canEditBonus, clearInitiative,
   currentEntry, endCombat, moveEntry, normalizeInitiative, readInitiative, removeEntry, renderInitiativeHTML,
-  renderStripHTML, reorderEntry, rerollAll, rerollEntry, setActiveEntry, startCombat,
-  startPreparation, startSurprise, stripSizeFor, syncInitBonuses, tokenInfoMap, writeInitiative
+  renderStripHTML, reorderEntry, rerollAll, rerollEntry, setActiveEntry, setEntryBonus, startCombat,
+  startPreparation, startSurprise, STRIP_SIDE_MARGIN, STRIP_TOP_OFFSET, stripSizeFor, syncInitBonuses, tokenInfoMap,
+  writeInitiative
 } from "./initiative.js";
 
 const params = new URLSearchParams(location.search);
@@ -139,27 +140,85 @@ function scrollActiveIntoView() {
   try { el.scrollIntoView({ behavior: "smooth", block: "nearest", inline: "nearest" }); } catch (e) { /* 老浏览器 */ }
 }
 
+/* ---------------------------------------------------------------------------
+ * v1.7.10：先攻条改用**全屏透明 modal**（background.core.js 的 stripModalOptions）——
+ *   popover 的 hidePaper 在真机上无效，整条仍是一块深色矩形；modal 支持
+ *   fullScreen + hideBackdrop + hidePaper + disablePointerEvents，页面自己把
+ *   html / body 全透明、只画条本身，鼠标空白处透过（地图照常能拖）。
+ *   modal 没有 width/height / anchorPosition，所以**条的位置与尺寸由页面自己算**：
+ *   · 宽高仍走 initiative.js 的 stripSizeFor（常量 720 / 折叠 120×40 / 高 170|180|200）；
+ *   · 位置 = 屏幕顶部居中 + 记住的偏移（4enext/strip-pos，与后台同一个键）；
+ *   · 拖动在页面内直接改偏移（不再让后台重开 popover），松手落盘 + 广播给后台记账。
+ * ------------------------------------------------------------------------- */
+let lastVp = { w: 0, h: 0 };
+let stripOffset = readStripOffset();
+
+function readStripOffset() {
+  try {
+    const raw = localStorage.getItem(STRIP_POS_KEY);
+    if (!raw) return { dx: 0, dy: 0 };
+    const box = JSON.parse(raw);
+    if (!box || typeof box !== "object") return { dx: 0, dy: 0 };
+    return {
+      dx: typeof box.dx === "number" && isFinite(box.dx) ? Math.round(box.dx) : 0,
+      dy: typeof box.dy === "number" && isFinite(box.dy) ? Math.round(box.dy) : 0
+    };
+  } catch (e) {
+    return { dx: 0, dy: 0 };
+  }
+}
+
+function writeStripOffset(dx, dy) {
+  stripOffset = { dx: Math.round(dx), dy: Math.round(dy) };
+  try {
+    localStorage.setItem(STRIP_POS_KEY, JSON.stringify({ v: 1, dx: stripOffset.dx, dy: stripOffset.dy }));
+  } catch (e) { /* 隐私模式 / 空间满：记不住位置不影响用 */ }
+}
+
+/** 偏移夹紧：整条始终留在视口内（水平不越界、顶部不低于 8px、底部留 16px）。 */
+function clampStripOffset(dx, dy, size, vw, vh) {
+  const w = vw > 0 ? vw : size.width;
+  const h = vh > 0 ? vh : size.height + STRIP_TOP_OFFSET;
+  const maxDx = Math.max(0, (w - size.width) / 2 - STRIP_SIDE_MARGIN);
+  const maxDy = Math.max(0, h - size.height - STRIP_SIDE_MARGIN - STRIP_TOP_OFFSET);
+  return {
+    dx: Math.max(-maxDx, Math.min(maxDx, Math.round(dx))),
+    dy: Math.max(8 - STRIP_TOP_OFFSET, Math.min(maxDy, Math.round(dy)))
+  };
+}
+
+/** 把算好的宽高 / 偏移写到 .strip 上（绝对定位 + 页面内拖动，不再重开宿主窗口）。 */
+function layoutStrip(size, vw, vh) {
+  if (!stripRoot) return;
+  const el = stripRoot.querySelector(".strip");
+  if (!el) return;
+  const w = vw > 0 ? vw : size.width + STRIP_SIDE_MARGIN * 2;
+  const h = vh > 0 ? vh : size.height + STRIP_TOP_OFFSET + STRIP_SIDE_MARGIN;
+  const off = clampStripOffset(stripOffset.dx, stripOffset.dy, size, w, h);
+  stripOffset = off;
+  el.style.width = size.width + "px";
+  el.style.height = size.height + "px";
+  el.style.left = Math.round(w / 2 - size.width / 2 + off.dx) + "px";
+  el.style.top = Math.round(STRIP_TOP_OFFSET + off.dy) + "px";
+}
+
 /**
- * 改窗口尺寸（v1.6.2：**不再量内容**）。
+ * 改条尺寸（v1.6.2：**不量内容**；v1.7.10：modal 里由页面自己设宽高）。
  *
- * v1.6.1 及以前这里会取 .strip-ctl 的 scrollWidth 当「内容宽度」→ 投骰后点数 / 名字 / 状态文字
- * 一变长一缩短，整条就跟着变宽变窄（用户截图的 bug）。现在宽高全是常量：
- * 折叠 120×40 / 展开 720（仅视口太窄时缩）×(129|139|159)，内容再长由卡片区内部横向滚动。
- * 下面的 lastSize 判等也保证「内容变化 → 尺寸没变 → 不调 setWidth / setHeight」。
+ * 宽高全是常量：折叠 120×40 / 展开 720（仅视口太窄时缩）×(170|180|200)，
+ * 内容再长由卡片区内部横向滚动。下面的 lastSize 判等保证「内容变化 → 尺寸没变 → 不动布局」。
  */
 async function applySize() {
   if (VIEW !== "strip" || !stripRoot) return;
-  let vw = 0;
+  let vw = 0, vh = 0;
   try { vw = await OBR.viewport.getWidth(); } catch (e) { vw = 0; }
+  try { vh = await OBR.viewport.getHeight(); } catch (e) { vh = 0; }
+  lastVp = { w: vw, h: vh };
   const phase = collapsed ? "idle" : initiative.phase;
   const size = stripSizeFor(phase, collapsed, vw);
-  if (size.width === lastSize.w && size.height === lastSize.h) return;
   lastSize = { w: size.width, h: size.height };
-  try {
-    if (OBR.popover && typeof OBR.popover.setWidth === "function") await OBR.popover.setWidth(ID_STRIP, size.width);
-    if (OBR.popover && typeof OBR.popover.setHeight === "function") await OBR.popover.setHeight(ID_STRIP, size.height);
-  } catch (e) { /* 不是 popover（比如直接打开本页）时忽略 */ }
-  /* 把实际尺寸告诉后台：拖动 / 视口变化重新夹紧时要按这个尺寸算。 */
+  layoutStrip(size, vw, vh);
+  /* 把尺寸告诉后台：拖动 / 视口变化重新夹紧时要按这个尺寸算（modal 下只用于记账）。 */
   sendCmd({ op: "size", width: size.width, height: size.height });
 }
 
@@ -200,8 +259,13 @@ function scheduleReload() {
   }, 120);
 }
 
-/** 写先攻：成功 / 失败都要有回音（不允许静默）。写失败会自动降级到本机并带 .local 标记。 */
+/**
+ * 写先攻：**只有失败 / 降级到本机才出声**（不允许静默）。写失败会自动降级并带 .local 标记。
+ * v1.7.8：成功不再弹通知（条上的卡片 / 回合数当场就变了），第二个参数 message 只留作
+ * 调用方的语义说明，不再进通知中心 —— 这样 40 多个调用点都不用改。
+ */
 async function saveInit(next, message) {
+  void message; /* v1.7.8：成功类提示已不再弹（见上） */
   if (busy) return;
   busy = true;
   try {
@@ -210,8 +274,6 @@ async function saveInit(next, message) {
     render();
     if (written.local) {
       feedback("先攻没能写进房间数据：已暂存在本机（先攻最多 " + INIT_MAX_ENTRIES + " 条）", "WARNING");
-    } else if (message) {
-      feedback(message, "SUCCESS");
     }
   } catch (e) {
     console.error("[4enext] 写先攻失败", e);
@@ -251,7 +313,7 @@ async function onStripAct(act, tokenId) {
   /* v1.7.3：右上角「✕」= 真正关闭（后台记「本次会话已关」，之后进房间不再自动弹）。 */
   if (act === "close") {
     sendCmd({ op: "close" });
-    feedback("先攻条已关闭：本次会话不再自动显示，工具栏「先攻」随时可以再打开", "INFO");
+    /* v1.7.8：「先攻条已关闭」不再弹（条当场消失就是反馈，要再开点工具栏「先攻」）。 */
     return;
   }
   if (act === "end") { await requestEndTurn(); return; }
@@ -296,8 +358,9 @@ async function onStripAct(act, tokenId) {
   feedback("未知操作：" + act, "WARNING");
 }
 
-/** 掷先攻（GM）：卡片下方的三个按钮（劣势 / 普通 / 优势）。 */
+/** 掷先攻（GM）：卡片下方**唯一**的 d20 按钮（v1.7.10：4E 没有优势 / 劣势）。 */
 async function onRoll(mode, tokenId) {
+  void mode;
   if (myRole !== "GM") {
     feedback("掷先攻需要城主权限（房间数据只有城主能写）", "WARNING");
     return;
@@ -307,11 +370,47 @@ async function onRoll(mode, tokenId) {
     feedback("这枚 token 已经不在先攻列表里了", "WARNING");
     return;
   }
-  const next = rerollEntry(initiative, tokenId, undefined, mode);
+  const next = rerollEntry(initiative, tokenId, undefined, "normal");
   const rolled = next.entries.filter(function (e) { return e.tokenId === tokenId; })[0];
-  const label = mode === "adv" ? "优势" : mode === "dis" ? "劣势" : "";
-  return saveInit(next, "「" + entry.name + "」" + label + "掷出 " + (rolled ? Math.round(rolled.init) : "?") +
+  return saveInit(next, "「" + entry.name + "」掷出 " + (rolled ? Math.round(rolled.init) : "?") +
     (rolled && rolled.d20 !== null ? "（d20 " + rolled.d20 + signed(rolled.bonus) + "）" : ""));
+}
+
+/* ---------------- v1.7.10：先攻加值可编辑（卡片左上角 + 状态行同一份写逻辑） ---------------- */
+
+/** 把输入框里的文字变成整数加值：允许 "+5" / " 5 " / "−3"；非法返回 null。 */
+function parseBonusText(raw) {
+  const s = String(raw == null ? "" : raw).replace(/[+\s]/g, "").replace(/[−–—]/g, "-");
+  if (!s) return null;
+  const v = Number(s);
+  if (!isFinite(v)) return null;
+  return Math.max(-99, Math.min(999, Math.round(v)));
+}
+
+/**
+ * 保存一条的先攻加值。卡片左上角（data-bonus-input）与状态行（data-bonus-row）都走这里：
+ *   权限 → canEditBonus（GM 任意 / 玩家只自己 token）；写 entries[].bonus 并立即重排。
+ * 输入没变 / 不合法 → 只是把输入框恢复成当前值，不写房间数据。
+ */
+async function commitBonus(el) {
+  if (!el) return;
+  /* 回车会先 commit 再 blur → focusout 会再进来一次；写过一次就直接忽略（避免重复写房间数据）。 */
+  if (el.dataset && el.dataset.bonusCommitted === "1") return;
+  const tokenId = el.getAttribute("data-bonus-input") || el.getAttribute("data-bonus-row") || "";
+  const entry = entryOf(tokenId);
+  if (!entry) return;
+  const bonus = parseBonusText(el.value);
+  if (bonus === null || bonus === entry.bonus) {
+    el.value = String(entry.bonus);
+    return;
+  }
+  if (!canEditBonus(entry, { role: myRole, playerId: playerId, items: itemsMap })) {
+    el.value = String(entry.bonus);
+    feedback("只有城主能改别人的先攻加值（自己的 token 可以自己改）", "WARNING");
+    return;
+  }
+  if (el.dataset) el.dataset.bonusCommitted = "1";
+  await saveInit(setEntryBonus(initiative, tokenId, bonus), "先攻加值：" + signed(bonus));
 }
 
 function signed(v) {
@@ -356,7 +455,7 @@ async function requestEndTurn() {
       round: initiative.round,
       at: Date.now()
     }, { destination: "ALL" });
-    feedback("已请求结束回合，等待城主客户端推进", "INFO");
+    /* v1.7.8：「已请求结束回合」不再弹（回合推进后条上会换人）。 */
   } catch (e) {
     feedback("发送结束回合请求失败：" + msgOf(e), "ERROR");
   }
@@ -461,7 +560,11 @@ function onBarDown(ev) {
   if (!t || !t.closest || !t.closest("[data-strip-drag]")) return;
   ev.preventDefault();
   ev.stopPropagation();
-  barDrag = { id: ev.pointerId, x0: ev.screenX, y0: ev.screenY, dx: 0, dy: 0, timer: 0 };
+  barDrag = {
+    id: ev.pointerId, x0: ev.screenX, y0: ev.screenY,
+    base: { dx: stripOffset.dx, dy: stripOffset.dy },
+    dx: stripOffset.dx, dy: stripOffset.dy, timer: 0
+  };
   sendDrag("start", 0, 0);
   window.addEventListener("pointermove", onBarMove);
   window.addEventListener("pointerup", onBarUp);
@@ -471,13 +574,21 @@ function onBarDown(ev) {
 
 function onBarMove(ev) {
   if (!barDrag || ev.pointerId !== barDrag.id) return;
-  barDrag.dx = ev.screenX - barDrag.x0;
-  barDrag.dy = ev.screenY - barDrag.y0;
+  const size = { width: lastSize.w, height: lastSize.h };
+  const off = clampStripOffset(
+    barDrag.base.dx + (ev.screenX - barDrag.x0),
+    barDrag.base.dy + (ev.screenY - barDrag.y0),
+    size, lastVp.w, lastVp.h
+  );
+  barDrag.dx = off.dx;
+  barDrag.dy = off.dy;
+  stripOffset = off;
+  layoutStrip(size, lastVp.w, lastVp.h);
   if (barDrag.timer) return; /* 节流：发的永远是最新位移 */
   barDrag.timer = setTimeout(function () {
     if (!barDrag) return;
     barDrag.timer = 0;
-    sendDrag("move", Math.round(barDrag.dx), Math.round(barDrag.dy));
+    sendDrag("move", barDrag.dx, barDrag.dy);
   }, STRIP_DRAG_THROTTLE_MS);
 }
 
@@ -490,7 +601,8 @@ function onBarUp() {
   const d = barDrag;
   barDrag = null;
   if (d.timer) clearTimeout(d.timer);
-  sendDrag("end", Math.round(d.dx), Math.round(d.dy));
+  writeStripOffset(d.dx, d.dy);
+  sendDrag("end", d.dx, d.dy);
 }
 
 /** 滚轮 → 横向滚动（卡片多了要能滚，规格 §P2.4）。 */
@@ -508,6 +620,8 @@ function onStripWheel(ev) {
 function onStripClick(ev) {
   const t = ev.target;
   if (!t || !t.closest) return;
+  /* v1.7.10：加值输入框自己处理点击（别把点输入框当成「选中这张卡」）。 */
+  if (t.closest("input, textarea, select")) return;
   const actEl = t.closest("[data-strip-act]");
   if (actEl) {
     ev.preventDefault();
@@ -548,10 +662,9 @@ async function syncInit(announce) {
       if (b !== e.bonus) { e.bonus = b; changed = true; }
     }
     if (changed) await saveInit(next, "");
-    if (announce) {
-      if (changed || count) feedback("已同步先攻加值（" + (changed ? "更新了列表里的加值" : "补写 " + count + " 枚 token") + "）", "SUCCESS");
-      else feedback("先攻加值已是最新", "INFO");
-    }
+    /* v1.7.8：同步成功不再弹（加值就在卡片上）；announce 参数保留但不再有声。
+     * 失败仍然 ERROR（下面那个 catch），不静默。 */
+    void announce;
   } catch (e) {
     feedback("同步先攻加值失败：" + msgOf(e), "ERROR");
   }
@@ -559,6 +672,27 @@ async function syncInit(announce) {
 
 function entryOf(tokenId) {
   return initiative.entries.filter(function (e) { return e.tokenId === tokenId; })[0] || null;
+}
+
+/** v1.7.10：列表窗口的加值保存（与先攻条 commitBonus 同一套规则 / 同一个 setEntryBonus）。 */
+async function commitListBonus(el) {
+  if (!el) return;
+  if (el.dataset && el.dataset.bonusCommitted === "1") return;
+  const tokenId = el.getAttribute("data-init-bonus") || "";
+  const entry = entryOf(tokenId);
+  if (!entry) return;
+  const bonus = parseBonusText(el.value);
+  if (bonus === null || bonus === entry.bonus) {
+    el.value = String(entry.bonus);
+    return;
+  }
+  if (!canEditBonus(entry, { role: myRole, playerId: playerId, items: {} })) {
+    el.value = String(entry.bonus);
+    feedback("只有城主能改别人的先攻加值（自己的 token 可以自己改）", "WARNING");
+    return;
+  }
+  if (el.dataset) el.dataset.bonusCommitted = "1";
+  await saveInit(setEntryBonus(initiative, tokenId, bonus), "先攻加值：" + signed(bonus));
 }
 
 async function onListAction(act, tokenId) {
@@ -577,8 +711,7 @@ async function onListAction(act, tokenId) {
   if (act === "sync") return syncInit(true);
   if (act === "clear") {
     if (!window.confirm("清空先攻？token 与角色卡都不受影响，只是把先攻名单清掉。")) {
-      feedback("已取消：先攻没有变化", "INFO");
-      return;
+      return; /* v1.7.8：取消不再弹「已取消」 */
     }
     return saveInit(clearInitiative(), "先攻已清空");
   }
@@ -597,8 +730,7 @@ async function onListAction(act, tokenId) {
   if (act === "active") return saveInit(setActiveEntry(initiative, tokenId), "当前回合：「" + entry.name + "」");
   if (act === "remove") {
     if (!window.confirm("把「" + entry.name + "」从先攻里移除？")) {
-      feedback("已取消：先攻列表没有变化", "INFO");
-      return;
+      return; /* v1.7.8：取消不再弹「已取消」 */
     }
     return saveInit(removeEntry(initiative, tokenId), "已从先攻移除");
   }
@@ -633,7 +765,26 @@ if (VIEW === "strip") {
     stripRoot.addEventListener("wheel", onStripWheel, { passive: false });
     stripRoot.addEventListener("dblclick", function (ev) {
       const t = ev.target;
-      if (t && t.closest && t.closest("[data-strip-drag]")) { sendDrag("reset", 0, 0); feedback("先攻条已回到顶部中间", "INFO"); }
+      if (!t || !t.closest || !t.closest("[data-strip-drag]")) return;
+      /* v1.7.10：modal 里位置由页面自己管 —— 双击拖动柄 = 回到顶部中间（清偏移 + 重排）。 */
+      writeStripOffset(0, 0);
+      void applySize();
+      sendDrag("reset", 0, 0); /* 后台只记账，不再重开窗口 */
+    });
+    /* v1.7.10：加值输入 —— 回车 / 失焦保存（卡片左上角与状态行共用 commitBonus）。 */
+    stripRoot.addEventListener("keydown", function (ev) {
+      if (ev.key !== "Enter") return;
+      const el = ev.target;
+      if (!el || !el.matches || !el.matches("[data-bonus-input], [data-bonus-row]")) return;
+      ev.preventDefault();
+      ev.stopPropagation();
+      void commitBonus(el);
+      if (typeof el.blur === "function") el.blur();
+    });
+    stripRoot.addEventListener("focusout", function (ev) {
+      const el = ev.target;
+      if (!el || !el.matches || !el.matches("[data-bonus-input], [data-bonus-row]")) return;
+      void commitBonus(el);
     });
   }
 } else {
@@ -648,9 +799,24 @@ if (VIEW === "strip") {
       ev.preventDefault();
       void onListAction(el.getAttribute("data-init-act"), el.getAttribute("data-token"));
     });
+    /* v1.7.10：列表窗口的加值输入（与先攻条共用 setEntryBonus / canEditBonus）。 */
+    bodyEl.addEventListener("keydown", function (ev) {
+      if (ev.key !== "Enter") return;
+      const el = ev.target && ev.target.matches ? ev.target : null;
+      if (!el || !el.matches("[data-init-bonus]")) return;
+      ev.preventDefault();
+      void commitListBonus(el);
+      if (typeof el.blur === "function") el.blur();
+    });
+    bodyEl.addEventListener("focusout", function (ev) {
+      const el = ev.target && ev.target.matches ? ev.target : null;
+      if (!el || !el.matches("[data-init-bonus]")) return;
+      void commitListBonus(el);
+    });
   }
   const closeEl = document.getElementById("close");
-  if (closeEl) closeEl.addEventListener("click", function () { closeSelf(ID_INIT_WIN); });
+  /* v1.7.10：✕ = OBR.popover.close(本窗 id) + 后台 {op:"close-win"} 双保险。 */
+  if (closeEl) closeEl.addEventListener("click", function () { closeSelf(ID_INIT_WIN, "initiative"); });
   win.onStatus(function () { render(); });
 }
 
@@ -668,6 +834,12 @@ onReady(function () {
         if (!bgReady) { bgReady = true; render(); }
       });
     } catch (e) { /* 忽略 */ }
+    /* v1.7.10：全屏 modal 里位置是页面自己算的 —— 视口变了要重新夹紧。 */
+    try {
+      if (OBR.viewport && typeof OBR.viewport.onChange === "function") {
+        OBR.viewport.onChange(function () { void applySize(); });
+      }
+    } catch (e2) { /* 忽略 */ }
     void checkBg();
     void loadInit(true);
     return;

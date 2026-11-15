@@ -124,7 +124,7 @@ const OBR = {
         return box ? JSON.parse(JSON.stringify(box))
           : { min: { x: 0, y: 0 }, max: { x: 150, y: 150 }, center: { x: 75, y: 75 }, width: 150, height: 150 };
       },
-      /* v1.6.0：右键菜单会写 token metadata（hp-bar/enabled / hp.boss），必须真的落盘再读回来。 */
+      /* v1.6.0：右键菜单会写 token metadata（hp-bar/enabled），必须真的落盘再读回来。 */
       updateItems(ids, fn) {
         const drafts = sceneItems.filter((it) => ids.includes(it.id)).map((it) => JSON.parse(JSON.stringify(it)));
         fn(drafts);
@@ -160,7 +160,11 @@ const OBR = {
     open(cfg) { record("popover.open", cfg); return Promise.resolve(); },
     close(id) { record("popover.close", id); return Promise.resolve(); }
   },
-  modal: { open(cfg) { record("modal.open", cfg); return Promise.resolve(); }, close() {} },
+  modal: {
+    open(cfg) { record("modal.open", cfg); return Promise.resolve(); },
+    /* v1.7.10：✕ 的后台兜底会补一次 modal.close（panel 可能退化成全屏 modal）。 */
+    close(id) { record("modal.close", id); return Promise.resolve(); }
+  },
   action: { open: async () => { record("action.open", true); } },
   room: {
     id: "room-1",
@@ -253,9 +257,11 @@ run(OBR, stubBuilder("CURVE"), stubBuilder("SHAPE"), stubBuilder("TEXT"));
   else if (pop.hidePaper !== true) bad("浮动按钮没有 hidePaper");
   else ok("OBR.popover.open 的锚点参数与参考实现一致");
 
+  /* [v1.7.8] 反向断言：启动成功**不再**弹「已加载 …」汇总通知（用户嫌提示太多）；
+   * 只有某个入口没注册上才会 WARNING。这里断言「启动后一条通知都没有」。 */
   const notes = calls.filter((c) => c[0] === "notification.show").map((c) => c[1]);
-  if (!notes.some((n) => /已加载/.test(n.msg))) bad("没有发「已加载」自诊断通知");
-  else ok("发了汇总自诊断通知：" + notes.map((n) => n.variant + " " + n.msg).join(" | "));
+  if (notes.length) bad("启动成功却弹了通知（v1.7.8 起成功类通知必须为 0）：" + notes.map((n) => n.variant + " " + n.msg).join(" | "));
+  else ok("启动成功一条通知都没弹（v1.7.8：成功类通知为 0，失败才提示）");
 
   const hello = calls.find((c) => c[0] === "broadcast.sendMessage" && /diag-hello$/.test(c[1].channel));
   if (!hello) bad("没有发后台心跳（diag-hello）"); else ok("发了后台心跳（面板会显示「后台已连接」）");
@@ -284,19 +290,29 @@ run(OBR, stubBuilder("CURVE"), stubBuilder("SHAPE"), stubBuilder("TEXT"));
   if (swept.indexOf("stale-bar-1") >= 0) ok("启动时清掉了上一次会话残留的血条 item");
   else bad("没有清理残留的血条 item（会导致血条叠两层）");
 
+  /* v1.7.9：血条 = 环形（ring-bg / ring-fill）+ HP 数字，**没有**直条 / 蓝条。
+   *          tok-1 的包围盒 150×150、dpi 150 → s = 1：Ro 73 / Ri 63 / 48 段（98 点）。 */
+  const roleOf1 = (it) => (it.metadata && it.metadata["com.4enext-owlbear/bar"] ? it.metadata["com.4enext-owlbear/bar"].role : "");
   const added = all("local.addItems").map((c) => c[1]).flat();
   if (!added.length) bad("没有给带血量的 token 画血条（scene.local.addItems 没被调用）");
   else {
-    const bg = added.find((it) => it.metadata["com.4enext-owlbear/bar"] && it.metadata["com.4enext-owlbear/bar"].role === "bar-bg");
-    const fill = added.find((it) => it.metadata["com.4enext-owlbear/bar"] && it.metadata["com.4enext-owlbear/bar"].role === "bar-fill");
-    const text = added.find((it) => it.metadata["com.4enext-owlbear/bar"] && it.metadata["com.4enext-owlbear/bar"].role === "bar-text");
-    if (!bg || !fill || !text) bad("血条三件套不齐：bar-bg=" + !!bg + " bar-fill=" + !!fill + " bar-text=" + !!text);
-    else if (bg.attachedTo !== TOKEN_ID) bad("血条没有 attachedTo 到 token：" + bg.attachedTo);
-    else if (bg.layer !== "ATTACHMENT") bad("血条不在 ATTACHMENT 层：" + bg.layer);
-    else if (!Array.isArray(bg.disableAttachmentBehavior) || bg.disableAttachmentBehavior.indexOf("SCALE") < 0) bad("血条没有禁用 SCALE 继承（token 缩放会画错）");
+    const ringBg = added.find((it) => roleOf1(it) === "ring-bg");
+    const ringFill = added.find((it) => roleOf1(it) === "ring-fill");
+    const text = added.find((it) => roleOf1(it) === "bar-text");
+    const straight = added.filter((it) => ["bar-bg", "bar-fill", "surge-bg", "surge-fill", "surge-text"].indexOf(roleOf1(it)) >= 0);
+    const radii = ringBg && Array.isArray(ringBg.points) ? ringBg.points.map((pt) => Math.hypot(pt.x, pt.y)) : [];
+    if (!ringBg || !ringFill || !text) bad("环形血条不齐：ring-bg=" + !!ringBg + " ring-fill=" + !!ringFill + " bar-text=" + !!text);
+    else if (straight.length) bad("v1.7.9 还在画直条 / 蓝条：" + straight.map(roleOf1).join(","));
+    else if (ringBg.points.length !== 2 * (48 + 1) || Math.abs(Math.max.apply(null, radii) - 73) > 0.01 || Math.abs(Math.min.apply(null, radii) - 63) > 0.01) {
+      bad("环的几何不对（应 48 段 → 98 点、Ro 73 / Ri 63）：" + ringBg.points.length + " 点");
+    } else if (Math.abs(ringBg.position.x - 75) > 0.01 || Math.abs(ringBg.position.y - 75) > 0.01) {
+      bad("环心不在 token 中心：" + JSON.stringify(ringBg.position));
+    } else if (ringBg.attachedTo !== TOKEN_ID) bad("血条没有 attachedTo 到 token：" + ringBg.attachedTo);
+    else if (ringBg.layer !== "ATTACHMENT") bad("血条不在 ATTACHMENT 层：" + ringBg.layer);
+    else if (!Array.isArray(ringBg.disableAttachmentBehavior) || ringBg.disableAttachmentBehavior.indexOf("SCALE") < 0) bad("血条没有禁用 SCALE 继承（token 缩放会画错）");
     else if (!(text.text && text.text.plainText === "12/20")) bad("血条数字不对：" + JSON.stringify(text.text));
-    else if (!(bg.zIndex < fill.zIndex && fill.zIndex < text.zIndex)) bad("血条 zIndex 顺序不对：" + bg.zIndex + "/" + fill.zIndex + "/" + text.zIndex);
-    else ok("血条三件套已画在 token 上（12/20，ATTACHMENT + 禁用 SCALE 继承）");
+    else if (!(ringBg.zIndex < ringFill.zIndex && ringFill.zIndex < text.zIndex)) bad("血条 zIndex 顺序不对：" + ringBg.zIndex + "/" + ringFill.zIndex + "/" + text.zIndex);
+    else ok("环形血条已画在 token 上（48 段 / Ro 73 / Ri 63 / 环心 = token 中心 / 12/20，ATTACHMENT + 禁用 SCALE 继承），没有直条");
   }
 
   // 血量变了 → 走 updateItems 刷新（不是重建）
@@ -325,7 +341,11 @@ run(OBR, stubBuilder("CURVE"), stubBuilder("SHAPE"), stubBuilder("TEXT"));
   else ok("血量数据被删掉后清理了本地血条 item");
 
   /* =======================================================================
-   * v1.6.0：血条扩展（临时生命 / 四防 / 蓝色回复力条）+ Boss 样式（方案 A）
+   * v1.7.9：血条改成环形（默认）+ 四角四防 + 去掉 Boss / 直条 / 蓝条
+   * ---------------------------------------------------------------------
+   * token2 的包围盒 150×150、dpi 150 → s = 1：
+   *   环：Ro = 75 − 2 = 73、环厚 10、Ri = 63、48 段（→ 98 个点）
+   *   四防：直径 30、贴四角内侧 4 → 圆心 (19,19) / (131,19) / (19,131) / (131,131)
    * ===================================================================== */
   const BAR_KEY = "com.4enext-owlbear/bar";
   const HPBAR_KEY = "com.4enext-owlbear/hp-bar/enabled";
@@ -333,7 +353,7 @@ run(OBR, stubBuilder("CURVE"), stubBuilder("SHAPE"), stubBuilder("TEXT"));
   const token2 = {
     id: TOKEN2,
     type: "IMAGE",
-    name: "Boss 巨魔",
+    name: "巨魔",
     layer: "CHARACTER",
     createdUserId: "user-owner",
     position: { x: 0, y: 0 },
@@ -351,163 +371,142 @@ run(OBR, stubBuilder("CURVE"), stubBuilder("SHAPE"), stubBuilder("TEXT"));
   const liveOf = (id) => localItems.filter((it) => it.attachedTo === id);
   const t2role = (role) => liveOf(TOKEN2).filter((it) => barRoleOf(it) === role);
   const t2one = (role) => t2role(role)[0] || null;
+  const shieldKeyOf = (it) => (it.metadata && it.metadata[BAR_KEY] ? it.metadata[BAR_KEY].key : "");
+  const shieldByKey = (key) => t2role("shield").filter((it) => shieldKeyOf(it) === key)[0] || null;
+  /* 一枚图形的外接盒高度 = 折线里最大的 y（圆和盾都从 0 画到直径 D）→ 中心 = position + 外接盒/2 */
+  const shapeH = (it) => Math.max.apply(null, (it.points || [{ y: 0 }]).map((pt) => pt.y));
+  const centerOf = (it) => ({ x: it.position.x + shapeH(it) / 2, y: it.position.y + shapeH(it) / 2 });
+  const shieldTextByKey = (key, list) => list.filter((it) => shieldKeyOf(it) === key)[0] || null;
+  const radiiOf = (it) => (it.points || []).map((pt) => Math.hypot(pt.x, pt.y));
 
   for (const cb of itemsChangeCbs) cb(sceneItems);
   await sleep(300);
   let t2 = liveOf(TOKEN2);
-  if (t2.length !== 14) {
-    bad("带四防 + 回复力的 token 应画 14 件，实际 " + t2.length + "（" + t2.map(barRoleOf).join(",") + "）");
+  const t2roles = t2.map(barRoleOf);
+  const GONE_ROLES = ["bar-bg", "bar-fill", "surge-bg", "surge-fill", "surge-text",
+    "plate", "plate-text", "plate-phase", "divider", "lock-body", "lock-shackle"];
+  if (t2roles.some((r) => GONE_ROLES.indexOf(r) >= 0)) {
+    bad("v1.7.9 不该再画直条 / 蓝条 / Boss 名牌 / 分段 / 锁：" + t2roles.join(","));
+  } else if (t2.length !== 11) {
+    bad("带四防的 token 应画 11 件（环 2 + HP 数字 1 + 四防 4 盾 + 4 数字），实际 " + t2.length + "（" + t2roles.join(",") + "）");
   } else if (t2role("shield").length !== 4 || t2role("shield-text").length !== 4) {
-    bad("四防盾不是 4 盾 + 4 数字：" + t2.map(barRoleOf).join(","));
+    bad("四防不是 4 盾 + 4 数字：" + t2roles.join(","));
   } else if (t2.some((it) => it.layer !== "ATTACHMENT" || it.attachedTo !== TOKEN2)) {
     bad("血条不在 ATTACHMENT 层 / 没 attachedTo");
   } else if (t2.some((it) => !Array.isArray(it.disableAttachmentBehavior) || it.disableAttachmentBehavior.indexOf("SCALE") < 0)) {
     bad("血条没有禁用 SCALE 继承");
-  } else if (!t2.some((it) => barRoleOf(it) === "surge-bg") || !t2.some((it) => barRoleOf(it) === "surge-fill")) {
-    bad("蓝色回复力条不齐");
   } else {
-    ok("带四防 + 回复力：14 件（HP 3 + 蓝条 3 + 四防 4 盾 + 4 数字），全 ATTACHMENT + 禁用 SCALE");
+    ok("v1.7.9：带四防的 token 画 11 件（环形 2 + HP 数字 1 + 四防 4 盾 + 4 数字），" +
+      "没有直条 / 蓝条 / 名牌 / 分段 / 锁");
   }
 
-  const hpTextItem = t2one("bar-text");
-  const surgeTextItem = t2one("surge-text");
-  if (!hpTextItem || !hpTextItem.text || hpTextItem.text.plainText !== "12/20 +3") {
-    bad("HP 文本不对（应含临时生命 +3）：" + JSON.stringify(hpTextItem && hpTextItem.text));
-  } else if (!surgeTextItem || !surgeTextItem.text || surgeTextItem.text.plainText !== "5/6") {
-    bad("回复力文本不对（应为 5/6）：" + JSON.stringify(surgeTextItem && surgeTextItem.text));
-  } else {
-    ok("文本：HP「12/20 +3」（临时生命在右侧）+ 回复力「5/6」");
+  /* ---- 环：Ro 73 / Ri 63 / 48 段（98 点）/ 环心 = token 中心 ---- */
+  {
+    const bg = t2one("ring-bg");
+    const fill = t2one("ring-fill");
+    const bgR = bg ? radiiOf(bg) : [];
+    const fillR = fill ? radiiOf(fill) : [];
+    const textItem = t2one("bar-text");
+    const textCenter = textItem && textItem.text
+      ? { x: textItem.position.x + textItem.text.width / 2, y: textItem.position.y + textItem.text.height / 2 }
+      : null;
+    if (!bg || !fill) bad("环形血条没画（ring-bg / ring-fill 缺）");
+    else if (bg.points.length !== 2 * (48 + 1)) bad("环不是 48 段（应 98 个点）：" + bg.points.length);
+    else if (Math.abs(Math.max.apply(null, bgR) - 73) > 0.01 || Math.abs(Math.min.apply(null, bgR) - 63) > 0.01) {
+      bad("环的半径不对（Ro 应 73、Ri 应 63）：外 " + Math.max.apply(null, bgR) + " / 内 " + Math.min.apply(null, bgR));
+    } else if (Math.abs(fillR[0] - 73) > 0.01) {
+      bad("填充环的半径不对：" + fillR[0]);
+    } else if (Math.abs(bg.position.x - 75) > 0.01 || Math.abs(bg.position.y - 75) > 0.01) {
+      bad("环心不在 token 中心：" + JSON.stringify(bg.position));
+    } else if (bg.fillColor !== "#0b0f14" || !(bg.fillOpacity > 0 && bg.fillOpacity < 0.8)) {
+      bad("底环不是暗色：fill=" + bg.fillColor + "@" + bg.fillOpacity);
+    } else if (fill.fillColor !== "#a52424" || fill.visible !== true) {
+      bad("填充环的颜色 / 可见性不对：fill=" + fill.fillColor + " visible=" + fill.visible);
+    } else if (!textItem || !textItem.text || textItem.text.plainText !== "12/20 +3") {
+      bad("HP 文本不对（应 12/20 +3）：" + JSON.stringify(textItem && textItem.text));
+    } else if (!textCenter || Math.abs(textCenter.x - 75) > 0.5 ||
+      Math.abs(textCenter.y - (75 + 63 * 0.52)) > 0.6) {
+      bad("HP 数字不在环内底部（x 居中、y = 环心 + Ri×0.52）：" + JSON.stringify(textCenter));
+    } else if (!(bg.zIndex < fill.zIndex && fill.zIndex < t2one("shield").zIndex &&
+      t2one("shield").zIndex < t2one("shield-text").zIndex && t2one("shield-text").zIndex < textItem.zIndex)) {
+      bad("zIndex 顺序不对：" + [bg.zIndex, fill.zIndex, t2one("shield").zIndex, t2one("shield-text").zIndex, textItem.zIndex].join("/"));
+    } else {
+      ok("环形血条：48 段（98 点）、Ro 73 / Ri 63、环心 = token 中心 (75,75)、底环 #0b0f14@" + bg.fillOpacity +
+        "、填充 #a52424；HP 数字「12/20 +3」在环内底部（不压 token 脸）；zIndex 9500/9800/15000/16000/30000");
+    }
   }
-  /* ---- v1.6.1：四防从「四角」改「一排」（强韧 / 反射 / 意志 从左到右 + AC 最右半透明白）
-   *      v1.7.5：三防改成**圆**；v1.7.6：四枚**统一直径 30**、整排**铺满 token 并均分** ----
-   *      token2 的包围盒是 150×150、dpi 150 → s=1：可用宽 = 150 − 2×4 = 142，四枚 4×30 = 120，
-   *      均分间距 = (142 − 120) / 3 ≈ 7.33 → 第一枚左缘 = 4（= token 左缘 + 4s）、最后一枚右缘 = 146。 ---- */
-  const shieldKeyOf = (it) => (it.metadata && it.metadata[BAR_KEY] ? it.metadata[BAR_KEY].key : "");
-  const shieldByKey = (key) => t2role("shield").filter((it) => shieldKeyOf(it) === key)[0] || null;
-  /* 一枚四防的外接盒高度 = 折线里最大的 y（圆和盾都从 0 画到直径 D）→ 圆心 / 盾心 y = position.y + D/2。
-   * v1.7.5 起两枚直径不同（22 / 30），「同一行」必须比**中心**，不能直接比 position.y。 */
-  const shapeH = (it) => Math.max.apply(null, (it.points || [{ y: 0 }]).map((pt) => pt.y));
-  const centerYOf = (it) => it.position.y + shapeH(it) / 2;
-  const shieldTextByKey = (key, list) => list.filter((it) => shieldKeyOf(it) === key)[0] || null;
+
+  /* ---- 四防回到四角：左上强韧 / 右上反射 / 左下意志 / 右下 AC 盾 ---- */
   {
     const shields = t2role("shield");
-    const ordered = shields.slice().sort((a, b) => a.position.x - b.position.x);
-    const keys = ordered.map(shieldKeyOf).join(",");
-    const ys = ordered.map(centerYOf);
-    const sameY = ys.every((y) => Math.abs(y - ys[0]) < 0.01);
-    const incX = ordered.every((it, i) => i === 0 || it.position.x > ordered[i - 1].position.x);
-    const ac = shieldByKey("ac");
-    const COLORS_3 = { fort: "#e3b341", reflex: "#56d364", will: "#a371f7" };
     const CIRCLE_SEG = 24;
-    /* 圆：外接盒 30、24 段折线、每个点都在半径 15 上（到中心 (15,15) 的距离） */
     const circleOk = (it) => {
       if (!it || Math.abs(shapeH(it) - 30) > 0.01) return false;
       if (!Array.isArray(it.points) || it.points.length !== CIRCLE_SEG) return false;
       const r = shapeH(it) / 2;
       return it.points.every((pt) => Math.abs(Math.hypot(pt.x - r, pt.y - r) - r) < 0.01);
     };
-    /* 盾：外接盒 30、点数远多于圆、底部中间有盾尖 (W/2, H) */
     const shieldShapeOk = (it) => {
       if (!it || Math.abs(shapeH(it) - 30) > 0.01) return false;
       if (!Array.isArray(it.points) || it.points.length <= CIRCLE_SEG) return false;
       return it.points.some((pt) => Math.abs(pt.x - 15) < 0.01 && Math.abs(pt.y - 30) < 0.01);
     };
-    const acText = shieldTextByKey("ac", t2role("shield-text"));
-    const fortText = shieldTextByKey("fort", t2role("shield-text"));
-    if (shields.length !== 4) bad("四防盾不是 4 枚：" + shields.length + "（" + shields.map(shieldKeyOf).join(",") + "）");
-    else if (keys !== "fort,reflex,will,ac") bad("四防顺序不对（应 强韧→反射→意志→AC，AC 最右）：" + keys);
-    else if (!sameY) bad("四防不在同一行（圆心 / 盾心 y 不一致）：" + ys.map((y) => Math.round(y * 100) / 100).join("/"));
-    else if (!incX) bad("四防的 x 不是从左到右递增：" + ordered.map((it) => Math.round(it.position.x * 100) / 100).join("/"));
-    else if (!ac) bad("AC 那枚盾没画出来");
+    const WANT = {
+      fort: { x: 19, y: 19, color: "#e3b341" },
+      reflex: { x: 131, y: 19, color: "#56d364" },
+      will: { x: 19, y: 131, color: "#a371f7" },
+      ac: { x: 131, y: 131, color: "#ffffff" }
+    };
+    const wrong = [];
+    for (const k of Object.keys(WANT)) {
+      const it = shieldByKey(k);
+      if (!it) { wrong.push(k + " 没画"); continue; }
+      const c = centerOf(it);
+      if (Math.abs(c.x - WANT[k].x) > 0.01 || Math.abs(c.y - WANT[k].y) > 0.01) {
+        wrong.push(k + " 不在角上（" + Math.round(c.x * 100) / 100 + "," + Math.round(c.y * 100) / 100 + "）");
+      } else if (it.fillColor !== WANT[k].color) {
+        wrong.push(k + " 颜色不对（" + it.fillColor + "）");
+      }
+    }
+    const ac = shieldByKey("ac");
+    if (shields.length !== 4) bad("四防不是 4 枚：" + shields.length + "（" + shields.map(shieldKeyOf).join(",") + "）");
+    else if (wrong.length) bad("四角四防不对：" + wrong.join(" / "));
     else if (["fort", "reflex", "will"].some((k) => !circleOk(shieldByKey(k)))) {
-      bad("三防不是直径 30 的圆（24 段折线、点在半径 15 上）：" +
-        ["fort", "reflex", "will"].map((k) => k + "=" + (shieldByKey(k) ? shieldKeyOf(shieldByKey(k)) + "/d" + shapeH(shieldByKey(k)) + "/" + (shieldByKey(k).points || []).length + "点" : "无")).join(" "));
+      bad("三防不是直径 30 的圆（24 段折线）：" +
+        ["fort", "reflex", "will"].map((k) => k + "=" + (shieldByKey(k) ? shapeH(shieldByKey(k)) + "/" + shieldByKey(k).points.length + "点" : "无")).join(" "));
     } else if (!shieldShapeOk(ac)) {
       bad("AC 不是直径 30 的盾形（外接盒 " + shapeH(ac) + "、" + (ac.points || []).length + " 点）");
     } else if (ac.fillColor !== "#ffffff" || !(ac.fillOpacity > 0 && ac.fillOpacity <= 0.3) ||
       ac.strokeColor !== "#ffffff" || !(ac.strokeOpacity >= 0.8)) {
-      bad("AC 不是半透明白色图标：fill=" + ac.fillColor + "@" + ac.fillOpacity + " stroke=" + ac.strokeColor + "@" + ac.strokeOpacity);
-    } else if (Object.keys(COLORS_3).some((k) => !shieldByKey(k) || shieldByKey(k).fillColor !== COLORS_3[k])) {
-      bad("三防不是橙 / 绿 / 紫：" + Object.keys(COLORS_3).map((k) => k + "=" + (shieldByKey(k) ? shieldByKey(k).fillColor : "无")).join(" "));
-    } else if (!acText || !acText.text || acText.text.plainText !== "28") {
-      bad("AC 的数字不是 28：" + JSON.stringify(acText && acText.text));
-    } else if (!acText.text.style || Math.abs(acText.text.style.fontSize - 15) > 0.01) {
-      bad("AC 的字号不是 15（d×0.5，d=30）：" + JSON.stringify(acText.text && acText.text.style));
-    } else if (!fortText || !fortText.text || !fortText.text.style || Math.abs(fortText.text.style.fontSize - 15) > 0.01) {
-      bad("圆的字号没有放大到 ≈15s：" + JSON.stringify(fortText && fortText.text && fortText.text.style));
+      bad("AC 不是半透明白盾：fill=" + ac.fillColor + "@" + ac.fillOpacity + " stroke=" + ac.strokeColor + "@" + ac.strokeOpacity);
     } else {
-      /* v1.7.6：整排**铺满 token 并均分** —— 左缘 = token 左缘 + 4s、右缘 = token 右缘 − 4s、间距相等。 */
-      const leftEdge = ordered[0].position.x;
-      const lastIt = ordered[ordered.length - 1];
-      const rightEdge = lastIt.position.x + shapeH(lastIt);
-      const gaps = ordered.slice(1).map((it, i) => it.position.x - (ordered[i].position.x + shapeH(ordered[i])));
-      const evenGaps = gaps.every((g) => Math.abs(g - gaps[0]) < 0.01);
-      if (Math.abs(leftEdge - 4) > 0.01) bad("整排没有左对齐到 token 左缘 + 4s（左缘 " + leftEdge + "）");
-      else if (Math.abs(rightEdge - 146) > 0.01) bad("整排没有右对齐到 token 右缘 − 4s（右缘 " + rightEdge + "）");
-      else if (!evenGaps) bad("四防之间的间距不均分：" + gaps.map((g) => Math.round(g * 100) / 100).join("/"));
-      else {
-        ok("四防一排（v1.7.6）：3 个圆（直径 30、24 段）+ 1 个盾（AC，直径 30）；字号都是 15（四枚一样大）；" +
-          "圆心 / 盾心同一 y=" + (Math.round(ys[0] * 100) / 100) + "、**左缘 4 / 右缘 146 铺满 token**、" +
-          "均分间距 " + (Math.round(gaps[0] * 100) / 100) + "、AC 最右且半透明白色（fill #ffffff@" +
-          ac.fillOpacity + " + 白描边@" + ac.strokeOpacity + "）");
-      }
+      const texts = t2role("shield-text");
+      const acText = shieldTextByKey("ac", texts);
+      const fortText = shieldTextByKey("fort", texts);
+      const fontOk = (it) => it && it.text && it.text.style && Math.abs(it.text.style.fontSize - 15) < 0.01;
+      if (!acText || !acText.text || acText.text.plainText !== "28") bad("AC 的数字不是 28：" + JSON.stringify(acText && acText.text));
+      else if (!fontOk(acText) || !fontOk(fortText)) bad("四防字号不是 15：" +
+        JSON.stringify([acText && acText.text.style, fortText && fortText.text.style]));
+      else ok("四防回到四角：左上强韧(19,19) 黄 / 右上反射(131,19) 绿 / 左下意志(19,131) 紫 / 右下 AC(131,131) 半透明白盾；" +
+        "四枚都是直径 30（三防 24 段圆、AC 盾形）、字号 15");
     }
   }
-  /* 这一排必须在 HP 红条上方（同一份几何：盾的下缘 < 条的上缘） */
-  {
-    const shields = t2role("shield");
-    const barBg = t2one("bar-bg");
-    /* 盾的下缘 = 位置 + 多边形里最大的 y（盾尖）；条的上缘 = 位置 y */
-    const bottomOf = (it) => it.position.y +
-      Math.max.apply(null, (it.points || [{ y: 0 }]).map((pt) => pt.y));
-    const lowest = shields.length ? Math.max.apply(null, shields.map(bottomOf)) : 0;
-    if (!shields.length || !barBg) bad("四防 / HP 条缺件，无法比较上下关系");
-    else if (!(lowest <= barBg.position.y + 0.5)) bad("四防这一排没有在 HP 红条上方：" + lowest + " vs " + barBg.position.y);
-    else ok("四防这一排贴在 HP 红条上方（盾下缘 " + lowest + " ≤ 条上缘 " + barBg.position.y + "）");
-  }
-  if (t2one("shield").zIndex < t2one("bar-fill").zIndex && t2one("bar-fill").zIndex < t2one("bar-text").zIndex) {
-    ok("zIndex：盾 " + t2one("shield").zIndex + " < 填充 " + t2one("bar-fill").zIndex + " < 数值 " + t2one("bar-text").zIndex);
-  } else bad("zIndex 顺序不对");
 
-  /* ---- Boss：布尔 / 对象都能读；环形 + 名牌 + 锁；压制普通 HP 条 ---- */
-  token2.metadata[HP_KEY].boss = true;
-  for (const cb of itemsChangeCbs) cb(sceneItems);
-  await sleep(300);
-  t2 = liveOf(TOKEN2);
-  if (t2.length !== 20) bad("Boss 模式应再加 2 环 + 2 牌 + 2 锁（共 20 件），实际 " + t2.length + "：" + t2.map(barRoleOf).join(","));
-  else if (!t2one("ring-bg") || !t2one("ring-fill")) bad("Boss 环形血条没画");
-  else if (!t2one("plate") || !t2one("plate-text") || t2one("plate-text").text.plainText !== "Boss 巨魔") bad("Boss 名牌 / 名字不对");
-  else if (!t2one("lock-body") || !t2one("lock-shackle")) bad("Boss 锁图标不齐");
-  else if (t2one("bar-bg").visible !== false || t2one("bar-fill").visible !== false || t2one("bar-text").visible !== false) {
-    bad("Boss 模式没有压制普通 HP 条");
-  } else if (t2one("surge-bg").visible !== true) bad("Boss 模式把回复力条也压掉了（应保留）");
-  else ok("Boss 模式（boss:true）：环形血条 + 名牌「Boss 巨魔」+ 锁，普通 HP 条被压制、蓝条保留");
-
-  /* v1.6.1：Boss 环形态下四防也要是一排（同 y、AC 最右）；v1.7.5：3 圆 + 1 盾 */
-  {
-    const shields = t2role("shield");
-    const ys = shields.map(centerYOf);
-    const keys = shields.slice().sort((a, b) => a.position.x - b.position.x).map(shieldKeyOf).join(",");
-    const ds = shields.map((it) => Math.round(shapeH(it) * 100) / 100).sort((a, b) => a - b);
-    if (shields.length !== 4) bad("Boss 形态四防不齐：" + shields.length + "（" + keys + "）");
-    else if (!ys.every((y) => Math.abs(y - ys[0]) < 0.01)) bad("Boss 形态四防不在同一行：" + ys.join("/"));
-    else if (keys !== "fort,reflex,will,ac") bad("Boss 形态四防顺序不对：" + keys);
-    else if (ds.join(",") !== "30,30,30,30") bad("Boss 形态四防的直径不对（应 30/30/30/30）：" + ds.join(","));
-    else ok("Boss 环形态下四防仍是一排（4 枚、圆心 / 盾心同一 y=" + (Math.round(ys[0] * 100) / 100) +
-      "、四枚都 30、AC 最右）");
-  }
-
+  /* ---- v1.7.9：hp.boss 只是旧数据，**不再画任何 Boss 元素** ---- */
   token2.metadata[HP_KEY].boss = { enabled: true, segments: 3, phase: "阶段二" };
   for (const cb of itemsChangeCbs) cb(sceneItems);
   await sleep(300);
   t2 = liveOf(TOKEN2);
-  if (t2role("divider").length !== 2) bad("segments=3 应有 2 条分段线，实际 " + t2role("divider").length);
-  else if (!t2one("plate-phase") || t2one("plate-phase").text.plainText !== "阶段二") bad("Boss 阶段文案没显示");
-  else ok("Boss 分段（3 段 → 2 条线）+ 阶段文案「阶段二」");
+  {
+    const roles = t2.map(barRoleOf);
+    const bossBits = roles.filter((r) => ["plate", "plate-text", "plate-phase", "divider", "lock-body", "lock-shackle"].indexOf(r) >= 0);
+    if (bossBits.length) bad("hp.boss 还在画名牌 / 分段 / 锁：" + bossBits.join(","));
+    else if (t2.length !== 11) bad("hp.boss 不该改变画多少件（仍 11 件），实际 " + t2.length + "：" + roles.join(","));
+    else ok("hp.boss（旧数据 { enabled:true, segments:3, phase }）被忽略：不画名牌 / 分段 / 锁，仍是环形血条 11 件");
+    delete token2.metadata[HP_KEY].boss;
+  }
 
-  /* ---- v1.6.1：窄 token 退化——四枚放不下时优先保留 AC（最右那枚）
-   *      v1.7.6：判据 = 「枚数 × 30s ≤ 可用宽（token 宽 − 8s）」；退化**顺序**没变
-   *      （先丢意志 → 反射 → 强韧，AC 最后才丢），只是阈值按 30s 重算。 ---- */
+  /* ---- v1.7.9：窄 token 退化 —— 两枚并排放不下时按 DEF_DROP 丢，AC 最后才丢 ---- */
   {
     const TOKEN3 = "tok-3";
     const token3 = {
@@ -527,24 +526,34 @@ run(OBR, stubBuilder("CURVE"), stubBuilder("SHAPE"), stubBuilder("TEXT"));
       }
     };
     sceneItems.push(token3);
-    const t3keysNow = () => liveOf(TOKEN3).filter((it) => barRoleOf(it) === "shield").map(shieldKeyOf).join(",");
+    const t3keys = () => liveOf(TOKEN3).filter((it) => barRoleOf(it) === "shield").map(shieldKeyOf).join(",");
+    const t3roles = () => liveOf(TOKEN3).map(barRoleOf);
 
-    /* ① 20×20：s 夹到 0.2 → 四枚要 4×6 = 24，可用只有 18.4
-     *    → 按 DEF_DROP **先丢意志**（只丢一枚就够：18 ≤ 18.4）→ 剩「强韧 + 反射 + AC」 */
+    /* ① 20×20：s 夹到 0.2 → 四枚直径 6s、两枚并排只要 13.6 ≤ 20 → 四枚都画 */
     boundsFor[TOKEN3] = { min: { x: 0, y: 0 }, max: { x: 20, y: 20 }, center: { x: 10, y: 10 }, width: 20, height: 20 };
     for (const cb of itemsChangeCbs) cb(sceneItems);
     await sleep(340);
-    if (t3keysNow() !== "fort,reflex,ac") bad("窄 token 退化顺序不对（应先丢意志，剩 fort,reflex,ac）：" + t3keysNow());
-    else ok("窄 token 退化（20×20，s=0.2）：按 DEF_DROP 先丢意志 → 剩「强韧 + 反射 + AC」");
+    if (t3keys() !== "fort,reflex,will,ac") bad("小 token（20×20）四角放得下时应该四枚都画：" + t3keys());
+    else ok("小 token（20×20，s=0.2）：四枚直径 6s 的四角都放得下 → 四防 4 枚全画");
 
-    /* ② 13×40：只放得下一枚 → AC 优先保留（最后才丢），数字跟着在 */
+    /* ② 13×40：两枚并排要 13.6 > 13 → 按 DEF_DROP 先丢意志 / 反射 / 强韧，只剩 AC */
     boundsFor[TOKEN3] = { min: { x: 0, y: 0 }, max: { x: 13, y: 40 }, center: { x: 6.5, y: 20 }, width: 13, height: 40 };
     for (const cb of itemsChangeCbs) cb(sceneItems);
     await sleep(340);
-    const t3keys = t3keysNow();
-    if (t3keys !== "ac") bad("窄 token 退化到 1 枚时应只剩 AC，实际：" + t3keys);
+    const keys13 = t3keys();
+    if (keys13 !== "ac") bad("窄 token（13×40）两枚并排放不下时应只留 AC，实际：" + keys13);
     else if (liveOf(TOKEN3).filter((it) => barRoleOf(it) === "shield-text").length !== 1) bad("窄 token 退化后 AC 的数字也没了");
-    else ok("窄 token 退化（13×40）：只放得下 1 枚时 AC 优先保留（半透明白），数字仍在");
+    else ok("窄 token 退化（13×40）：两枚并排放不下 → 按 DEF_DROP 丢到只剩 AC（半透明白盾，数字仍在）");
+
+    /* ③ 6×40：连一枚 AC 都放不下（6+1.6 > 6）→ 一枚盾都不画，环照旧 */
+    boundsFor[TOKEN3] = { min: { x: 0, y: 0 }, max: { x: 6, y: 40 }, center: { x: 3, y: 20 }, width: 6, height: 40 };
+    for (const cb of itemsChangeCbs) cb(sceneItems);
+    await sleep(340);
+    if (t3keys() !== "") bad("极窄 token（6×40）连 AC 都放不下，应该一枚盾都不画：" + t3keys());
+    else if (!t3roles().some((r) => r === "ring-bg") || !t3roles().some((r) => r === "bar-text")) {
+      bad("极窄 token 把环形血条也弄没了（只该不画盾）：" + t3roles().join(","));
+    } else ok("极窄 token（6×40）：四防一枚都不画（四防仍能在速览 / 编辑窗里看），环形血条照旧");
+
     /* 收尾：把这枚临时 token 移出场景（后面的断言只看 tok-2） */
     sceneItems = sceneItems.filter((it) => it.id !== TOKEN3);
     delete boundsFor[TOKEN3];
@@ -552,20 +561,15 @@ run(OBR, stubBuilder("CURVE"), stubBuilder("SHAPE"), stubBuilder("TEXT"));
     await sleep(340);
   }
 
-  /* ---- 锁：只改颜色，不重建 ---- */
+  /* ---- v1.7.9：不再画锁 —— 切 locked 只改精确度，不重建 item ---- */
   token2.metadata[HP_KEY].locked = false;
   const addsBeforeLock = all("local.addItems").length;
-  const updatesBeforeLock = all("local.updateItems").length;
   for (const cb of itemsChangeCbs) cb(sceneItems);
   await sleep(300);
-  const lockDrafts = all("local.updateItems").slice(updatesBeforeLock).map((c) => c[1]).flat();
-  const lockPatched = lockDrafts.filter((it) => barRoleOf(it) === "lock-body").pop();
-  const shieldTextDrafts = lockDrafts.filter((it) => barRoleOf(it) === "shield-text");
   if (all("local.addItems").length !== addsBeforeLock) bad("切「解锁」不应该重建 item");
-  else if (!shieldTextDrafts.length || shieldTextDrafts.some((it) => it.visible !== true)) {
-    bad("增量刷新把四防数字误隐藏了（shield-text 的 tag 没带 key）");
-  } else if (!lockPatched || lockPatched.fillColor !== "#93a1b0") bad("解锁后锁的颜色没变（应 #93a1b0）：" + (lockPatched && lockPatched.fillColor));
-  else ok("解锁只改锁的颜色（#f85149 → #93a1b0）、四防数字仍显示，不重建 item");
+  else if (t2role("lock-body").length || t2role("lock-shackle").length) bad("v1.7.9 还在画锁（应该全删）");
+  else if (!t2one("bar-text") || t2one("bar-text").visible !== true) bad("城主端 HP 数字不见了");
+  else ok("锁图标已删（切 locked 只改精确度、不重建 item；城主端数字照常显示）");
 
   /* ---- 玩家端：其他玩家 + locked → 阶梯比例、不画数字与四防 ---- */
   token2.metadata[HP_KEY].locked = true;
@@ -573,15 +577,21 @@ run(OBR, stubBuilder("CURVE"), stubBuilder("SHAPE"), stubBuilder("TEXT"));
   for (const cb of itemsChangeCbs) cb(sceneItems);
   await sleep(300);
   t2 = liveOf(TOKEN2);
-  if (t2.some((it) => barRoleOf(it) === "shield")) {
-    bad("玩家端仍画了四防盾（locked 时应隐藏）");
-  } else if (!t2one("bar-text") || t2one("bar-text").visible !== false || !t2one("surge-text") || t2one("surge-text").visible !== false) {
-    bad("玩家端仍显示精确数字");
-  } else {
-    const fillP = t2one("bar-fill");
-    const maxX = fillP ? Math.max.apply(null, fillP.points.map((pt) => pt.x)) : 0;
-    if (Math.abs(maxX - 109.5) > 0.6) bad("玩家端比例没按 25% 阶梯向上取整（12/20 → 0.75，maxX=" + maxX + "）");
-    else ok("玩家端（其他玩家 + locked）：0.6 → 0.75 阶梯比例，不画数字与四防（" + t2.length + " 件）");
+  {
+    const fill = t2one("ring-fill");
+    /* 12/20 = 0.6 → 25% 阶梯向上取整 = 0.75；环从 12 点顺时针扫 0.75×360°=270°
+     * → 外弧最后一个点在 3 点方向的反面（-Ro, 0）。 */
+    const outer = fill ? fill.points.slice(0, 49) : [];
+    const last = outer[outer.length - 1];
+    if (t2.some((it) => barRoleOf(it) === "shield")) {
+      bad("玩家端仍画了四防盾（locked 时应隐藏）");
+    } else if (!t2one("bar-text") || t2one("bar-text").visible !== false) {
+      bad("玩家端仍显示精确数字");
+    } else if (!last || Math.abs(last.x + 73) > 0.6 || Math.abs(last.y) > 0.6) {
+      bad("玩家端比例没按 25% 阶梯向上取整（0.6 → 0.75，外弧终点应 ≈(-73,0)）：" + JSON.stringify(last));
+    } else {
+      ok("玩家端（其他玩家 + locked）：0.6 → 0.75 阶梯比例（环扫 270°），不画数字与四防（" + t2.length + " 件）");
+    }
   }
   role = "GM";
 
@@ -592,22 +602,24 @@ run(OBR, stubBuilder("CURVE"), stubBuilder("SHAPE"), stubBuilder("TEXT"));
   if (liveOf(TOKEN2).length) bad("hp-bar/enabled=false 后血条没有被移除：" + liveOf(TOKEN2).length + " 件");
   else ok("hp-bar/enabled=false → 本地血条被移除（一件不留）");
 
-  /* ---- 右键 4 项：独立 id / filter 用 != / 关闭写 false ---- */
+  /* ---- 右键：血条两项 + 编辑血条（Boss 两项已删） ---- */
   const menusV16 = all("contextMenu.create").map((c) => c[1]);
   const menuById = (id) => menusV16.filter((m) => m.id === id)[0] || null;
   const addMenu = menuById("com.4enext-owlbear/hpbar-add");
   const removeMenu = menuById("com.4enext-owlbear/hpbar-remove");
-  const bossShowMenu = menuById("com.4enext-owlbear/boss-show");
-  const bossHideMenu = menuById("com.4enext-owlbear/boss-hide");
-  if (!addMenu || !removeMenu || !bossShowMenu || !bossHideMenu) {
-    bad("右键菜单没补齐 4 项：add=" + !!addMenu + " remove=" + !!removeMenu + " show=" + !!bossShowMenu + " hide=" + !!bossHideMenu);
+  const bossMenus = menusV16.filter((m) => /\/boss-(show|hide)$/.test(String(m.id)));
+  if (!addMenu || !removeMenu) {
+    bad("右键菜单没补齐血条两项：add=" + !!addMenu + " remove=" + !!removeMenu);
+  } else if (bossMenus.length) {
+    bad("右键还注册了 Boss 菜单（v1.7.9 应该删掉）：" + bossMenus.map((m) => m.id).join(","));
   } else if (!addMenu.icons[0].filter.some || addMenu.icons[0].filter.some[0].operator !== "!=" ||
     !removeMenu.icons[0].filter.some || removeMenu.icons[0].filter.some[0].value !== true) {
     bad("血条菜单的 filter 不对（添加要 != true、移除要 == true）");
-  } else if (menusV16.length !== 8) {
-    bad("右键菜单总数不是 8（绑定 + 加入 / 隐形加入 + v1.7.3 移出先攻 + 4 项血条 / Boss）：" + menusV16.length);
+  } else if (menusV16.length !== 7) {
+    bad("右键菜单总数不是 7（绑定 + 加入 / 隐形加入 + v1.7.3 移出先攻 + 添加 / 移除血条组件 + v1.7.7 编辑血条）：" + menusV16.length);
   } else {
-    ok("右键 4 项独立注册：添加 / 移除血条组件、显示为 Boss / 隐藏 Boss（filter 用 !=；v1.7.3 只多了「移出先攻」一项）");
+    ok("右键 7 项：绑定 / 加入先攻 ×2 / 移出先攻 / 添加 · 移除血条组件 / 编辑血条；" +
+      "**没有**「显示为 Boss」「隐藏 Boss」（v1.7.9 已删），filter 用 != 覆盖 undefined 与 false");
   }
 
   if (addMenu) {
@@ -616,36 +628,13 @@ run(OBR, stubBuilder("CURVE"), stubBuilder("SHAPE"), stubBuilder("TEXT"));
     await sleep(200);
     if (token2.metadata[HPBAR_KEY] !== true) bad("「添加血条组件」没有写 hp-bar/enabled = true");
     else if (all("local.addItems").length <= addsBefore) bad("「添加血条组件」后没有重画血条");
-    else ok("「添加血条组件」→ hp-bar/enabled = true 且立刻重画");
+    else ok("「添加血条组件」→ hp-bar/enabled = true 且立刻重画（环形）");
   }
   if (removeMenu) {
     await removeMenu.onClick({ items: [token2] });
     await sleep(200);
     if (token2.metadata[HPBAR_KEY] !== false) bad("「移除血条组件」没有写 false（delete 会让血条下次自动回来）");
     else ok("「移除血条组件」→ hp-bar/enabled = false（写 false，不 delete）");
-  }
-  if (bossShowMenu) {
-    const noteCount = all("notification.show").length;
-    await bossShowMenu.onClick({ items: [token] });
-    await sleep(60);
-    const warn = all("notification.show").slice(noteCount).map((c) => c[1])
-      .filter((n) => n.variant === "WARNING" && /生命上限/.test(n.msg))[0];
-    if (!warn) bad("没有血量的 token 点「显示为 Boss」没有 WARNING");
-    else ok("没有血量的 token 点「显示为 Boss」→ WARNING（不写坏数据）");
-
-    await bossShowMenu.onClick({ items: [token2] });
-    await sleep(120);
-    const bossNow = token2.metadata[HP_KEY] && token2.metadata[HP_KEY].boss;
-    if (!bossNow || bossNow.enabled !== true || !(bossNow.order > 0)) {
-      bad("「显示为 Boss」没有写 boss.enabled + order：" + JSON.stringify(bossNow));
-    } else ok("「显示为 Boss」→ hp.boss = { enabled:true, order:" + bossNow.order + " }");
-  }
-  if (bossHideMenu) {
-    await bossHideMenu.onClick({ items: [token2] });
-    await sleep(120);
-    const bossOff = token2.metadata[HP_KEY] && token2.metadata[HP_KEY].boss;
-    if (!bossOff || bossOff.enabled !== false) bad("「隐藏 Boss 血条」没有把 enabled 写 false");
-    else ok("「隐藏 Boss 血条」→ boss.enabled = false（数据保留，不再画环 / 牌 / 锁）");
   }
 
   /* ---- v1.2.2：速览弹窗可拖动（左上角定位 / 视口夹取 / 位置记忆 / 回到 token） ---- */
@@ -756,35 +745,33 @@ run(OBR, stubBuilder("CURVE"), stubBuilder("SHAPE"), stubBuilder("TEXT"));
     return cfg;
   };
 
-  /* v1.4.0：工具栏「先攻」打开的是**先攻条**（top-center 的条），不是 880×640 的大窗口 */
-  const stripCfg = await openByTool(toolInit, /\/initiative\.html$/, "先攻条");
+  /* v1.4.0 / v1.7.10：工具栏「先攻」打开的是**先攻条**（现在 = 全屏透明 modal，不再是 popover） */
+  const stripModalBefore = all("modal.open").length;
+  const stripRet = toolInit && typeof toolInit.onClick === "function" ? toolInit.onClick() : null;
+  await sleep(140);
+  const stripCfg = all("modal.open").map((c) => c[1]).slice(stripModalBefore)
+    .filter((c) => /\/initiative\.html$/.test(String(c.url))).pop() || null;
+  if (stripRet !== false) bad("工具栏「先攻条」的 onClick 没有返回 false（会把工具切成激活态）");
+  if (!stripCfg) bad("点工具栏「先攻条」没有打开 /\/initiative\.html$/ modal");
   const diceWin = await openByTool(toolDice, /\/dice\.html$/, "骰子");
   const panelWin = await openByTool(toolPanel, /\/panel\.html$/, "角色卡");
 
   if (!stripCfg || !diceWin || !panelWin) {
     bad("三个工具栏入口没有各自打开窗口");
   } else if (stripCfg.id !== "com.4enext-owlbear/initiative-strip") {
-    bad("先攻条的 popover id 不对：" + stripCfg.id);
-  } else if (openedIds.size !== 3) {
-    bad("三个窗口的 popover id 有重复（不能同时打开）：" + [...openedIds].join(" / "));
+    bad("先攻条的 modal id 不对：" + stripCfg.id);
+  } else if (new Set([stripCfg.id, diceWin.id, panelWin.id]).size !== 3) {
+    bad("三个窗口的 id 有重复（不能同时打开）：" + [stripCfg.id, diceWin.id, panelWin.id].join(" / "));
   } else {
     ok("先攻条 + 骰子 + 角色卡各自独立打开，id 互不相同（可同时开）：" +
       [stripCfg.id, diceWin.id, panelWin.id].map((x) => x.split("/").pop()).join(" / "));
   }
 
   if (stripCfg) {
-    const vw = 1200;
-    if (stripCfg.anchorReference !== "POSITION") bad("先攻条没有用 anchorReference: POSITION");
-    else if (stripCfg.anchorOrigin.horizontal !== "CENTER" || stripCfg.anchorOrigin.vertical !== "TOP" ||
-      stripCfg.transformOrigin.horizontal !== "CENTER" || stripCfg.transformOrigin.vertical !== "TOP")
-      bad("先攻条的锚点 / 变换原点不是 CENTER/TOP：" + JSON.stringify([stripCfg.anchorOrigin, stripCfg.transformOrigin]));
-    else if (stripCfg.width !== 720 || stripCfg.height !== 129)
-      bad("先攻条展开尺寸不是 720×129：" + stripCfg.width + "×" + stripCfg.height);
-    else if (stripCfg.anchorPosition.top !== 45 || stripCfg.anchorPosition.left !== vw / 2)
-      bad("先攻条没有贴顶居中（top 45 / 中线 " + (vw / 2) + "）：" + JSON.stringify(stripCfg.anchorPosition));
-    else if (stripCfg.disableClickAway !== true || stripCfg.hidePaper !== true)
-      bad("先攻条没有 disableClickAway / hidePaper");
-    else ok("先攻条：720×129 @ top 45，CENTER/TOP，disableClickAway + hidePaper");
+    if (stripCfg.fullScreen !== true) bad("先攻条不是 fullScreen modal");
+    else if (stripCfg.hideBackdrop !== true || stripCfg.hidePaper !== true || stripCfg.disablePointerEvents !== true)
+      bad("先攻条 modal 少了 hideBackdrop / hidePaper / disablePointerEvents");
+    else ok("先攻条：全屏透明 modal（fullScreen + hideBackdrop + hidePaper + disablePointerEvents）");
   }
 
   if (diceWin && panelWin) {
@@ -809,6 +796,25 @@ run(OBR, stubBuilder("CURVE"), stubBuilder("SHAPE"), stubBuilder("TEXT"));
       }
     }
     ok("骰子 / 角色卡窗口统一按左上角定位（拖动只换 anchorPosition）");
+  }
+
+  /* v1.7.10：窗口 ✕ 的后台兜底 —— 页面先 popover.close，再发 {op:"close-win", name}；
+   * 这里模拟后台收到消息，断言它会再关一次（popover + modal 双保险）。 */
+  {
+    const WIN_CLOSE = "com.4enext-owlbear/win-close";
+    const winCloseCb = (broadcastCbs[WIN_CLOSE] || [])[0];
+    if (!winCloseCb) bad("没有订阅 " + WIN_CLOSE + "（✕ 的后台兜底没接上）");
+    else {
+      const beforePc = all("popover.close").length;
+      const beforeMc = all("modal.close").length;
+      winCloseCb({ data: { op: "close-win", name: "panel" } });
+      await sleep(60);
+      const pc = all("popover.close").slice(beforePc).map((c) => c[1]);
+      const mc = all("modal.close").slice(beforeMc).map((c) => c[1]);
+      if (pc.indexOf("com.4enext-owlbear/panel") >= 0 && mc.indexOf("com.4enext-owlbear/panel") >= 0)
+        ok("✕ 后台兜底：{op:\"close-win\", name:\"panel\"} → OBR.popover.close(ID_PANEL) + OBR.modal.close(ID_PANEL)");
+      else bad("✕ 后台兜底没有关掉 panel：" + JSON.stringify({ pc, mc }));
+    }
   }
 
   /* =======================================================================
@@ -846,48 +852,30 @@ run(OBR, stubBuilder("CURVE"), stubBuilder("SHAPE"), stubBuilder("TEXT"));
   if (!stripDragCb) bad("没有订阅先攻条拖动频道 " + STRIP_CH);
   else ok("订阅了先攻条拖动频道 " + STRIP_CH);
   if (stripDragCb && stripCfg) {
-    const base = stripCfg.anchorPosition;
+    /* v1.7.10：modal 全屏，拖动由页面自己移动 → 后台**不再重开**窗口，只更新偏移记账。
+     * 视口 1200×800、条 720×170 → dx 夹在 ±224，dy 最大 = 800−170−16−45 = 569。 */
+    const beforeDrag = all("modal.open").length;
     stripDragCb({ phase: "start", dx: 0, dy: 0 });
     stripDragCb({ phase: "move", dx: 100, dy: 50 });
     await sleep(90);
-    let movedStrip = opened(/\/initiative\.html$/);
-    if (!movedStrip || movedStrip.anchorPosition.left !== base.left + 100 || movedStrip.anchorPosition.top !== base.top + 50) {
-      bad("拖动先攻条没有跟手：" + JSON.stringify(movedStrip && movedStrip.anchorPosition) + "（起点 " + JSON.stringify(base) + "）");
-    } else if (movedStrip.width !== stripCfg.width || movedStrip.height !== stripCfg.height) {
-      bad("拖动先攻条时尺寸变了：" + movedStrip.width + "×" + movedStrip.height);
-    } else {
-      ok("拖动先攻条 100/50 → 中线 " + movedStrip.anchorPosition.left + " / top " + movedStrip.anchorPosition.top + "（尺寸不变）");
-    }
+    if (all("modal.open").length !== beforeDrag) bad("拖动先攻条又重开了 modal（应该只记账）");
+    else ok("拖动先攻条不重开窗口（modal 内由页面自己移动；后台只更新偏移）");
 
     stripDragCb({ phase: "move", dx: 5000, dy: 5000 });
     stripDragCb({ phase: "end", dx: 5000, dy: 5000 });
     await sleep(160);
-    movedStrip = opened(/\/initiative\.html$/);
-    const maxCx = 1200 - 16 - stripCfg.width / 2;
-    const maxTop = 800 - stripCfg.height - 16;
-    if (!movedStrip || movedStrip.anchorPosition.left !== maxCx || movedStrip.anchorPosition.top !== maxTop) {
-      bad("先攻条拖出视口没有夹住（应为 " + maxCx + "," + maxTop + "）：" + JSON.stringify(movedStrip && movedStrip.anchorPosition));
-    } else {
-      ok("先攻条拖出视口 → 夹在 (" + maxCx + ", " + maxTop + ")");
-    }
     let savedStrip = null;
     try { savedStrip = JSON.parse(lsStore[STRIP_POS] || "null"); } catch (e) { savedStrip = null; }
-    if (!savedStrip || savedStrip.dx !== maxCx - 600 || savedStrip.dy !== maxTop - 45) {
-      bad("先攻条位置没有按偏移落盘：" + JSON.stringify(savedStrip));
+    if (!savedStrip || savedStrip.dx !== 224 || savedStrip.dy !== 569) {
+      bad("先攻条拖出视口没有夹紧 / 落盘：" + JSON.stringify(savedStrip));
     } else {
-      ok("先攻条位置只记相对中线的偏移（dx " + savedStrip.dx + " / dy " + savedStrip.dy + "）");
+      ok("先攻条拖出视口 → 偏移夹到 { dx: 224, dy: 569 } 并落盘（条 720×170）");
     }
 
     stripDragCb({ phase: "reset" });
     await sleep(140);
-    movedStrip = opened(/\/initiative\.html$/);
-    if (!movedStrip || movedStrip.anchorPosition.left !== base.left || movedStrip.anchorPosition.top !== base.top) {
-      bad("先攻条没有回到顶部中间：" + JSON.stringify(movedStrip && movedStrip.anchorPosition));
-    } else if (lsStore[STRIP_POS]) {
-      bad("回中后没有清掉记住的偏移：" + lsStore[STRIP_POS]);
-    } else {
-      ok("先攻条「回到顶部中间」→ (" + base.left + ", " + base.top + ") 且清掉偏移");
-    }
+    if (lsStore[STRIP_POS]) bad("回中后没有清掉记住的偏移：" + lsStore[STRIP_POS]);
+    else ok("先攻条「回到顶部中间」→ 清掉偏移（页面重排，不重开窗口）");
   }
 
   /* 先攻条「≡」→ 列表窗口（?view=list，880×640，仍可拖 / 记位置，id 与条不同） */
@@ -1262,10 +1250,10 @@ run(OBR, stubBuilder("CURVE"), stubBuilder("SHAPE"), stubBuilder("TEXT"));
       const items = liveOf(HPE_MONSTER);
       const roles = items.map(barRoleOf);
       if (!items.length) bad("保存后血条没有画出来（hp-edit-saved 没触发重画）");
-      else if (items.length !== 14) bad("杂兵保存后应画 14 件（HP 3 + 蓝条 3 + 四盾 + 4 数字），实际 " + items.length + "：" + roles.join(","));
+      else if (items.length !== 11) bad("杂兵保存后应画 11 件（环 2 + HP 数字 1 + 四盾 + 4 数字），实际 " + items.length + "：" + roles.join(","));
       else if (!items.some((it) => barRoleOf(it) === "shield" && it.metadata["com.4enext-owlbear/bar"].key === "ac")) {
         bad("四防盾没有按 key=ac 画出来");
-      } else ok("没绑角色卡的杂兵：保存 20/20 + 回复力 3/3 + 四防 → 血条立刻画出 14 件（含 AC 盾）");
+      } else ok("没绑角色卡的杂兵：保存 20/20 + 回复力 3/3 + 四防 → 血条立刻画出 11 件（环形 + 四角四防，含 AC 盾）");
     }
   }
   {
@@ -1356,7 +1344,7 @@ run(OBR, stubBuilder("CURVE"), stubBuilder("SHAPE"), stubBuilder("TEXT"));
       const first = lastHistOpen();
       if (!first) bad("点「记录窗口」（toggle）没有 OBR.popover.open 出 dice-history.html");
       else if (first.id !== HIST_ID) bad("记录窗口的 popover id 不对：" + first.id);
-      else if (first.width !== 380 || first.height !== 380) bad("记录窗口尺寸不是 380×380：" + first.width + "×" + first.height);
+      else if (first.width !== 300 || first.height !== 240) bad("记录窗口尺寸不是 300×240：" + first.width + "×" + first.height);
       else if (first.anchorReference !== "POSITION" || first.hidePaper !== true || first.disableClickAway !== true)
         bad("记录窗口没有 POSITION / hidePaper / disableClickAway：" + JSON.stringify([first.anchorReference, first.hidePaper, first.disableClickAway]));
       else if (!first.url.endsWith("/dice-history.html")) bad("记录窗口的 url 不对：" + first.url);
@@ -1420,6 +1408,128 @@ run(OBR, stubBuilder("CURVE"), stubBuilder("SHAPE"), stubBuilder("TEXT"));
       if (!st4 || st4.open !== false) bad("开窗失败后没有把状态广播成 open:false：" + JSON.stringify(st4));
       else ok("开窗失败后状态回到 open:false（按钮不会假装开着）");
     }
+  }
+
+  /* =======================================================================
+   * v1.7.7：选中即弹 —— 未绑定卡但有血条 → 血条编辑窗（三分支 / 不重复弹 / 右键「编辑血条」/ 锁只读）
+   * ---------------------------------------------------------------------
+   * 用户原话：「血条插件你没做点击跳出修改栏么」—— 以前只有右键「添加血条组件」能开编辑窗。
+   * ===================================================================== */
+  {
+    const HP_A = "com.4enext-owlbear/hp";
+    const HP_BAR_A = "com.4enext-owlbear/hp-bar/enabled";
+    const AUTO_ID = "tok-auto-hp";
+    const FLAG_ID = "tok-auto-flag";
+    const PLAIN_ID = "tok-auto-plain";
+    const mk = (id, name, metadata) => ({
+      id, type: "IMAGE", name, layer: "CHARACTER", createdUserId: "user-gm",
+      position: { x: 0, y: 0 }, scale: { x: 1, y: 1 }, metadata: metadata || {}
+    });
+    const autoTok = mk(AUTO_ID, "有血条的杂兵", {
+      [HP_A]: { cur: 50, max: 100, defenses: { ac: 20, fort: 20, reflex: 20, will: 20 }, updatedAt: 7 }
+    });
+    const flagTok = mk(FLAG_ID, "只开了开关的杂兵", { [HP_BAR_A]: true });
+    const plainTok = mk(PLAIN_ID, "没血条的杂兵");
+    for (const t of [autoTok, flagTok, plainTok]) {
+      sceneItems.push(t);
+      boundsFor[t.id] = { min: { x: 0, y: 0 }, max: { x: 150, y: 150 }, center: { x: 75, y: 75 }, width: 150, height: 150 };
+    }
+    const hpOpens = () => all("popover.open").map((c) => c[1]).filter((c) => /hp-edit\.html/.test(String(c.url)));
+    const infoOpens = () => all("popover.open").map((c) => c[1]).filter((c) => /\/info\.html/.test(String(c.url)));
+    const select = async (ids) => {
+      selection = ids.slice();
+      for (const cb of playerChangeCbs) cb();
+      await sleep(260);
+    };
+
+    /* ① 没绑定卡、也没有血条 → 什么都不弹（老行为） */
+    let h0 = hpOpens().length;
+    let i0 = infoOpens().length;
+    await select([PLAIN_ID]);
+    if (hpOpens().length !== h0) bad("选中「没卡也没血条」的 token 居然弹了血条编辑窗");
+    else if (infoOpens().length !== i0) bad("选中「没卡也没血条」的 token 居然弹了速览");
+    else ok("v1.7.7 分支③：没绑定卡、也没血条 → 什么都不弹（老行为）");
+
+    /* ② 没绑定卡 + 有 hp 数据 → 弹血条编辑窗 */
+    h0 = hpOpens().length;
+    await select([AUTO_ID]);
+    let win = hpOpens()[hpOpens().length - 1];
+    if (hpOpens().length === h0) bad("选中「没绑定卡但有血条数据」的 token 没有弹血条编辑窗（用户要的就是这个入口）");
+    else if (!win || win.id !== "com.4enext-owlbear/hp-edit") bad("自动弹出的 popover id 不是 /hp-edit：" + (win && win.id));
+    else if (!new RegExp("hp-edit\\.html\\?item=" + AUTO_ID + "&session=").test(win.url)) bad("自动弹的编辑窗 url 没带这枚 token：" + win.url);
+    else if (win.width !== 340 || win.height !== 150) bad("自动弹的编辑窗不是 340×150：" + win.width + "×" + win.height);
+    else ok("v1.7.7 分支②：没绑定卡 + 有血条数据 → 选中即弹 /hp-edit（340×150，url 带 item + session）");
+
+    /* ③ 只有开关（hp-bar/enabled = true）、没有 hp 数值 → 也算有血条 */
+    h0 = hpOpens().length;
+    await select([FLAG_ID]);
+    if (hpOpens().length === h0) bad("选中「只开了血条组件开关」的 token 没有弹编辑窗");
+    else ok("v1.7.7 分支②（开关）：hp-bar/enabled = true 也算「有血条」→ 自动弹编辑窗");
+
+    /* ④ 同一个 token 只自动弹一次：player / scene 事件不再弹（否则关掉又被弹回来） */
+    h0 = hpOpens().length;
+    for (const cb of playerChangeCbs) cb();
+    await sleep(240);
+    for (const cb of itemsChangeCbs) cb(sceneItems);
+    await sleep(320);
+    if (hpOpens().length !== h0) bad("同一个 token 反复触发事件时又弹了 " + (hpOpens().length - h0) + " 次编辑窗（关不掉）");
+    else ok("v1.7.7：同一个 token 只自动弹一次（player / scene 事件 / 保存后重画都不会再弹）");
+
+    /* ⑤ 已绑定卡 → 只弹速览（三分支的第一支不能被破坏） */
+    h0 = hpOpens().length;
+    i0 = infoOpens().length;
+    await select([TOKEN_ID]);
+    const infoWin = infoOpens()[infoOpens().length - 1];
+    if (infoOpens().length === i0) bad("选中已绑定卡的 token 没有弹速览（v1.2 的老行为被破坏了）");
+    else if (!infoWin || !/\/info\.html\?item=tok-1&card=c-1$/.test(infoWin.url)) bad("速览的 url 不对：" + (infoWin && infoWin.url));
+    else if (hpOpens().length !== h0) bad("已绑定卡的 token 同时也弹了血条编辑窗（应该只弹速览）");
+    else ok("v1.7.7 分支①：已绑定卡 → 只弹速览 /info，不弹 /hp-edit（老行为不变）");
+
+    /* ⑥ 多选 → 什么都不弹（不变） */
+    h0 = hpOpens().length;
+    i0 = infoOpens().length;
+    await select([AUTO_ID, TOKEN_ID]);
+    if (hpOpens().length !== h0 || infoOpens().length !== i0) bad("多选 token 时弹窗了（应该什么都不弹）");
+    else ok("v1.7.7：多选 → 什么都不弹（不变）");
+
+    /* ⑦ 取消选中会清掉「弹过」的记忆 → 重新选中会再弹一次 */
+    await select([]);
+    h0 = hpOpens().length;
+    await select([AUTO_ID]);
+    if (hpOpens().length === h0) bad("取消选中再重新选中同一枚 token 时没有重新弹编辑窗（记忆应该清掉）");
+    else ok("v1.7.7：取消选中后记忆清空 → 重新选中同一枚 token 会再弹一次");
+
+    /* ⑧ 右键「编辑血条」：不看选中，直接开这枚 token 的编辑窗，且**不改开关** */
+    const editMenu = all("contextMenu.create").map((c) => c[1]).filter((m) => m.id === "com.4enext-owlbear/hpbar-edit")[0];
+    if (!editMenu) bad("右键菜单没有「编辑血条」（关掉自动弹的窗之后就没入口再改了）");
+    else if (!editMenu.icons[0] || editMenu.icons[0].label !== "编辑血条") bad("「编辑血条」文案不对：" + JSON.stringify(editMenu.icons[0] && editMenu.icons[0].label));
+    else if (!editMenu.icons[0].filter.some || editMenu.icons[0].filter.some[0].value !== true) {
+      bad("「编辑血条」的 filter 不对（应该只在 hp-bar/enabled === true 时出现）");
+    } else {
+      selection = [];
+      h0 = hpOpens().length;
+      const beforeMeta = JSON.stringify(flagTok.metadata);
+      await editMenu.onClick({ items: [flagTok] });
+      await sleep(180);
+      const mWin = hpOpens()[hpOpens().length - 1];
+      if (hpOpens().length === h0) bad("右键「编辑血条」没有打开编辑窗");
+      else if (!mWin || !new RegExp("\\?item=" + FLAG_ID + "&session=").test(mWin.url)) bad("「编辑血条」开错 token 了：" + (mWin && mWin.url));
+      else if (JSON.stringify(flagTok.metadata) !== beforeMeta) bad("「编辑血条」偷偷改了 token 元数据（它只该开窗）");
+      else ok("右键「编辑血条」→ 不看选中直接打开这枚 token 的编辑窗，且不改开关");
+    }
+
+    /* ⑨ Boss 锁（hp.locked）→ 非城主的编辑窗只读（藏保存 + 提示「已锁定」） */
+    const coreSrcSplit = fs.readFileSync(path.join(ROOT, "assets", "hp-edit-core.js"), "utf8");
+    const pageSrcSplit = fs.readFileSync(path.join(ROOT, "assets", "hp-edit-page.js"), "utf8");
+    if (coreSrcSplit.indexOf("export function hpEditReadOnly(") < 0 || typeof HPE.hpEditReadOnly !== "function") {
+      bad("hp-edit-core 没有 hpEditReadOnly（Boss 锁定时做不了只读）");
+    } else if (!HPE.hpEditReadOnly({ locked: true }, "PLAYER")) bad("locked 时玩家的编辑窗没有只读");
+    else if (HPE.hpEditReadOnly({ locked: false }, "PLAYER")) bad("没锁（locked:false）时玩家也被锁成只读（锁就没意义了）");
+    else if (HPE.hpEditReadOnly({ locked: true }, "GM")) bad("城主被 locked 挡成只读（用户点开编辑窗就改不了）");
+    else if (pageSrcSplit.indexOf("hpEditReadOnly(") < 0 || pageSrcSplit.indexOf("已锁定") < 0 ||
+      pageSrcSplit.indexOf("setEditable(editable)") < 0) {
+      bad("编辑窗页面没有接 hpEditReadOnly / 没有「已锁定」提示（只读不会生效）");
+    } else ok("Boss 锁：locked → 非城主只读（藏保存 + 提示「已锁定」）、城主照常能改；页面真的接了这条判定");
   }
 
   finish();

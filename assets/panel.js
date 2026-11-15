@@ -5,8 +5,9 @@
 // 先攻在 initiative.html、骰子在 dice.html、速览在 info.html —— 各自独立窗口、独立入口，可以同时打开。
 //
 // 本轮另外两条硬要求（见 _v131-brief.md）：
-//   · 每个按钮都要有反馈：成功 / 失败都 feedback()（OBR.notification.show + 窗口内状态行），
-//     绝不允许「点了一下什么都没发生」；
+//   · 每个按钮都要有反馈：**失败 / 警告**走 feedback()（ERROR / WARNING 才真的出声），
+//     绝不允许「点了一下什么都没发生」；v1.7.8 起成功 / 普通提示不再弹（用户嫌提示太多），
+//     成功的反馈就是界面本身（列表刷新 / 卡片消失 / 绑定值变了）；
 //   · 后台在线检测：ping 不通就在顶部显示「后台未连接，点这里重试」，并把交互元素置灰
 //     （data-bg 硬依赖 → 真 disabled；data-bg-soft 软依赖 → 只弱化外观，因为导入 / 绑定其实
 //      只写房间数据与 token 元数据，不靠后台脚本）。
@@ -179,8 +180,9 @@ if (viewEl) {
       });
       if (res.state) liveState = res.state;
       if (res.scope) liveScope = res.scope;
-      if (res.message) feedback(res.message, res.tone || "INFO");
-      else feedback("已更新资源标记", "INFO");
+      /* v1.7.8：成功不再弹「已更新资源标记」（点一下变灰 / 恢复就是反馈）；
+       * 只有 applyAction 报的 WARNING（写不进房间数据 → 降级本机）才出声。 */
+      if (res.message && res.tone === "WARNING") feedback(res.message, "WARNING");
       await renderView();
     } catch (e) {
       feedback("操作失败：" + (e && e.message ? e.message : e), "ERROR");
@@ -243,7 +245,7 @@ async function importText(text, label) {
   const lastName = String(last && last.char ? last.char.name : "").trim();
   const target = res.cards.filter(function (c) { return String(c.name).trim() === lastName; })[0];
   await refresh(target ? target.id : "", res.cards);
-  feedback("导入成功：新增 " + res.added + " 张，更新 " + res.updated + " 张" + (label ? "（" + label + "）" : ""), "SUCCESS");
+  /* v1.7.8：导入成功不再弹通知（卡片列表立刻刷新，就是反馈）。 */
 }
 
 async function importFiles(fileList) {
@@ -278,13 +280,12 @@ async function removeCard(id) {
     return;
   }
   if (!window.confirm("从房间删除「" + card.name + "」？已绑定它的 token 会显示为未绑定。")) {
-    feedback("已取消：没有删除任何卡", "INFO");
-    return;
+    return; /* v1.7.8：取消不再弹「已取消」（窗口自己就关掉了） */
   }
   const next = cards.filter(function (c) { return c.id !== id; });
   if (!(await saveCards(next))) return;
   await refresh("", next);
-  feedback("已删除「" + card.name + "」", "SUCCESS");
+  /* v1.7.8：删除成功不再弹通知（这张卡立刻从列表里消失）。 */
 }
 
 async function bindCurrent() {
@@ -299,7 +300,7 @@ async function bindCurrent() {
   }
   try {
     await bindToken(selectedToken.id, card.id);
-    feedback("已把「" + card.name + "」绑定到该 token（先攻加值已同步）", "SUCCESS");
+    /* v1.7.8：「已把…绑定到该 token」不再弹（token 上的绑定 / 先攻加值立刻生效）。 */
   } catch (e) {
     console.error(e);
     feedback("绑定失败：可能没有这个 token 的修改权限（" + (e && e.message ? e.message : e) + "）", "ERROR");
@@ -353,7 +354,8 @@ if (closeBtn) {
   closeBtn.addEventListener("click", function () {
     /* 面板可能以 popover 打开（工具栏 / 浮动按钮），也可能以 action 弹窗打开（左上角图标），
        两种都试一遍；关不掉也不影响（用户可以用 Esc / 再点一次图标）。 */
-    closeSelf(ID_PANEL);
+    /* v1.7.10：✕ 双保险 —— popover.close(正确的 panel id) + modal.close + 后台 {op:"close-win"}。 */
+    closeSelf(ID_PANEL, "panel");
     try {
       const p = OBR.action.close();
       if (p && typeof p.catch === "function") p.catch(function () { /* 不是 action 弹窗时忽略 */ });

@@ -447,6 +447,8 @@ domMap.diceRow.querySelectorAll = (sel) => (sel === "[data-die]" ? diceButtons :
 const sentRolls = [];
 const sentClears = [];
 const sentCmds = [];
+/* v1.7.10：窗口 ✕ 的后台兜底频道（closeSelf 发 {op:"close-win", name}）。 */
+const sentCloseWins = [];
 const modalOpens = [];
 /* v1.7.4：记录窗口 —— 页面兜底会自己 OBR.popover.open，所以要记下来；
  * 还要能收到 CH_DICE_HIST_STATE（后台回执），以及看通知有没有真的弹出来。 */
@@ -494,6 +496,7 @@ const fakeOBR = {
       if (ch.slice(-5) === "/roll") sentRolls.push(data);
       else if (ch.slice(-11) === "/roll-clear") sentClears.push(data);
       else if (ch.slice(-14) === "/dice-hist-cmd") sentCmds.push(data);
+    else if (ch.slice(-10) === "/win-close") sentCloseWins.push(data);
       return Promise.resolve();
     },
     onMessage(channel, cb) {
@@ -617,19 +620,24 @@ else {
           cfg.anchorPosition && typeof cfg.anchorPosition.left === "number" && typeof cfg.anchorPosition.top === "number" &&
           cfg.anchorOrigin && cfg.anchorOrigin.horizontal === "LEFT" && cfg.anchorOrigin.vertical === "TOP" &&
           cfg.transformOrigin && cfg.transformOrigin.horizontal === "LEFT" && cfg.transformOrigin.vertical === "TOP" &&
-          cfg.hidePaper === false && cfg.disableClickAway === false &&
-          cfg.width === 380 && cfg.height === 380)
-          ok("点「记录窗口」→ **本页直接** OBR.popover.open(dice-history.html, 380×380, POSITION 左上角, hidePaper:false, disableClickAway:false)，不再等后台回执");
+          cfg.hidePaper === true && cfg.disableClickAway === false &&
+          cfg.width === 300 && cfg.height === 240)
+          ok("点「记录窗口」→ **本页直接** OBR.popover.open(dice-history.html, 300×240, POSITION 左上角, hidePaper:true 透明外壳, disableClickAway:false)");
+        else if (cfg && cfg.width === 300 && cfg.height === 240 && cfg.hidePaper !== true)
+          bad("没有直接开记录窗口（hidePaper 应为 true）：" + JSON.stringify(cfg));
         else bad("没有直接开记录窗口：" + JSON.stringify(cfg));
         if (domMap.btnHist.textContent === "关闭记录窗口" && domMap.btnHist.classList.contains("on"))
           ok("开出来之后按钮文字变「关闭记录窗口」（用户看得见的反馈）");
         else bad("开窗后按钮没有变成「关闭记录窗口」：" + domMap.btnHist.textContent);
+        /* [v1.7.8] 反向断言：开窗成功**不再**弹「记录窗口已打开」（窗口就在眼前、按钮文字也变了），
+         * 通知中心里不该再出现 SUCCESS / INFO / DEFAULT 这类提示。 */
         const okNotes = notesShown.filter((n) => String(n.msg).indexOf("记录窗口已打开") >= 0);
-        if (okNotes.length && okNotes[okNotes.length - 1].variant === "SUCCESS")
-          ok("开窗成功有 SUCCESS 通知（不是静默）");
-        else bad("开窗成功没有任何提示：" + JSON.stringify(notesShown.slice(-2)));
+        const softNotes = notesShown.filter((n) => n.variant !== "ERROR" && n.variant !== "WARNING");
+        if (!okNotes.length && !softNotes.length)
+          ok("开窗成功不弹通知（v1.7.8：成功类通知为 0，按钮变「关闭记录窗口」就是反馈）");
+        else bad("开窗成功还在弹通知：" + JSON.stringify(notesShown.slice(-2)));
         const adopt = sentCmds.slice(cmdsBefore).filter((c) => c && c.op === "adopt");
-        if (adopt.length === 1 && typeof adopt[0].left === "number" && adopt[0].width === 380)
+        if (adopt.length === 1 && typeof adopt[0].left === "number" && adopt[0].width === 300)
           ok("开窗成功后把几何 { op:\"adopt\", left, top, width, height } 发给后台（拖动 / 记位置照旧）");
         else bad("开窗后没有 adopt 几何：" + JSON.stringify(sentCmds.slice(cmdsBefore)));
 
@@ -642,9 +650,9 @@ else {
           domMap.btnHist.textContent === "记录窗口" && !domMap.btnHist.classList.contains("on"))
           ok("开着的状态下再点 → OBR.popover.close(记录窗口)，按钮回到「记录窗口」");
         else bad("关闭记录窗口失败：" + domMap.btnHist.textContent + " / closes+" + (popoverCloses.length - closesBefore));
-        if (sentCmds.slice(cmdsBefore2).some((c) => c && c.op === "close"))
-          ok("关闭时也通知后台（{ op:\"close\" }）→ 后台的 winOpen / 状态不会跟丢");
-        else bad("关闭时没有通知后台");
+        if (sentCloseWins.slice(-1).some((c) => c && c.op === "close-win" && c.name === "diceHistory"))
+          ok("关闭时也通知后台（{ op:\"close-win\", name:\"diceHistory\" }）→ 后台的 winOpen / 状态不会跟丢");
+        else bad("关闭时没有通知后台：" + JSON.stringify(sentCloseWins.slice(-2)));
 
         /* ③ 直开失败（宿主拒绝）→ ERROR 通知（用户要求「open 抛错必须看得见」）+ 请后台 force-open */
         const cmdsBefore3 = sentCmds.length;

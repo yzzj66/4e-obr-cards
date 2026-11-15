@@ -706,8 +706,8 @@ body.bg-off .init-act, body.bg-off .btn:disabled { cursor: not-allowed; }
 
 /* ---------- v1.4.0：先攻条（top-center 的条，规格 §3 / §4） ----------
  * 尺寸全部照抄规格表（dev/check.mjs 会用正则断言这里的常数）：
- *   折叠 120×40 / 展开 720×129|139|159；卡片 56×80，当前回合 100 高（向下凸出）；
- *   头像占 80%，底部合计占 24%，血条 4px 贴在合计上面，掷骰按钮上移 8px 藏在卡下面。 */
+ *   折叠 120×40 / 展开 720×170|180|200（v1.7.10 加高）；卡片 56×80，当前回合 100 高；
+ *   头像占 80%，底部合计占 24%，血条 4px 贴在合计上面，掷骰按钮上移 8px（v1.7.10 只留一枚 d20）。 */
 body.strip-page { background: transparent; padding: 0; overflow: hidden; height: 100vh; }
 /* v1.7.3：先攻条外壳**透明**（用户：「先攻条背景设置成透明的」，挡住地图了）。
  * 本文件顶部那条 html{background:var(--bg)} 会整块盖住地图（与 v1.7.1 动画页同一个坑），
@@ -886,9 +886,7 @@ body.sorting, body.sorting .initiative-item { cursor: grabbing; }
   font-size: 9px; color: #cfd9e3; background: #1b242e; cursor: pointer;
 }
 .roll-btn:hover { color: #fff; }
-.roll-btn.dis { background: #5b1f1f; }
 .roll-btn.normal { background: #2a3542; }
-.roll-btn.adv { background: #1f4a2c; }
 
 .end-turn-btn {
   position: absolute; top: 100%; left: 0; right: 0; margin-top: 3px; height: 18px; z-index: 4;
@@ -1209,3 +1207,134 @@ body.hpe-page { padding: 6px; overflow: hidden; height: 100vh; }
 }
 .hpe-btn { padding: 3px 10px; font-size: 12px; border-radius: 7px; }
 
+
+
+/* =====================================================================
+ * v1.7.10：先攻条 = 全屏透明 modal（真透明）+ 加高不裁切 + 照抄 Full Suite 卡片
+ * =====================================================================
+ * 用户三次反馈：① 先攻条整条仍是深色矩形（popover 的 hidePaper 在真机无效）；
+ * ② 卡片被裁掉下半截；③ 卡片下面应该是**一枚** d20（4E 没有优势 / 劣势）。
+ *
+ * 外壳方案：background.core.js 的 stripModalOptions() 用
+ *   OBR.modal.open({ fullScreen, hideBackdrop, hidePaper, disablePointerEvents })
+ * modal 没有 width/height / anchorPosition → 条的位置与尺寸由 initiative-page.js 的
+ * layoutStrip() 写 inline style；本段只负责「页面全透明、只有条本身接收鼠标」：
+ *   · html / body pointer-events:none（空白处让鼠标透到地图）；
+ *   · .strip-root 不接收事件、.strip 自己 pointer-events:auto（按钮 / 输入框照常点）。
+ * 卡片几何逐项照抄 Full Suite：
+ *   56×80 / .active 100 高 / .item-img 80% / img 125% top −12.5% / .item-count 24% /
+ *   .item-hp-track 4px bottom 24% / .roll-buttons top 100% margin-top −8。
+ */
+html.strip-html { color-scheme: normal !important; }
+html.strip-html, html.strip-html body.strip-page { pointer-events: none; }
+html.strip-html body.strip-page {
+  margin: 0; padding: 0; height: 100vh; overflow: hidden; color-scheme: normal;
+}
+html.strip-html body.strip-page .strip-root {
+  position: fixed; inset: 0; height: 100vh; pointer-events: none;
+}
+html.strip-html body.strip-page .strip {
+  position: fixed; left: 0; top: 0;
+  width: 720px; height: 170px;
+  padding: 6px 8px 8px; gap: 6px;
+  pointer-events: auto;   /* 只有条本身接收鼠标，其余空白处透给地图 */
+  box-sizing: border-box;
+}
+html.strip-html body.strip-page .strip.collapsed {
+  width: 120px; height: 40px; padding: 4px 6px;
+}
+html.strip-html body.strip-page .strip-ctl { min-height: 36px; }
+.strip-status { max-width: 240px; }
+
+/* 状态行「阶段 · 名字 · 加值 [ ]」—— 与卡片左上角共用 onBonusCommit() */
+.strip-bonus-wrap { flex: 0 0 auto; display: inline-flex; align-items: center; gap: 4px; }
+.strip-bonus-lab { font-size: 10px; color: #93a1b0; white-space: nowrap; }
+.strip-bonus {
+  width: 48px; height: 20px; padding: 0 4px; font-size: 11px; line-height: 18px;
+  text-align: center; border-radius: 5px; outline: none;
+  border: 1px solid #2b3746; background: rgba(11, 15, 20, .72); color: #e6edf3;
+  font-family: ui-monospace, "Cascadia Code", Consolas, monospace;
+  font-variant-numeric: tabular-nums;
+}
+.strip-bonus:focus { border-color: #58a6ff; background: rgba(11, 15, 20, .92); }
+.strip-bonus.static { display: inline-flex; align-items: center; justify-content: center; }
+
+/* 卡片左上角加值 = 可编辑输入框（有卡自动填卡值 / 无卡可手填） */
+.item-mod.item-mod-input {
+  width: 30px; height: 16px; padding: 0 2px; text-align: center; cursor: text;
+  border: 1px solid rgba(255, 255, 255, .22); outline: none;
+  font-variant-numeric: tabular-nums;
+}
+/* 输入框要能选中文字 / 正常触摸（卡片本体是 user-select:none / touch-action:none）。 */
+.item-mod-input, .strip-bonus {
+  user-select: text; -webkit-user-select: text; touch-action: auto; pointer-events: auto;
+}
+.item-mod.item-mod-input:focus { border-color: #58a6ff; background: rgba(11, 15, 20, .92); }
+
+/* 卡片区：给「卡片 80 + 底部 d20 16」留高度，不裁切 */
+.strip-items { min-height: 96px; padding: 0 4px 0; }
+
+/* 卡片下方**只留一枚** d20（4E 没有优势 / 劣势）：圆形、居中、上移 8px */
+.roll-buttons { justify-content: center; z-index: 3; }
+.roll-btn.normal {
+  flex: 0 0 auto; width: 24px; height: 24px; padding: 0;
+  border: 1px solid #2b3746; border-radius: 50%;
+  font-size: 10px; line-height: 1; color: #cfd9e3; background: #2a3542;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, .45);
+}
+.roll-btn.normal:hover { color: #fff; background: #33445a; }
+
+/* =====================================================================
+ * v1.7.10：骰子记录窗口 = 半透明浮层（300×240，只显示 4 条）
+ * =====================================================================
+ * 与先攻条保持同一视觉语言：外壳透明（popover hidePaper:true）→ 页面自己画一张
+ * rgba(15,20,28,.86) + 8px 模糊的深色圆角卡片（地图能透出来），
+ * 行高 26 / 字号 11，只显示「名字 · 公式 + 点数 + 时间」；「展开全部」才把窗口调高。 */
+html:has(body.dh-page), html.dh-html { background: transparent !important; color-scheme: normal !important; }
+body.dh-page {
+  margin: 0; padding: 0; height: 100vh; overflow: hidden;
+  background: transparent !important; color-scheme: normal;
+}
+body.dh-page .win {
+  height: 100vh; max-height: 100vh;
+  background: rgba(15, 20, 28, .86) !important;
+  backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px);
+  border: 1px solid rgba(255, 255, 255, .12); border-radius: 12px;
+  box-shadow: 0 10px 28px rgba(0, 0, 0, .5); overflow: hidden;
+}
+body.dh-page .win-head { padding: 5px 8px; background: transparent !important; border-bottom: 1px solid rgba(255, 255, 255, .08); }
+body.dh-page .win-head .t { font-size: 11.5px; line-height: 1.3; }
+body.dh-page .win-head .t small { display: none; }
+body.dh-page .win-body.dh-wrap { padding: 4px 6px 4px; gap: 4px; background: transparent !important; }
+body.dh-page .dh-bar { gap: 6px; }
+body.dh-page .dh-meta { font-size: 10.5px; }
+body.dh-page .dh-toggle { height: 20px; padding: 0 7px; font-size: 10.5px; }
+body.dh-page .dice-hist { gap: 0; }
+body.dh-page .dh-row, body.dh-page .hist-row {
+  height: 26px; min-height: 26px; padding: 0 4px;
+  display: flex; align-items: center;
+  border: 0; border-bottom: 1px solid rgba(255, 255, 255, .06);
+  border-radius: 0; background: transparent;
+}
+body.dh-page .hist-top { width: 100%; min-width: 0; gap: 5px; align-items: center; font-size: 11px; }
+body.dh-page .hist-who { font-size: 11px; max-width: 78px; overflow: hidden; text-overflow: ellipsis; }
+body.dh-page .hist-expr {
+  flex: 1 1 auto; min-width: 0; font-size: 10.5px; color: #93a1b0;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  font-family: ui-monospace, "Cascadia Code", Consolas, monospace;
+}
+body.dh-page .hist-total { margin-left: auto; font-size: 12px; line-height: 1; }
+body.dh-page .hist-time { font-size: 10px; }
+body.dh-page .hist-chips { display: none; }
+body.dh-page .win-foot { padding: 2px 8px 3px; font-size: 9.5px; }
+body.dh-page .dh-list.compact .dh-row:nth-child(n + 5) { display: none; }
+
+/* v1.7.10：先攻列表窗口里「加值」也可编辑（与条上的输入框同一套规则）。 */
+.init-bonus-input {
+  width: 46px; height: 22px; padding: 0 3px; text-align: center;
+  border-radius: 5px; border: 1px solid #2b3746; outline: none;
+  background: rgba(11, 15, 20, .72); color: #e6edf3;
+  font-family: ui-monospace, "Cascadia Code", Consolas, monospace;
+  font-size: 12px; font-variant-numeric: tabular-nums;
+}
+.init-bonus-input:focus { border-color: #58a6ff; background: rgba(11, 15, 20, .92); }

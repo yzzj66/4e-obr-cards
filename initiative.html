@@ -25,8 +25,8 @@
 </head>
 <body class="win-page">
 <!-- v1.4.0：同一张页面两种形态（由 assets/initiative-page.js 按 ?view= 决定）
-     · 先攻条（默认，popover id = /initiative-strip）：屏幕顶部 720×(129|139|159)，可折叠成 120×40；
-       v1.7.3 起**外壳透明 + 常驻**（进入房间按设置自动显示，点地图不会关；「−」折叠 /「✕」真正关闭）；
+     · 先攻条（默认，modal id = /initiative-strip）：全屏透明 modal 里画屏幕顶部 720×(170|180|200)，可折叠成 120×40；
+       v1.7.3 起常驻、v1.7.10 起是全屏透明 modal（空白处鼠标透给地图；「−」折叠 /「✕」真正关闭）；
      · 列表窗口（?view=list，popover id = /initiative-window）：v1.3.x 的管理视图（重掷 / 同步加值 / 删除）。
      先攻条上的「≡」广播 CH_STRIP_CMD {op:"list"}，由后台打开列表窗口。 -->
 <div class="strip-root" id="strip-root" hidden></div>

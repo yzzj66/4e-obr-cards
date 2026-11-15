@@ -59,9 +59,12 @@ export const STRIP_COLLAPSED_W = 120;
 export const STRIP_COLLAPSED_H = 40;
 export const STRIP_EXPANDED_W = 720;
 export const STRIP_MIN_EXPANDED_W = 410;
-export const STRIP_H_IDLE = 129;
-export const STRIP_H_PREPARING = 139;
-export const STRIP_H_COMBAT = 159;
+/* v1.7.10：展开高度按**内容**算（用户截图：卡片下半截被裁掉）——
+ * 控制行 36 + 卡片 80（当前回合 100）+ 卡片下方掷骰按钮行 24（上移 8 → 露出 16）+ 上下 padding 16。
+ * 三档都 ≥ 170：idle 170 / preparing 180 / combat 200（当前回合卡多 20 高）。 */
+export const STRIP_H_IDLE = 170;
+export const STRIP_H_PREPARING = 180;
+export const STRIP_H_COMBAT = 200;
 export const STRIP_TOP_OFFSET = 45;
 export const STRIP_SIDE_MARGIN = 16;
 /* 卡片尺寸（规格 §3.5，ui.css 里必须一致） */
@@ -87,7 +90,7 @@ export function normalizePhase(v) {
   return PHASES.indexOf(s) >= 0 ? s : PHASE_IDLE;
 }
 
-/** 先攻条高度：按战斗状态三档（规格 §3.1，129 / 139 / 159）。 */
+/** 先攻条高度：按战斗状态三档（v1.7.10 起 170 / 180 / 200，保证卡片与掷骰按钮不被裁切）。 */
 export function stripHeightFor(phase) {
   const p = normalizePhase(phase);
   if (p === PHASE_COMBAT) return STRIP_H_COMBAT;
@@ -99,7 +102,7 @@ export function stripHeightFor(phase) {
  * 先攻条尺寸（v1.6.2：**常量**，不再按内容测量）。
  *
  * 折叠 → 120×40；展开 → **固定 720**，只有视口太窄（视口 −32 < 720）时才跟着缩，
- * 下限 410；高度按 phase 三档（129 / 139 / 159）。
+ * 下限 410；高度按 phase 三档（170 / 180 / 200，v1.7.10 加高）。
  * 投骰后点数 / 名字 / 状态文字变长变短都**不会**改变这两个数字 ——
  * 内容再长由 .strip-items 自己横向滚动（ui.css：overflow-x: auto）。
  *
@@ -489,6 +492,42 @@ export function bonusOfItem(item, cards) {
   return 0;
 }
 
+/**
+ * v1.7.10：谁能改这条的先攻加值 —— GM 任意；玩家只能改**自己 token** 的条目。
+ * 归属优先用 token 上的活值（itemsMap[tokenId].ownerId，GM 用 Give Ownership 改过也跟得上），
+ * 拿不到时退回条目里存的 ownerId。
+ */
+export function canEditBonus(entry, opts) {
+  if (!entry) return false;
+  opts = opts || {};
+  if (opts.role === "GM") return true;
+  const pid = String(opts.playerId || "");
+  if (!pid) return false;
+  const info = (opts.items || {})[entry.tokenId] || null;
+  const owner = info && info.ownerId ? String(info.ownerId) : String(entry.ownerId || "");
+  return owner === pid;
+}
+
+/**
+ * v1.7.10：改一条的先攻加值（卡片左上角的输入框与状态行的「加值」共用这一个函数）。
+ *   · 合计 = d20 + 加值（已经掷过的条目立刻重算；没掷过的保持 init，只影响下次掷）；
+ *   · 改完按「合计 DESC → tiebreak ASC」重排（与拖拽 / 重掷同一套）；
+ *   · 加值范围与 normalizeInitiative 一致（-99 … 999），不抛错。
+ */
+export function setEntryBonus(state, tokenId, bonus) {
+  const out = normalizeInitiative(clone(state));
+  const e = out.entries.filter((x) => x.tokenId === tokenId)[0];
+  if (!e) return out;
+  const b = clamp(n(bonus, 0), INIT_MIN, INIT_MAX);
+  if (b === e.bonus) return out;
+  e.bonus = b;
+  if (e.d20 !== null && e.d20 !== undefined) e.init = clamp(e.d20 + b, INIT_MIN, INIT_MAX);
+  e.updatedAt = Date.now();
+  out.entries = sortEntries(out.entries);
+  out.updatedAt = Date.now();
+  return out;
+}
+
 /** 右键「加入先攻」用：从 token 生成一条先攻条目（默认自动掷 d20 + 加值）。 */
 export function entryFromItem(item, cards, hidden, rng, mode) {
   const cardId = item && item.metadata ? item.metadata[KEY_BIND] : null;
@@ -726,15 +765,29 @@ export function tokenInfoMap(items) {
  * 渲染：先攻条（v1.4.0，规格 §3.5 / §4）
  * ------------------------------------------------------------------------- */
 
+/** v1.7.10：卡片下方只留**一枚**居中 d20 —— 4E 没有优势 / 劣势（删掉 − / ＋ 两枚）。
+ *  几何照抄 Full Suite：.roll-buttons { top:100%; margin-top:-8 }，按钮上沿压在卡片下沿 8px。 */
 function stripRollButtons(e, isGM, phase) {
   if (!isGM || (phase !== PHASE_PREPARING && phase !== PHASE_COMBAT)) return "";
-  const t = esc(e.tokenId);
-  const tip = esc("先攻 " + signed(e.bonus));
   return '<div class="roll-buttons">' +
-    '<button class="roll-btn dis" data-roll="dis" data-token="' + t + '" title="劣势 2d20 取低 · ' + tip + '">−</button>' +
-    '<button class="roll-btn normal" data-roll="normal" data-token="' + t + '" title="掷 d20 · ' + tip + '">d20</button>' +
-    '<button class="roll-btn adv" data-roll="adv" data-token="' + t + '" title="优势 2d20 取高 · ' + tip + '">＋</button>' +
+    '<button class="roll-btn normal" data-roll="normal" data-token="' + esc(e.tokenId) +
+    '" title="掷先攻 d20 · 先攻 ' + esc(signed(e.bonus)) + '">d20</button>' +
     "</div>";
+}
+
+/**
+ * v1.7.10：卡片左上角的先攻加值 —— **可编辑输入框**（与状态行「加值」共用 onBonusCommit）。
+ *   · 有绑定角色卡 / 无卡都显示输入框：值就是 entries[].bonus（有卡在加入时已自动填卡值，无卡默认 0）；
+ *   · 只有 GM 或「自己的 token」才渲染 input，别人的条目是只读数字（权限见 canEditBonus）；
+ *   · 回车 / 失焦保存，页面再按合计重排（不进角色卡，只写房间数据 entries[].bonus）。
+ */
+function stripBonusField(e, opts) {
+  if (!canEditBonus(e, opts)) {
+    return '<span class="item-mod" title="先攻加值 ' + esc(signed(e.bonus)) + '">' + signed(e.bonus) + "</span>";
+  }
+  return '<input class="item-mod item-mod-input" data-bonus-input="' + esc(e.tokenId) +
+    '" value="' + esc(String(n(e.bonus, 0))) + '" inputmode="numeric" autocomplete="off" spellcheck="false"' +
+    ' title="先攻加值：回车 / 点别处保存（现在 ' + esc(signed(e.bonus)) + '）">';
 }
 
 function stripCard(e, st, opts) {
@@ -774,7 +827,7 @@ function stripCard(e, st, opts) {
 
   const title = e.name + " · 先攻 " + (preparing ? "待掷" : total) + (e.hidden ? "（隐形）" : "");
   return '<div class="' + cls.join(" ") + '" data-token="' + esc(e.tokenId) + '" title="' + esc(title) + '">' +
-    '<span class="item-mod" title="先攻加值">' + signed(e.bonus) + "</span>" +
+    stripBonusField(e, opts) +
     '<div class="item-img">' + img + "</div>" +
     hpTrack +
     '<div class="item-count"><b>' + total + '</b><small class="count-formula">' + formula + "</small></div>" +
@@ -815,9 +868,21 @@ function stripControls(st, opts) {
   const status = esc(phaseLabel(st));
   const active = currentEntry(st);
   const who = active ? entryName(active, opts.role) : "";
+  /* v1.7.10：状态行 = 「阶段 · 当前单位名 · 加值 [输入框]」。
+     输入框与卡片左上角**共用同一份写逻辑**（页面 commitBonus），回车 / 失焦写 entries[].bonus 并重排；
+     没绑定卡的条目同样能填（默认 0）。玩家只在自己的 token 上看到输入框。 */
+  const bonusSlot = active
+    ? '<span class="strip-bonus-wrap" title="当前单位的先攻加值（回车 / 失焦保存，改完立即重排）">' +
+      '<span class="strip-bonus-lab">加值</span>' +
+      (canEditBonus(active, opts)
+        ? '<input class="strip-bonus" data-bonus-row="' + esc(active.tokenId) + '" value="' +
+          esc(String(n(active.bonus, 0))) + '" inputmode="numeric" autocomplete="off" spellcheck="false">'
+        : '<span class="strip-bonus static">' + signed(active.bonus) + "</span>") +
+      "</span>"
+    : "";
   const right = '<span class="strip-status" title="' +
     esc(st.entries.length + " 个条目 · 上限 " + INIT_MAX_ENTRIES) + '">' + status +
-    (who ? ' · <b>' + esc(who) + "</b>" : "") + "</span>" +
+    (who ? ' · <b>' + esc(who) + "</b>" : "") + "</span>" + bonusSlot +
     '<button class="strip-btn icon" data-strip-act="list" title="打开列表窗口（管理 / 重掷 / 同步加值）">≡</button>' +
     /* v1.7.3：「—」只最小化（折叠成 120×40 药丸，popover 仍开着 → 依旧常驻）；「✕」才是真关掉。 */
     '<button class="strip-btn icon" data-strip-act="collapse" title="最小化（折叠成 120×40 小药丸，仍然常驻）">−</button>' +
@@ -906,6 +971,14 @@ export function renderInitiativeHTML(state, opts) {
     const badge = e.hidden ? '<em class="init-badge">隐形</em>' : "";
     const cur = on ? '<em class="init-cur">当前</em>' : "";
     const total = Math.round(num(e.init, 0));
+    /* v1.7.10：列表窗口的加值也可改（与卡片 / 状态行同一份 setEntryBonus；GM 任意、玩家只自己 token）。
+     * 这样即使先攻条的外壳被宿主限制成只能看，改加值仍有一个入口。 */
+    const canB = canEditBonus(e, { role: role, playerId: playerId });
+    const bonusCell = canB
+      ? '<input class="init-bonus init-bonus-input" data-init-bonus="' + esc(e.tokenId) + '" value="' +
+        esc(String(n(e.bonus, 0))) + '" inputmode="numeric" autocomplete="off" spellcheck="false"' +
+        ' title="先攻加值：回车 / 失焦保存（现在 ' + esc(signed(e.bonus)) + '）">'
+      : '<span class="init-bonus" title="先攻加值">' + signed(e.bonus) + "</span>";
     const acts = isGM
       ? '<button class="init-act" data-init-act="roll" data-token="' + esc(e.tokenId) + '" title="掷先攻：d20 ' + signed(e.bonus) + '">🎲</button>' +
         '<button class="init-act" data-init-act="up" data-token="' + esc(e.tokenId) + '" title="上移">↑</button>' +
@@ -916,7 +989,7 @@ export function renderInitiativeHTML(state, opts) {
     return '<div class="init-row' + on + hid + '" data-token="' + esc(e.tokenId) + '">' +
       '<span class="init-idx">' + (i + 1) + "</span>" +
       '<span class="init-name">' + esc(e.name) + badge + owner + cur + "</span>" +
-      '<span class="init-bonus" title="先攻加值">' + signed(e.bonus) + "</span>" +
+      bonusCell +
       '<span class="init-total" title="先攻合计">' + total + "</span>" +
       '<span class="init-acts">' + acts + "</span></div>";
   }).join("") : '<div class="init-empty">' +

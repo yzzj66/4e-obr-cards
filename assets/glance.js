@@ -345,9 +345,9 @@ export function deriveGlance(char, rules, live) {
    * 没有就回落到卡里推导的 surges —— 老数据 / 没打开过速览的 token 也能显示。 */
   const surgesMaxLive = liveHp && typeof liveHp.surgesMax === "number" && liveHp.surgesMax > 0
     ? Math.floor(liveHp.surgesMax) : surges;
-  /* v1.6.0：GM 把 token 锁了 → 玩家端只看到阶梯比例；Boss 开关给速览里的按钮用。 */
+  /* v1.6.0：GM 把 token 锁了 → 玩家端只看到阶梯比例（速览里那个「玩家端隐藏数字」按钮用）。
+   * v1.7.9：Boss 模式整组删除，这里**不再读** hp.boss。 */
   const hpLocked = !(liveHp && liveHp.locked === false);
-  const hpBoss = liveHp && liveHp.boss && typeof liveHp.boss === "object" ? liveHp.boss : null;
 
   // 技能
   const trainedSet = {};
@@ -450,7 +450,7 @@ export function deriveGlance(char, rules, live) {
     maxHp: maxHp, bloodied: bloodiedLine, surgeValue: hpSurgeValue,
     surges: surges, surgesMax: surgesMaxLive,
     hpMax: hpMax, hpCur: hpCur, hpTemp: hpTemp, surgesCur: surgesCur,
-    locked: hpLocked, boss: hpBoss,
+    locked: hpLocked,
     derivedSurgeValue: surgeValueAuto,
     skills: skills, attacks: attacks, damages: damages,
     initiative: initiative, speed: speed,
@@ -551,22 +551,17 @@ function renderHpBlock(d, ed) {
   /* v1.6.2：删掉 HP 绿条下面那条「彩色四防箭头条」（.gl4-def-row / .gl4-def-chip）。
    * 用户原话：「图1在显示的预览部分不需要显示，直接修改下面对应的数值栏位就行」——
    * 四防数值改由下面「AC / 强韧 / 反射 / 意志」那四张数值卡（.gl4-defs）显示。
-   * 注意：token 上那排四防（v1.6.1）不在这个文件里，别跟着删。 */
+   * 注意：token 上的四防（v1.6.1 是一排，v1.7.9 起回到四角）不在这个文件里，别跟着删。 */
 
-  /* v1.6.0：锁 + Boss 开关（与右键菜单写同一个 hp 字段，两个入口不能有两套逻辑）。 */
-  const bossOn = !!(d.boss && d.boss.enabled);
-  const bossRow = ed.hp
-    ? '<div class="gl4-boss-row">' +
+  /* v1.6.0：锁开关（与右键菜单写同一个 hp 字段，两个入口不能有两套逻辑）。
+   * v1.7.9：**「显示为 Boss」开关已删除**（Boss 模式整组去掉），这一排只剩「玩家端隐藏数字」。 */
+  const lockRow = ed.hp
+    ? '<div class="gl4-lock-row">' +
       '<button type="button" class="gl4-mini-btn' + (d.locked ? " on" : "") + '" data-act="lock" title="' +
       (d.locked
         ? "已锁定：其他玩家只看到 25% 阶梯比例，不显示精确数字与四防（metadata 仍对全桌可读，不是加密）。点击解锁。"
         : "已解锁：其他玩家也能看到精确数字与四防。点击锁定。") +
-      '">' + (d.locked ? "🔒 玩家端隐藏数字" : "🔓 玩家端可见数字") + "</button>" +
-      '<button type="button" class="gl4-mini-btn' + (bossOn ? " on" : "") + '" data-act="boss" title="' +
-      (bossOn
-        ? "Boss 样式已开启：token 上画环形血条 / 名牌 / 分段线 / 锁。点击关闭。"
-        : "把这枚 token 显示为 Boss（token 附带环形血条 + 名牌 + 锁，玩家端不显示精确数字）。") +
-      '">' + (bossOn ? "Boss 样式：开" : "显示为 Boss") + "</button></div>"
+      '">' + (d.locked ? "🔒 玩家端隐藏数字" : "🔓 玩家端可见数字") + "</button></div>"
     : "";
 
   /* v1.2.1：行动点 + 里程碑并成一排；外层 .gl4-tags 可以折行，这一排内部不折。 */
@@ -592,7 +587,7 @@ function renderHpBlock(d, ed) {
     surgeBar +
     surgeLine +
     pad +
-    bossRow +
+    lockRow +
     '<div class="gl4-tags">' +
     "<span><i>血怒</i><b>" + d.bloodied + "</b></span>" +
     "<span><i>回复值</i><b>" + d.surgeValue + "</b></span>" +

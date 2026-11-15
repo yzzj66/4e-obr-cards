@@ -151,14 +151,14 @@ function onDieClick(type, delta) {
   applyParsed(adjustExprForType(parseExpr(els.exprInput ? els.exprInput.value : ""), type, delta));
   pendingMode = "free";
   pendingLabel = "";
-  flash(type + (delta > 0 ? " +1" : " −1") + " → " + formatExpr(exprParsed), "INFO");
+  /* v1.7.8：不再写「d6 +1 → 2d6」这类成功回音（公式框里当场就变了）。 */
 }
 
 function onModifierStep(delta) {
   applyParsed(adjustExprModifier(parseExpr(els.exprInput ? els.exprInput.value : ""), delta));
   pendingMode = "free";
   pendingLabel = "";
-  flash("加值 " + (delta > 0 ? "+1" : "−1") + " → " + formatExpr(exprParsed), "INFO");
+  /* v1.7.8：不再写「加值 +1 → …」这类成功回音（公式框里当场就变了）。 */
 }
 
 /** 4E「战斗优势」= 加值 +2（点一下加，再点一下撤回）。 */
@@ -166,13 +166,13 @@ function onAdvantage() {
   advOn = !advOn;
   applyParsed(adjustExprModifier(parseExpr(els.exprInput ? els.exprInput.value : ""), advOn ? 2 : -2));
   if (els.btnAdvantage) els.btnAdvantage.classList.toggle("on", advOn);
-  flash(advOn ? "战斗优势：公式 +2" : "战斗优势已撤回（−2）", advOn ? "SUCCESS" : "INFO");
+  /* v1.7.8：不再写「战斗优势：公式 +2」（按钮自己会亮 / 灭、公式自己 +2 / −2）。 */
 }
 
 function onCrit() {
   critOn = !critOn;
   if (els.btnCrit) els.btnCrit.classList.toggle("on", critOn);
-  flash(critOn ? "重击：本次投掷所有伤害骰取满（d6→6）" : "重击已关闭", critOn ? "SUCCESS" : "INFO");
+  /* v1.7.8：不再写「重击：本次投掷所有伤害骰取满」（按钮亮 / 灭就是状态）。 */
 }
 
 /* ---------------------------------------------------------------------------
@@ -430,7 +430,7 @@ async function clearHistory() {
     els.btnClear.textContent = "清空记录";
     await broadcast(CH_ROLL_CLEAR, { by: myId, at: Date.now() });
     lsDel(LS_DICE_LOCAL);
-    feedback("已请求清空全桌记录", "SUCCESS");
+    /* v1.7.8：「已请求清空全桌记录」不再弹（按钮当场回到「清空记录」，记录窗口也会清空）。 */
     return;
   }
   if (els.btnClear) {
@@ -454,7 +454,8 @@ async function clearHistory() {
  * 没回执才由本页兜底」—— 只要后台那一步慢一点 / 没订阅上，用户就得先干等 900 ms，
  * 看到的仍然是「点了没反应」。v1.7.6 按用户要求改成**最短链路**：
  *   ① 点按钮 → 本页**直接** OBR.popover.open({ id: 记录窗口 id, url: dice-history.html,
- *      380×380, anchorReference: "POSITION", 锚点左上角, hidePaper: false, disableClickAway: false })；
+ *      300×240, anchorReference: "POSITION", 锚点左上角, hidePaper: true（v1.7.10 外壳透明）,
+ *      disableClickAway: false })；
  *      不再先问后台（免得栽在「后台没回应」这条链路上）；
  *   ② 打开后立刻用 OBR.popover.getWidth(ID_DICE_HIST) 确认**真的活着**，
  *      按钮文字变成「关闭记录窗口」= 用户看得见的反馈；
@@ -468,9 +469,11 @@ async function clearHistory() {
  * ------------------------------------------------------------------------- */
 /** 直开失败后「等后台关掉骰子窗口再补开」的回执上限（只有这条兜底路才用到）。 */
 var HIST_ACK_MS = 900;
-/** 记录窗口尺寸（与 background.core.js 的 WINS.diceHistory 一致：380×380）。 */
-var HIST_W = 380;
-var HIST_H = 380;
+/** v1.7.10：记录窗口缩小到 **300×240**（默认只放得下最近 4 条，行高 26 / 字号 11，不再占一大块）；
+ *  「展开全部」时页面自己把高度临时调大（见 assets/dice-history-page.js 的 EXPANDED_H）。
+ *  与 background.core.js 的 WINS.diceHistory 必须一致。 */
+var HIST_W = 300;
+var HIST_H = 240;
 /** 开 / 关进行中（避免连点打架）。 */
 var histBusy = false;
 /** 等后台补齐的回执计时器。 */
@@ -535,7 +538,9 @@ async function openHistoryDirect() {
       anchorPosition: { left: place.left, top: place.top },
       anchorOrigin: { horizontal: "LEFT", vertical: "TOP" },
       transformOrigin: { horizontal: "LEFT", vertical: "TOP" },
-      hidePaper: false,
+      /* v1.7.10：外壳透明 —— hidePaper:true + 页面自己画「半透明深色圆角卡片」，
+       * 与先攻条同一个视觉语言（浮层 = 半透明卡片，不整体实心）。 */
+      hidePaper: true,
       disableClickAway: false
     });
     /* 「open 返回了」不等于「窗口还在」：再用 getWidth 确认一次（对已关掉的 popover 会 reject）。 */
@@ -544,7 +549,7 @@ async function openHistoryDirect() {
     if (!(typeof w === "number" && w > 0)) throw new Error("窗口打开了但 getWidth 返回 " + w);
     if (els.btnHist) els.btnHist.classList.remove("pending");
     setHistButton(true);
-    feedback("记录窗口已打开（最近 4 条，可展开全部）", "SUCCESS");
+    /* v1.7.8：不再弹「记录窗口已打开」（窗口就在眼前，按钮文字也变成「关闭记录窗口」）。 */
     /* 把几何告诉后台：拖动 / 记住位置 / 视口变化重新夹紧仍走 background.core.js 的 WINS 那一套。 */
     sendHistCmd("adopt", {
       left: place.left, top: place.top, width: place.width, height: place.height
@@ -565,10 +570,10 @@ async function openHistoryDirect() {
 /** 本页关闭记录窗口（再通知后台把「开着」的状态清掉）。 */
 async function closeHistoryDirect() {
   endHistPending();
-  try { await OBR.popover.close(ID_DICE_HIST); } catch (e) { /* 已经关了 */ }
+  /* v1.7.10：✕ 双保险 —— popover.close(记录窗口 id) + 后台 {op:"close-win", name:"diceHistory"}。 */
+  closeSelf(ID_DICE_HIST, "diceHistory");
   setHistButton(false);
-  feedback("记录窗口已关闭", "INFO");
-  sendHistCmd("close");
+  /* v1.7.8：「记录窗口已关闭」不再弹（窗口关掉了就是反馈）。 */
 }
 
 /** 直开失败、后台也没能补开（没回执）时再补一条 ERROR：绝不让点击变成「没反应」。 */
@@ -707,7 +712,7 @@ function onSaveCombo() {
   saveCombos();
   if (els.comboName) els.comboName.value = "";
   renderCombos();
-  feedback("已保存组合：" + name.slice(0, 24), "SUCCESS");
+  /* v1.7.8：「已保存组合」不再弹（组合列表里立刻多一条）。 */
 }
 
 function onComboClick(ev) {
@@ -719,7 +724,7 @@ function onComboClick(ev) {
     comboList = comboList.filter(function (c) { return c.id !== id; });
     saveCombos();
     renderCombos();
-    feedback("组合已删除", "INFO");
+    /* v1.7.8：「组合已删除」不再弹（列表里那条立刻消失）。 */
     return;
   }
   var use = target.closest(".combo-use");
@@ -728,7 +733,7 @@ function onComboClick(ev) {
   for (var i = 0; i < comboList.length; i++) {
     if (comboList[i].id !== cid) continue;
     applyParsed(parseExpr(comboList[i].expr));
-    flash("已填入组合：" + comboList[i].name, "INFO");
+    /* v1.7.8：「已填入组合」不再弹（公式框里当场就填上了）。 */
     return;
   }
 }
@@ -737,7 +742,8 @@ function onComboClick(ev) {
  * 6) 事件绑定
  * ------------------------------------------------------------------------- */
 function wireEvents() {
-  if (els.close) els.close.addEventListener("click", function () { closeSelf(ID_DICE_WIN); });
+  /* v1.7.10：✕ = OBR.popover.close(本窗 id) + 后台 {op:"close-win"} 双保险。 */
+  if (els.close) els.close.addEventListener("click", function () { closeSelf(ID_DICE_WIN, "dice"); });
 
   if (els.diceRow) {
     els.diceRow.addEventListener("click", function (ev) {
@@ -771,7 +777,7 @@ function wireEvents() {
         return;
       }
       applyParsed(parseExpr(lastExpr));
-      flash("已填入上一次的公式：" + formatExpr(exprParsed), "INFO");
+      /* v1.7.8：「已填入上一次的公式」不再弹（公式框里当场就填上了）。 */
     });
   }
 
@@ -800,7 +806,7 @@ function wireEvents() {
       applyParsed(parseExpr(btn.getAttribute("data-expr") || ""));
       pendingMode = btn.getAttribute("data-mode") || "free";
       pendingLabel = btn.getAttribute("data-name") || "";
-      flash("已填入：" + formatExpr(exprParsed) + "（只显示点数，不判定）", "INFO");
+      /* v1.7.8：「已填入：…」不再弹（公式框里当场就填上了）。 */
     });
   }
 

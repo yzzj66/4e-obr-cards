@@ -119,7 +119,7 @@ if (animToggle) {
       feedback("这台机器存不下这个设置（隐私模式 / 存储被禁用？），本次仍按原设置", "WARNING");
       return;
     }
-    feedback(next ? "投骰动画已打开" : "投骰动画已关闭（结果照常显示在骰子窗口里）", "SUCCESS");
+    /* v1.7.8：不再弹「投骰动画已打开 / 已关闭」（这一行的开关状态当场就变了）。 */
   });
 }
 
@@ -146,7 +146,7 @@ if (stripToggle) {
       feedback("这台机器存不下这个设置（隐私模式 / 存储被禁用？），本次仍按原设置", "WARNING");
       return;
     }
-    feedback(next ? "进入房间会自动显示先攻条（下次进房间 / 刷新后生效）" : "进入房间不再自动显示先攻条（工具栏「先攻」仍可打开）", "SUCCESS");
+    /* v1.7.8：不再弹「进入房间会自动显示先攻条…」（这一行的开关状态当场就变了）。 */
   });
 }
 
@@ -241,7 +241,7 @@ if (resetBtn) {
       armTimer = setTimeout(function () {
         armTimer = 0;
         disarm();
-        feedback("重置已取消（5 秒内没有再次确认）", "INFO");
+        /* v1.7.8：5 秒自动取消不再弹（按钮文字自己变回去）。 */
       }, CONFIRM_MS);
       feedback("重置本机设置：再点一次按钮确认（只清本机的窗口位置与追踪降级数据）", "WARNING");
       return;
@@ -255,18 +255,18 @@ if (resetBtn) {
       return;
     }
     if (!res.keys.length) {
+      /* v1.7.8：结果只写窗口内这一行（成功类通知不再弹）。 */
       if (outEl) outEl.textContent = "本机本来就没有可清的数据（什么都没改）。";
-      feedback("重置本机设置：本机本来就没有可清的数据", "INFO");
     } else {
       if (outEl) outEl.textContent = "已清掉 " + res.keys.length + " 条：" + res.keys.join("、");
-      feedback("已重置本机设置（清掉 " + res.keys.length + " 条本机记录；房间数据与 token 数据未动）", "SUCCESS");
     }
     renderLocal();
   });
 }
 
 const closeEl = document.getElementById("close");
-if (closeEl) closeEl.addEventListener("click", function () { closeSelf(ID_SETTINGS_WIN); });
+/* v1.7.10：✕ = OBR.popover.close(本窗 id) + 后台 {op:"close-win"} 双保险。 */
+if (closeEl) closeEl.addEventListener("click", function () { closeSelf(ID_SETTINGS_WIN, "settings"); });
 
 onReady(function () {
   renderLocal();

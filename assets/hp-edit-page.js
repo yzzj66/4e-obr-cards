@@ -19,8 +19,14 @@ import { CH_HP_EDIT_READY, CH_HP_EDIT_SAVED, CH_HP_EDIT_TARGET, ID_HP_EDIT, KEY_
 import { closeSelf, createWindow, feedback } from "./window.js";
 import {
   HPE_DEF_KEYS, buildHpEditPatch, createHpEditLease, defText,
-  hpEditView, hpText, mayEditToken, surgeText, writeHpEdit
+  hpEditReadOnly, hpEditView, hpText, mayEditToken, surgeText, writeHpEdit
 } from "./hp-edit-core.js";
+
+/** v1.7.7：token 上的 hp 元数据（锁 / 数值都在里面）。 */
+const HP_META_KEY = "com.4enext-owlbear/hp";
+function hpMetaOf(item) {
+  return item && item.metadata ? item.metadata[HP_META_KEY] : null;
+}
 
 var PARAMS = (function () {
   try { return new URLSearchParams(location.search); } catch (e) { return null; }
@@ -45,7 +51,7 @@ for (var di = 0; di < HPE_DEF_KEYS.length; di++) {
   els["def_" + HPE_DEF_KEYS[di]] = document.getElementById("hpe-def-" + HPE_DEF_KEYS[di]);
 }
 
-var state = { item: null, view: null, editable: false, busy: false };
+var state = { item: null, view: null, editable: false, locked: false, busy: false };
 
 /* 后台在线状态：只在标题栏挂一个小标记（窗口只有 340×150，放不下整条 bg-strip）。
  * 注意保存**不依赖**后台（页面自己写 token 元数据），所以离线只是「血条不会立刻重画」。 */
@@ -160,7 +166,7 @@ async function cardDefaults(item) {
  * ------------------------------------------------------------------------- */
 async function load() {
   if (!itemId) {
-    note("这个窗口没有带 token 参数：请在 token 上右键「添加血条组件」重新打开", "error");
+    note("这个窗口没有带 token 参数：请在 token 上右键「编辑血条」重新打开", "error");
     setEditable(false);
     return;
   }
@@ -175,16 +181,30 @@ async function load() {
   state.item = item;
   var role = await roleOf();
   var pid = await playerIdOf();
-  var editable = mayEditToken(item, role, pid);
+  /* v1.7.7：Boss 锁（hp.locked）→ 编辑窗只读（藏保存 + 提示「已锁定」）。
+   * 判定在 hp-edit-core.js 的 hpEditReadOnly：城主不受限（locked 默认 true，锁是给玩家看的）。 */
+  var locked = hpEditReadOnly(hpMetaOf(item), role);
+  state.locked = locked;
+  var editable = mayEditToken(item, role, pid) && !locked;
   setEditable(editable);
 
   var card = await cardDefaults(item);
-  var view = hpEditView(item.metadata ? item.metadata["com.4enext-owlbear/hp"] : null, card);
+  var view = hpEditView(hpMetaOf(item), card);
   state.view = view;
   if (els.name) els.name.textContent = (item.name || "").trim() || "未命名";
   fillForm(view);
+  refreshNote();
+}
 
-  if (!editable) {
+/**
+ * 窗口内那一行提示（**不是**通知中心）。v1.7.8：只写「状态 / 只读 / 锁定」，
+ * 「已保存 …」这类成功回音不再写 —— token 上的血条立刻重画就是反馈。
+ */
+function refreshNote() {
+  var view = state.view || {};
+  if (state.locked) {
+    note("已锁定：这枚 token 的血量对玩家隐藏（城主解锁后才能改）", "warn");
+  } else if (!state.editable) {
     note("只读：只有城主或这枚 token 的创建者能改血量与四防", "warn");
   } else if (view.fromCard) {
     note("已按绑定角色卡带入默认值，改完点保存", "ok");
@@ -205,6 +225,11 @@ function broadcast(channel, payload) {
 async function save() {
   if (state.busy) return;
   if (!state.editable) {
+    if (state.locked) {
+      note("已锁定：这枚 token 的血量对玩家隐藏（城主解锁后才能改）", "warn");
+      feedback("已锁定：这枚 token 只能由城主解锁后再改", "WARNING");
+      return;
+    }
     feedback("只读：只有城主或这枚 token 的创建者能改血量与四防", "WARNING");
     return;
   }
@@ -212,8 +237,8 @@ async function save() {
    * （正常路径下 target 一到就 load() 跟过去了，这里兜住极端时序）。 */
   var leaseNow = lease.capture();
   if (leaseNow && leaseNow.itemId !== itemId) {
-    note("这个窗口已经过期：请重新右键「添加血条组件」", "error");
-    feedback("窗口已过期：重新右键「添加血条组件」再改", "WARNING");
+    note("这个窗口已经过期：请重新右键「编辑血条」", "error");
+    feedback("窗口已过期：重新右键「编辑血条」再改", "WARNING");
     return;
   }
   var built = buildHpEditPatch(formValues(), state.view || {});
@@ -244,16 +269,16 @@ async function save() {
   }
   state.view = hpEditView(res.hp, null);
   fillForm(state.view);
-  var hp = state.view;
-  note("已保存 " + hp.cur + "/" + hp.max + (hp.surges !== null ? " · 回复力 " + hp.surges : "") +
-    (built.hasDefenses ? "（含四防）" : "（四防留空 = 不画盾）"), "ok");
-  feedback("已保存：" + hp.cur + "/" + hp.max + (built.hasDefenses ? "，四防已写入" : "，四防为空"), "SUCCESS");
+  /* v1.7.8：不再写「已保存 …」、也不再弹「已保存：50/100，四防已写入」——
+   * token 上的血条与四防立刻重画就是反馈；提示行只留状态（多少血 / 留空的四防不画盾）。 */
+  refreshNote();
   /* 让后台立刻重画（也兜住「后台没收到 scene.items.onChange」的情况） */
   broadcast(CH_HP_EDIT_SAVED, { itemId: itemId, hp: res.hp, at: Date.now() });
 }
 
 function closeWindow() {
-  closeSelf(ID_HP_EDIT);
+  /* v1.7.10：✕ 双保险 —— popover.close(本窗 id) + 后台 {op:"close-win"}。 */
+  closeSelf(ID_HP_EDIT, "hpEdit");
 }
 
 /* ---------------------------------------------------------------------------
