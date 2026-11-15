@@ -20,6 +20,15 @@
 //   · 「行动点」与「里程碑」固定并成一排（.gl4-resline，内部 nowrap）；
 //   · 「专长」改为纯展示：chips 不再可点、不再显示「已用 x/y」；
 //   · 装备栏去掉「每日威能」计数，装备 chip 的「已用 / 耗尽」追踪保留。
+//
+// v1.7.12：
+//   · 「遭遇 / 每日 / 辅助 / 种族职业」四组威能 chips **全部可点**（点=已用、再点=恢复）；
+//     随意威能（无限次）仍保持纯展示 —— 这是唯一不追踪的一组；
+//   · 装备 / 魔法物品**每一行都可点**（data-act="equipment"），「已用 x / y」只数当前卡上真有的条目；
+//   · 状态 key 改用**稳定 id**（装备：前缀:物品id:同类第几件），旧版按下标写的 key 一律忽略，
+//     从没点过的卡不会再显示「已用 10/12」；
+//   · 「玩家端隐藏数字」从 HP 区挪到顶部标题区右侧，改名「共享数据」
+//     （开 = 共享 = 全桌可见精确数字；关 = 玩家端只看到量化比例）。
 
 import { RULES } from "../data/rules.js";
 
@@ -410,16 +419,23 @@ export function deriveGlance(char, rules, live) {
   const initiative = initiativeBonus(char, rules);
   const perception = (char.customBonuses || {}).perception || {};
 
-  // 使用状态：实时（房间数据）> 导出快照
-  const powerUsed = (st && st.powerUsed) || char.powerUsed || {};
+  // 使用状态：实时（房间数据）> 导出快照。
+  // v1.7.12：下面只把**当前卡上真有的 key** 收进 powerUsed / equipmentUsed ——
+  // 换卡 / 老版本按别的规则写下的 key 一律忽略，不能算成「已用」（修「没点过却显示已用 10/12」）。
+  const powerUsedRaw = (st && st.powerUsed) || char.powerUsed || {};
   const featUsed = (st && st.featUsed) || char.featUsed || {};
-  const equipmentUsed = (st && st.equipmentUsed) || char.equipmentUsed || {};
+  const equipmentUsedRaw = (st && st.equipmentUsed) || char.equipmentUsed || {};
   const itemDailyUsed = st && typeof st.itemDailyUsed === "number"
     ? Math.max(0, Math.floor(st.itemDailyUsed))
     : n0((char.glance || {}).itemDailyUsed);
 
+  const powerUsed = {};
   const powers = POWER_GROUPS.map(function (g) {
     const list = ((char.powerSlots || {})[g.key] || []).map((id, i) => ({ id: id, i: i })).filter((x) => !!x.id);
+    list.forEach(function (x) {
+      const key = g.key + "-" + x.i;
+      if (powerUsedRaw[key]) powerUsed[key] = true;
+    });
     const used = list.filter((x) => powerUsed[g.key + "-" + x.i]).length;
     return { key: g.key, label: g.label, color: g.color, track: g.track, list: list, used: used };
   });
@@ -429,10 +445,18 @@ export function deriveGlance(char, rules, live) {
     .concat((char.classGrantedFeatIds || []).map((id) => ({ id: id, key: "g-" + id, granted: true })));
 
   const equipRows = [];
+  const equipSeen = {};
   function pushEquips(slots, prefix, label) {
     (slots || []).forEach(function (id, i) {
       if (!id) return;
-      equipRows.push({ id: id, key: prefix + "-" + i, slot: label || EQUIPMENT_SLOTS[i] || "装备", enh: prefix === "e" ? enhanceOf(rules, char, i) : 0 });
+      /* v1.7.12：key = 前缀:物品id:同类第几件 —— 物品增删 / 换槽 / 列表过滤都不会改 key；
+       * 老版本按下标写的 e-0 / w-3 对不上，读取时自然被忽略（不会误显示成已用）。 */
+      const n = (equipSeen[id] = (equipSeen[id] || 0) + 1);
+      equipRows.push({
+        id: id, key: prefix + ":" + id + ":" + n,
+        slot: label || EQUIPMENT_SLOTS[i] || "装备",
+        enh: prefix === "e" ? enhanceOf(rules, char, i) : 0
+      });
     });
   }
   pushEquips(char.equipmentSlots, "e", null);
@@ -440,6 +464,9 @@ export function deriveGlance(char, rules, live) {
   pushEquips(char.otherSlots, "o", "其他");
   pushEquips(char.consumableSlots, "c", "消耗品");
   pushEquips(char.companionSlots, "m", "魔宠/坐骑");
+
+  const equipmentUsed = {};
+  equipRows.forEach(function (r) { if (equipmentUsedRaw[r.key]) equipmentUsed[r.key] = true; });
 
   const milestones = st && typeof st.milestones === "number" ? Math.max(0, Math.floor(st.milestones)) : n0(char.milestones);
   const actionPoints = st && typeof st.actionPoints === "number" ? Math.max(0, Math.floor(st.actionPoints)) : n0(char.actionPoints);
@@ -553,16 +580,7 @@ function renderHpBlock(d, ed) {
    * 四防数值改由下面「AC / 强韧 / 反射 / 意志」那四张数值卡（.gl4-defs）显示。
    * 注意：token 上的四防（v1.6.1 是一排，v1.7.9 起回到四角）不在这个文件里，别跟着删。 */
 
-  /* v1.6.0：锁开关（与右键菜单写同一个 hp 字段，两个入口不能有两套逻辑）。
-   * v1.7.9：**「显示为 Boss」开关已删除**（Boss 模式整组去掉），这一排只剩「玩家端隐藏数字」。 */
-  const lockRow = ed.hp
-    ? '<div class="gl4-lock-row">' +
-      '<button type="button" class="gl4-mini-btn' + (d.locked ? " on" : "") + '" data-act="lock" title="' +
-      (d.locked
-        ? "已锁定：其他玩家只看到 25% 阶梯比例，不显示精确数字与四防（metadata 仍对全桌可读，不是加密）。点击解锁。"
-        : "已解锁：其他玩家也能看到精确数字与四防。点击锁定。") +
-      '">' + (d.locked ? "🔒 玩家端隐藏数字" : "🔓 玩家端可见数字") + "</button></div>"
-    : "";
+  /* v1.7.12：HP 区**不再放**「玩家端隐藏数字」按钮 —— 它已挪到顶部标题区右侧并改名「共享数据」。 */
 
   /* v1.2.1：行动点 + 里程碑并成一排；外层 .gl4-tags 可以折行，这一排内部不折。 */
   const milestoneBit = ed.track
@@ -587,7 +605,6 @@ function renderHpBlock(d, ed) {
     surgeBar +
     surgeLine +
     pad +
-    lockRow +
     '<div class="gl4-tags">' +
     "<span><i>血怒</i><b>" + d.bloodied + "</b></span>" +
     "<span><i>回复值</i><b>" + d.surgeValue + "</b></span>" +
@@ -597,17 +614,20 @@ function renderHpBlock(d, ed) {
 }
 
 function renderPowerGroup(d, powerUsed, ed) {
+  /* v1.7.12：**所有要追踪的威能组**（遭遇 / 每日 / 辅助 / 种族职业）都渲染成可点按钮；
+     随意威能（POWER_GROUPS 里 track:false，无限次）保持纯展示 —— 它是唯一不追踪的一组。 */
   const body = d.list.map(function (x) {
-    const used = powerUsed[d.key + "-" + x.i] ? " used" : "";
+    const key = d.key + "-" + x.i;
+    const isUsed = !!powerUsed[key];
     const name = esc(zhName(x.id));
     const title = d.track
-      ? (used ? "点击恢复：" : "点击标记已使用：") + x.id
+      ? (isUsed ? "点击恢复：" : "点击标记已使用：") + x.id
       : "随意威能，无需追踪消耗";
     if (ed.track && d.track) {
-      return '<button type="button" class="gl4-chip' + used + '" data-act="power" data-k="' + d.key + "-" + x.i +
-        '" title="' + esc(title) + '">' + name + "</button>";
+      return '<button type="button" class="gl4-chip' + (isUsed ? " used" : "") + '" data-act="power" data-k="' + esc(key) +
+        '" aria-pressed="' + (isUsed ? "true" : "false") + '" title="' + esc(title) + '">' + name + "</button>";
     }
-    return '<span class="gl4-chip' + used + '" title="' + esc(x.id) + '">' + name + "</span>";
+    return '<span class="gl4-chip" title="' + esc(x.id) + '">' + name + "</span>";
   }).join("");
   const count = d.track ? d.list.length - d.used + " / " + d.list.length : "无限";
   const reset = (ed.track && d.track && d.used > 0)
@@ -698,16 +718,18 @@ export function renderGlanceHTML(char, opts) {
     if (!d.equipRows.length) return '<section class="gl4-card"><h3 class="gl4-h">装备与魔法物品</h3><p class="gl4-empty">这张卡还没有装备物品。</p></section>';
     const used = d.equipRows.filter((r) => d.equipmentUsed[r.key]).length;
     const rows = d.equipRows.map(function (r) {
-      const isUsed = d.equipmentUsed[r.key] ? " used" : "";
+      const isUsed = !!d.equipmentUsed[r.key];
       const name = esc(zhName(r.id));
       const inner = '<span class="gl4-item-slot">' + esc(r.slot) + "</span>" +
         '<span class="gl4-item-name">' + name + "</span>" +
         (r.enh ? '<span class="gl4-item-enh">增强 +' + r.enh + "</span>" : "");
       if (ed.track) {
-        return '<button type="button" class="gl4-item' + isUsed + '" data-act="item" data-k="' + esc(r.key) +
-          '" title="' + esc((isUsed ? "点击恢复：" : "点击标记已用：") + r.id) + '">' + inner + "</button>";
+        /* v1.7.12：动作名改成 equipment（测试断言用这个名字）；track.js 仍兼容老的 item。 */
+        return '<button type="button" class="gl4-item' + (isUsed ? " used" : "") + '" data-act="equipment" data-k="' + esc(r.key) +
+          '" aria-pressed="' + (isUsed ? "true" : "false") + '" title="' +
+          esc((isUsed ? "点击恢复：" : "点击标记已用：") + r.id) + '">' + inner + "</button>";
       }
-      return '<div class="gl4-item' + isUsed + '" title="' + esc(r.id) + '">' + inner + "</div>";
+      return '<div class="gl4-item" title="' + esc(r.id) + '">' + inner + "</div>";
     }).join("");
     /* v1.2.1：去掉「每日威能 − N ＋」计数器；装备 chip 的「已用 / 耗尽」标记保留。 */
     const head = ed.track
@@ -726,9 +748,21 @@ export function renderGlanceHTML(char, opts) {
   const note = compact ? "" : '<p class="gl4-note">数值由插件离线推导；职业特性自动加值与部分专长效果无法离线还原，可能与 4E NEXT 差 1~2 点，以 4E NEXT 为准。' +
     (ed.hp ? "血量写回这枚 token（全桌可见），资源写回房间数据（写不进去时退回本机）。" : "") + "改卡请回 4E NEXT。</p>";
 
+  /* v1.7.12：共享数据开关 —— 原「玩家端隐藏数字」，从 HP 区挪到顶部标题区右侧。
+   * 语义：开（.on）= 共享 = 全桌可见精确数字与四防（hp.locked = false）；
+   *       关 = 玩家端只看到 25% 阶梯比例（hp.locked = true，默认）。 */
+  const share = ed.hp
+    ? '<button type="button" class="gl4-share' + (d.locked ? "" : " on") + '" data-act="lock" aria-pressed="' +
+      (d.locked ? "false" : "true") + '" title="' + esc(d.locked
+        ? "共享数据：关 —— 玩家端只看到 25% 阶梯比例，不显示精确数字与四防（metadata 仍对全桌可读，不是加密）。点击开启。"
+        : "共享数据：开 —— 全桌都能看到精确数字与四防。点击关闭。") +
+      '">' + (d.locked ? "🔒" : "🔓") + " 共享数据</button>"
+    : "";
+
   return '<div class="gl4 ' + (compact ? "gl4-compact" : "gl4-full") + '">' +
     '<header class="gl4-head"><div class="gl4-id"><div class="gl4-name">' + esc(char.name || "未命名角色") +
-    '</div><div class="gl4-sub">' + esc(sub) + "</div></div>" + quick + "</header>" +
+    '</div><div class="gl4-sub">' + esc(sub) + "</div></div>" +
+    '<div class="gl4-head-right">' + quick + share + "</div></header>" +
     renderHpBlock(d, ed) +
     '<div class="gl4-grid2">' + defGrid + abiGrid + "</div>" +
     skills +

@@ -1210,38 +1210,43 @@ body.hpe-page { padding: 6px; overflow: hidden; height: 100vh; }
 
 
 /* =====================================================================
- * v1.7.10：先攻条 = 全屏透明 modal（真透明）+ 加高不裁切 + 照抄 Full Suite 卡片
+ * v1.7.11：先攻条 = **popover**（回退 v1.7.4）+ 透明 + 加高不裁切 + Full Suite 卡片
  * =====================================================================
- * 用户三次反馈：① 先攻条整条仍是深色矩形（popover 的 hidePaper 在真机无效）；
- * ② 卡片被裁掉下半截；③ 卡片下面应该是**一枚** d20（4E 没有优势 / 劣势）。
- *
- * 外壳方案：background.core.js 的 stripModalOptions() 用
- *   OBR.modal.open({ fullScreen, hideBackdrop, hidePaper, disablePointerEvents })
- * modal 没有 width/height / anchorPosition → 条的位置与尺寸由 initiative-page.js 的
- * layoutStrip() 写 inline style；本段只负责「页面全透明、只有条本身接收鼠标」：
- *   · html / body pointer-events:none（空白处让鼠标透到地图）；
- *   · .strip-root 不接收事件、.strip 自己 pointer-events:auto（按钮 / 输入框照常点）。
+ * v1.7.10 的 modal + disablePointerEvents 让整个 modal 层不接收指针 → 右键「加入先攻」、
+ * 加值输入框、卡片下的 d20 全点不动（教训见 docs/NOTES.md：「modal + disablePointerEvents
+ * 不能用于需要交互的浮层」）。
+ * 外壳方案：background.core.js 的 stripPopoverOptions() 用
+ *   OBR.popover.open({ POSITION + CENTER/TOP, width/height, hidePaper:true, disableClickAway:true })
+ * popover 的 iframe 就是条本身：页面只负责铺满 + 透明（不再写 left/top，也不再用 pointer-events 穿透）。
+ * 透明：html / body / #app / .win / .win-body / .strip-root / .strip / .strip-items 全 transparent !important。
+ * 真机若宿主仍画深色纸张底：按约定接受半透明深色卡片（.strip.shell-card，rgba(15,20,28,.86) 圆角），
+ * **不再退回 modal**（可用性优先）。
  * 卡片几何逐项照抄 Full Suite：
  *   56×80 / .active 100 高 / .item-img 80% / img 125% top −12.5% / .item-count 24% /
  *   .item-hp-track 4px bottom 24% / .roll-buttons top 100% margin-top −8。
  */
 html.strip-html { color-scheme: normal !important; }
-html.strip-html, html.strip-html body.strip-page { pointer-events: none; }
 html.strip-html body.strip-page {
   margin: 0; padding: 0; height: 100vh; overflow: hidden; color-scheme: normal;
+  background: transparent !important;
 }
 html.strip-html body.strip-page .strip-root {
-  position: fixed; inset: 0; height: 100vh; pointer-events: none;
+  height: 100vh;
+  background: transparent !important;
 }
 html.strip-html body.strip-page .strip {
-  position: fixed; left: 0; top: 0;
-  width: 720px; height: 170px;
+  width: 100%; height: 100%;
   padding: 6px 8px 8px; gap: 6px;
-  pointer-events: auto;   /* 只有条本身接收鼠标，其余空白处透给地图 */
   box-sizing: border-box;
+  background: transparent !important;
 }
 html.strip-html body.strip-page .strip.collapsed {
-  width: 120px; height: 40px; padding: 4px 6px;
+  width: 100%; height: 100%; padding: 4px 6px;
+}
+/* 真机兜底（默认不挂）：宿主纸张底压不住时，页面自己画半透明深色卡片，而不是再退回 modal。 */
+html.strip-html body.strip-page .strip.shell-card {
+  background: rgba(15, 20, 28, .86) !important;
+  border-radius: 12px;
 }
 html.strip-html body.strip-page .strip-ctl { min-height: 36px; }
 .strip-status { max-width: 240px; }

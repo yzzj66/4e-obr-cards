@@ -745,21 +745,21 @@ run(OBR, stubBuilder("CURVE"), stubBuilder("SHAPE"), stubBuilder("TEXT"));
     return cfg;
   };
 
-  /* v1.4.0 / v1.7.10：工具栏「先攻」打开的是**先攻条**（现在 = 全屏透明 modal，不再是 popover） */
-  const stripModalBefore = all("modal.open").length;
+  /* v1.4.0 / v1.7.11：工具栏「先攻」打开的是**先攻条**（回退 popover，不再是 modal） */
+  const stripOpenBefore = all("popover.open").length;
   const stripRet = toolInit && typeof toolInit.onClick === "function" ? toolInit.onClick() : null;
   await sleep(140);
-  const stripCfg = all("modal.open").map((c) => c[1]).slice(stripModalBefore)
+  const stripCfg = all("popover.open").map((c) => c[1]).slice(stripOpenBefore)
     .filter((c) => /\/initiative\.html$/.test(String(c.url))).pop() || null;
   if (stripRet !== false) bad("工具栏「先攻条」的 onClick 没有返回 false（会把工具切成激活态）");
-  if (!stripCfg) bad("点工具栏「先攻条」没有打开 /\/initiative\.html$/ modal");
+  if (!stripCfg) bad("点工具栏「先攻条」没有打开 /\/initiative\.html$/ popover");
   const diceWin = await openByTool(toolDice, /\/dice\.html$/, "骰子");
   const panelWin = await openByTool(toolPanel, /\/panel\.html$/, "角色卡");
 
   if (!stripCfg || !diceWin || !panelWin) {
     bad("三个工具栏入口没有各自打开窗口");
   } else if (stripCfg.id !== "com.4enext-owlbear/initiative-strip") {
-    bad("先攻条的 modal id 不对：" + stripCfg.id);
+    bad("先攻条的 popover id 不对：" + stripCfg.id);
   } else if (new Set([stripCfg.id, diceWin.id, panelWin.id]).size !== 3) {
     bad("三个窗口的 id 有重复（不能同时打开）：" + [stripCfg.id, diceWin.id, panelWin.id].join(" / "));
   } else {
@@ -768,10 +768,15 @@ run(OBR, stubBuilder("CURVE"), stubBuilder("SHAPE"), stubBuilder("TEXT"));
   }
 
   if (stripCfg) {
-    if (stripCfg.fullScreen !== true) bad("先攻条不是 fullScreen modal");
-    else if (stripCfg.hideBackdrop !== true || stripCfg.hidePaper !== true || stripCfg.disablePointerEvents !== true)
-      bad("先攻条 modal 少了 hideBackdrop / hidePaper / disablePointerEvents");
-    else ok("先攻条：全屏透明 modal（fullScreen + hideBackdrop + hidePaper + disablePointerEvents）");
+    const badStrip = stripCfg.anchorReference !== "POSITION" || stripCfg.width !== 720 || stripCfg.height !== 170 ||
+      stripCfg.hidePaper !== true || stripCfg.disableClickAway !== true ||
+      !stripCfg.anchorOrigin || stripCfg.anchorOrigin.horizontal !== "CENTER" || stripCfg.anchorOrigin.vertical !== "TOP" ||
+      !stripCfg.anchorPosition || stripCfg.anchorPosition.left !== 600 || stripCfg.anchorPosition.top !== 45;
+    if (badStrip) bad("先攻条 popover 参数不对：" + JSON.stringify(stripCfg));
+    else ok("先攻条：popover 720×170 @ 中线 600 / top 45（POSITION + CENTER/TOP + hidePaper:true + disableClickAway:true）");
+    if (all("modal.open").some((c) => c[1] && c[1].id === stripCfg.id))
+      bad("先攻条又用 modal.open 开了（disablePointerEvents 会把右键 / 输入框 / d20 全挡住）");
+    else ok("先攻条不再用 modal.open（v1.7.10 的 disablePointerEvents 回归已修）");
   }
 
   if (diceWin && panelWin) {
@@ -852,30 +857,43 @@ run(OBR, stubBuilder("CURVE"), stubBuilder("SHAPE"), stubBuilder("TEXT"));
   if (!stripDragCb) bad("没有订阅先攻条拖动频道 " + STRIP_CH);
   else ok("订阅了先攻条拖动频道 " + STRIP_CH);
   if (stripDragCb && stripCfg) {
-    /* v1.7.10：modal 全屏，拖动由页面自己移动 → 后台**不再重开**窗口，只更新偏移记账。
-     * 视口 1200×800、条 720×170 → dx 夹在 ±224，dy 最大 = 800−170−16−45 = 569。 */
-    const beforeDrag = all("modal.open").length;
+    /* v1.7.11：popover 由宿主定位 —— 拖动 = 后台按位移夹紧后**重开同一个 popover**（iframe 复用）。
+     * 视口 1200×800、条 720×170 → dx 夹在 ±224，dy 最大 = 800−170−16−45 = 569（top = 614）。 */
+    const dragOpens = () => all("popover.open").map((c) => c[1])
+      .filter((c) => c.id === "com.4enext-owlbear/initiative-strip");
+    const beforeDrag = dragOpens().length;
     stripDragCb({ phase: "start", dx: 0, dy: 0 });
     stripDragCb({ phase: "move", dx: 100, dy: 50 });
     await sleep(90);
-    if (all("modal.open").length !== beforeDrag) bad("拖动先攻条又重开了 modal（应该只记账）");
-    else ok("拖动先攻条不重开窗口（modal 内由页面自己移动；后台只更新偏移）");
+    const moved = dragOpens().slice(beforeDrag).pop();
+    if (!moved) bad("拖动先攻条没有重开 popover（宿主位置不会动）");
+    else if (!moved.anchorPosition || moved.anchorPosition.left !== 700 || moved.anchorPosition.top !== 95)
+      bad("拖动 100,50 后 popover 锚点不对：" + JSON.stringify(moved.anchorPosition));
+    else if (moved.width !== 720 || moved.height !== 170)
+      bad("拖动时 popover 尺寸变了：" + moved.width + "×" + moved.height);
+    else ok("拖动 100,50 → 重开同一个 popover @ (700,95)，尺寸仍 720×170");
 
     stripDragCb({ phase: "move", dx: 5000, dy: 5000 });
     stripDragCb({ phase: "end", dx: 5000, dy: 5000 });
     await sleep(160);
     let savedStrip = null;
     try { savedStrip = JSON.parse(lsStore[STRIP_POS] || "null"); } catch (e) { savedStrip = null; }
+    const clamped = dragOpens().pop();
     if (!savedStrip || savedStrip.dx !== 224 || savedStrip.dy !== 569) {
       bad("先攻条拖出视口没有夹紧 / 落盘：" + JSON.stringify(savedStrip));
+    } else if (!clamped || !clamped.anchorPosition || clamped.anchorPosition.left !== 824 || clamped.anchorPosition.top !== 614) {
+      bad("先攻条拖出视口后 popover 没有被夹回视口：" + JSON.stringify(clamped && clamped.anchorPosition));
     } else {
-      ok("先攻条拖出视口 → 偏移夹到 { dx: 224, dy: 569 } 并落盘（条 720×170）");
+      ok("先攻条拖出视口 → 偏移夹到 { dx: 224, dy: 569 }、popover @ (824,614) 并落盘（条 720×170）");
     }
-
+    const beforeReset = dragOpens().length;
     stripDragCb({ phase: "reset" });
     await sleep(140);
+    const centered = dragOpens().slice(beforeReset).pop();
     if (lsStore[STRIP_POS]) bad("回中后没有清掉记住的偏移：" + lsStore[STRIP_POS]);
-    else ok("先攻条「回到顶部中间」→ 清掉偏移（页面重排，不重开窗口）");
+    else if (!centered || !centered.anchorPosition || centered.anchorPosition.left !== 600 || centered.anchorPosition.top !== 45)
+      bad("「回到顶部中间」没有重开 popover 到 (600,45)：" + JSON.stringify(centered && centered.anchorPosition));
+    else ok("先攻条「回到顶部中间」→ 清偏移并重开 popover @ (600,45)");
   }
 
   /* 先攻条「≡」→ 列表窗口（?view=list，880×640，仍可拖 / 记位置，id 与条不同） */
@@ -894,6 +912,17 @@ run(OBR, stubBuilder("CURVE"), stubBuilder("SHAPE"), stubBuilder("TEXT"));
     } else {
       ok("先攻条「≡」打开列表窗口（?view=list，880×640，id 与先攻条不同）");
     }
+  }
+
+  /* v1.7.11：条上的「✕」→ popover.close(条 id)（再 modal.close 兜底 v1.7.10 的旧实例）。 */
+  if (stripCmdCb) {
+    const closeBefore = all("popover.close").length;
+    stripCmdCb({ data: { op: "close" } });
+    await sleep(120);
+    const closedIds = all("popover.close").slice(closeBefore).map((c) => c[1]);
+    if (closedIds.indexOf("com.4enext-owlbear/initiative-strip") >= 0)
+      ok("先攻条「✕」→ OBR.popover.close(条 id)（modal.close 兜底旧实例）");
+    else bad("先攻条「✕」没有关掉 popover：" + JSON.stringify(closedIds));
   }
 
   /* 拖动列表窗口：起点 160,56（1200×800 居中偏上）→ 位移 100,50 → 夹取 → 落盘 → ⌖ 回默认 */

@@ -18,7 +18,7 @@ const NOTES_PATH = path.join(ROOT, "docs", "NOTES.md");
 const NOTES = exists(NOTES_PATH) ? fs.readFileSync(NOTES_PATH, "utf8") : "";
 const notesHas = (s) => NOTES.indexOf(s) >= 0;
 /* 当前版本号：所有「版本全链路」断言都读它，升版本只改这一处（+ 各文件里的真实版本号）。 */
-const VER = "1.7.10";
+const VER = "1.7.12";
 
 function walk(dir, out = []) {
   for (const name of fs.readdirSync(dir)) {
@@ -701,12 +701,14 @@ const idStripCore = (/var ID_STRIP = NS \+ "([^"]+)";/.exec(coreSrcV14) || [])[1
 const idStripCommon = (/export const ID_STRIP = NS \+ "([^"]+)";/.exec(commonSrc) || [])[1] || "";
 if (idStripCore && idStripCore === idStripCommon) ok("先攻条 popover id 一致：" + idStripCore);
 else bad("先攻条 popover id 不一致：core=" + idStripCore + " common=" + idStripCommon);
-/* [v1.7.10 改] popover 的 hidePaper 在真机压不住宿主纸张底 → 换 OBR.modal.open 真透明。 */
-if (/function stripModalOptions\(\)/.test(coreSrcV14) && /fullScreen: true/.test(coreSrcV14) &&
-  /hideBackdrop: true/.test(coreSrcV14) && /hidePaper: true/.test(coreSrcV14) &&
-  /disablePointerEvents: true/.test(coreSrcV14) && /await OBR\.modal\.open\(stripModalOptions\(\)\)/.test(coreSrcV14))
-  ok("先攻条换 OBR.modal.open（fullScreen + hideBackdrop + hidePaper + disablePointerEvents）= 真透明");
-else bad("先攻条没有换 modal / 少了 hideBackdrop / disablePointerEvents / fullScreen");
+/* [v1.7.11 改] v1.7.10 的 modal + disablePointerEvents 会让整条点不动 → 回退 popover。 */
+if (/function stripPopoverOptions\(size, pos\)/.test(coreSrcV14) && /anchorReference: "POSITION"/.test(coreSrcV14) &&
+  /anchorOrigin: \{ horizontal: "CENTER", vertical: "TOP" \}/.test(coreSrcV14) &&
+  /hidePaper: true/.test(coreSrcV14) && /disableClickAway: true/.test(coreSrcV14) &&
+  /await OBR\.popover\.open\(stripPopoverOptions\(size, pos\)\)/.test(coreSrcV14) &&
+  !/function stripModalOptions/.test(coreSrcV14))
+  ok("先攻条回退 OBR.popover.open（POSITION + CENTER/TOP + hidePaper:true + disableClickAway:true），不再用 modal");
+else bad("先攻条没有回退 popover / 少了 hidePaper / disableClickAway / 还在用 stripModalOptions");
 const stripPosCore = (/var STRIP_POS_KEY = "([^"]+)";/.exec(coreSrcV14) || [])[1] || "";
 const stripPosCommon = (/export const STRIP_POS_KEY = "([^"]+)";/.exec(commonSrc) || [])[1] || "";
 if (stripPosCore === "4enext/strip-pos" && stripPosCommon === stripPosCore) ok("先攻条位置键一致：" + stripPosCore + "（只记相对中线的偏移）");
@@ -1086,18 +1088,19 @@ console.log("== v1.6.0 血条扩展（临时生命 / 四防 / 蓝条）+ Boss �
   /* ---- 6) 速览联动：蓝条 / 锁 / Boss ----
    * [v1.6.2 移除] 速览里那条「彩色四防箭头条」按用户要求删掉了（gl4-def-row / data-act="defense"），
    * 这里只保留锁 / Boss 的联动断言；「彩条已删、数值卡还在」由 v1.6.2 那一节单独断言。 */
-  if (glanceSrc.indexOf('data-act="lock"') >= 0 && glanceSrc.indexOf('data-act="boss"') < 0) {
-    ok("速览弹窗：只剩「玩家端隐藏数字」开关（「显示为 Boss」已删）");
-  } else bad("速览弹窗的锁 / Boss 开关不对（应有 lock、不该有 boss）");
+  if (glanceSrc.indexOf('data-act="lock"') >= 0 && glanceSrc.indexOf('data-act="boss"') < 0 &&
+    glanceSrc.indexOf("共享数据") >= 0 && glanceSrc.indexOf("gl4-share") >= 0) {
+    ok("速览弹窗：只剩「共享数据」开关（Boss 开关已删；开 = 共享）");
+  } else bad("速览弹窗的共享数据 / Boss 开关不对（应有 lock + 共享数据、不该有 boss）");
   if (glanceSrc.indexOf("gl4-surgebar") >= 0 && glanceSrc.indexOf("surgesMax") >= 0) {
     ok("速览弹窗：回复力蓝条 + 分母优先用 token 的 surgesMax");
   } else bad("速览弹窗缺少回复力蓝条 / surgesMax");
   /* [v1.6.2 移除] 盾形四防 chip 的样式随彩条一起删了（.gl4-def-row / .gl4-def-chip），
    * 这里改断言「蓝条 6px + 四防数值卡 + 锁 / Boss 一排」。 */
   if (/\.gl4-surgebar \{[^}]*height: 6px/s.test(cssSrc) && /\.gl4-defs \{/.test(cssSrc) &&
-    cssSrc.indexOf(".gl4-lock-row") >= 0 && cssSrc.indexOf(".gl4-boss-row") < 0) {
-    ok("glance.css：回复力蓝条 6px + 四防数值卡（.gl4-defs）+ 锁开关一排（.gl4-lock-row；Boss 那排已删）");
-  } else bad("glance.css 缺少速览的蓝条 / 四防数值卡 / 锁样式");
+    cssSrc.indexOf(".gl4-share") >= 0 && cssSrc.indexOf(".gl4-lock-row") < 0 && cssSrc.indexOf(".gl4-boss-row") < 0) {
+    ok("glance.css：回复力蓝条 6px + 四防数值卡（.gl4-defs）+ 共享数据 chip（.gl4-share；锁 / Boss 那排已删）");
+  } else bad("glance.css 缺少速览的蓝条 / 四防数值卡 / 共享数据样式");
   if (trackSrcV16.indexOf('act === "defense" || act === "lock" || act === "boss"') >= 0 &&
     trackSrcV16.indexOf("export async function syncTokenStats(") >= 0 &&
     infoSrcV16.indexOf("syncTokenStats(") >= 0) {
@@ -1150,9 +1153,9 @@ console.log("== v1.6.2 速览删彩条 + 先攻条宽高改常量");
     ok("glance.css 里没有四防彩条的死样式（跟着删干净）");
   } else bad("glance.css 里还留着 .gl4-def-row / .gl4-def-chip 的死样式");
   if (glanceV162.indexOf("gl4-hpbar") >= 0 && glanceV162.indexOf("gl4-surgebar") >= 0 &&
-    glanceV162.indexOf("gl4-lock-row") >= 0 && glanceV162.indexOf("gl4-hp-pad") >= 0) {
-    ok("速览其它块没被误删（HP 绿条 / 回复力蓝条 / 血量按钮 / 锁开关）");
-  } else bad("速览的 HP 绿条 / 蓝条 / 血量按钮 / 锁开关被误删了");
+    glanceV162.indexOf("gl4-share") >= 0 && glanceV162.indexOf("gl4-hp-pad") >= 0) {
+    ok("速览其它块没被误删（HP 绿条 / 回复力蓝条 / 血量按钮 / 共享数据）");
+  } else bad("速览的 HP 绿条 / 蓝条 / 血量按钮 / 共享数据被误删了");
 
   /* ---- 2) 先攻条：宽高是常量，没有「按内容测量」 ---- */
   const stripFnV162 = (/export function stripSizeFor\([^)]*\) \{[\s\S]*?\n\}/.exec(initV162) || [])[0] || "";
@@ -1762,10 +1765,11 @@ console.log("== v1.7.3 先攻：移出 / token 删除自动清理 / 外壳透明
     !has(setJsV173, ".setItem(") && !has(setJsV173, "strip-autostart"))
     ok("设置页读写自动显示开关走 common.js（自己仍不直接写 localStorage / 不出现本机键字面量）");
   else bad("设置页直接写了 localStorage / 出现了本机键字面量");
-  /* [v1.7.10 改] 条不再是 popover：modal 的 disablePointerEvents 让空白处穿透。 */
-  if (/function stripModalOptions\(\)[\s\S]{0,400}?disablePointerEvents: true/.test(coreV173))
-    ok("先攻条 modal 带 disablePointerEvents: true（空白处鼠标穿透，条常驻）");
-  else bad("先攻条 modal 没有 disablePointerEvents（会挡住地图）");
+  /* [v1.7.11 改] 条回到 popover：hidePaper + disableClickAway，按钮 / 输入框 / 右键都能用。 */
+  if (/function stripPopoverOptions\(size, pos\)[\s\S]{0,600}?hidePaper: true/.test(coreV173) &&
+    /disableClickAway: true/.test(coreV173) && !/function stripModalOptions/.test(coreV173))
+    ok("先攻条 popover 带 hidePaper:true + disableClickAway:true（可交互；modal 已回退）");
+  else bad("先攻条 popover 参数不齐 / 还在用 modal（会挡住右键与输入框）");
 
   /* ---- 5) 文档 / README / 自测 ---- */
   /* [v1.7.7] docs 合并：先攻条说明并进 docs/NOTES.md（尺寸那一行） */
@@ -2134,12 +2138,12 @@ console.log("== v1.7.6 删提示小字 + 记录窗直开 + 先攻条真透明 + 
   else bad("bundle 落后于 core（跑 node dev/build-background.mjs）");
 
   /* ---- 4) 先攻条：hidePaper:true + #app / .win / .win-body 透明 ---- */
-  /* [v1.7.10 改] 先攻条改 modal（fullScreen + hideBackdrop + hidePaper + disablePointerEvents）。 */
-  if (/function stripModalOptions\(\)[\s\S]{0,500}?hidePaper: true/.test(coreV176) &&
-    /fullScreen: true/.test(coreV176) && /hideBackdrop: true/.test(coreV176) &&
-    /disablePointerEvents: true/.test(coreV176))
-    ok("先攻条 modal 参数齐全（fullScreen + hideBackdrop + hidePaper + disablePointerEvents）");
-  else bad("先攻条 modal 少了透明 / 穿透参数");
+  /* [v1.7.11 改] 先攻条回退 popover（POSITION + CENTER/TOP + hidePaper + disableClickAway）。 */
+  if (/function stripPopoverOptions\(size, pos\)[\s\S]{0,600}?hidePaper: true/.test(coreV176) &&
+    /anchorReference: "POSITION"/.test(coreV176) && /disableClickAway: true/.test(coreV176) &&
+    !/function stripModalOptions/.test(coreV176))
+    ok("先攻条 popover 参数齐全（POSITION + CENTER/TOP + hidePaper + disableClickAway）");
+  else bad("先攻条 popover 少了透明 / 交互参数 / 还在用 modal");
   const STRIP_LAYERS = ["#app", ".win", ".win-body", ".strip-root", ".strip", ".strip-items"];
   const missLayer = STRIP_LAYERS.filter((sel) => !has(uiV176, "body.strip-page " + sel));
   if (!missLayer.length)
@@ -2526,13 +2530,14 @@ console.log("== v1.7.9 血条改环形 + 去掉 Boss 模式 / 蓝条 + 四防回
   /* ---- 5) 速览 / 编辑窗：Boss 开关删掉，锁开关与回复力仍保留 ---- */
   const glanceCodeV179 = stripComments(glanceV179);
   if (has(glanceV179, 'data-act="lock"') && !has(glanceCodeV179, 'data-act="boss"') &&
-    !has(glanceCodeV179, "显示为 Boss") && has(glanceV179, "gl4-lock-row")) {
-    ok("速览：只剩「玩家端隐藏数字」开关（Boss 开关与 .gl4-boss-row 都删了）");
-  } else bad("速览里还有 Boss 开关 / 少了锁开关");
+    !has(glanceCodeV179, "显示为 Boss") && has(glanceV179, "共享数据") && has(glanceV179, "gl4-share")) {
+    ok("速览：开关改名「共享数据」并放到顶部标题区（Boss 开关与 .gl4-boss-row 都删了）");
+  } else bad("速览里还有 Boss 开关 / 少了共享数据开关");
   if (!has(stripComments(infoV179), "hp.boss")) ok("info.js 的渲染签名不再看 hp.boss");
   else bad("info.js 还在读 hp.boss");
-  if (has(cssV179, ".gl4-lock-row") && !has(cssV179, ".gl4-boss-row")) ok("glance.css 同步改名 .gl4-lock-row");
-  else bad("glance.css 里的 .gl4-boss-row 没删 / .gl4-lock-row 没加");
+  if (has(cssV179, ".gl4-share") && !has(cssV179, ".gl4-lock-row") && !has(cssV179, ".gl4-boss-row")) {
+    ok("glance.css 同步换成 .gl4-share（.gl4-lock-row / .gl4-boss-row 都没有）");
+  } else bad("glance.css 里的 .gl4-lock-row / .gl4-boss-row 没删 / .gl4-share 没加");
   if (has(coreV179, 'label: "编辑血条"') && has(coreV179, "onHpBarEdit")) ok("编辑血条入口保留（改 HP / 四防 / 回复力仍可用）");
   else bad("编辑血条入口被误删了");
 
@@ -2564,7 +2569,7 @@ console.log("== v1.7.9 血条改环形 + 去掉 Boss 模式 / 蓝条 + 四防回
   } else bad("dev/test-background.mjs 没有补 v1.7.9 的断言");
 }
 
-console.log("== v1.7.10 真透明先攻条 + Full Suite 卡片 + 加值可编辑 + 记录窗 300×240 + ✕ 双保险");
+console.log("== v1.7.10 / v1.7.11 先攻条（popover 回退）+ Full Suite 卡片 + 加值可编辑 + 记录窗 300×240 + ✕ 双保险");
 {
   const coreV1710 = fs.readFileSync(corePath, "utf8");
   const commonV1710 = fs.readFileSync(path.join(ROOT, "assets", "common.js"), "utf8");
@@ -2587,18 +2592,22 @@ console.log("== v1.7.10 真透明先攻条 + Full Suite 卡片 + 加值可编辑
     return m ? +m[1] : NaN;
   };
 
-  /* ---- ① 先攻条 = 全屏透明 modal（popover 的 hidePaper 不再用了） ---- */
-  if (has(coreV1710, "function stripModalOptions()") && has(coreV1710, "fullScreen: true") &&
-    has(coreV1710, "hideBackdrop: true") && has(coreV1710, "hidePaper: true") &&
-    has(coreV1710, "disablePointerEvents: true") && has(coreV1710, "await OBR.modal.open(stripModalOptions())") &&
-    has(coreV1710, "OBR.modal.close(ID_STRIP)")) {
-    ok("① 先攻条：OBR.modal.open(fullScreen + hideBackdrop + hidePaper + disablePointerEvents)，关闭走 modal.close");
-  } else bad("① 先攻条没有换成透明 modal / 参数不齐 / 关闭没走 modal.close");
-  if (/html\.strip-html body\.strip-page \{[\s\S]{0,200}?pointer-events: none/.test(cssV1710) &&
-    /\.strip \{[\s\S]{0,300}?pointer-events: auto/.test(cssV1710) &&
+  /* ---- ① 先攻条 = popover（v1.7.11 紧急回退；modal + disablePointerEvents 会让整条点不动） ---- */
+  if (has(coreV1710, "function stripPopoverOptions(size, pos)") && has(coreV1710, 'anchorReference: "POSITION"') &&
+    has(coreV1710, 'anchorOrigin: { horizontal: "CENTER", vertical: "TOP" }') &&
+    has(coreV1710, "hidePaper: true") && has(coreV1710, "disableClickAway: true") &&
+    has(coreV1710, "await OBR.popover.open(stripPopoverOptions(size, pos))") &&
+    has(coreV1710, "OBR.popover.close(ID_STRIP)") && !has(coreV1710, "function stripModalOptions")) {
+    ok("① 先攻条：OBR.popover.open(POSITION + CENTER/TOP + hidePaper + disableClickAway)，关闭走 popover.close；不再用 modal");
+  } else bad("① 先攻条没有回退 popover / 参数不齐 / 还在用 stripModalOptions");
+  if (!has(cssV1710, "html.strip-html, html.strip-html body.strip-page { pointer-events: none; }") &&
+    !has(cssV1710, "pointer-events: auto;   /* 只有条本身接收鼠标") &&
+    has(cssV1710, "html.strip-html body.strip-page .strip-root") &&
+    has(cssV1710, "background: transparent !important") &&
+    has(cssV1710, "rgba(15, 20, 28, .86)") &&
     has(histHtmlV1710, "background: transparent !important")) {
-    ok("① 页面侧：html/body pointer-events:none + .strip pointer-events:auto（空白处透给地图），记录页也透明");
-  } else bad("① 页面透明 / 指针穿透的 CSS 不完整");
+    ok("① 页面全透明（html/body/#app/.win/.win-body/.strip*）+ 半透明卡片兜底；不再靠 pointer-events 穿透（popover 本身可交互）");
+  } else bad("① 页面透明 / 半透明卡片兜底的 CSS 不完整（别再靠 pointer-events 穿透）");
 
   /* ---- ② 加高不裁切：三档 ≥170，且 ≥ 控制行 36 + 卡片 80 + d20 行 24 + padding 16 ---- */
   const hIdle = numOf(initV1710, "STRIP_H_IDLE");
@@ -2680,18 +2689,152 @@ console.log("== v1.7.10 真透明先攻条 + Full Suite 卡片 + 加值可编辑
     ok("版本 " + VER + " 全链路（manifest×2 / common / core / background.html ?v= / index.html）");
   } else bad("版本没升到 " + VER);
   if (bundleV1710.indexOf("(v" + VER + ")") >= 0 && bundleV1710.indexOf('var PLUGIN_VERSION = "' + VER + '";') >= 0 &&
-    bundleV1710.indexOf("stripModalOptions") >= 0 && bundleV1710.indexOf("CH_WIN_CLOSE") >= 0) {
-    ok("background.bundle.js 已重建（stripModalOptions / CH_WIN_CLOSE 都在）");
+    bundleV1710.indexOf("stripPopoverOptions") >= 0 && bundleV1710.indexOf("CH_WIN_CLOSE") >= 0) {
+    ok("background.bundle.js 已重建（stripPopoverOptions / CH_WIN_CLOSE 都在）");
   } else bad("bundle 没跟上 " + VER + "（跑 node dev/build-background.mjs）");
   if (has(readmeV1710, "v" + VER) && has(changelogV1710, "v" + VER) && has(changelogV1710, "真透明") &&
     has(readmeV1710, "## ⭐ 安装地址")) {
     ok("README / CHANGELOG 补了 v" + VER + "（真透明先攻条 / Full Suite / 加值可编辑 / 记录窗 300×240 / ✕）");
   } else bad("README / CHANGELOG 没有补 v" + VER);
   if (has(testInitV1710, "setEntryBonus") && has(testInitV1710, "canEditBonus") && has(testInitV1710, "data-bonus-row") &&
-    has(testBgV1710, "fullScreen + hideBackdrop + hidePaper + disablePointerEvents") &&
+    has(testInitV1710, "先攻条打开时右键「加入先攻」→ entries 增加") &&
+    has(testBgV1710, "先攻条不再用 modal.open") && has(testBgV1710, "popover 720×170") &&
     has(testDiceV1710, 'c.name === "diceHistory"') && has(testDiceV1710, "300×240")) {
-    ok("三条行为自测同步：加值可编辑 / modal 透明 / 记录窗 300×240 + close-win");
-  } else bad("行为自测没有同步 v1.7.10 的断言");
+    ok("三条行为自测同步：加值可编辑 / popover 可交互 + 先攻条打开时右键加入先攻 / 记录窗 300×240 + close-win");
+  } else bad("行为自测没有同步 v1.7.11 的断言");
+}
+
+console.log("== v1.7.11 紧急回归：先攻条回退 popover（可交互 > 透明）");
+{
+  const coreV1711 = fs.readFileSync(corePath, "utf8");
+  const pageV1711 = fs.readFileSync(path.join(ROOT, "assets", "initiative-page.js"), "utf8");
+  const cssV1711 = fs.readFileSync(path.join(ROOT, "assets", "ui.css"), "utf8");
+  const readmeV1711 = fs.readFileSync(path.join(ROOT, "README.md"), "utf8");
+  const testBgV1711 = fs.readFileSync(path.join(ROOT, "dev", "test-background.mjs"), "utf8");
+  const testInitV1711 = fs.readFileSync(path.join(ROOT, "dev", "test-initiative.mjs"), "utf8");
+  const has = (src, sub) => String(src).indexOf(sub) >= 0;
+
+  if (has(coreV1711, "function stripPopoverOptions(size, pos)") && has(coreV1711, "hidePaper: true") &&
+    has(coreV1711, "disableClickAway: true") && !has(coreV1711, "function stripModalOptions") &&
+    !/function stripPopoverOptions[\s\S]{0,600}?disablePointerEvents/.test(coreV1711)) {
+    ok("先攻条只用 popover（hidePaper + disableClickAway）；stripPopoverOptions 里没有 disablePointerEvents");
+  } else bad("先攻条还在用 modal / disablePointerEvents（会让整条不可交互）");
+  if (has(pageV1711, 'stripRoot.addEventListener("click", onStripClick)') &&
+    has(pageV1711, 't.closest("[data-roll]")') &&
+    has(pageV1711, 'el.matches("[data-bonus-input], [data-bonus-row]")') &&
+    !has(pageV1711, "pointer-events")) {
+    ok("页面交互接线仍在：卡片点击 / d20 / 加值输入回车 + 失焦；页面不再依赖 pointer-events");
+  } else bad("页面交互接线断了 / 又把 pointer-events 当成穿透方案");
+  if (!has(cssV1711, "html.strip-html, html.strip-html body.strip-page { pointer-events: none; }") &&
+    has(cssV1711, "html.strip-html body.strip-page .strip-root") &&
+    has(cssV1711, "background: transparent !important") &&
+    has(cssV1711, ".strip.shell-card") && has(cssV1711, "rgba(15, 20, 28, .86)")) {
+    ok("CSS：html/body/#app/.win/.win-body/.strip* 全透明 + 半透明卡片兜底（不再靠 pointer-events 挡 / 穿透）");
+  } else bad("CSS 透明层 / 半透明卡片兜底不完整");
+  if (has(readmeV1711, "受 OBR 限制，外壳为半透明卡片") &&
+    has(NOTES, "modal + disablePointerEvents 不能用于需要交互的浮层")) {
+    ok("README 写了真机兜底口径（受 OBR 限制，外壳为半透明卡片）、NOTES 写了教训");
+  } else bad("README / NOTES 没有写真机兜底与教训");
+  if (has(testInitV1711, "先攻条打开时右键「加入先攻」→ entries 增加") &&
+    has(testInitV1711, "先攻条不再用 OBR.modal.open") &&
+    has(testBgV1711, "先攻条不再用 modal.open") &&
+    has(testBgV1711, "先攻条「✕」→ OBR.popover.close")) {
+    ok("自测回归断言齐全：先攻条打开时右键加入先攻 / 不再 modal / ✕ 走 popover.close");
+  } else bad("自测没有同步 v1.7.11 的回归断言");
+}
+
+console.log("== v1.7.12 速览资源追踪补全（威能 / 装备全部可点）+ 共享数据挪到顶部");
+{
+  const glanceV1712 = fs.readFileSync(path.join(ROOT, "assets", "glance.js"), "utf8");
+  const cssV1712 = fs.readFileSync(path.join(ROOT, "assets", "glance.css"), "utf8");
+  const trackV1712 = fs.readFileSync(path.join(ROOT, "assets", "track.js"), "utf8");
+  const infoV1712 = fs.readFileSync(path.join(ROOT, "assets", "info.js"), "utf8");
+  const testGlanceV1712 = fs.readFileSync(path.join(ROOT, "dev", "test-glance.mjs"), "utf8");
+  const testTrackV1712 = fs.readFileSync(path.join(ROOT, "dev", "test-track.mjs"), "utf8");
+  const bundleV1712 = fs.readFileSync(path.join(ROOT, "assets", "background.bundle.js"), "utf8");
+  const readmeV1712 = fs.readFileSync(path.join(ROOT, "README.md"), "utf8");
+  const changelogV1712 = fs.readFileSync(path.join(ROOT, "CHANGELOG.md"), "utf8");
+  const has = (src, sub) => String(src).indexOf(sub) >= 0;
+
+  /* ---- ① 威能：四组可点、随意纯展示 ---- */
+  const gAt = glanceV1712.indexOf("const POWER_GROUPS");
+  const gEnd = gAt < 0 ? -1 : glanceV1712.indexOf("];", gAt);
+  const groupLines = gAt >= 0 && gEnd > gAt ? glanceV1712.slice(gAt, gEnd) : "";
+  const tracked = (groupLines.match(/track: true/g) || []).length;
+  const untracked = (groupLines.match(/track: false/g) || []).length;
+  const pAt = glanceV1712.indexOf("function renderPowerGroup(");
+  const pEnd = pAt < 0 ? -1 : glanceV1712.indexOf("\n}", pAt);
+  const powerFn = pAt >= 0 && pEnd > pAt ? glanceV1712.slice(pAt, pEnd) : "";
+  if (tracked === 4 && untracked === 1 && has(powerFn, 'data-act="power"') &&
+    has(powerFn, "ed.track && d.track") && has(powerFn, "aria-pressed")) {
+    ok("① 四组威能（遭遇 / 每日 / 辅助 / 种族职业）都渲染 data-act=power 按钮；随意威能 track:false 保持纯展示");
+  } else bad("① 威能组的 track 开关 / data-act=power 不对（tracked=" + tracked + " untracked=" + untracked + "）");
+  if (!has(powerFn, "usage") && !has(powerFn, '=== "encounter"') && !has(powerFn, '=== "utility"')) {
+    ok("① 四组走同一支 renderPowerGroup（没有按 usage / 单个分类早退）");
+  } else bad("① 威能渲染里还有按 usage / 单个分类的早退");
+
+  /* ---- ② 装备：每行 data-act=equipment + 稳定 key ---- */
+  if (has(glanceV1712, 'data-act="equipment"') && has(glanceV1712, 'prefix + ":" + id + ":" + n') &&
+    has(glanceV1712, "equipmentUsedRaw[r.key]")) {
+    ok("② 装备每行 data-act=equipment，key 用稳定 id（前缀:物品id:序号），未知 key 直接忽略");
+  } else bad("② 装备没改成 equipment / key 仍按下标 / 没有过滤未知 key");
+  if (has(trackV1712, 'case "equipment":') && has(trackV1712, 'case "item":') &&
+    has(trackV1712, "delete out.equipmentUsed[key]")) {
+    ok("② track.js：equipment / item 都能切换（老页面缓存兼容）");
+  } else bad("② track.js 缺少 equipment 动作 / item 兼容 / 切换逻辑");
+
+  /* ---- ③ 共享数据在顶部、HP 区没有、语义正确 ---- */
+  const hAt = glanceV1712.indexOf("function renderHpBlock(");
+  const hEnd = hAt < 0 ? -1 : glanceV1712.indexOf("\n}", hAt);
+  const hpFn = stripComments(hAt >= 0 && hEnd > hAt ? glanceV1712.slice(hAt, hEnd) : "");
+  if (has(glanceV1712, "共享数据") && has(glanceV1712, "gl4-share") && has(glanceV1712, "gl4-head-right") &&
+    has(glanceV1712, "quick + share") && !has(hpFn, 'data-act="lock"') && !has(hpFn, "共享数据") &&
+    !has(glanceV1712, "gl4-lock-row")) {
+    ok("③ 共享数据只在顶部标题区（.gl4-head-right + quick + share），HP 区不再有 data-act=lock / 老按钮");
+  } else bad("③ 共享数据 chip 的位置不对（顶部 / HP 区 / 旧 class 还有残留）");
+  if (has(glanceV1712, "共享数据：开") && has(glanceV1712, "共享数据：关") &&
+    has(glanceV1712, '(d.locked ? "" : " on")') && has(glanceV1712, 'd.locked ? "false" : "true"')) {
+    ok("③ 开关方向：hp.locked=false = 共享 = 显示精确数字；true = 量化（默认），aria-pressed 跟着反");
+  } else bad("③ 共享数据的开 / 关语义、class 或 aria-pressed 不对");
+  if (has(cssV1712, ".gl4-head-right") && has(cssV1712, ".gl4-share") && has(cssV1712, ".gl4-share.on") &&
+    !has(cssV1712, ".gl4-lock-row")) {
+    ok("③ glance.css：顶部一组（.gl4-head-right）+ 共享数据 chip（.gl4-share / .on 绿色高亮）");
+  } else bad("③ glance.css 缺少 .gl4-head-right / .gl4-share");
+
+  /* ---- ④ 专长仍纯展示 + info.js 接线 ---- */
+  if (!has(glanceV1712, 'data-act="feat"') && has(glanceV1712, "gl4-chip feat")) {
+    ok("④ 专长仍纯展示（没有 data-act=feat）");
+  } else bad("④ 专长又被做成可点了");
+  if (has(infoV1712, "deriveGlance(card.char, undefined, { hp: hp, state: state })") &&
+    has(infoV1712, 'closest("[data-act]")')) {
+    ok("④ info.js：同一个 [data-act] 事件委托覆盖威能 / 装备 / 共享数据；推导带实时 hp / state");
+  } else bad("④ info.js 的点击委托 / 实时推导没接好");
+
+  /* ---- ⑤ 自测同步（test-glance / test-track） ---- */
+  const needGlance = ['data-act="power"', 'data-act="equipment"', "共享数据", "已用 0 /", "gl4-vitals", "hp.locked"];
+  const missGlance = needGlance.filter((s) => !has(testGlanceV1712, s));
+  if (!missGlance.length) ok("⑤ dev/test-glance.mjs：断言四组每个 chip / 每行装备 / 默认 0 / N / 共享数据在顶部");
+  else bad("⑤ dev/test-glance.mjs 少了断言：" + missGlance.join(" / "));
+  const needTrack = ["encounter", "daily", "utility", "special", "默认状态", "equipment"];
+  const missTrack = needTrack.filter((s) => !has(testTrackV1712, s));
+  if (!missTrack.length) ok("⑤ dev/test-track.mjs：断言四组威能 toggle / 默认全未用 / equipment 动作名");
+  else bad("⑤ dev/test-track.mjs 少了断言：" + missTrack.join(" / "));
+
+  /* ---- ⑥ 版本 / bundle / 文档 ---- */
+  if (man.version === VER && manRel.version === VER && verOf(commonSrc) === VER && verOf(coreSrc2) === VER &&
+    bgHtml.indexOf("background.bundle.js?v=" + VER) >= 0 &&
+    indexHtmlSrc.indexOf('<span class="tag">v' + VER + '</span>') >= 0) {
+    ok("⑥ 版本 " + VER + " 全链路（manifest×2 / common / core / background.html ?v= / index.html）");
+  } else bad("⑥ 版本没升到 " + VER);
+  if (has(bundleV1712, "(v" + VER + ")") && has(bundleV1712, 'var PLUGIN_VERSION = "' + VER + '";')) {
+    ok("⑥ background.bundle.js 已重建（头部 " + VER + " + PLUGIN_VERSION）");
+  } else bad("⑥ bundle 没跟上 " + VER + "（跑 node dev/build-background.mjs）");
+  if (!man.action) ok("⑥ manifest 仍然没有 action");
+  else bad("⑥ manifest 又加回了 action");
+  if (has(readmeV1712, "v1.7.12") && has(readmeV1712, "共享数据") &&
+    has(changelogV1712, "v1.7.12") && has(changelogV1712, "共享数据") && has(changelogV1712, "装备")) {
+    ok("⑥ README / CHANGELOG 补了 v1.7.12（四组威能 / 装备 / 共享数据）");
+  } else bad("⑥ README / CHANGELOG 没有补 v1.7.12");
 }
 
 console.log("== docs 合并（docs/NOTES.md；不再按版本 / 规格拆文件）");

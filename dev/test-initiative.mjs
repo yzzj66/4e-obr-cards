@@ -47,9 +47,11 @@ const removedMenus = [];
 const broadcastCbs = {};
 const sentBroadcasts = [];
 const openedPopovers = [];
-/* v1.7.10：先攻条改 OBR.modal.open → 记录 modal 的 open / close（断言全屏 + 透明 + 指针穿透）。 */
+/* v1.7.11：先攻条回到 OBR.popover.open（v1.7.10 的 modal + disablePointerEvents 会让整条点不动）。
+ * 仍保留 modal 记录：断言先攻条**不再**走 modal.open。 */
 const openedModals = [];
 const closedModals = [];
+const closedPopovers = [];
 
 function itemById(id) { return items.filter((it) => it.id === id)[0] || null; }
 function mergeRoom(update) {
@@ -113,7 +115,7 @@ const OBR = {
   tool: { create: async () => {}, remove: async () => {} },
   popover: {
     open: async (cfg) => { openedPopovers.push(cfg); },
-    close: async () => {}
+    close: async (id) => { closedPopovers.push(id); }
   },
   modal: {
     open: async (cfg) => { openedModals.push(cfg); },
@@ -712,12 +714,15 @@ if (addedEntry && addedEntry.d20 >= 1 && addedEntry.d20 <= 20 && addedEntry.init
   typeof addedEntry.tb === "number" && addedEntry.tb >= 0.001 && addedEntry.tb <= 0.999) {
   ok("「加入先攻」写入 d20 / init=d20+加值 / tb（" + addedEntry.d20 + "+" + addedEntry.bonus + "=" + addedEntry.init + "）");
 } else bad("加入先攻没有写 d20/tb：" + JSON.stringify(addedEntry));
-const stripOpenCfg = openedModals.filter((c) => c && c.id === "com.4enext-owlbear/initiative-strip").pop();
+const stripOpenCfg = openedPopovers.filter((c) => c && c.id === "com.4enext-owlbear/initiative-strip").pop();
 if (stripOpenCfg) {
-  if (stripOpenCfg.fullScreen === true && stripOpenCfg.hideBackdrop === true && stripOpenCfg.hidePaper === true &&
-    stripOpenCfg.disablePointerEvents === true && /initiative\.html$/.test(String(stripOpenCfg.url))) {
-    ok("加入先攻后自动打开先攻条（modal 全屏 + hideBackdrop + hidePaper + disablePointerEvents）");
-  } else bad("先攻条的 modal 参数不对：" + JSON.stringify(stripOpenCfg));
+  if (stripOpenCfg.anchorReference === "POSITION" && stripOpenCfg.hidePaper === true &&
+    stripOpenCfg.disableClickAway === true && stripOpenCfg.width === 720 && stripOpenCfg.height === 170 &&
+    stripOpenCfg.anchorOrigin && stripOpenCfg.anchorOrigin.horizontal === "CENTER" &&
+    stripOpenCfg.anchorOrigin.vertical === "TOP" && stripOpenCfg.anchorPosition &&
+    stripOpenCfg.anchorPosition.top === 45 && /initiative\.html$/.test(String(stripOpenCfg.url))) {
+    ok("加入先攻后自动打开先攻条（popover：POSITION + CENTER/TOP + 720×170 @ top45 + hidePaper + disableClickAway）");
+  } else bad("先攻条的 popover 参数不对：" + JSON.stringify(stripOpenCfg));
 } else bad("加入先攻后没有打开先攻条");
 
 /* ---- 10) 权限：四道校验 ---- */
@@ -759,53 +764,85 @@ permState = I.normalizeInitiative(roomMeta[KEY_INITIATIVE]);
 if (permState.activeId === "tok-1") ok("准备阶段不推进回合");
 else bad("准备阶段被推进了");
 
-/* ---- 11) v1.7.10 先攻条：拖动在页面内 + 后台只记账 / 命令频道 ---- */
-console.log("== v1.7.10 先攻条：modal 透明 + 页面内拖动 + 命令");
+/* ---- 11) v1.7.11 先攻条：popover 透明 + 宿主定位拖动 + 命令频道 ---- */
+console.log("== v1.7.11 先攻条：popover 透明 + 拖动重开 + 命令");
 if (typeof api.onStripDrag === "function" && typeof api.onStripCmd === "function" && typeof api.openStrip === "function") {
   const STRIP_ID = "com.4enext-owlbear/initiative-strip";
+  const stripPops = () => openedPopovers.filter((c) => c && c.id === STRIP_ID);
   const stripModals = () => openedModals.filter((c) => c && c.id === STRIP_ID);
   if (typeof api.closeStrip === "function") await api.closeStrip();
   await sleep(40);
-  const opensBefore = openedModals.length;
+  const opensBefore = openedPopovers.length;
   api.onStripDrag({ data: { phase: "start", dx: 0, dy: 0 } });
   api.onStripDrag({ data: { phase: "move", dx: 100, dy: 50 } });
   await sleep(40);
-  if (openedModals.length === opensBefore) ok("先攻条没打开时忽略拖动消息");
+  if (openedPopovers.length === opensBefore) ok("先攻条没打开时忽略拖动消息");
   else bad("先攻条没开也被拖动了");
 
-  openedModals.length = 0;
+  openedPopovers.length = 0;
   await api.openStrip();
   await sleep(60);
-  let stripCfg = stripModals().pop();
+  let stripCfg = stripPops().pop();
   if (!stripCfg) bad("openStrip 没有打开先攻条");
-  else if (stripCfg.fullScreen === true && stripCfg.hideBackdrop === true && stripCfg.hidePaper === true &&
-    stripCfg.disablePointerEvents === true && stripCfg.url && /initiative\.html$/.test(String(stripCfg.url))) {
-    ok("openStrip → OBR.modal.open（fullScreen + hideBackdrop + hidePaper + disablePointerEvents）");
-  } else bad("先攻条 modal 参数不对：" + JSON.stringify(stripCfg));
+  else if (stripCfg.anchorReference === "POSITION" && stripCfg.hidePaper === true &&
+    stripCfg.disableClickAway === true && stripCfg.width === 720 && stripCfg.height === 170 &&
+    stripCfg.anchorOrigin && stripCfg.anchorOrigin.horizontal === "CENTER" &&
+    stripCfg.anchorOrigin.vertical === "TOP" && stripCfg.anchorPosition &&
+    stripCfg.anchorPosition.left === 600 && stripCfg.anchorPosition.top === 45 &&
+    stripCfg.url && /initiative\.html$/.test(String(stripCfg.url))) {
+    ok("openStrip → OBR.popover.open（POSITION + CENTER/TOP + 720×170 @ (600,45) + hidePaper + disableClickAway）");
+  } else bad("先攻条 popover 参数不对：" + JSON.stringify(stripCfg));
+  if (stripModals().length === 0) ok("先攻条不再用 OBR.modal.open（v1.7.10 的 disablePointerEvents 回归已修）");
+  else bad("先攻条还在用 modal.open：" + JSON.stringify(stripModals()));
 
-  /* 拖动不再重开宿主窗口（modal 全屏、位置由页面自己算），后台只更新偏移记账。 */
-  const beforeDrag = openedModals.length;
+  /* 【关键回归】先攻条打开时右键「加入先攻」→ entries 必须增加（v1.7.10 的全屏 modal 会挡住右键菜单）。 */
+  if (addMenu && typeof addMenu.onClick === "function") {
+    roomMeta[KEY_INITIATIVE] = null;
+    const beforeAdd = I.normalizeInitiative(roomMeta[KEY_INITIATIVE]).entries.length;
+    const openCount = stripPops().length;
+    await addMenu.onClick({ items: [itemById("tok-2")] }, "x");
+    await sleep(120);
+    const addedState = I.normalizeInitiative(roomMeta[KEY_INITIATIVE]);
+    const addedEntry = addedState.entries.filter((e) => e.tokenId === "tok-2")[0];
+    if (addedEntry && addedState.entries.length === beforeAdd + 1 && stripPops().length === openCount)
+      ok("先攻条打开时右键「加入先攻」→ entries 增加（" + beforeAdd + "→" + addedState.entries.length + "；popover 不挡右键菜单）");
+    else bad("先攻条打开时右键「加入先攻」失效：" + JSON.stringify({ before: beforeAdd, after: addedState.entries.length, opens: stripPops().length }));
+  } else bad("找不到「加入先攻」右键菜单");
+
+  /* 拖动 = 后台按位移夹紧后重开**同一个 popover**（iframe 复用，不重载）。 */
+  const beforeDrag = stripPops().length;
   api.onStripDrag({ data: { phase: "start", dx: 0, dy: 0 } });
   api.onStripDrag({ data: { phase: "move", dx: 100, dy: 50 } });
   await sleep(90);
-  if (openedModals.length === beforeDrag) ok("拖动**不再重开**宿主窗口（modal 内由页面自己移动）");
-  else bad("拖动还在重开窗口（modal 版本不该这样）");
+  const movedPop = stripPops().slice(beforeDrag).pop();
+  if (!movedPop) bad("拖动先攻条没有重开 popover（宿主位置不会动）");
+  else if (!movedPop.anchorPosition || movedPop.anchorPosition.left !== 700 || movedPop.anchorPosition.top !== 95)
+    bad("拖动 100,50 后 popover 锚点不对：" + JSON.stringify(movedPop.anchorPosition));
+  else if (movedPop.width !== 720 || movedPop.height !== 170)
+    bad("拖动时 popover 尺寸变了：" + movedPop.width + "×" + movedPop.height);
+  else ok("拖动 100,50 → 重开同一个 popover @ (700,95)，尺寸仍 720×170");
 
   api.onStripDrag({ data: { phase: "move", dx: 5000, dy: 5000 } });
   api.onStripDrag({ data: { phase: "end", dx: 5000, dy: 5000 } });
   await sleep(160);
   let posBox = null;
   try { posBox = JSON.parse(globalThis.localStorage.getItem("4enext/strip-pos") || "null"); } catch (e) { posBox = null; }
-  /* 视口 1200×800、条 720×170 → dx 夹在 ±224，dy 最大 = 800−170−16−45 = 569。 */
-  if (posBox && posBox.dx === 224 && posBox.dy === 569) ok("先攻条拖出视口 → 偏移夹紧到 { dx: 224, dy: 569 } 并落盘");
-  else bad("先攻条位置没有夹紧 / 落盘：" + JSON.stringify(posBox));
+  /* 视口 1200×800、条 720×170 → dx 夹在 ±224，dy 最大 = 800−170−16−45 = 569（top = 614）。 */
+  const clampedPop = stripPops().pop();
+  if (posBox && posBox.dx === 224 && posBox.dy === 569) {
+    if (!clampedPop || !clampedPop.anchorPosition || clampedPop.anchorPosition.left !== 824 || clampedPop.anchorPosition.top !== 614)
+      bad("先攻条拖出视口后 popover 没有被夹回视口：" + JSON.stringify(clampedPop && clampedPop.anchorPosition));
+    else ok("先攻条拖出视口 → 偏移夹到 { dx: 224, dy: 569 }、popover @ (824,614) 并落盘");
+  } else bad("先攻条位置没有夹紧 / 落盘：" + JSON.stringify(posBox));
 
-  openedModals.length = 0;
+  const beforeReset = stripPops().length;
   api.onStripDrag({ data: { phase: "reset" } });
-  await sleep(80);
-  if (!globalThis.localStorage.getItem("4enext/strip-pos"))
-    ok("「回到顶部中间」→ 清掉记住的偏移（页面重排，不重开窗口）");
-  else bad("回中后偏移还在：" + globalThis.localStorage.getItem("4enext/strip-pos"));
+  await sleep(120);
+  const centeredPop = stripPops().slice(beforeReset).pop();
+  if (!globalThis.localStorage.getItem("4enext/strip-pos") && centeredPop && centeredPop.anchorPosition &&
+    centeredPop.anchorPosition.left === 600 && centeredPop.anchorPosition.top === 45)
+    ok("「回到顶部中间」→ 清掉记住的偏移并重开 popover @ (600,45)");
+  else bad("回中后偏移还在 / popover 没回中：" + JSON.stringify({ saved: globalThis.localStorage.getItem("4enext/strip-pos"), pos: centeredPop && centeredPop.anchorPosition }));
 
   openedPopovers.length = 0;
   api.onStripCmd({ data: { op: "list" } });
@@ -814,41 +851,47 @@ if (typeof api.onStripDrag === "function" && typeof api.onStripCmd === "function
   if (listWin && listWin.width === 880 && listWin.height === 640) ok("先攻条「≡」打开列表窗口（?view=list，880×640）");
   else bad("列表窗口没打开：" + JSON.stringify(listWin && [listWin.url, listWin.width]));
 
-  const beforeSize = openedModals.length;
+  const beforeSize = stripPops().length;
   api.onStripCmd({ data: { op: "size", width: 410, height: 200 } });
-  await sleep(60);
-  if (openedModals.length === beforeSize) ok("尺寸命令只更新几何、不重开 modal");
-  else bad("尺寸命令把 modal 重开了");
+  await sleep(120);
+  const resized = stripPops().slice(beforeSize).pop();
+  if (resized && resized.width === 720 && resized.height === 200 && resized.anchorPosition &&
+    resized.anchorPosition.top === 45) {
+    ok("尺寸命令（410×200 → 常量 720×200）→ 重开同一个 popover 换高度，宽度仍 720");
+  } else bad("尺寸命令没有重开 popover / 尺寸不对：" + JSON.stringify(resized && [resized.width, resized.height]));
 
-  /* v1.6.2 的兜底仍在：页面报上来的测量宽度（588）会被 snapStripSize 丢掉，不会改变条宽。 */
-  openedModals.length = 0;
+  /* v1.7.11：条已经开着时再点工具栏「先攻」→ 沿用页面报上来的 200 高，不缩回 idle 170。 */
+  const beforeReopen = stripPops().length;
+  await api.openStrip();
+  await sleep(80);
+  const reopenedPop = stripPops().slice(beforeReopen).pop();
+  if (reopenedPop && reopenedPop.width === 720 && reopenedPop.height === 200)
+    ok("已经开着时再打开先攻条 → 沿用当前 720×200（不缩回 170 裁掉卡片）");
+  else bad("重新打开把战斗态高度缩回去了：" + JSON.stringify(reopenedPop && [reopenedPop.width, reopenedPop.height]));
+
+  /* v1.6.2 的兜底仍在：页面报上来的测量宽度（588）会被 snapStripSize 丢掉 → 尺寸没变就不重开。 */
+  const beforeSame = stripPops().length;
   api.onStripCmd({ data: { op: "size", width: 588, height: 200 } });
-  await sleep(40);
-  api.onStripDrag({ data: { phase: "start", dx: 0, dy: 0 } });
-  api.onStripDrag({ data: { phase: "move", dx: 10, dy: 10 } });
-  api.onStripDrag({ data: { phase: "end", dx: 10, dy: 10 } });
-  await sleep(160);
-  if (openedModals.length === 0) ok("投骰 / 内容变化后也不会重开 modal（量出来的 588 被丢弃）");
-  else bad("投骰后 modal 被重开了");
+  await sleep(80);
+  if (stripPops().length === beforeSame) ok("页面量出来的 588 被丢弃（尺寸没变 → 不重开窗口）");
+  else bad("尺寸没变也重开了 popover");
 
-  /* 折叠态仍是常量 120×40（页面按 stripSizeFor 设 CSS，后台只记账）。 */
+  const beforePill = stripPops().length;
   const pillSize = I.stripSizeFor("combat", true, 1366);
   api.onStripCmd({ data: { op: "size", width: pillSize.width, height: pillSize.height } });
-  await sleep(40);
-  openedModals.length = 0;
-  api.onStripDrag({ data: { phase: "start", dx: 0, dy: 0 } });
-  api.onStripDrag({ data: { phase: "move", dx: 4, dy: 4 } });
-  api.onStripDrag({ data: { phase: "end", dx: 4, dy: 4 } });
-  await sleep(160);
-  if (openedModals.length === 0 && pillSize.width === 120 && pillSize.height === 40)
-    ok("折叠态仍是常量 120×40（药丸也常驻，不重开窗口）");
-  else bad("折叠态尺寸/重开不对：" + JSON.stringify(pillSize));
+  await sleep(120);
+  const pillPop = stripPops().slice(beforePill).pop();
+  if (pillSize.width === 120 && pillSize.height === 40 && pillPop && pillPop.width === 120 && pillPop.height === 40)
+    ok("折叠态 120×40 → 同一个 popover 换尺寸（药丸也常驻）");
+  else bad("折叠态尺寸/重开不对：" + JSON.stringify({ pillSize, pop: pillPop && [pillPop.width, pillPop.height] }));
 
-  /* closeStrip → popover.close + modal.close 双保险。 */
+  /* closeStrip → popover.close（再 modal.close 兜底 v1.7.10 的旧实例）。 */
+  closedPopovers.length = 0;
   closedModals.length = 0;
   await api.closeStrip();
-  if (closedModals.indexOf(STRIP_ID) >= 0) ok("关闭先攻条 → OBR.modal.close(" + STRIP_ID + ")（并兜底 popover.close）");
-  else bad("关闭先攻条没有调 modal.close");
+  if (closedPopovers.indexOf(STRIP_ID) >= 0)
+    ok("关闭先攻条 → OBR.popover.close(" + STRIP_ID + ")（modal.close 兜底旧实例）");
+  else bad("关闭先攻条没有调 popover.close");
 } else bad("后台没有暴露 onStripDrag / onStripCmd / openStrip");
 
 
@@ -1008,37 +1051,38 @@ console.log("== v1.7.3 token 被删除 → 自动清理 + 游标顺移");
   else bad("换场景把名单清了：" + JSON.stringify({ keep, n: stateKeep.entries.length }));
 }
 
-console.log("== v1.7.3 / v1.7.10 先攻条常驻（modal 透明 / 进入房间自动显示 / 关掉不再弹）");
+console.log("== v1.7.3 / v1.7.11 先攻条常驻（popover 透明 / 进入房间自动显示 / 关掉不再弹）");
 {
   const STRIP_ID = "com.4enext-owlbear/initiative-strip";
   const AUTO_KEY = "4enext/strip-autostart";
   const CLOSED_KEY = "4enext/strip-closed-this-session";
-  const stripModals = () => openedModals.filter((c) => c && c.id === STRIP_ID);
-  const isTransparentModal = (c) => !!(c && c.fullScreen === true && c.hideBackdrop === true &&
-    c.hidePaper === true && c.disablePointerEvents === true);
+  const stripPops = () => openedPopovers.filter((c) => c && c.id === STRIP_ID);
+  const isTransparentPopover = (c) => !!(c && c.id === STRIP_ID && c.anchorReference === "POSITION" &&
+    c.hidePaper === true && c.disableClickAway === true && c.width > 0 && c.height > 0);
 
   globalThis.localStorage.removeItem(AUTO_KEY);
   globalThis.localStorage.removeItem(CLOSED_KEY);
   await api.closeStrip();
-  openedModals.length = 0;
+  openedPopovers.length = 0;
   /* 真实入口：scene.onReadyChange(true) → boot 里那个回调 → maybeAutoOpenStrip() */
   if (sceneReadyCbs.length) {
     for (const cb of sceneReadyCbs) {
       try { cb(true); } catch (e) { /* 其它订阅自己的事，别挡住这条断言 */ }
     }
     await sleep(220);
-    const viaReady = stripModals().pop();
-    if (isTransparentModal(viaReady)) ok("scene.onReadyChange(true) → 自动打开先攻条（透明 modal：全屏 + hideBackdrop + hidePaper + disablePointerEvents）");
+    const viaReady = stripPops().pop();
+    if (isTransparentPopover(viaReady))
+      ok("scene.onReadyChange(true) → 自动打开先攻条（popover：POSITION + hidePaper + disableClickAway + 有宽高）");
     else bad("scene.onReadyChange 时没有按设置自动打开先攻条");
   } else {
     bad("后台没有订阅 scene.onReadyChange");
   }
 
   await api.closeStrip();
-  openedModals.length = 0;
+  openedPopovers.length = 0;
   const autoOpened = await api.maybeAutoOpenStrip("自测");
-  const autoCfg = stripModals().pop();
-  if (autoOpened && isTransparentModal(autoCfg)) ok("设置未写（默认）→ 进入房间自动打开先攻条（透明 modal）");
+  const autoCfg = stripPops().pop();
+  if (autoOpened && isTransparentPopover(autoCfg)) ok("设置未写（默认）→ 进入房间自动打开先攻条（popover）");
   else bad("默认没有自动打开先攻条 / 参数不对");
   if (api.stripAutostartOn() === true) ok("stripAutostartOn 默认 true（缺省按开）");
   else bad("stripAutostartOn 默认不是 true");
@@ -1046,9 +1090,9 @@ console.log("== v1.7.3 / v1.7.10 先攻条常驻（modal 透明 / 进入房间�
   /* 设置为 0 → 不自动开 */
   globalThis.localStorage.setItem(AUTO_KEY, "0");
   await api.closeStrip();
-  openedModals.length = 0;
+  openedPopovers.length = 0;
   const offOpened = await api.maybeAutoOpenStrip("自测");
-  if (!offOpened && stripModals().length === 0 && api.stripAutostartOn() === false)
+  if (!offOpened && stripPops().length === 0 && api.stripAutostartOn() === false)
     ok("设置 " + AUTO_KEY + " = \"0\" → 不自动打开先攻条");
   else bad("设置为 0 仍然自动打开了");
   globalThis.localStorage.removeItem(AUTO_KEY);
@@ -1056,7 +1100,7 @@ console.log("== v1.7.3 / v1.7.10 先攻条常驻（modal 透明 / 进入房间�
   /* 条上的 ✕（CH_STRIP_CMD {op:"close"}）→ 会话级标记 → 不再自动弹 */
   globalThis.localStorage.removeItem(CLOSED_KEY);
   await api.openStrip();
-  openedModals.length = 0;
+  openedPopovers.length = 0;
   api.onStripCmd({ data: { op: "close" } });
   await sleep(80);
   const closedMark = globalThis.localStorage.getItem(CLOSED_KEY);
@@ -1071,18 +1115,19 @@ console.log("== v1.7.3 / v1.7.10 先攻条常驻（modal 透明 / 进入房间�
     ok("重新打开先攻条 → 清掉会话级关闭标记（下个房间又会自动开）");
   else bad("重新打开没有清掉会话级标记");
 
-  /* 折叠态药丸：同一个 modal（id 不变）+ 仍是常量 120×40 + 不重开窗口。 */
-  openedModals.length = 0;
+  /* 折叠态药丸：同一个 popover id + 常量 120×40（药丸也常驻）。 */
+  openedPopovers.length = 0;
   api.onStripCmd({ data: { op: "size", width: 120, height: 40 } });
-  await sleep(40);
+  await sleep(80);
   api.onStripDrag({ data: { phase: "start", dx: 0, dy: 0 } });
   api.onStripDrag({ data: { phase: "move", dx: 6, dy: 6 } });
   api.onStripDrag({ data: { phase: "end", dx: 6, dy: 6 } });
   await sleep(200);
   const pillSize = I.stripSizeFor("combat", true, 1366);
-  if (openedModals.length === 0 && pillSize.width === 120 && pillSize.height === 40)
-    ok("折叠态（120×40 药丸）仍是同一个 modal、常量尺寸（药丸也常驻）");
-  else bad("折叠态没有保持常驻：" + JSON.stringify(pillSize));
+  const pillPop = stripPops().pop();
+  if (pillSize.width === 120 && pillSize.height === 40 && pillPop && pillPop.width === 120 && pillPop.height === 40)
+    ok("折叠态（120×40 药丸）仍是同一个 popover、常量尺寸（药丸也常驻）");
+  else bad("折叠态没有保持常驻：" + JSON.stringify({ pillSize, pop: pillPop && [pillPop.width, pillPop.height] }));
   await api.closeStrip();
 }
 
@@ -1170,7 +1215,7 @@ console.log("== v1.7.10 先攻加值可编辑 + 无卡 token 加入先攻");
 
 console.log("== 静态检查");
 const man = JSON.parse(fs.readFileSync(path.join(ROOT, "manifest.json"), "utf8"));
-if (man.name === "4eNEXT to owlbear" && man.version === "1.7.10") ok("manifest 名称 / 版本 = 4eNEXT to owlbear 1.7.10");
+if (man.name === "4eNEXT to owlbear" && man.version === "1.7.12") ok("manifest 名称 / 版本 = 4eNEXT to owlbear 1.7.12");
 else bad("manifest 名称 / 版本不对：" + man.name + " " + man.version);
 if (!man.action) ok("manifest 仍然没有 action 字段（真机验证过无 action 能加载）");
 else bad("manifest 又加回了 action 字段");

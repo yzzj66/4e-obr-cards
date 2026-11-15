@@ -9,7 +9,7 @@
 </head>
 <body>
 <article class="doc">
-  <h1>4eNEXT to owlbear <span class="tag">Owlbear Rodeo 插件</span> <span class="tag">v1.7.10</span></h1>
+  <h1>4eNEXT to owlbear <span class="tag">Owlbear Rodeo 插件</span> <span class="tag">v1.7.12</span></h1>
   <p class="muted">在枭熊里看 4E NEXT 的「速览」页：右键 token 绑定角色卡，之后选中这枚 token 就会弹出速览。
     v1.2.0 起还能在弹窗里直接加减血量（token 上会画出血条），并把威能 / 装备点掉记成「已用」；
     v1.2.1 把速览弹窗加宽到 660×700；v1.2.2 弹窗可以按住标题栏拖动、位置按 token 记住。
@@ -83,6 +83,15 @@
     <b>卡片左上角与状态行的先攻加值都可编辑</b>（有卡自动填卡值、无卡手填，回车 / 失焦写 <code>entries[].bonus</code> 并立即重排；
     GM 任意、玩家只自己 token）；<b>骰子记录窗缩到 300×240</b>、半透明外壳、行高 26 / 字号 11、只显示 4 条；
     <b>所有窗口的 ✕</b> 统一 <code>popover.close(正确 id) + modal.close + 后台 close-win</code> 双保险（修好角色卡面板关不掉）。
+    <b>v1.7.11</b> <b>紧急回归修复</b>：v1.7.10 的 <code>OBR.modal.open + disablePointerEvents</code> 让<b>整条先攻条不可交互</b>
+    （右键「加入先攻」被全屏层挡住、加值输入框改不了、卡片下的 d20 点不动）→ <b>回退 <code>OBR.popover.open</code></b>（v1.7.4 的实现），
+    保留 <code>hidePaper:true</code> + 页面各层全 <code>transparent !important</code>，以及加高 <b>170 / 180 / 200</b>、Full Suite 卡片、单枚 d20、加值可编辑；
+    拖动改为「页面发纯指针位移 → 后台夹紧后重开同一个 popover」。<b>若真机外壳仍是深色：受 OBR 限制，外壳为半透明卡片</b>
+    （<code>rgba(15,20,28,.86)</code> 圆角），不再用 modal。教训：<code>modal + disablePointerEvents</code> 不能用于需要交互的浮层。
+    <b>v1.7.12</b> <b>速览资源追踪补全</b>：遭遇 / 每日 / 辅助 / 种族职业四组<b>威能 chips 全部可点</b>
+    （点 = 已用、再点恢复；随意威能不追踪），<b>装备 / 魔法物品每行可点</b>；修「没点过却显示已用 10/12」
+    （装备 key 改稳定 id，旧 key 忽略、缺省 = 未用）；「玩家端隐藏数字」挪到顶部标题区右侧并改名<b>「共享数据」</b>
+    （开 = 共享 = 全桌显示精确数字）。
     纯静态、免构建、不需要服务器。</p>
 
   <section class="diag-card" id="diag">

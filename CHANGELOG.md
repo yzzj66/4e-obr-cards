@@ -149,3 +149,35 @@ GM 可改任意、玩家只能改自己 token 的条目。⑥ **状态行**「�
 （角色卡面板会退化成全屏 modal，只 popover.close 关不掉），先攻列表 / 骰子 / 记录 / 设置 / 血条编辑窗一并修。
 `dev/check.mjs` 断言 modal 参数、170+ 高度、Full Suite 六个关键数值、单枚 d20、加值输入与 close-win；
 `dev/test-initiative.mjs` / `dev/test-background.mjs` / `dev/test-dice.mjs` 同步。
+
+**v1.7.11：紧急回归修复 —— 先攻条回退 popover（可用 > 透明）**——
+① **根因**：v1.7.10 的 `OBR.modal.open({ fullScreen, hideBackdrop, hidePaper, disablePointerEvents: true })`
+让**整个 modal 层不接收指针**，页内 `.strip { pointer-events:auto }` 在部分浏览器 / OBR 版本里救不回来：
+右键「加入先攻」被全屏层挡住、加值输入框改不了、卡片下的 d20 点不动（用户实测）。
+② **修法**：先攻条**回退成 `OBR.popover.open`**（v1.7.4 的实现），并用 `hidePaper: true` + 页面
+`html / body / #app / .win / .win-body / .strip-root / .strip / .strip-items` 全 `transparent !important` 保持透明；
+popover 只占条本身那块区域，按钮 / 输入框 / 右键菜单都不再被挡。
+③ **保留 v1.7.10 的成果**：加高 **170 / 180 / 200**（不裁切）、Full Suite 卡片几何（56×80 / active 100）、
+卡片下**只留一枚 d20**、加值可编辑（卡片左上角 + 状态行 + 列表窗口）、**无卡 token 也能加入先攻**。
+④ **拖动协议修正**：页面只发**纯指针位移**（`screenX/screenY`），后台加起点偏移、夹紧后**重开同一个 popover**
+（iframe 复用，不重载）—— 不再让页面自己写 left/top（那是 modal 时代的做法）。
+⑤ **尺寸**：高度随 phase 变时，后台按 `{op:"size"}` 重开同一个 popover 换 170/180/200；折叠仍是 120×40。
+⑥ **真机兜底**：若 popover 外壳仍被宿主画成深色，按约定**不再退回 modal**，接受**半透明深色卡片**
+（`.strip.shell-card` / `rgba(15,20,28,.86)` + 12px 圆角）——「受 OBR 限制，外壳为半透明卡片」。
+⑦ **自测**：新增「先攻条打开时右键『加入先攻』→ entries 仍然增加」的回归断言；所有窗口 ✕ / 拖动 / 加值输入
+在 popover 版本下重跑；`node dev/selftest.mjs` 5/5，v1.7.8「成功类通知 = 0」保留；manifest 仍无 action。
+教训写进 [docs/NOTES.md](docs/NOTES.md)：**modal + disablePointerEvents 不能用于需要交互的浮层**。
+
+**v1.7.12：速览资源追踪补全 + 「共享数据」挪到顶部**——
+① **四组威能 chips 全部可点**：遭遇 / 每日 / 辅助 / 种族职业（点 = 已用，灰 + 删除线；再点恢复）；
+**随意威能**无限次，保持纯展示。
+② **装备 / 魔法物品每行可点**（`data-act="equipment"`，耗尽 / 恢复）。
+③ **默认状态修正**：装备 key 改为稳定 id（`前缀:物品id:同类第几件`），旧版按下标写的 `e-0` / `w-3` 读取时一律忽略；
+缺省 = 未用，「已用 x / N」只数当前卡上真有的条目（修「从没点过却显示已用 10/12」）。
+④ **「玩家端隐藏数字」→「共享数据」**：从 HP 区挪到速览**顶部标题区右侧**（与先攻 / 被动 / 移动同一排小卡片风格）；
+开 = 共享 = 全桌可见精确数字（`hp.locked = false`），关 = 玩家端只看到量化比例（默认）；HP 区旧按钮删除。
+⑤ 专长仍纯展示，不追踪。
+自测：`dev/test-glance.mjs` 新增「四组每个 chip 带 data-act=\"power\" / 每行装备带 data-act=\"equipment\" /
+默认 0 / N / 共享数据在顶部且方向正确」，`dev/test-track.mjs` 新增「四组威能都能 toggle / 默认全未用 / equipment 动作名」；
+`node dev/selftest.mjs` 5/5，保留 v1.7.8「成功类通知 = 0」与 v1.7.11 先攻条 popover 回退；manifest 仍无 action。
+

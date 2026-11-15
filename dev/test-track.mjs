@@ -65,6 +65,14 @@ const ctx = () => ({ cardId: "c-1", itemId: item.id, hp: null, state: null, maxH
 const el = (data) => ({ dataset: data || {}, closest: () => null, querySelector: () => null });
 
 /* ---- 1. 默认值 ---- */
+/* v1.7.12：缺省 = 未用（不是已用）。房间数据 / 导出快照里没有的 key 不能凭空变成已用。 */
+const fresh0 = T.defaultState();
+const norm0 = T.normalizeState({});
+if (Object.keys(fresh0.powerUsed).length === 0 && Object.keys(fresh0.equipmentUsed).length === 0 &&
+  Object.keys(norm0.powerUsed).length === 0 && Object.keys(norm0.equipmentUsed).length === 0 &&
+  norm0.itemDailyUsed === 0) {
+  ok("默认状态：威能 / 装备一个都没标已用（缺省 = 未用）");
+} else bad("默认状态不是全未用：" + JSON.stringify(norm0));
 const blank = T.hpView(null, { maxHp: 20, surges: 4 });
 if (blank.cur === 20 && blank.max === 20 && blank.temp === 0 && blank.surges === 4) ok("没写过血量时：满血 + 满回复力");
 else bad("默认血量不对：" + JSON.stringify(blank));
@@ -108,9 +116,26 @@ res = await T.applyAction("power", el({ k: "daily-0" }), ctx());
 if (!res.state.powerUsed["daily-0"]) ok("再点一次 = 恢复");
 else bad("威能恢复失败：" + JSON.stringify(res.state.powerUsed));
 
+/* ---- 7b. v1.7.12：遭遇 / 每日 / 辅助 / 种族职业四组威能都能 toggle（与 data-act="power" 同一支） ---- */
+for (const cat of ["encounter", "daily", "utility", "special"]) {
+  const k = cat + "-0";
+  const on = await T.applyAction("power", el({ k }), ctx());
+  const off = await T.applyAction("power", el({ k }), ctx());
+  if (on.state.powerUsed[k] === true && !off.state.powerUsed[k]) {
+    ok("威能组 " + cat + "：点一下=已用、再点=恢复");
+  } else bad("威能组 " + cat + " 不能切换：" + JSON.stringify({ on: on.state.powerUsed, off: off.state.powerUsed }));
+}
+
 /* ---- 8. 装备 / 专长 ---- */
-res = await T.applyAction("item", el({ k: "e-2" }), ctx());
-if (res.state.equipmentUsed["e-2"] === true) ok("装备可标记已用"); else bad("装备标记失败");
+/* v1.7.12：装备动作名改成 equipment；key 用稳定 id（前缀:物品id:序号），带空格 / 中文也要能存能取。 */
+const EQUIP_KEY = "e:霜冻武器 Frost Weapon:1";
+res = await T.applyAction("equipment", el({ k: EQUIP_KEY }), ctx());
+if (res.state.equipmentUsed[EQUIP_KEY] === true) ok("装备可标记已用（data-act=\"equipment\" + 稳定 id key）"); else bad("装备标记失败");
+res = await T.applyAction("equipment", el({ k: EQUIP_KEY }), ctx());
+if (!res.state.equipmentUsed[EQUIP_KEY]) ok("装备再点一次 = 恢复"); else bad("装备恢复失败");
+res = await T.applyAction("item", el({ k: "e:韵律之刃 Rhythm Blade:1" }), ctx());
+if (res.state.equipmentUsed["e:韵律之刃 Rhythm Blade:1"] === true) ok("老的 item 动作名仍兼容（v1.2.0 页面缓存）");
+else bad("item 动作名兼容失败");
 res = await T.applyAction("feat", el({ k: "g-猛冲之力" }), ctx());
 if (res.state.featUsed["g-猛冲之力"] === true) ok("专长可标记已用（职业赠送键 g-…）"); else bad("专长标记失败");
 

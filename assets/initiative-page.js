@@ -2,7 +2,7 @@
 // ---------------------------------------------------------------------------
 // 先攻条（initiative.html，popover id = common.js 的 ID_STRIP）：
 //   · 折叠 120×40 小药丸 / 展开 720×(170|180|200)，高度随 phase 三档（v1.7.10 加高）；
-//     **v1.6.2：宽高是常量**（applySize 不量 DOM）；内容变化只重绘卡片，不再改 popover 尺寸；
+//     **v1.6.2：宽高是常量**（applySize 不量 DOM）；v1.7.11 回退 popover：页面报尺寸，后台重开换尺寸；
 //   · 控制行：战斗准备 / 突袭 / 一键清空（二次确认）、准备态「开始战斗 / 取消」、
 //     战斗态「上一回合 / 下一回合 / 结束战斗」；
 //   · 横向卡片：56×80 头像卡，当前回合 100 高，左上加值、底部合计 + 公式行 (d20+加值)；
@@ -14,14 +14,14 @@
 import OBR from "../vendor/obr-sdk.js";
 import {
   CH_HELLO, CH_INIT_REQUEST, CH_STRIP_CMD, CH_STRIP_DRAG, ID_INIT_WIN, ID_STRIP,
-  STRIP_DRAG_THROTTLE_MS, STRIP_POS_KEY, getCards, onReady, pingBackground
+  STRIP_DRAG_THROTTLE_MS, getCards, onReady, pingBackground
 } from "./common.js";
 import { createWindow, feedback, closeSelf } from "./window.js";
 import {
   INIT_MAX_ENTRIES, LS_STRIP_COLLAPSED, advanceInitiative, bonusOfItem, canEditBonus, clearInitiative,
   currentEntry, endCombat, moveEntry, normalizeInitiative, readInitiative, removeEntry, renderInitiativeHTML,
   renderStripHTML, reorderEntry, rerollAll, rerollEntry, setActiveEntry, setEntryBonus, startCombat,
-  startPreparation, startSurprise, STRIP_SIDE_MARGIN, STRIP_TOP_OFFSET, stripSizeFor, syncInitBonuses, tokenInfoMap,
+  startPreparation, startSurprise, stripSizeFor, syncInitBonuses, tokenInfoMap,
   writeInitiative
 } from "./initiative.js";
 
@@ -141,72 +141,30 @@ function scrollActiveIntoView() {
 }
 
 /* ---------------------------------------------------------------------------
- * v1.7.10：先攻条改用**全屏透明 modal**（background.core.js 的 stripModalOptions）——
- *   popover 的 hidePaper 在真机上无效，整条仍是一块深色矩形；modal 支持
- *   fullScreen + hideBackdrop + hidePaper + disablePointerEvents，页面自己把
- *   html / body 全透明、只画条本身，鼠标空白处透过（地图照常能拖）。
- *   modal 没有 width/height / anchorPosition，所以**条的位置与尺寸由页面自己算**：
- *   · 宽高仍走 initiative.js 的 stripSizeFor（常量 720 / 折叠 120×40 / 高 170|180|200）；
- *   · 位置 = 屏幕顶部居中 + 记住的偏移（4enext/strip-pos，与后台同一个键）；
- *   · 拖动在页面内直接改偏移（不再让后台重开 popover），松手落盘 + 广播给后台记账。
+ * v1.7.11：先攻条**回退 popover**（background.core.js 的 stripPopoverOptions）。
+ *   v1.7.10 的 modal + disablePointerEvents 让整个 modal 层不接收指针 → 右键「加入先攻」、
+ *   加值输入框、卡片下的 d20 全都点不动；popover 是独立 iframe、只占条本身，一定可交互。
+ *   · 宽高仍走 initiative.js 的 stripSizeFor（720 / 120×40 / 170|180|200）；
+ *   · 页面只把尺寸报给后台（{op:"size"}），后台用**同一个 popover id** 重新 open 换尺寸；
+ *   · 位置 / 拖动由宿主负责：页面发 CH_STRIP_DRAG（纯指针位移），后台加起点偏移、夹紧后重开；
+ *   · 页面铺满 iframe（100%），不再写 left/top。
  * ------------------------------------------------------------------------- */
 let lastVp = { w: 0, h: 0 };
-let stripOffset = readStripOffset();
 
-function readStripOffset() {
-  try {
-    const raw = localStorage.getItem(STRIP_POS_KEY);
-    if (!raw) return { dx: 0, dy: 0 };
-    const box = JSON.parse(raw);
-    if (!box || typeof box !== "object") return { dx: 0, dy: 0 };
-    return {
-      dx: typeof box.dx === "number" && isFinite(box.dx) ? Math.round(box.dx) : 0,
-      dy: typeof box.dy === "number" && isFinite(box.dy) ? Math.round(box.dy) : 0
-    };
-  } catch (e) {
-    return { dx: 0, dy: 0 };
-  }
-}
-
-function writeStripOffset(dx, dy) {
-  stripOffset = { dx: Math.round(dx), dy: Math.round(dy) };
-  try {
-    localStorage.setItem(STRIP_POS_KEY, JSON.stringify({ v: 1, dx: stripOffset.dx, dy: stripOffset.dy }));
-  } catch (e) { /* 隐私模式 / 空间满：记不住位置不影响用 */ }
-}
-
-/** 偏移夹紧：整条始终留在视口内（水平不越界、顶部不低于 8px、底部留 16px）。 */
-function clampStripOffset(dx, dy, size, vw, vh) {
-  const w = vw > 0 ? vw : size.width;
-  const h = vh > 0 ? vh : size.height + STRIP_TOP_OFFSET;
-  const maxDx = Math.max(0, (w - size.width) / 2 - STRIP_SIDE_MARGIN);
-  const maxDy = Math.max(0, h - size.height - STRIP_SIDE_MARGIN - STRIP_TOP_OFFSET);
-  return {
-    dx: Math.max(-maxDx, Math.min(maxDx, Math.round(dx))),
-    dy: Math.max(8 - STRIP_TOP_OFFSET, Math.min(maxDy, Math.round(dy)))
-  };
-}
-
-/** 把算好的宽高 / 偏移写到 .strip 上（绝对定位 + 页面内拖动，不再重开宿主窗口）。 */
-function layoutStrip(size, vw, vh) {
+/** 页面只负责铺满 iframe；位置与尺寸都由宿主 popover 决定。 */
+function layoutStrip() {
   if (!stripRoot) return;
   const el = stripRoot.querySelector(".strip");
   if (!el) return;
-  const w = vw > 0 ? vw : size.width + STRIP_SIDE_MARGIN * 2;
-  const h = vh > 0 ? vh : size.height + STRIP_TOP_OFFSET + STRIP_SIDE_MARGIN;
-  const off = clampStripOffset(stripOffset.dx, stripOffset.dy, size, w, h);
-  stripOffset = off;
-  el.style.width = size.width + "px";
-  el.style.height = size.height + "px";
-  el.style.left = Math.round(w / 2 - size.width / 2 + off.dx) + "px";
-  el.style.top = Math.round(STRIP_TOP_OFFSET + off.dy) + "px";
+  el.style.width = "100%";
+  el.style.height = "100%";
 }
 
 /**
- * 改条尺寸（v1.6.2：**不量内容**；v1.7.10：modal 里由页面自己设宽高）。
+ * 改条尺寸（v1.6.2：**不量内容**；v1.7.11：把尺寸报给后台，后台重开 popover 换尺寸）。
  *
  * 宽高全是常量：折叠 120×40 / 展开 720（仅视口太窄时缩）×(170|180|200)，
- * 内容再长由卡片区内部横向滚动。下面的 lastSize 判等保证「内容变化 → 尺寸没变 → 不动布局」。
+ * 内容再长由卡片区内部横向滚动。lastSize 判等保证「内容变化 → 尺寸没变 → 不重开窗口」。
  */
 async function applySize() {
   if (VIEW !== "strip" || !stripRoot) return;
@@ -217,8 +175,8 @@ async function applySize() {
   const phase = collapsed ? "idle" : initiative.phase;
   const size = stripSizeFor(phase, collapsed, vw);
   lastSize = { w: size.width, h: size.height };
-  layoutStrip(size, vw, vh);
-  /* 把尺寸告诉后台：拖动 / 视口变化重新夹紧时要按这个尺寸算（modal 下只用于记账）。 */
+  layoutStrip();
+  /* 高度随 phase 变（170 / 180 / 200）时，后台会按这个尺寸重开同一个 popover。 */
   sendCmd({ op: "size", width: size.width, height: size.height });
 }
 
@@ -562,8 +520,7 @@ function onBarDown(ev) {
   ev.stopPropagation();
   barDrag = {
     id: ev.pointerId, x0: ev.screenX, y0: ev.screenY,
-    base: { dx: stripOffset.dx, dy: stripOffset.dy },
-    dx: stripOffset.dx, dy: stripOffset.dy, timer: 0
+    dx: 0, dy: 0, timer: 0
   };
   sendDrag("start", 0, 0);
   window.addEventListener("pointermove", onBarMove);
@@ -574,16 +531,10 @@ function onBarDown(ev) {
 
 function onBarMove(ev) {
   if (!barDrag || ev.pointerId !== barDrag.id) return;
-  const size = { width: lastSize.w, height: lastSize.h };
-  const off = clampStripOffset(
-    barDrag.base.dx + (ev.screenX - barDrag.x0),
-    barDrag.base.dy + (ev.screenY - barDrag.y0),
-    size, lastVp.w, lastVp.h
-  );
-  barDrag.dx = off.dx;
-  barDrag.dy = off.dy;
-  stripOffset = off;
-  layoutStrip(size, lastVp.w, lastVp.h);
+  /* v1.7.11：只发**纯指针位移**（屏幕坐标，避免 popover 跟着指针移动后 client 抖动）。
+   * 起点偏移由后台按 CH_STRIP_DRAG{start} 记账，这里再加 base 会双重偏移。 */
+  barDrag.dx = Math.round(ev.screenX - barDrag.x0);
+  barDrag.dy = Math.round(ev.screenY - barDrag.y0);
   if (barDrag.timer) return; /* 节流：发的永远是最新位移 */
   barDrag.timer = setTimeout(function () {
     if (!barDrag) return;
@@ -601,7 +552,7 @@ function onBarUp() {
   const d = barDrag;
   barDrag = null;
   if (d.timer) clearTimeout(d.timer);
-  writeStripOffset(d.dx, d.dy);
+  /* 落盘由后台做（它知道夹紧后的最终偏移）；页面只把最后位移发过去。 */
   sendDrag("end", d.dx, d.dy);
 }
 
@@ -766,10 +717,8 @@ if (VIEW === "strip") {
     stripRoot.addEventListener("dblclick", function (ev) {
       const t = ev.target;
       if (!t || !t.closest || !t.closest("[data-strip-drag]")) return;
-      /* v1.7.10：modal 里位置由页面自己管 —— 双击拖动柄 = 回到顶部中间（清偏移 + 重排）。 */
-      writeStripOffset(0, 0);
-      void applySize();
-      sendDrag("reset", 0, 0); /* 后台只记账，不再重开窗口 */
+      /* v1.7.11：双击拖动柄 = 回到顶部中间（后台清偏移 + 重开 popover 贴顶居中）。 */
+      sendDrag("reset", 0, 0);
     });
     /* v1.7.10：加值输入 —— 回车 / 失焦保存（卡片左上角与状态行共用 commitBonus）。 */
     stripRoot.addEventListener("keydown", function (ev) {
@@ -834,7 +783,7 @@ onReady(function () {
         if (!bgReady) { bgReady = true; render(); }
       });
     } catch (e) { /* 忽略 */ }
-    /* v1.7.10：全屏 modal 里位置是页面自己算的 —— 视口变了要重新夹紧。 */
+    /* v1.7.11：popover 由宿主定位 —— 视口变了把新尺寸再报一次，后台会重新夹紧。 */
     try {
       if (OBR.viewport && typeof OBR.viewport.onChange === "function") {
         OBR.viewport.onChange(function () { void applySize(); });

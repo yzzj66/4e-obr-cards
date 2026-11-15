@@ -462,6 +462,8 @@ export async function applyAction(act, el, ctx) {
   const res = await commitState(ctx.cardId, function (s) {
     const out = normalizeState(s);
     switch (act) {
+      /* v1.7.12：**所有可追踪的威能组**（遭遇 / 每日 / 辅助 / 种族职业）都走这一支，
+       * 不按 key 前缀早退；随意威能本来就不渲染按钮。 */
       case "power":
         if (out.powerUsed[key]) delete out.powerUsed[key];
         else out.powerUsed[key] = true;
@@ -473,6 +475,9 @@ export async function applyAction(act, el, ctx) {
         if (out.featUsed[key]) delete out.featUsed[key];
         else out.featUsed[key] = true;
         break;
+      /* v1.7.12：装备 / 魔法物品统一用 equipment（与速览渲染的 data-act 一致）；
+       * item 是 v1.2.0 的老动作名，保留兼容（老页面 / 老缓存照旧能点）。 */
+      case "equipment":
       case "item":
         if (out.equipmentUsed[key]) delete out.equipmentUsed[key];
         else out.equipmentUsed[key] = true;

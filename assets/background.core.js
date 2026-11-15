@@ -16,7 +16,7 @@
  *   · 设置/关于 /settings-window（页面 settings.html，左侧分栏 + 右侧内容，同样可拖动 / 视口夹紧）。
  * v1.4.0：先攻条（按 docs/spec-initiative.md 实现）
  *   · 工具栏「先攻」不再打开 880×640 的大窗口，而是打开**屏幕顶部的先攻条**：
- *     modal id /initiative-strip（v1.7.10 起全屏透明 modal）、顶部 45、默认 720×170（展开）、120×40（折叠）；
+ *     popover id /initiative-strip（v1.7.11 起回退 popover：modal + disablePointerEvents 会让整条点不动）、顶部 45、默认 720×170（展开）、120×40（折叠）；
  *     宽度 **v1.6.2 起固定 720**（只有视口太窄时才缩，下限 410；不再按控制行测量），高度按 phase 三档 170 / 180 / 200（v1.7.10 加高）；
  *     位置只记「相对屏幕中线的偏移」（localStorage["4enext/strip-pos"]），整条可拖动、双击拖动柄回中。
  *   · 原来的列表窗口还留着（?view=list，id 仍是 /initiative-window），先攻条上的「≡」打开它：
@@ -173,7 +173,7 @@ var TOOL_SETTINGS_ID = NS + "/settings-tool";
 var CH_HELLO = NS + "/diag-hello"; /* background → 各页面：我起来了 */
 var CH_PING = NS + "/diag-ping";   /* 页面 → background：在吗 */
 var CH_PONG = NS + "/diag-pong";   /* background → 页面：在，状态如下 */
-var PLUGIN_VERSION = "1.7.10";
+var PLUGIN_VERSION = "1.7.12";
 /* token 上的血量（与 assets/track.js 的 KEY_HP 必须一字不差）。 */
 var KEY_HP = NS + "/hp";
 /* v1.6.0：血条组件开关。**独立键**，不塞进 hp（hp 是数值容器，写开关会误触发判空）；
@@ -1157,7 +1157,7 @@ var stripDragTimer = null;
 var stripDragWanted = null;
 var stripDragBusy = false;
 
-/** 三档高度（规格 §3.1）：idle 129 / preparing 139 / combat 159。 */
+/** 三档高度：idle 170 / preparing 180 / combat 200（v1.7.10 加高，卡片与 d20 不再被裁切）。 */
 function stripHeightFor(phase) {
   if (phase === "combat") return STRIP_H_COMBAT;
   if (phase === "preparing") return STRIP_H_PREPARING;
@@ -1223,24 +1223,33 @@ function stripPosFor(dx, dy, size, vp) {
 }
 
 /**
- * v1.7.10：先攻条改用 **OBR.modal.open**（真透明）。
+ * v1.7.11：先攻条**回退 OBR.popover.open**（v1.7.4 的实现）—— 可用 > 透明。
  *
- * 为什么换掉 popover：用户两次截图「整条仍是深色矩形」——popover 的 hidePaper 在真机上
- * 压不住宿主的纸张底（v1.7.3 / v1.7.6 都试过），而 Modal 才有 hideBackdrop / hidePaper /
- * disablePointerEvents 这三个开关（参考投骰动画 / Full Suite 的 boss bar，都是全屏透明 modal）。
- *   · fullScreen + hideBackdrop + hidePaper + disablePointerEvents：宿主不画底、鼠标空白处穿透；
- *   · 页面自己把 html/body 透明、只画条本身（initiative.html + ui.css 的 strip 段）；
- *   · modal 没有 width/height / anchorPosition → 条的位置与尺寸由页面自己算
- *     （initiative-page.js 的 layoutStrip：顶部居中 + 记住的偏移，宽高仍是 stripSizeFor 的常量）。
+ * v1.7.10 的 modal + disablePointerEvents 让整个 modal 层不接收指针：页内 .strip{pointer-events:auto}
+ * 在部分浏览器 / OBR 版本里救不回来 → 右键「加入先攻」被全屏层挡住、加值输入框与卡片下的 d20
+ * 全都点不动。教训（docs/NOTES.md）：「modal + disablePointerEvents 不能用于需要交互的浮层」。
+ *   · popover 是独立 iframe、只占条本身那块区域，不挡右键菜单 / 地图，按钮与输入框一定收得到事件；
+ *   · 透明：hidePaper:true（宿主不画纸张底）+ 页面把 html/body/#app/.win/.win-body/.strip* 全
+ *     transparent !important（initiative.html + ui.css）；真机若仍被宿主画深色底，按约定接受
+ *     半透明深色卡片（rgba(15,20,28,.86) 圆角），**不再退回 modal**；
+ *   · 尺寸 / 位置仍走常量：折叠 120×40、展开 720×(170|180|200)；POSITION + CENTER/TOP，
+ *     anchorPosition.left 是**中线**（与 v1.7.4 一致）；
+ *   · 拖动 = 同一个 id 重新 open，只换 anchorPosition / width / height（iframe 复用，不重载）。
  */
-function stripModalOptions() {
+function stripPopoverOptions(size, pos) {
   return {
     id: ID_STRIP,
     url: URL_INITIATIVE,
-    fullScreen: true,
-    hideBackdrop: true,
+    width: size.width,
+    height: size.height,
+    anchorReference: "POSITION",
+    anchorPosition: { left: pos.left, top: pos.top },
+    anchorOrigin: { horizontal: "CENTER", vertical: "TOP" },
+    transformOrigin: { horizontal: "CENTER", vertical: "TOP" },
+    /* v1.7.11：外壳透明 —— 宿主不画纸张底，页面自己把各层设成 transparent。 */
     hidePaper: true,
-    disablePointerEvents: true
+    /* 常驻：点地图不关（v1.4.0 起就有）。 */
+    disableClickAway: true
   };
 }
 
@@ -1254,20 +1263,36 @@ async function openStrip() {
   var vp = await infoViewport();
   /* v1.7.3：用户上次折叠着，就直接按药丸尺寸开（页面加载后报上来的尺寸本来就一致，
    * 这样少一次 720 → 120 的闪动）。 */
+  /* v1.7.11：已经开着时沿用页面报上来的当前尺寸（战斗态 200 / 准备态 180），
+   * 否则点一次工具栏「先攻」就会把条缩回 idle 170、把卡片裁掉一截。 */
   var size = stripCollapsedPref()
     ? { width: STRIP_COLLAPSED_W, height: STRIP_COLLAPSED_H }
-    : { width: stripWidthFor(vp), height: STRIP_H_IDLE };
+    : (stripOpen && stripGeom
+      ? { width: stripGeom.width, height: stripGeom.height }
+      : { width: stripWidthFor(vp), height: STRIP_H_IDLE });
   var offset = readStripOffset();
   var pos = stripPosFor(offset.dx, offset.dy, size, vp);
-  await OBR.modal.open(stripModalOptions());
-  stripOpen = true;
-  /* v1.7.3：重新打开 = 这次会话又要它 → 清掉「本次已关掉」标记（下个房间照样自动开）。 */
-  markStripClosed(false);
+  /* 先记账再 open：页面加载后马上会发 {op:"size"}，stripGeom 必须先就位，否则战斗态 200 高会被丢掉。 */
   stripGeom = {
     left: pos.left, top: pos.top, width: size.width, height: size.height,
     offset: { dx: pos.left - Math.round((vp.width || 0) / 2), dy: pos.top - STRIP_TOP_OFFSET },
     vp: { width: vp.width, height: vp.height }
   };
+  try {
+    await OBR.popover.open(stripPopoverOptions(size, pos));
+  } catch (e) {
+    stripGeom = null;
+    throw e;
+  }
+  stripOpen = true;
+  /* 页面可能在 open 的 await 还没落定时就发来 {op:"size"}（战斗态 200）—— 先存着，开完立刻补。 */
+  var pending = stripGeom && stripGeom.pendingSize ? stripGeom.pendingSize : null;
+  if (stripGeom) stripGeom.pendingSize = null;
+  if (pending && (pending.width !== size.width || pending.height !== size.height)) {
+    void resizeStrip(pending.width, pending.height);
+  }
+  /* v1.7.3：重新打开 = 这次会话又要它 → 清掉「本次已关掉」标记（下个房间照样自动开）。 */
+  markStripClosed(false);
   return true;
 }
 
@@ -1288,9 +1313,9 @@ async function closeStrip() {
   stripDragWanted = null;
   stripOpen = false;
   stripGeom = null;
-  /* v1.7.10：条是 modal 开的 → 先 modal.close；再 popover.close 兜一层（旧缓存页面 / 退化路径）。 */
-  try { await OBR.modal.close(ID_STRIP); } catch (e) { /* 已经关了 */ }
-  try { await OBR.popover.close(ID_STRIP); } catch (e2) { /* 不是 popover */ }
+  /* v1.7.11：条回到 popover → 先 popover.close；再 modal.close 兜一层（v1.7.10 缓存页面 / 旧实例）。 */
+  try { await OBR.popover.close(ID_STRIP); } catch (e) { /* 已经关了 */ }
+  try { await OBR.modal.close(ID_STRIP); } catch (e2) { /* 不是 modal */ }
 }
 
 /* ---------------------------------------------------------------------------
@@ -1328,13 +1353,23 @@ async function maybeAutoOpenStrip(where) {
   return openStripOrNotify(where || "进入房间自动打开先攻条");
 }
 
-/** 「回到顶部中间」：清掉偏移。
- *  v1.7.10：条在 modal 里由**页面自己**定位（拖动时页面直接改 left/top），
- *  这里只清掉本机偏移并记账 —— 页面收到 drag reset 会立刻重排，不再重开宿主窗口。 */
+/** 「回到顶部中间」：清掉偏移，并按当前尺寸重新贴顶居中。
+ *  v1.7.11：条是 popover → 位置由宿主管，必须重新 open 一次（同 id，只换 anchorPosition）。 */
 async function resetStrip() {
-  if (!stripOpen) return;
+  if (!stripOpen || !stripGeom) return;
   clearStripOffset();
-  if (stripGeom) stripGeom.offset = { dx: 0, dy: 0 };
+  var vp = await infoViewport();
+  var size = { width: stripGeom.width, height: stripGeom.height };
+  var pos = stripPosFor(0, 0, size, vp);
+  stripGeom.left = pos.left;
+  stripGeom.top = pos.top;
+  stripGeom.vp = { width: vp.width, height: vp.height };
+  stripGeom.offset = { dx: 0, dy: 0 };
+  try {
+    await OBR.popover.open(stripPopoverOptions(size, pos));
+  } catch (e) {
+    stepFail("先攻条回到顶部中间", e);
+  }
   pageLog("info", "先攻条已回到顶部中间");
 }
 
@@ -1355,7 +1390,8 @@ async function pumpStripDrag() {
       var vp = await infoViewport();
       var size = { width: stripGeom.width, height: stripGeom.height };
       var pos = stripPosFor(job.dx, job.dy, size, vp);
-      /* v1.7.10：modal 不能重开定位 —— 页面自己已经跟手移动了，这里只更新记账 + 夹紧后的偏移。 */
+      /* v1.7.11：popover 的位置由宿主控制 —— 同一个 id 重新 open，只换 anchorPosition（iframe 复用）。
+       * 页面只发累计位移，这里换算 / 夹紧 / 落盘；拖动中每一帧都这样跟手。 */
       stripGeom.left = pos.left;
       stripGeom.top = pos.top;
       stripGeom.vp = { width: vp.width, height: vp.height };
@@ -1363,6 +1399,11 @@ async function pumpStripDrag() {
         dx: pos.left - Math.round((vp.width || 0) / 2),
         dy: pos.top - STRIP_TOP_OFFSET
       };
+      try {
+        await OBR.popover.open(stripPopoverOptions(size, pos));
+      } catch (e) {
+        /* 拖太快时宿主偶尔会拒绝一次 open：下一帧还会再来，不打断拖动 */
+      }
     }
   } finally {
     stripDragBusy = false;
@@ -1419,7 +1460,7 @@ async function reclampStrip() {
   var off = stripGeom.offset || readStripOffset();
   var pos = stripPosFor(off.dx, off.dy, size, vp);
   if (pos.left === stripGeom.left && pos.top === stripGeom.top) return;
-  /* v1.7.10：modal 全屏、位置由页面自己算 —— 后台只更新偏移记账（页面自己有 viewport.onChange 重排）。 */
+  /* v1.7.11：popover 位置由宿主管 —— 视口变化后同 id 重新 open 一次，把条夹回视口内。 */
   stripGeom.left = pos.left;
   stripGeom.top = pos.top;
   stripGeom.vp = { width: vp.width, height: vp.height };
@@ -1427,6 +1468,35 @@ async function reclampStrip() {
     dx: pos.left - Math.round((vp.width || 0) / 2),
     dy: pos.top - STRIP_TOP_OFFSET
   };
+  try {
+    await OBR.popover.open(stripPopoverOptions(size, pos));
+  } catch (e) {
+    /* 视口变化时宿主还没准备好：下一次 onChange / 拖动会补 */
+  }
+}
+
+/** v1.7.11：高度随 phase 变（170 / 180 / 200）或折叠 → 同 id 重新 open 换尺寸；
+ *  popover 的 iframe 复用，页面不重载，位置仍按记住的偏移夹紧。 */
+async function resizeStrip(width, height) {
+  if (!stripOpen || !stripGeom) return;
+  var vp = await infoViewport();
+  var off = stripGeom.offset || { dx: 0, dy: 0 };
+  var size = { width: width, height: height };
+  var pos = stripPosFor(off.dx, off.dy, size, vp);
+  stripGeom.width = width;
+  stripGeom.height = height;
+  stripGeom.left = pos.left;
+  stripGeom.top = pos.top;
+  stripGeom.vp = { width: vp.width, height: vp.height };
+  stripGeom.offset = {
+    dx: pos.left - Math.round((vp.width || 0) / 2),
+    dy: pos.top - STRIP_TOP_OFFSET
+  };
+  try {
+    await OBR.popover.open(stripPopoverOptions(size, pos));
+  } catch (e) {
+    stepFail("先攻条改尺寸", e);
+  }
 }
 
 /** 频道：com.4enext-owlbear/strip-cmd —— list / size / close。 */
@@ -1445,8 +1515,13 @@ function onStripCmd(ev) {
     var h = typeof data.height === "number" && isFinite(data.height) ? Math.round(data.height) : stripGeom.height;
     /* v1.6.2：只收常量尺寸（页面若还按内容测量，数字在这里被丢掉）。 */
     var snapped = snapStripSize(w, h);
-    stripGeom.width = snapped.width;
-    stripGeom.height = snapped.height;
+    if (snapped.width === stripGeom.width && snapped.height === stripGeom.height) return;
+    if (!stripOpen) {
+      /* 还在 open 的 await 里：先记下，openStrip 成功后补一次 resizeStrip。 */
+      stripGeom.pendingSize = snapped;
+      return;
+    }
+    void resizeStrip(snapped.width, snapped.height);
   }
 }
 

@@ -48,6 +48,14 @@
 // ③ **先攻条外壳真透明**（#app / .win / .win-body / .strip-root 也 transparent !important），check 与
 // dev/check-render.mjs 都断言；④ **四防重排**：四枚统一 30s、字号 15s、铺满 token 并均分，
 // test-background 断言「左缘 4 / 右缘 146 / 间距相等 / 退化不变」。
+// v1.7.11 再补：先攻条**回退 popover**（v1.7.10 的 modal + disablePointerEvents 会让整条不可交互）——
+// check 断言 stripPopoverOptions（POSITION + CENTER/TOP + hidePaper + disableClickAway）且没有 stripModalOptions；
+// test-initiative 断言「先攻条打开时右键『加入先攻』→ entries 增加」、拖动重开同一个 popover、✕ 走 popover.close；
+// test-background 断言拖动夹紧 / 回中重开 / ✕ 关掉 popover。
+// v1.7.12 再补：速览资源追踪 —— 四组威能（遭遇 / 每日 / 辅助 / 种族职业）每个 chip 都带 data-act="power"、
+// 每行装备都带 data-act="equipment"、默认全未用 + 计数 0 / N；「玩家端隐藏数字」改名「共享数据」并挪到顶部标题区
+// （开 = 共享 = 显示精确数字）。行为断言在 dev/test-track.mjs，渲染断言在 dev/test-glance.mjs（单跑），
+// check 里做静态接线 + 版本 + 文档断言。
 // 每条都是独立进程（stdio 直接继承，不经管道，避免某些环境禁止子进程管道）。
 // 任何一条非 0 就整体返回 1，并在最后打印汇总表。
 import { spawnSync } from "node:child_process";

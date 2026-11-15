@@ -6,6 +6,10 @@
 // v1.2.2：顶部标题栏可以按住拖动整个弹窗（位置由后台重开 popover 实现，见 background.core.js），
 //         右上角「⌖」回到 token 上方。位置按 token 记在 localStorage["4enext/info-pos"]。
 // 交互语义照抄 4E NEXT 的速览页（GlanceVitals.tsx / GlanceResources.tsx）。
+// v1.7.12：① 威能（遭遇 / 每日 / 辅助 / 种族职业）与装备每行都可点（同一套 [data-act] 事件委托，
+//         不按容器 / 分类分组绑定）；② 「玩家端隐藏数字」改名「共享数据」并挪到卡片标题区右侧，
+//         仍写同一个 hp.locked 字段（开 = 共享 = 显示精确数字）；③ 推导时带上实时 hp / state，
+//         计数（里程碑→魔法物品每日威能上限等）跟着最新状态走。
 import OBR from "../vendor/obr-sdk.js";
 import { CH_INFO_DRAG, ID_INFO, ID_PANEL, INFO_DRAG_THROTTLE_MS, URL_PANEL, KEY_BIND, getCards, findCard, esc, onReady, notify } from "./common.js";
 import { renderGlanceHTML, deriveGlance, magicItemDailyUses } from "./glance.js";
@@ -156,7 +160,8 @@ function paintScope() {
 
 function render() {
   if (!card) return;
-  derived = deriveGlance(card.char);
+  /* v1.7.12：带上实时 hp / state 推导 —— 共享开关、计数上限与画面用同一份数据。 */
+  derived = deriveGlance(card.char, undefined, { hp: hp, state: state });
   /* v1.7.9：hp.boss 不再参与（Boss 模式已删，速览里没有那个开关了）。 */
   const sig = JSON.stringify([card.id, itemId, token ? 1 : 0, hp.cur, hp.max, hp.temp, hp.surges, hp.surgesMax,
     hp.defenses, hp.locked, state, scope, canHp]);
@@ -235,7 +240,7 @@ async function refresh(force) {
 
 async function runAction(act, el) {
   if (!card || !act) return;
-  if (!derived) derived = deriveGlance(card.char);
+  derived = deriveGlance(card.char, undefined, { hp: hp, state: state });
   try {
     const res = await applyAction(act, el, {
       cardId: card.id,

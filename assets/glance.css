@@ -33,6 +33,9 @@
   border-bottom: 1px solid var(--gl4-line);
 }
 
+/* v1.7.12：标题区右侧一组（先攻 / 被动 / 移动 小卡片 + 共享数据开关） */
+.gl4-head-right { display: flex; align-items: flex-end; justify-content: flex-end; gap: 6px; flex-wrap: wrap; }
+
 .gl4-name { font-size: 22px; font-weight: 800; letter-spacing: .2px; }
 .gl4-sub { color: var(--gl4-muted); font-size: 12.5px; margin-top: 2px; }
 
@@ -163,6 +166,7 @@
 .gl4-compact .gl4-abi-sub { display: none; }
 .gl4-compact .gl4-tags { gap: 10px; font-size: 11.5px; }
 .gl4-compact .gl4-q { min-width: 50px; padding: 3px 6px; }
+.gl4-compact .gl4-share { min-height: 26px; padding: 2px 6px; font-size: 10.5px; }
 .gl4-compact .gl4-atk-head, .gl4-compact .gl4-atk-row { grid-template-columns: 1fr 52px 82px; }
 .gl4-compact .gl4-atk-hit, .gl4-compact .gl4-atk-dmg { font-size: 14px; }
 /* v1.2.1：弹窗加宽后，装备列表在宽屏下走两列（窄屏自动退回一列），少滚动一屏 */
@@ -253,10 +257,19 @@
 }
 .gl4-surgefill { height: 100%; background: linear-gradient(90deg, #1f6feb, var(--gl4-blue)); transition: width .2s; }
 
-/* ---- v1.6.0：锁 / Boss 开关一排 ---- */
-/* v1.7.9：这一排只剩「玩家端隐藏数字」一个按钮（原来的「显示为 Boss」开关已删）。 */
-.gl4-lock-row { display: flex; gap: 6px; flex-wrap: wrap; }
-.gl4-lock-row .gl4-mini-btn { padding: 3px 8px; }
+/* ---- v1.7.12：共享数据开关（原「玩家端隐藏数字」，从 HP 区挪到顶部标题区右侧）----
+ * 开 = 共享 = 全桌可见精确数字（.on 绿色高亮）；关 = 玩家端只看到量化比例。
+ * 小号 chip，与 .gl4-q 同一套底色 / 圆角 / 边框。 */
+.gl4-share {
+  display: inline-flex; align-items: center; gap: 4px;
+  min-height: 30px; padding: 3px 9px;
+  font: inherit; font-size: 11px; line-height: 1.2;
+  color: var(--gl4-muted); background: var(--gl4-surface2);
+  border: 1px solid var(--gl4-line); border-radius: 9px;
+  cursor: pointer; white-space: nowrap;
+}
+.gl4-share:hover { color: var(--gl4-green); border-color: rgba(86, 211, 100, .5); }
+.gl4-share.on { color: var(--gl4-green); border-color: rgba(86, 211, 100, .55); background: rgba(46, 160, 67, .16); }
 .gl4-mini-btn.on { color: var(--gl4-green); border-color: rgba(86, 211, 100, .55); background: rgba(46, 160, 67, .16); }
 
 /* ---- 回复力圆点 ---- */
