@@ -10,12 +10,17 @@
 //         不按容器 / 分类分组绑定）；② 「玩家端隐藏数字」改名「共享数据」并挪到卡片标题区右侧，
 //         仍写同一个 hp.locked 字段（开 = 共享 = 显示精确数字）；③ 推导时带上实时 hp / state，
 //         计数（里程碑→魔法物品每日威能上限等）跟着最新状态走。
+// v1.7.13：真机「点不动」回归 —— ③ 事件委托从 #body 挪到 **document 捕获阶段**（重画换 DOM、
+//         子元素 stopPropagation、甚至正文外层被包一层都不会丢点击）；④ 渲染层 / 读写层带 ?v=1.7.14，
+//         避免浏览器 / 宿主继续用旧缓存的 glance.js（旧版威能 chip 根本不是 button）。
 import OBR from "../vendor/obr-sdk.js";
 import { CH_INFO_DRAG, ID_INFO, ID_PANEL, INFO_DRAG_THROTTLE_MS, URL_PANEL, KEY_BIND, getCards, findCard, esc, onReady, notify } from "./common.js";
-import { renderGlanceHTML, deriveGlance, magicItemDailyUses } from "./glance.js";
+/* v1.7.13：带版本查询串 —— 旧缓存的 glance.js / track.js 正是「chip 点不动」的另一种可能，
+ * 更新后必须让浏览器重新取这两个文件（info.html 的入口也带了 ?v=）。 */
+import { renderGlanceHTML, deriveGlance, magicItemDailyUses } from "./glance.js?v=1.7.14";
 /* v1.7.10：✕ 统一走「OBR.popover.close(正确 id) + OBR.modal.close + 后台 {op:"close-win"}」双保险。 */
 import { closeSelf } from "./window.js";
-import { KEY_HP, applyAction, hpView, loadState, mayEditItem, readItem, scopeText, syncTokenStats } from "./track.js";
+import { KEY_HP, applyAction, hpView, loadState, mayEditItem, readItem, scopeText, syncTokenStats } from "./track.js?v=1.7.14";
 
 const params = new URLSearchParams(location.search);
 let itemId = params.get("item") || "";
@@ -265,18 +270,27 @@ async function runAction(act, el) {
   }
 }
 
-bodyEl.addEventListener("click", function (ev) {
-  const el = ev.target && ev.target.closest ? ev.target.closest("[data-act]") : null;
+/* v1.7.13：事件委托从 #body 挪到 **document 捕获阶段**。
+ * v1.7.12 挂 #body 时自测全绿、真机仍报「威能 / 装备全点不动」——把命中范围放到整个文档，
+ * 下面三种情况都还能收到点击：
+ *   ① body.innerHTML 重画时子节点整批换掉（监听器挂在容器上本来没问题，但正文外层再包一层就漏）；
+ *   ② 某个页面脚本 / 宿主脚本在冒泡路上 stopPropagation（捕获阶段先于目标，拦不住）；
+ *   ③ 将来把速览内容挪到别的容器（#app / .pop / 新外壳）时不用再改监听器。
+ * 仍然只认 [data-act]：页头 #pin / #panel / #close 走各自的监听，不会被误判。 */
+function onActClick(ev) {
+  const target = ev.target;
+  const el = target && target.closest ? target.closest("[data-act]") : null;
   if (!el) return;
   ev.preventDefault();
   void runAction(el.getAttribute("data-act"), el);
-});
-
-bodyEl.addEventListener("change", function (ev) {
+}
+function onActChange(ev) {
   const el = ev.target;
   if (!el || !el.getAttribute) return;
   if (el.getAttribute("data-role") === "temp") void runAction("temp-set", el);
-});
+}
+document.addEventListener("click", onActClick, true);
+document.addEventListener("change", onActChange, true);
 
 /* ---------------- 事件 ---------------- */
 

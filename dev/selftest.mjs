@@ -56,6 +56,10 @@
 // 每行装备都带 data-act="equipment"、默认全未用 + 计数 0 / N；「玩家端隐藏数字」改名「共享数据」并挪到顶部标题区
 // （开 = 共享 = 显示精确数字）。行为断言在 dev/test-track.mjs，渲染断言在 dev/test-glance.mjs（单跑），
 // check 里做静态接线 + 版本 + 文档断言。
+// v1.7.13 再补：速览「威能 / 装备点不动」回归 —— check 静态扫描 pointer-events（速览页不得有 none）、
+// info.js 的委托必须在 document 捕获阶段、info 入口与 glance/track 模块带 ?v=<版本>；
+// check 末尾 spawn dev/test-info-click.mjs（假 DOM + 真 info.js，dispatchEvent(new MouseEvent("click"))
+// → 断言 track.js 写入 powerUsed / equipmentUsed）。**selftest 仍是 5 条命令**，点击冒烟并进 check。
 // 每条都是独立进程（stdio 直接继承，不经管道，避免某些环境禁止子进程管道）。
 // 任何一条非 0 就整体返回 1，并在最后打印汇总表。
 import { spawnSync } from "node:child_process";

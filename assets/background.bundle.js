@@ -1,4 +1,4 @@
-/*! 4eNEXT to owlbear · background.bundle.js  (v1.7.12)
+/*! 4eNEXT to owlbear · background.bundle.js  (v1.7.14)
  * ---------------------------------------------------------------------------
  * 这是后台页唯一加载的脚本：纯「经典脚本」，没有 type="module"，没有 import/export，
  * 不依赖任何 CDN。内容是：
@@ -7,7 +7,7 @@
  *
  * 不要手改本文件。改逻辑请改 assets/background.core.js，然后：
  *     node dev/build-background.mjs
- * 生成时间：2026-11-15T14:52:01.574Z
+ * 生成时间：2026-11-15T15:20:30.631Z
  * --------------------------------------------------------------------------- */
 (function () {
 "use strict";
@@ -65,6 +65,17 @@ if (!OBR || typeof OBR.onReady !== "function") {
  *   · 房间数据新增 phase / surprise / d20 / tb（只加字段、不改键名），条目上限 200 → 60；
  *     normalize 截断不抛错，写失败降级本机 localStorage["4enext/state/initiative"] 并通知。
  *   · 玩家「结束我的回合」仍然是广播请求，GM 侧按规格 §5 做四道校验（含「正在推进中」）。
+ * v1.7.14：先攻条背景**真透明** —— 逐行照抄 FullPeople/obr-suite（详见 stripPopoverOptions 的注释）：
+ *   popover 参数按他们的 openPanel() 原样排（disableClickAway + hidePaper 在最后），
+ *   透明的活儿交给页面：initiative.html 的 html/body **inline** background:transparent!important
+ *   + <meta name="darkreader-lock"> + <style data-overlay-canvas> 里的 :root{color-scheme:normal!important}。
+ *   前三版（v1.7.3 透明 body / v1.7.6 六层 !important / v1.7.10 换 modal）失败的原因就是**写法层级不够**：
+ *   类名 + 样式表 !important 压不住后加载样式表 / 暗色扩展注入的 !important，inline !important 才压得住；
+ *   modal + disablePointerEvents 那条路还会把整条的交互打穿，永远不要再走。
+ * v1.7.13：速览窗「威能 / 装备全点不动」回归 —— info popover 的 URL 带 **?v=<版本>**：
+ *   HTML 与 info.js / glance.js / css 全部换 URL，宿主 / 浏览器不会再拿旧缓存的页面
+ *   （旧版威能 chip 是 <span>、装备行不是 button，点起来就是「一点没改」）。页面内事件委托
+ *   同时改挂 document 捕获阶段，CSS 对 body.info-body 容器链显式写回 pointer-events:auto。
  * v1.6.0：血条扩展 + Boss（按 docs/spec-hpbar-boss.md 的 P0–P3，选方案 A：token 附带）
  *   · HP 红条 + 临时生命 +N 仍在上（20s），新增**蓝色回复力条**在下（12s，间距 3s，共用 left/w）；
  *   · **四防四角盾**（AC / 强韧 / 反射 / 意志，直径 30s）：SDK 3.1.0 没有 RING / 盾牌图元，
@@ -214,7 +225,7 @@ var TOOL_SETTINGS_ID = NS + "/settings-tool";
 var CH_HELLO = NS + "/diag-hello"; /* background → 各页面：我起来了 */
 var CH_PING = NS + "/diag-ping";   /* 页面 → background：在吗 */
 var CH_PONG = NS + "/diag-pong";   /* background → 页面：在，状态如下 */
-var PLUGIN_VERSION = "1.7.12";
+var PLUGIN_VERSION = "1.7.14";
 /* token 上的血量（与 assets/track.js 的 KEY_HP 必须一字不差）。 */
 var KEY_HP = NS + "/hp";
 /* v1.6.0：血条组件开关。**独立键**，不塞进 hp（hp 是数值容器，写开关会误触发判空）；
@@ -1264,17 +1275,39 @@ function stripPosFor(dx, dy, size, vp) {
 }
 
 /**
- * v1.7.11：先攻条**回退 OBR.popover.open**（v1.7.4 的实现）—— 可用 > 透明。
+ * v1.7.14：**逐行照抄** FullPeople/obr-suite 的先攻条 popover 参数。
  *
- * v1.7.10 的 modal + disablePointerEvents 让整个 modal 层不接收指针：页内 .strip{pointer-events:auto}
- * 在部分浏览器 / OBR 版本里救不回来 → 右键「加入先攻」被全屏层挡住、加值输入框与卡片下的 d20
- * 全都点不动。教训（docs/NOTES.md）：「modal + disablePointerEvents 不能用于需要交互的浮层」。
- *   · popover 是独立 iframe、只占条本身那块区域，不挡右键菜单 / 地图，按钮与输入框一定收得到事件；
- *   · 透明：hidePaper:true（宿主不画纸张底）+ 页面把 html/body/#app/.win/.win-body/.strip* 全
- *     transparent !important（initiative.html + ui.css）；真机若仍被宿主画深色底，按约定接受
- *     半透明深色卡片（rgba(15,20,28,.86) 圆角），**不再退回 modal**；
- *   · 尺寸 / 位置仍走常量：折叠 120×40、展开 720×(170|180|200)；POSITION + CENTER/TOP，
- *     anchorPosition.left 是**中线**（与 v1.7.4 一致）；
+ * 参考实现（src/modules/initiative/index.ts 的 openPanel()，仓库里 37 KB 那个文件）原文：
+ *
+ *     await OBR.popover.open({
+ *       id: POPOVER_ID,
+ *       url: `${PANEL_URL}?expanded=${expanded ? 1 : 0}`,
+ *       width,
+ *       height,
+ *       anchorReference: "POSITION",
+ *       anchorPosition: {
+ *         left: Math.round(vw / 2) + userOff.dx,
+ *         top: TOP_OFFSET + userOff.dy,
+ *       },
+ *       anchorOrigin: { horizontal: "CENTER", vertical: "TOP" },
+ *       transformOrigin: { horizontal: "CENTER", vertical: "TOP" },
+ *       disableClickAway: true,
+ *       hidePaper: true,
+ *     });
+ *
+ * 参数名 / 取值 / **书写顺序**都与他一致（TOP_OFFSET 45 与我们相同；width 720 相同；
+ * 他们 EXPANDED_HEIGHT 是 154，我们仍是 170|180|200 —— 我们卡片 56×80、当前回合卡高 100，
+ * 还有卡片下的 d20，154 会裁掉下半截，这一处**故意不跟**）。
+ *
+ * 透明的真活儿**不在 popover 参数里**：hidePaper 只是「请宿主别画纸张底」，
+ * 真正让它透的是页面本身 —— initiative.html 照抄了 initiative-panel-v131.html 的三件套
+ * （html/body 的 inline background:transparent!important + darkreader-lock +
+ *  <style data-overlay-canvas> 里的 :root{color-scheme:normal!important;...}）。
+ * 下面这段注释保留两次失败的教训，别再走回去：
+ *   · v1.7.10 的 modal + disablePointerEvents 让整个 modal 层不接收指针 → 右键「加入先攻」、
+ *     加值输入框、卡片下的 d20 全都点不动（modal 不能用于需要交互的浮层）；
+ *   · v1.7.3 / v1.7.6 只改样式表里的类名（哪怕写了 !important）→ 压不住后加载样式表 /
+ *     暗色扩展注入的 !important，真机看起来「一点没变」；inline !important 才压得住。
  *   · 拖动 = 同一个 id 重新 open，只换 anchorPosition / width / height（iframe 复用，不重载）。
  */
 function stripPopoverOptions(size, pos) {
@@ -1284,13 +1317,14 @@ function stripPopoverOptions(size, pos) {
     width: size.width,
     height: size.height,
     anchorReference: "POSITION",
+    /* anchorPosition.left 是**中线**（宿主按 CENTER 对齐），与 FullPeople 的 Math.round(vw / 2) + dx 一致。 */
     anchorPosition: { left: pos.left, top: pos.top },
     anchorOrigin: { horizontal: "CENTER", vertical: "TOP" },
     transformOrigin: { horizontal: "CENTER", vertical: "TOP" },
-    /* v1.7.11：外壳透明 —— 宿主不画纸张底，页面自己把各层设成 transparent。 */
-    hidePaper: true,
-    /* 常驻：点地图不关（v1.4.0 起就有）。 */
-    disableClickAway: true
+    /* 常驻：点地图不关（v1.4.0 起就有，与他们同一个参数）。 */
+    disableClickAway: true,
+    /* 宿主不画纸张底（v1.7.11 起；与 FullPeople 同一个参数、同一个位置）。 */
+    hidePaper: true
   };
 }
 
@@ -2154,7 +2188,9 @@ async function openInfo(itemId, cardId) {
   var vp = await infoViewport();
   var size = infoSize(vp);
   var pos = await infoAutoPos(itemId, size, vp);
-  var url = URL_INFO + "?item=" + encodeURIComponent(itemId) + "&card=" + encodeURIComponent(cardId);
+  /* v1.7.13：入口 URL 也带版本（?v=），否则旧缓存的 info.html 会继续引用旧脚本。 */
+  var url = URL_INFO + "?v=" + encodeURIComponent(PLUGIN_VERSION) +
+    "&item=" + encodeURIComponent(itemId) + "&card=" + encodeURIComponent(cardId);
   await showInfoAt(pos, size, url, itemId, cardId, vp);
 }
 
@@ -2273,7 +2309,8 @@ async function resetInfoToToken() {
   var vp = await infoViewport();
   var size = infoSize(vp);
   var pos = await infoAutoPos(itemId, size, vp);
-  var url = infoGeom ? infoGeom.url : URL_INFO + "?item=" + encodeURIComponent(itemId) + "&card=" + encodeURIComponent(cardId || "");
+  var url = infoGeom ? infoGeom.url : URL_INFO + "?v=" + encodeURIComponent(PLUGIN_VERSION) +
+    "&item=" + encodeURIComponent(itemId) + "&card=" + encodeURIComponent(cardId || "");
   /* 算位置期间可能已经换了选中 token / 关了弹窗：别把过期的弹窗又开回来。 */
   if (!infoOpen || infoItemId !== itemId) return;
   try {

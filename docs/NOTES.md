@@ -49,6 +49,32 @@ dev/      开发自测脚本（不上传也能跑，node dev/selftest.mjs）
   后台按同一 popover id 重新 open 换尺寸；拖动 = 页面发纯指针位移（`screenX/screenY`），后台加起点偏移、
   夹紧后重开同一个 popover，偏移落盘到 `4enext/strip-pos`。
 
+## 先攻条背景为什么这么写（v1.7.14，照抄 FullPeople）
+
+前三版全失败（v1.7.3 只透明 body / v1.7.6 六层 `transparent !important` / v1.7.10 换 modal），
+根因不是「漏了哪一层」，而是**写法层级不够**。照抄 [FullPeople/obr-suite](https://github.com/FullPeople/obr-suite) 的
+`initiative-panel-v131.html` 之后，规则就是下面三条，**不要再用别的写法**：
+
+1. **inline `!important` 才是最强的一层**。他们把 `background:transparent!important` 写在
+   `<html style="...">` / `<body style="...">` 的 **style 属性**里 —— CSS 级联中 inline `!important`
+   高于**任何选择器** `!important`（含后加载样式表、含暗色扩展注入的规则）。我们用类名 + 样式表
+   `!important` 写了三版，一直被这一层压住。本项目 `initiative.html` 在 `<head>` 里同步执行 10 行内联脚本，
+   首帧之前把同样的声明写进 `html.style` / `body.style`（按 `?view=` 只给先攻条挂，列表窗口不挂）。
+2. **`<meta name="darkreader-lock">`**：Dark Reader 之类的暗色扩展看到它就不处理本页。
+   没有这条时，扩展注入的深色底会让「怎么改 CSS 都没用」。
+3. **`:root { color-scheme: normal !important; background: transparent !important }`**：不让 Chromium
+   给这个 iframe 画深色画布底；配合 `html, body, #root, .app-hbar, .hbar-cluster { background: transparent !important }`
+   把容器链全部压平。类名映射到我们这边是 `#app / .win / .win-head / .win-body / .win-foot /
+   .strip-root / .strip / .strip-items`（`ui.css` 里有一条同名规则做样式表版兜底）。
+
+**仍然只有两处底色**：控制行 `.strip-ctl`（`rgba(11,15,20,.72)`）与卡片 `.initiative-item`（`#141b23`）。
+**popover 参数照他们的 `openPanel()` 原样原序**（`POSITION` + `CENTER/TOP` + `disableClickAway` + `hidePaper`），
+**永远不要**改回 `OBR.modal.open + disablePointerEvents`（见下一节）。
+
+验证（不启动浏览器）：`node dev/check.mjs` 断言 darkreader-lock / inline 透明 / `:root` 规则 / 参数顺序；
+页面单独打开 `initiative.html`（不带 `?view=list`）→ DevTools 里 `html` / `body` / `.strip-root` / `.strip` 的
+computed `background-color` 应是 `rgba(0, 0, 0, 0)`（`html` 的 **style 属性**里也能看到 `background: transparent !important`）。
+
 ## 教训：modal + disablePointerEvents 不能用于需要交互的浮层
 
 v1.7.10 为了让先攻条「真透明」，把整条塞进 `OBR.modal.open({ fullScreen:true, hideBackdrop:true,
@@ -77,3 +103,27 @@ iframe 里的 `.strip { pointer-events:auto }` 无法把事件救回来：
 - 自测：`node dev/test-glance.mjs`（四组 chip / 每行装备 / 默认 0 / N / 共享数据在顶部）、
   `node dev/test-track.mjs`（四组 toggle / 默认全未用 / equipment 动作），再跑 `node dev/selftest.mjs` 5/5。
 
+## 速览窗点击回归（v1.7.13）
+
+- **结论先说**：仓库里**没有**任何 `pointer-events:none` 作用到速览页。`grep -n "pointer-events" owlbear-plugin/`
+  运行代码里只剩两处**装饰层**的 none：`ui.css` 的 `.fx-stage`（投骰动画，纯展示、故意点穿地图）
+  与 `.drop-mark`（先攻条拖拽落位指示线，3px 的线）。`info.html` / `assets/info.js` / `assets/glance.css` /
+  `initiative.html` 里一条都没有（注释里的历史说明不算）。
+- **兜底仍然写上**：`glance.css` 末尾给 `body.info-body` 的容器链（`.pop` / `.pop-head` / `.pop-body` / `.gl4`）与所有
+  `[data-act]` / `button` / `input` 显式 `pointer-events: auto !important`。CSS 规范：祖先 `none` 时，后代写回 `auto`
+  仍可成为命中目标 —— 这样即使宿主或以后的外壳给祖先留了一条 `none`，速览窗也不会「整窗点不动」。
+  作用域只挂 `body.info-body`，**不碰先攻条**（它用 popover，本来是好的）与投骰动画（它就该点穿）。
+- **事件委托**：`info.js` 从 `bodyEl.addEventListener("click", ...)` 改成
+  `document.addEventListener("click", onActClick, true)`（捕获阶段），`change` 同理。重画换 DOM、
+  冒泡被 `stopPropagation`、正文外层换容器都不会丢点击；仍只认 `[data-act]`。
+- **缓存穿透**：info popover 的 URL 带 `?v=<版本>`（`background.core.js` 的 `openInfo` / `resetInfoToToken`），
+  `info.html` 的 `ui.css` / `glance.css` / `info.js`、`info.js` 里的 `glance.js` / `track.js` 也都带 `?v=`。
+  旧缓存（v1.7.11）里威能 chip 是 `<span>`、装备行不是 `button` —— 这就是「5/5 绿但真机一点没改」的典型形态。
+  以后改速览渲染层**记得同步抬 `?v=`**（check 会断言它等于 `PLUGIN_VERSION`）。
+- **自测**：`node dev/test-info-click.mjs`（假 DOM + 真 `info.js` / `track.js`，
+  `dispatchEvent(new MouseEvent("click"))` → 断言房间数据写入 `powerUsed` / `equipmentUsed`、重画 `.used`、再点恢复）；
+  `node dev/check.mjs` 静态扫描 pointer-events、委托位置、`?v=`，并 spawn 上面这条冒烟。
+  `node dev/selftest.mjs` 仍是 5 条命令、5/5。
+- **排查提示**：真机再遇到「点不动」，先在速览窗里开 DevTools 看三件事：① 元素是不是 `<button data-act=...>`
+  （不是 → 页面还是旧的，看 `?v=` / 清缓存）；② computed `pointer-events` 是不是 `auto`（不是 → 有别的样式在压容器链）；
+  ③ 点一下有没有走到 `applyAction`（`OBR.room.setMetadata` 失败会弹 WARNING，不静默）。

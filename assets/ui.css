@@ -806,6 +806,44 @@ html.strip-html body.strip-page .strip-items {
 body.dragging, body.dragging .strip-grip { cursor: grabbing; }
 body.sorting, body.sorting .initiative-item { cursor: grabbing; }
 
+/* ---------- v1.7.14：先攻条真透明 —— **照抄 FullPeople** 的那一套 ----------
+ * 前三版（v1.7.3 透明 body / v1.7.6 六层 !important / v1.7.10 换 modal）都没成，原因不是「漏了哪一层」，
+ * 而是**写法层级不够**：类名 + 样式表 !important 压不住「后加载的样式表 / 暗色扩展注入的 !important」。
+ * FullPeople/obr-suite 的 initiative-panel-v131.html 用的是更硬的三件套：
+ *
+ *     <html lang="zh" style="color-scheme:normal!important;background:transparent!important">
+ *     <meta name="darkreader-lock" />
+ *     <style data-overlay-canvas>
+ *       :root{color-scheme:normal!important;background:transparent!important}
+ *       body:not(.config),#root,#bossBars,.app-hbar,.hbar-cluster{background:transparent!important}
+ *     </style>
+ *     <body style="background:transparent!important">
+ *
+ * ① 他们把 background:transparent!important 写进 **style 属性**（inline）：
+ *    CSS 级联里 inline !important 高于任何选择器 !important —— 这是我们缺的那一层；
+ * ② <meta name="darkreader-lock"> 让暗色扩展整页不处理；
+ * ③ :root{color-scheme:normal!important} 让 Chromium 不给这个 iframe 画深色画布底。
+ * 本项目的 initiative.html 里逐字照抄了 ②③ 与 ① 的声明（按 ?view= 只给先攻条挂，列表窗口保持不透明）；
+ * 下面这条规则是同一套的「样式表版」，把类名映射到我们的 DOM，作为 inline 之外的第二层兜底：
+ *   #root → #app / .win / .win-head / .win-body / .win-foot；.app-hbar → .strip-root / .strip；
+ *   .hbar-cluster → .strip-items。
+ * **仍然只有两处底色**：控制行 .strip-ctl（rgba(11,15,20,.72)）与卡片 .initiative-item（#141b23）。 */
+html.strip-html { color-scheme: normal !important; }
+html.strip-html,
+html.strip-html body,
+html.strip-html #root,
+html.strip-html #app,
+html.strip-html .win,
+html.strip-html .win-head,
+html.strip-html .win-body,
+html.strip-html .win-foot,
+html.strip-html .strip-root,
+html.strip-html .strip,
+html.strip-html .strip-items {
+  background: transparent !important;
+  background-color: transparent !important;
+}
+
 /* v1.6.2：卡片区**内部横向滚动**（条宽固定 720，卡片再多也不会挤压整条）。
  * v1.7.3：卡片区**不再铺深色**（取消 v1.6.2 的 #10161d）—— 右侧空列表区域直接透出地图，
  * 只有卡片自己（.initiative-item / .item-count）是不透明深色。 */

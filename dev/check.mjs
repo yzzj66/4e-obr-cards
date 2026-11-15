@@ -3,6 +3,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import vm from "node:vm";
+import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
@@ -18,7 +19,7 @@ const NOTES_PATH = path.join(ROOT, "docs", "NOTES.md");
 const NOTES = exists(NOTES_PATH) ? fs.readFileSync(NOTES_PATH, "utf8") : "";
 const notesHas = (s) => NOTES.indexOf(s) >= 0;
 /* 当前版本号：所有「版本全链路」断言都读它，升版本只改这一处（+ 各文件里的真实版本号）。 */
-const VER = "1.7.12";
+const VER = "1.7.14";
 
 function walk(dir, out = []) {
   for (const name of fs.readdirSync(dir)) {
@@ -64,7 +65,8 @@ for (const f of files.filter((f) => f.endsWith(".js") && !f.includes("vendor")))
   while ((m = re.exec(src))) {
     const spec = m[1];
     if (!spec.startsWith(".")) continue;
-    const p = path.resolve(path.dirname(f), spec);
+    /* v1.7.13：import 允许带 ?v=缓存查询串（file 解析时把 query 去掉再查文件）。 */
+    const p = path.resolve(path.dirname(f), spec.split("?")[0]);
     if (exists(p)) ok(path.relative(ROOT, f) + " → " + spec);
     else bad(path.relative(ROOT, f) + " → 找不到 " + spec);
   }
@@ -2837,6 +2839,172 @@ console.log("== v1.7.12 速览资源追踪补全（威能 / 装备全部可点�
   } else bad("⑥ README / CHANGELOG 没有补 v1.7.12");
 }
 
+console.log("== v1.7.13 速览窗点击回归：pointer-events / 事件委托 / 缓存穿透");
+{
+  const infoHtmlV1713 = fs.readFileSync(path.join(ROOT, "info.html"), "utf8");
+  const infoJsV1713 = fs.readFileSync(path.join(ROOT, "assets", "info.js"), "utf8");
+  const glanceCssV1713 = fs.readFileSync(path.join(ROOT, "assets", "glance.css"), "utf8");
+  const uiCssV1713 = fs.readFileSync(path.join(ROOT, "assets", "ui.css"), "utf8");
+  const initHtmlV1713 = fs.readFileSync(path.join(ROOT, "initiative.html"), "utf8");
+  const coreV1713 = fs.readFileSync(corePath, "utf8");
+  const testClickV1713 = fs.readFileSync(path.join(ROOT, "dev", "test-info-click.mjs"), "utf8");
+  const readmeV1713 = fs.readFileSync(path.join(ROOT, "README.md"), "utf8");
+  const changelogV1713 = fs.readFileSync(path.join(ROOT, "CHANGELOG.md"), "utf8");
+  const has = (src, sub) => String(src).indexOf(sub) >= 0;
+
+  /* ---- ① 速览页链路里不能有 pointer-events:none（注释不算；v1.7.10 的透明方案遗留）
+   *      ui.css 允许且只允许两处**装饰层**的 none：.drop-mark（先攻拖拽指示线，3px）
+   *      与 .fx-stage*（投骰动画，故意点穿地图）。先把这两条规则抠掉，剩下的必须干净。 ---- */
+  const uiDecorNone = stripComments(uiCssV1713)
+    .replace(/\.drop-mark\s*\{[^}]*\}/g, " ")
+    .replace(/\.fx-stage\s*\{[^}]*\}/g, " ")
+    .replace(/\.fx-stage \*\s*\{[^}]*\}/g, " ");
+  const scanNone = [
+    ["info.html", stripComments(infoHtmlV1713)],
+    ["assets/info.js", stripComments(infoJsV1713)],
+    ["assets/glance.css", stripComments(glanceCssV1713)],
+    ["initiative.html", stripComments(initHtmlV1713)],
+    ["assets/ui.css（去掉两处装饰层后）", uiDecorNone]
+  ].filter(([, src]) => /pointer-events\s*:\s*none/.test(src));
+  if (!scanNone.length) {
+    ok("① 全仓审计：除 .fx-stage（投骰动画）与 .drop-mark（先攻拖拽线）两处装饰层外，速览页 / 先攻页链路没有任何 pointer-events:none");
+  } else bad("① 这些文件里还有 pointer-events:none：" + scanNone.map((x) => x[0]).join(" / "));
+
+  /* ---- ② 两处装饰层的 none 必须保留（纯展示、故意点穿地图；不是速览页） ---- */
+  if (has(uiCssV1713, ".fx-stage { position: fixed; inset: 0; overflow: hidden; pointer-events: none; }") &&
+    has(uiCssV1713, ".fx-stage * { pointer-events: none !important;") &&
+    /\.drop-mark\s*\{[^}]*pointer-events:\s*none/.test(uiCssV1713)) {
+    ok("② 装饰层的 pointer-events:none 原样保留（.fx-stage 投骰动画 / .drop-mark 拖拽线；速览正文不引用）");
+  } else bad("② 装饰层的 pointer-events:none 被误删 / 被改到正文上了");
+
+  /* ---- ③ 速览页把 auto 显式写回来（祖先 none 时后代仍能成为命中目标） ---- */
+  if (has(glanceCssV1713, "body.info-body") && has(glanceCssV1713, "pointer-events: auto !important") &&
+    has(glanceCssV1713, "body.info-body .pop-body") && has(glanceCssV1713, "body.info-body .gl4 [data-act]") &&
+    has(glanceCssV1713, "body.info-body button")) {
+    ok("③ glance.css：速览页容器链 + 所有 [data-act] / button / input 显式 pointer-events:auto（兜住祖先 none）");
+  } else bad("③ 速览页缺少 pointer-events:auto 兜底（宿主 / 旧样式给祖先留 none 时会整窗点不动）");
+
+  /* ---- ④ 事件委托：document + 捕获阶段 + 仍只认 [data-act]，且没有退回 #body ---- */
+  if (has(infoJsV1713, 'document.addEventListener("click", onActClick, true)') &&
+    has(infoJsV1713, 'document.addEventListener("change", onActChange, true)') &&
+    has(infoJsV1713, 'closest("[data-act]")') &&
+    !has(infoJsV1713, 'bodyEl.addEventListener("click"')) {
+    ok("④ info.js：事件委托挂在 document **捕获阶段**（不再只挂 #body），仍只认 [data-act]");
+  } else bad("④ info.js 的事件委托没有挂到 document 捕获阶段（重画 / stopPropagation 会丢点击）");
+
+  /* ---- ⑤ 缓存穿透：info 入口 + glance/track 模块 + popover URL 全都带版本 ---- */
+  if (has(infoHtmlV1713, "assets/info.js?v=" + VER) && has(infoHtmlV1713, "assets/glance.css?v=" + VER) &&
+    has(infoHtmlV1713, "assets/ui.css?v=" + VER) && has(infoJsV1713, "./glance.js?v=" + VER) &&
+    has(infoJsV1713, "./track.js?v=" + VER)) {
+    ok("⑤ 速览入口与 glance.js / track.js 都带 ?v=" + VER + "（旧缓存不会再让 chip 变成不可点的旧渲染）");
+  } else bad("⑤ 速览页入口 / 模块没有带 ?v=" + VER);
+  if (has(coreV1713, 'URL_INFO + "?v=" + encodeURIComponent(PLUGIN_VERSION)') &&
+    has(bundleSrc2, 'URL_INFO + "?v=" + encodeURIComponent(PLUGIN_VERSION)')) {
+    ok("⑤ info popover 的 URL 也带 ?v=<版本>（连 HTML 一起换 URL，不靠宿主清缓存）");
+  } else bad("⑤ info popover 的 URL 没有版本查询串（旧 info.html 会被继续缓存）");
+
+  /* ---- ⑥ 假 DOM 点击冒烟必须存在，且真的 dispatchEvent + 断言 track.js 写入 ---- */
+  const needClick = ['dispatchEvent(new MouseEvent("click"', 'data-act="power"', 'data-act="equipment"',
+    "powerUsed", "equipmentUsed", "applyAction", "info.js"];
+  const missClick = needClick.filter((s) => !has(testClickV1713, s));
+  if (!missClick.length) ok("⑥ dev/test-info-click.mjs：用真 info.js + dispatchEvent(MouseEvent) 断言 track.js 写入");
+  else bad("⑥ 速览点击冒烟缺少：" + missClick.join(" / "));
+
+  /* ---- ⑦ 文档：把「为什么」写清楚，避免下个版本又把 none 加回来 ---- */
+  if (has(changelogV1713, "v1.7.13") && has(changelogV1713, "pointer-events") &&
+    has(readmeV1713, "v1.7.13") && notesHas("速览窗点击回归（v1.7.13）")) {
+    ok("⑦ CHANGELOG / README / docs/NOTES.md 补了 v1.7.13 的点击回归说明");
+  } else bad("⑦ 文档没有补 v1.7.13 的点击回归说明");
+}
+
+console.log("== v1.7.14 先攻条背景真透明：逐行照抄 FullPeople（inline !important + darkreader-lock + :root）");
+{
+  const initHtmlV1714 = fs.readFileSync(path.join(ROOT, "initiative.html"), "utf8");
+  const uiV1714 = fs.readFileSync(path.join(ROOT, "assets", "ui.css"), "utf8");
+  const coreV1714 = fs.readFileSync(corePath, "utf8");
+  const bundleV1714 = fs.readFileSync(bundlePath, "utf8");
+  const readmeV1714 = fs.readFileSync(path.join(ROOT, "README.md"), "utf8");
+  const changelogV1714 = fs.readFileSync(path.join(ROOT, "CHANGELOG.md"), "utf8");
+  const testInitV1714 = fs.readFileSync(path.join(ROOT, "dev", "test-initiative.mjs"), "utf8");
+  const has = (src, sub) => String(src).indexOf(sub) >= 0;
+
+  /* ---- ① 三件套（照抄 initiative-panel-v131.html） ---- */
+  if (has(initHtmlV1714, 'name="darkreader-lock"'))
+    ok("① initiative.html 有 <meta name=\"darkreader-lock\">（Dark Reader 之类的扩展整页不处理 —— 这是 FullPeople 的做法）");
+  else bad("① initiative.html 缺 darkreader-lock（暗色扩展会继续往这个 iframe 注入深色底）");
+  if (has(initHtmlV1714, 'setProperty("color-scheme", "normal", "important")') &&
+    has(initHtmlV1714, 'setProperty("background", "transparent", "important")') &&
+    has(initHtmlV1714, 'setProperty("background-color", "transparent", "important")'))
+    ok("① 首帧之前把 color-scheme:normal / background:transparent **!important 写进 html·body 的 style 属性**（inline !important 高于任何选择器 !important）");
+  else bad("① 没有 inline 的 background:transparent!important —— 前三版失败就失败在这一层");
+  if (has(initHtmlV1714, "color-scheme: normal !important"))
+    ok("① <style data-overlay-canvas> 里有 color-scheme: normal !important（Chromium 不给这个 iframe 画深色画布底）");
+  else bad("① 缺 color-scheme: normal !important");
+  if (has(initHtmlV1714, "html.strip-html body.strip-page #app") &&
+    /html\.strip-html body\.strip-page #app[\s\S]{0,400}?background: transparent !important/.test(initHtmlV1714))
+    ok("① 页面内把 FullPeople 的 body,#root,.app-hbar,.hbar-cluster 映射成 #app / .win / .win-body / .strip-root / .strip / .strip-items，全 transparent !important");
+  else bad("① 页面内的透明规则没有覆盖容器链");
+  if (has(initHtmlV1714, 'view === "list"'))
+    ok("① 透明只挂先攻条（?view=list 直接 return）→ 列表窗口仍是不透明窗口");
+  else bad("① 没按 ?view= 区分：列表窗口会被一起弄成透明");
+
+  /* ---- ② ui.css 的同名规则（样式表版兜底）+ 仍只有两处底色 ---- */
+  const v1714Start = uiV1714.indexOf("v1.7.14：先攻条真透明");
+  const v1714End = uiV1714.indexOf("/* v1.6.2：卡片区", v1714Start);
+  const v1714Block = v1714Start >= 0 ? uiV1714.slice(v1714Start, v1714End > v1714Start ? v1714End : undefined) : "";
+  const needLayers = [".win-head", ".win-foot", ".strip-root", ".strip-items"];
+  const missLayerV1714 = needLayers.filter((sel) => v1714Block.indexOf(sel) < 0);
+  if (!missLayerV1714.length && v1714Block.indexOf("background: transparent !important") >= 0)
+    ok("② ui.css 的 v1.7.14 段：.win-head / .win-foot / .strip-root / .strip-items 都是 transparent !important");
+  else bad("② ui.css 的 v1.7.14 段缺层：" + missLayerV1714.join(" / "));
+  if (/html\.strip-html[^{]*\{[^}]*color-scheme: normal !important/s.test(uiV1714))
+    ok("② ui.css 也给 html.strip-html 写了 color-scheme: normal !important");
+  else bad("② ui.css 缺 color-scheme: normal !important");
+  const v1714Rules = v1714Block.split("\n").filter((line) => !/^\s*(\/\*|\*)/.test(line)).join("\n");
+  if (v1714Rules.indexOf(".strip-ctl") < 0 && v1714Rules.indexOf(".initiative-item") < 0)
+    ok("② 透明名单没有误伤控制行 .strip-ctl 与卡片 .initiative-item（整条只有这两处有底色）");
+  else bad("② 透明名单把控制行 / 卡片也弄透明了（会看不清）");
+
+  /* ---- ③ popover 参数与 FullPeople 的 openPanel() 同序同值 ---- */
+  const fnAt = coreV1714.indexOf("function stripPopoverOptions(size, pos) {");
+  const fnBody = fnAt >= 0 ? coreV1714.slice(fnAt) : "";
+  const endAt = fnBody.indexOf("\n}");
+  const optsBody = endAt > 0 ? fnBody.slice(0, endAt) : fnBody.slice(0, 900);
+  const order = ['anchorReference: "POSITION"', "anchorPosition:", "anchorOrigin:", "transformOrigin:",
+    "disableClickAway: true", "hidePaper: true"];
+  let lastAt = -1;
+  let ordered = true;
+  for (const tok of order) {
+    const at = optsBody.indexOf(tok);
+    if (at <= lastAt) ordered = false;
+    lastAt = at;
+  }
+  if (ordered && optsBody.length > 0)
+    ok("③ stripPopoverOptions 的书写顺序照抄 openPanel()：POSITION → anchorPosition → anchorOrigin → transformOrigin → disableClickAway → hidePaper");
+  else bad("③ stripPopoverOptions 的参数顺序与 FullPeople 的 openPanel() 不一致");
+  if ((optsBody.split('{ horizontal: "CENTER", vertical: "TOP" }').length - 1) === 2 && !/stripModalOptions/.test(coreV1714))
+    ok("③ anchorOrigin / transformOrigin 都是 CENTER+TOP，且先攻条没有 modal 那条路（modal 会把整条交互打穿）");
+  else bad("③ 角度 / 位置不对，或先攻条又回到 modal");
+  if (!/disablePointerEvents/.test(optsBody))
+    ok("③ stripPopoverOptions 里没有 disablePointerEvents（v1.7.10 的事故点）");
+  else bad("③ stripPopoverOptions 里又出现 disablePointerEvents");
+
+  /* ---- ④ 交互断言还在 + bundle 已重建 + 文档写清根因 ---- */
+  const keep = ["stripOpenCfg.hidePaper === true", "onStripDrag", "onStripCmd", "bonus", "d20"];
+  const keepMiss = keep.filter((s) => !has(testInitV1714, s));
+  if (!keepMiss.length) ok("④ dev/test-initiative.mjs 的交互断言仍在（popover 参数 / 拖动重开 / 命令频道 / 加值输入 / d20）");
+  else bad("④ 交互断言丢了：" + keepMiss.join(" / "));
+  if (has(bundleV1714, "(v" + VER + ")") && has(bundleV1714, 'var PLUGIN_VERSION = "' + VER + '";') &&
+    has(bundleV1714, "function stripPopoverOptions(size, pos)"))
+    ok("④ bundle 已重建（头部 v" + VER + " + 新的 stripPopoverOptions 都在）");
+  else bad("④ bundle 没跟上（跑 node dev/build-background.mjs）");
+  if (has(readmeV1714, "v1.7.14") && has(readmeV1714, "darkreader-lock") &&
+    has(changelogV1714, "v1.7.14") && has(changelogV1714, "darkreader-lock") &&
+    notesHas("先攻条背景为什么这么写（v1.7.14")) {
+    ok("④ README / CHANGELOG / docs/NOTES.md 都写清了「inline !important + darkreader-lock 才是根因」");
+  } else bad("④ 文档没有补 v1.7.14 的透明说明");
+}
+
 console.log("== docs 合并（docs/NOTES.md；不再按版本 / 规格拆文件）");
 {
   if (exists(NOTES_PATH)) ok("docs/NOTES.md 存在（唯一的维护文档）");
@@ -2861,6 +3029,16 @@ console.log("== docs 合并（docs/NOTES.md；不再按版本 / 规格拆文件�
   const stillThere = orphanDocs.filter((n) => exists(path.join(ROOT, "docs", n)));
   if (!stillThere.length) ok("docs/ 下没有残留的按版本 / 规格拆出来的 md（合并之后别再拆回来）");
   else bad("docs/ 下又出现了拆分文档：" + stillThere.join(" / "));
+}
+
+/* v1.7.13：假 DOM 点击冒烟（独立进程，stdio 直接继承 —— 不走管道）。
+ * 证明「渲染出的 [data-act] → 一次真的 dispatchEvent → track.js applyAction 写房间数据」这条链路没断。 */
+console.log("== v1.7.13 速览点击冒烟（dev/test-info-click.mjs）");
+{
+  const r = spawnSync(process.execPath, [path.join(ROOT, "dev", "test-info-click.mjs")], { cwd: ROOT, stdio: "inherit" });
+  const code = typeof r.status === "number" ? r.status : 1;
+  if (code === 0) ok("速览点击冒烟通过（dispatchEvent(MouseEvent) → track.js applyAction 写入 powerUsed / equipmentUsed）");
+  else bad("速览点击冒烟失败（exit " + code + "）：手动跑 node dev/test-info-click.mjs 看细节");
 }
 
 console.log(fail ? "\n" + fail + " 个问题" : "\n全部通过");

@@ -9,7 +9,7 @@
 </head>
 <body>
 <article class="doc">
-  <h1>4eNEXT to owlbear <span class="tag">Owlbear Rodeo 插件</span> <span class="tag">v1.7.12</span></h1>
+  <h1>4eNEXT to owlbear <span class="tag">Owlbear Rodeo 插件</span> <span class="tag">v1.7.14</span></h1>
   <p class="muted">在枭熊里看 4E NEXT 的「速览」页：右键 token 绑定角色卡，之后选中这枚 token 就会弹出速览。
     v1.2.0 起还能在弹窗里直接加减血量（token 上会画出血条），并把威能 / 装备点掉记成「已用」；
     v1.2.1 把速览弹窗加宽到 660×700；v1.2.2 弹窗可以按住标题栏拖动、位置按 token 记住。
@@ -92,6 +92,19 @@
     （点 = 已用、再点恢复；随意威能不追踪），<b>装备 / 魔法物品每行可点</b>；修「没点过却显示已用 10/12」
     （装备 key 改稳定 id，旧 key 忽略、缺省 = 未用）；「玩家端隐藏数字」挪到顶部标题区右侧并改名<b>「共享数据」</b>
     （开 = 共享 = 全桌显示精确数字）。
+    <b>v1.7.13</b> <b>速览「点不动」回归</b>：① 速览页事件委托从 <code>#body</code> 挪到 <b><code>document</code> 捕获阶段</b>
+    （重画换 DOM、冒泡被拦都还能收到点击）；② 速览页所有容器 / <code>[data-act]</code> / 按钮显式写回
+    <code>pointer-events:auto</code>（即使宿主或旧样式给祖先留了 <code>none</code>，后代仍可命中）；
+    ③ <b>入口与资源全带 <code>?v=1.7.13</code></b>（info.html / info.js / glance.js / css），不再被旧缓存拖住 ——
+    旧版威能 chip 根本不是 button，正是「一点没改」的来源；新增假 DOM 点击冒烟（<code>dev/test-info-click.mjs</code>）。
+    <b>v1.7.14</b> <b>先攻条背景真透明（照抄 FullPeople）</b>：前三版（透明 body / 六层
+    <code>transparent !important</code> / 换 modal）全失败 —— 用户指出 FullPeople 的现成实现本来就是透明的。
+    本版<b>逐行照抄</b>它的 <code>initiative-panel-v131.html</code> 三件套：① html / body 的
+    <b><code>style</code> 属性</b>里写 <code>background:transparent!important</code>（inline <code>!important</code>
+    高于任何选择器 <code>!important</code>，扩展 / 后加载样式表都压不过它）；② <code>&lt;meta name="darkreader-lock"&gt;</code>；
+    ③ <code>:root{color-scheme:normal!important;background:transparent!important}</code> + 各层
+    <code>transparent!important</code>。popover 参数按他们的 <code>openPanel()</code> 原样排
+    （<code>POSITION / CENTER+TOP / disableClickAway / hidePaper</code>），<b>不再用 modal</b>。
     纯静态、免构建、不需要服务器。</p>
 
   <section class="diag-card" id="diag">

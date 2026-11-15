@@ -3,31 +3,93 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
+<!-- v1.7.14：**逐字照抄** FullPeople/obr-suite 的先攻条页面（仓库根目录 initiative-panel-v131.html）。
+     它的头部只有这几行，却能做到「怎么改 CSS 都没用」时仍然透明 —— 三件套缺一不可：
+
+       <html lang="zh" style="color-scheme:normal!important;background:transparent!important">
+         <meta name="darkreader-lock" />
+         <style data-overlay-canvas>:root{color-scheme:normal!important;background:transparent!important}body:not(.config),#root,#bossBars,.app-hbar,.hbar-cluster{background:transparent!important}</style>
+       <body style="background:transparent!important">
+
+     ① darkreader-lock：Dark Reader 之类的暗色扩展看到这条 meta 就**整页不处理**。它注入的
+        `html{background-color:#181a1b!important}` 是「样式表 !important」—— 我们用类名 + !important
+        写了三版都盖不掉的那一层，最可能就是它。
+     ② html / body 的 **style 属性**里带 background:transparent!important：inline !important 在
+        CSS 级联里**高于任何选择器 !important**（含扩展 / 后加载样式表注入的规则）。这是唯一
+        「别人再插一层 !important 也压得住」的写法，也是我们前面三版没做到的。
+     ③ 一个静态 <style data-overlay-canvas>：:root{color-scheme:normal!important} 让 Chromium 不给
+        这个 iframe 画深色画布底，其余各层一遍 transparent!important 兜底。 -->
+<meta name="darkreader-lock">
 <title>4eNEXT to owlbear · 先攻条</title>
-<link rel="stylesheet" href="assets/ui.css">
-<style>
-  /* v1.7.3：先攻条**外壳透明**（用户：「先攻条背景设置成透明的」，挡住地图了）。
-     ui.css 顶部有 html{background:var(--bg)} —— 只透明 body 的话 html 的深色会整块露出来
-     （与 v1.7.1 修投骰动画黑屏同一个坑），所以 html 也要 transparent。
-     只有先攻条视图会给 html 挂 .strip-html；列表窗口（?view=list）仍是正常的不透明窗口。 */
-  html.strip-html, html.strip-html body.strip-page { background: transparent !important; }
-  /* v1.7.6：只透明 html / body 还不够 —— 页面自己的容器（#app / .win / .win-body / .strip-root）里
-     只要有一层画了底色，整条看上去仍是个深色矩形。这里跟 ui.css 的 v1.7.6 段一一对应地兜一遍，
-     作用域挂在 .strip-html 上：列表窗口（?view=list）不会挂这个类，仍是不透明窗口。 */
+<!-- v1.7.14：首帧之前就把 ② 写进 html / body 的 style 属性。
+     FullPeople 那张页面只有先攻条一种形态，所以它是**静态**写法；我们一个文件两种形态
+     （?view=list 是列表窗口，必须仍是不透明窗），于是用下面这段内联脚本按 view 决定挂不挂 ——
+     声明名与取值与他们逐字一致，只是多了一层 if。脚本在 <head> 里同步执行，早于任何绘制。 -->
+<script>
+(function () {
+  var view = "strip";
+  try {
+    var m = /[?&]view=([^&#]*)/.exec(String(location.search || ""));
+    if (m && m[1]) view = decodeURIComponent(m[1]).toLowerCase();
+  } catch (e) { /* 读不到 query 就当先攻条 */ }
+  if (view === "list") return; /* 列表窗口：保持不透明 */
+  var de = document.documentElement;
+  de.classList.add("strip-html");
+  de.style.setProperty("color-scheme", "normal", "important");
+  de.style.setProperty("background", "transparent", "important");
+  de.style.setProperty("background-color", "transparent", "important");
+  function paintBody() {
+    var b = document.body;
+    if (!b) return;
+    b.style.setProperty("color-scheme", "normal", "important");
+    b.style.setProperty("background", "transparent", "important");
+    b.style.setProperty("background-color", "transparent", "important");
+    /* 顺手把形态类挂上（initiative-page.js 里同样两行是幂等的）：模块脚本万一来得慢 / 没来，
+       页面也不会先用 .win-page 的 6px 内边距 + 窗口外壳画一帧深色矩形。 */
+    b.classList.remove("win-page");
+    b.classList.add("strip-page");
+  }
+  if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", paintBody, { once: true });
+  else paintBody();
+})();
+</script>
+<link rel="stylesheet" href="assets/ui.css?v=1.7.14">
+<style data-overlay-canvas>
+  /* v1.7.3 / v1.7.6：先攻条外壳**透明**（用户：「先攻条背景设置成透明的」，挡住地图了）。
+     v1.7.14：照抄 FullPeople initiative-panel-v131.html 的 <style data-overlay-canvas>，把
+       :root{color-scheme:normal!important;background:transparent!important}
+       body:not(.config),#root,#bossBars,.app-hbar,.hbar-cluster{background:transparent!important}
+     逐条映射到我们的 DOM（类名不同、层一样）：
+       #root         → #app（本页没有就空匹配）/ .win / .win-body / .win-head / .win-foot（窗口外壳）
+       .app-hbar     → .strip-root / .strip（先攻条自己的容器）
+       .hbar-cluster → .strip-items（卡片行；控制行 .strip-ctl 是**故意**留半透明底的 —— 它在
+                       FullPeople 那边对应 .state-text / 各个 chip 自带底色，不属于「该透明的容器」）
+     作用域挂 html.strip-html：列表窗口（?view=list）不挂这两个类，仍是不透明窗口。 */
+  html.strip-html { color-scheme: normal !important; }
+  html.strip-html,
+  html.strip-html body,
   html.strip-html body.strip-page,
   html.strip-html body.strip-page #app,
   html.strip-html body.strip-page .strip-root,
   html.strip-html body.strip-page .win,
   html.strip-html body.strip-page .win-body,
   html.strip-html body.strip-page .strip,
-  html.strip-html body.strip-page .strip-items { background: transparent !important; background-color: transparent !important; }
+  html.strip-html body.strip-page .strip-items,
+  html.strip-html .win-head,
+  html.strip-html .win-foot {
+    background: transparent !important;
+    background-color: transparent !important;
+  }
+  /* 先攻条视图里窗口外壳根本不用（initiative-page.js 会 shellEl.hidden = true）：
+     这里先按 CSS 关掉，免得模块脚本晚到时先闪一帧 720×170 的深色窗。 */
+  html.strip-html #win-shell { display: none !important; }
 </style>
 </head>
 <body class="win-page">
 <!-- v1.4.0：同一张页面两种形态（由 assets/initiative-page.js 按 ?view= 决定）
      · 先攻条（默认，popover id = /initiative-strip）：屏幕顶部 720×(170|180|200)，可折叠成 120×40；
        v1.7.3 起常驻、v1.7.11 起回退 popover（modal + disablePointerEvents 会让整条点不动；
-       「−」折叠 /「✕」真正关闭）；
+       「−」折叠 /「✕」真正关闭）；v1.7.14 起按 FullPeople 的做法真·透明（inline !important）；
      · 列表窗口（?view=list，popover id = /initiative-window）：v1.3.x 的管理视图（重掷 / 同步加值 / 删除）。
      先攻条上的「≡」广播 CH_STRIP_CMD {op:"list"}，由后台打开列表窗口。 -->
 <div class="strip-root" id="strip-root" hidden></div>
@@ -55,6 +117,6 @@
     <span class="win-hint">按住标题栏可拖动 · 先攻条在屏幕顶部</span>
   </div>
 </div>
-<script type="module" src="assets/initiative-page.js"></script>
+<script type="module" src="assets/initiative-page.js?v=1.7.14"></script>
 </body>
 </html>

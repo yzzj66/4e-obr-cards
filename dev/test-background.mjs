@@ -658,7 +658,8 @@ run(OBR, stubBuilder("CURVE"), stubBuilder("SHAPE"), stubBuilder("TEXT"));
     bad("速览弹窗的锚点 / 变换原点不是 LEFT/TOP：" + JSON.stringify([info.anchorOrigin, info.transformOrigin]));
   else if (info.anchorPosition.left !== 16 || info.anchorPosition.top !== 16)
     bad("速览弹窗初始位置不对（应夹到 16,16）：" + JSON.stringify(info.anchorPosition));
-  else if (!/\/info\.html\?item=tok-1&card=c-1$/.test(info.url)) bad("速览弹窗 url 不对：" + info.url);
+  /* v1.7.13：info 入口 URL 带 ?v=<版本>（缓存穿透），item / card 参数照旧。 */
+  else if (!/\/info\.html\?v=[\d.]+&item=tok-1&card=c-1$/.test(info.url)) bad("速览弹窗 url 不对：" + info.url);
   else ok("速览弹窗按左上角定位（初始 16,16，url 带 item/card）");
 
   const infoUrl = info ? info.url : "";
@@ -846,7 +847,7 @@ run(OBR, stubBuilder("CURVE"), stubBuilder("SHAPE"), stubBuilder("TEXT"));
 
   /* 当前选中的 tok-1 绑定着 c-1 → 点「速览」应该重新开 /info（与「选中即弹」同一个 popover） */
   selection = [TOKEN_ID];
-  const glanceWin = await openByTool(toolGlance, /\/info\.html\?item=tok-1&card=c-1$/, "速览");
+  const glanceWin = await openByTool(toolGlance, /\/info\.html\?v=[\d.]+&item=tok-1&card=c-1$/, "速览");
   if (!glanceWin) bad("点工具栏「速览」没有打开当前选中 token 的速览");
   else ok("点工具栏「速览」打开 /info（复用「选中即弹」同一个 popover，url 带 item/card）");
 
@@ -1510,7 +1511,7 @@ run(OBR, stubBuilder("CURVE"), stubBuilder("SHAPE"), stubBuilder("TEXT"));
     await select([TOKEN_ID]);
     const infoWin = infoOpens()[infoOpens().length - 1];
     if (infoOpens().length === i0) bad("选中已绑定卡的 token 没有弹速览（v1.2 的老行为被破坏了）");
-    else if (!infoWin || !/\/info\.html\?item=tok-1&card=c-1$/.test(infoWin.url)) bad("速览的 url 不对：" + (infoWin && infoWin.url));
+    else if (!infoWin || !/\/info\.html\?v=[\d.]+&item=tok-1&card=c-1$/.test(infoWin.url)) bad("速览的 url 不对：" + (infoWin && infoWin.url));
     else if (hpOpens().length !== h0) bad("已绑定卡的 token 同时也弹了血条编辑窗（应该只弹速览）");
     else ok("v1.7.7 分支①：已绑定卡 → 只弹速览 /info，不弹 /hp-edit（老行为不变）");
 

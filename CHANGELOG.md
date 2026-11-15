@@ -181,3 +181,52 @@ popover 只占条本身那块区域，按钮 / 输入框 / 右键菜单都不再
 默认 0 / N / 共享数据在顶部且方向正确」，`dev/test-track.mjs` 新增「四组威能都能 toggle / 默认全未用 / equipment 动作名」；
 `node dev/selftest.mjs` 5/5，保留 v1.7.8「成功类通知 = 0」与 v1.7.11 先攻条 popover 回退；manifest 仍无 action。
 
+**v1.7.13：速览「威能 / 装备点不动」回归修复（pointer-events / 事件委托 / 缓存穿透）**——
+用户实测 v1.7.12 后速览窗里四组威能 chip 与装备行**仍然完全点不动**（原话「一点没改啊」）。
+① **pointer-events 全仓审计**：速览页链路（`info.html` / `assets/info.js` / `assets/glance.css` / 本页加载的 `ui.css`）
+**没有任何 `pointer-events:none`** 作用到 `#app` / `.win` / `.win-body` / `.pop` / `.pop-body` / `.gl4-*` / `button`；
+运行代码里只剩两处装饰层的 none：骰子动画 `.fx-stage`（纯展示、故意点穿地图）与先攻条拖拽落位线 `.drop-mark`，都不在速览页 —— 先攻条仍用 popover，未被改动。
+另在 `glance.css` 给 `body.info-body` 的容器链与所有 `[data-act]` / `button` / `input` 显式写回 **`pointer-events:auto !important`**：
+按 CSS 规范，祖先被宿主 / 旧样式设成 `none` 时，后代写回 `auto` 仍能成为命中目标。
+② **事件委托改挂 `document` 捕获阶段**（原来只挂 `#body`）：`body.innerHTML` 重画换 DOM、子元素 `stopPropagation`、
+正文外层再包一层都不会丢点击；仍然只认 `[data-act]`，页头按钮走自己的监听。
+③ **缓存穿透**：info popover 的 URL 带 `?v=1.7.13`，`info.html` 的 `ui.css` / `glance.css` / `info.js` 与 `info.js`
+里的 `glance.js` / `track.js` 也带 `?v=1.7.13`。旧缓存的 v1.7.11 渲染层里威能 chip 根本不是 `button` ——
+「5/5 绿但真机一点没改」正是这一种：页面根本没换成 v1.7.12 的渲染。
+④ **新增假 DOM 点击冒烟** `dev/test-info-click.mjs`：用真的 `info.js` + `track.js`，从渲染结果里取 `[data-act]` 元素，
+`dispatchEvent(new MouseEvent("click"))` → 断言 `OBR.room.setMetadata` 写入 `powerUsed` / `equipmentUsed`、
+重画成 `.used` + `aria-pressed=true`、再点恢复、装备计数 `已用 1 / 12`。
+`dev/check.mjs` 增加静态扫描（速览页无 `pointer-events:none` / 委托在 document 捕获 / 资源带 `?v=`），
+并 spawn 该冒烟（selftest 仍是 5 条命令，但点击链路不会漏测）。
+自测：`node dev/test-info-click.mjs` 全绿、`node dev/selftest.mjs` 5/5，保留 v1.7.8「成功类通知 = 0」与 v1.7.11 先攻条 popover 回退；manifest 仍无 action。
+
+**v1.7.14：先攻条背景真透明 —— 逐行照抄 FullPeople/obr-suite**——
+用户原话：先攻条透明这件事「折腾了 3 版」全失败（v1.7.3 只透明 body / v1.7.6 六层 `transparent !important` /
+v1.7.10 换 `OBR.modal.open`），而 **FullPeople 的现成代码本来就是透明的**，应该直接照抄。
+读源码（`src/modules/initiative/index.ts` 37 KB、`panel-page.tsx` 35 KB、`styles/initiative.css` 28.7 KB、
+`components/*`，以及真正的页面 `initiative-panel-v131.html`）后的结论：
+① **透明根本不在 popover 参数里** —— 他们的 `openPanel()` 与我们的写法其实一致：
+`id / url / width / height / anchorReference:"POSITION" / anchorPosition:{left:Math.round(vw/2)+dx, top:TOP_OFFSET+dy} /
+anchorOrigin:{horizontal:"CENTER",vertical:"TOP"} / transformOrigin:{...同} / disableClickAway:true / hidePaper:true`；
+② 透明的活儿全在**页面**，而且靠的是 `initiative-panel-v131.html` 头部的三件套：
+`<html style="color-scheme:normal!important;background:transparent!important">`、
+`<meta name="darkreader-lock" />`、
+`<style data-overlay-canvas>:root{color-scheme:normal!important;background:transparent!important}body:not(.config),#root,#bossBars,.app-hbar,.hbar-cluster{background:transparent!important}</style>`、
+`<body style="background:transparent!important">`；`styles/initiative.css` 里则**一次都没给容器铺过底**
+（`html, body, #root { height:100%; background: transparent !important; }`、`.app-hbar { background: transparent !important; }`），
+只有卡片 `.initiative-item`（`var(--bg-card)`）与各个 chip 自带底色。
+③ 我们前三版缺的就是**写法层级**：类名 + 样式表 `!important` 压不住「后加载的样式表 / 暗色扩展注入的 `!important`」，
+而 **inline `!important`** 在级联里高于任何选择器 `!important`。所以这一版：
+- `initiative.html` 在 `<head>` 里同步执行 10 行内联脚本，**首帧之前**就把
+  `background:transparent!important` / `color-scheme:normal!important` 写进 `<html>` 与 `<body>` 的 **style 属性**
+  （声明与取值与 FullPeople 逐字一致；用 `?view=` 判断，列表窗口 `?view=list` 不挂、仍是不透明窗）；
+- 加 `<meta name="darkreader-lock">`；
+- 加 `<style data-overlay-canvas>`，把他们的 `:root` / `body,#root,.app-hbar,.hbar-cluster` 规则映射到
+  `#app / .win / .win-head / .win-body / .win-foot / .strip-root / .strip / .strip-items`；
+- `ui.css` 同步加一条同名单（样式表版兜底）；**只有 `.strip-ctl`（半透明）与 `.initiative-item`（不透明）两处留底色**；
+- `background.core.js` 的 `stripPopoverOptions()` 按 `openPanel()` 的**原样原序**重排（`disableClickAway` / `hidePaper` 放到最后），
+  `hidePaper:true` 保留；**不引入 modal，不引入 disablePointerEvents**（v1.7.10 就是这么把右键 / 加值框 / d20 全打穿的）。
+自测：`dev/check.mjs` 新增 v1.7.14 静态断言（darkreader-lock / html·body 的 inline 透明 / `:root{color-scheme:normal}` /
+各层 `transparent !important` / popover 参数与 FullPeople 同序同值 / 无 modal）；
+`dev/test-initiative.mjs` 的交互断言（右键加入先攻、卡片加值输入、d20、✕、拖动重开）**全部保留**；
+`node dev/selftest.mjs` 5/5，保留 v1.7.8「成功类通知 = 0」与 v1.7.11 先攻条 popover 回退；manifest 仍无 action。

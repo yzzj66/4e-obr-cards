@@ -337,3 +337,29 @@ button.gl4-item.used:hover { background: rgba(227, 179, 65, .1); }
 .gl4-compact .gl4-counter { padding-right: 3px; }
 .gl4-compact .gl4-resline { gap: 6px; }
 .gl4-compact .gl4-rest-hint { display: none; }
+
+/* ===========================================================================
+ * v1.7.13：速览窗「全部点不动」的回归兜底 —— pointer-events 显式写回 auto
+ * ---------------------------------------------------------------------------
+ * 全仓审计结果：**没有任何 pointer-events:none 作用到速览窗**（#app / .win /
+ * .win-body / .pop / .pop-body / .gl4 / .gl4-chip / .gl4-item / button 都没有）。
+ * 运行代码里只剩两处**装饰层**的 none：投骰动画 .fx-stage（纯展示、故意点穿地图）
+ * 与先攻条拖拽落位指示线 .drop-mark（3px 的线），两条都在 ui.css、都不在速览页。
+ * 但「透明浮层」方案最容易在宿主样式 / 旧缓存 / 以后新加的外壳上给祖先留一条 none，
+ * 一旦发生，整窗看起来就是「完全点不动」。按 CSS 规范：祖先 pointer-events:none 时，
+ * 后代把 pointer-events 设回 auto **仍然可以成为命中目标** —— 这里给速览页的
+ * 容器链和所有可交互元素兜一层，保证「点得动」永远优先于透明 / 装饰。
+ * 作用域只挂 body.info-body（速览窗），不影响先攻条（popover）与投骰动画（modal）。
+ * ========================================================================= */
+body.info-body,
+body.info-body .pop,
+body.info-body .pop-head,
+body.info-body .pop-body,
+body.info-body .gl4,
+body.info-body .gl4 button,
+body.info-body .gl4 input,
+body.info-body .gl4 [data-act],
+body.info-body button,
+body.info-body input {
+  pointer-events: auto !important;
+}
