@@ -24,7 +24,7 @@ v1.3.x 的**列表窗口还在**（`initiative.html?view=list`，popover id `/in
 | 页面 | `initiative.html`（同一张页面，`?view=list` 时显示列表外壳） |
 | 锚点 | `anchorReference: "POSITION"` + `anchorOrigin / transformOrigin = CENTER / TOP` |
 | 位置 | `anchorPosition = { left: 视口中线 + dx, top: 45 + dy }` —— **left 是中线**，不是左边缘 |
-| 尺寸 | 折叠 120×40；展开 720×（129 idle / 139 preparing / 159 combat），最小 410，按视口 −32 夹紧 |
+| 尺寸 | **v1.6.2 起是常量**：折叠 120×40；展开 720×（129 idle / 139 preparing / 159 combat），仅视口太窄时缩（下限 410，按视口 −32 夹紧）。**不按内容测量**，见 §12 |
 | 位置记忆 | `localStorage["4enext/strip-pos"] = { v:1, dx, dy }`（只存相对中线 / 相对 45 的偏移） |
 | 拖动 | 拖动柄 ⠿ → 页面发 `CH_STRIP_DRAG {phase, dx, dy}` → 后台重开同一个 popover（只换 anchorPosition）；双击拖动柄回中 |
 | 折叠状态 | `localStorage["4enext/strip-collapsed"]`（只在本机） |
@@ -146,6 +146,7 @@ v1.3.x 的**列表窗口还在**（`initiative.html?view=list`，popover id `/in
 3. **隐藏只是不渲染**：房间数据对全桌可读，玩家用开发者工具仍能翻到隐形条目的名字 / 点数。
    这是 v1.3.0 就有的限制（数据模型在房间数据里，无法做真正的服务端隐藏）。
 4. **高度是硬编码的三档**：条里加任何新元素都要重算 129 / 139 / 159，否则会被 `overflow:hidden` 裁掉。
+   （v1.6.2 起宽度也是硬编码的 720 —— 宽度**不再**跟着内容走，内容多了由卡片区自己横向滚动。）
 5. **拖动手感 / 重开 popover 是否重载 iframe 没有真机验证**（与 v1.3.1 的窗口拖动同一套机制）。
 6. **血条只画已有 `hp` 元数据的 token**；没有血量的 token 只保留空槽。
 
@@ -160,3 +161,27 @@ v1.3.x 的**列表窗口还在**（`initiative.html?view=list`，popover id `/in
   频道 / 位置键两端一致、`docs/initiative-v14.md` 存在、`docs/spec-*.md` 未被改动。
 * `dev/test-background.mjs`：工具栏「先攻」打开先攻条（CENTER/TOP + top 45 + 720×129），
   拖动 → 夹紧 → 记偏移 → 回中，先攻条上的「≡」打开列表窗口。
+
+## 12. v1.6.2：先攻条宽高改成常量（修「随投骰变窄」）
+
+**现象**（用户截图）：先攻条的宽度会随内容变 —— 投完骰、点数从一位数变两位、名字变长变短，
+整条就跟着变宽变窄，右侧还留一大片空白。
+
+**根因**：v1.4.0 的页面对 `.strip-ctl`（控制行 + 状态文字）取 `scrollWidth`，
+`stripSizeFor(phase, collapsed, clusterW, vw)` 再用它算 `max(410, 测量值 + 16)`。
+测量值随卡片内容变化 → popover 宽度跟着变。规格里「宽度自测量」本来就标了风险。
+
+**修法**：
+
+| 位置 | 改动 |
+| --- | --- |
+| `assets/initiative.js` `stripSizeFor` | 签名改为 `(phase, collapsed, vw)`，**返回常量**：折叠 120×40 / 展开 720（仅视口 −32 太窄时缩，下限 410）×（129 / 139 / 159）。老页面按 4 参调用时第 3 个「测量值」直接作废 |
+| `assets/initiative-page.js` `applySize` | 删掉 `querySelector / scrollWidth` 测量，只取视口宽；尺寸没变就早退（不调 `setWidth / setHeight`） |
+| `assets/background.core.js` | 新增 `snapStripSize()`：页面通过 `CH_STRIP_CMD {op:"size"}` 报上来的宽高必须落回常量，否则丢弃（防旧缓存页面把测量值带回来） |
+| `assets/ui.css` `.strip-items` | 内部横向滚动（`overflow-x: auto`）+ 明确深色底色（右侧空列表区域不透明） |
+
+内容变化时只会重绘卡片区（页面本来就整块重渲染 + 保留 `scrollLeft`），**不再改 popover 尺寸**。
+
+**自测**：`dev/test-initiative.mjs` 新增「同一 phase 下无论内容长度如何，尺寸完全相同」、
+「折叠 120×40 与展开三档高度不随内容变」；`dev/check.mjs` 断言 `stripSizeFor` 里没有测量值参与、
+`initiative-page.js` 里没有 `scrollWidth`、全仓没有 `measureWidth`。

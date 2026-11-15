@@ -30,6 +30,7 @@
     <nav class="set-nav" id="set-nav" aria-label="设置分区">
       <button class="set-tab on" type="button" data-pane="about" aria-controls="pane-about" aria-current="true"><span class="ico" aria-hidden="true">ℹ</span>关于</button>
       <button class="set-tab" type="button" data-pane="guide" aria-controls="pane-guide"><span class="ico" aria-hidden="true">▸</span>使用说明</button>
+      <button class="set-tab" type="button" data-pane="dice" aria-controls="pane-dice"><span class="ico" aria-hidden="true">⚄</span>骰子</button>
       <button class="set-tab" type="button" data-pane="data" aria-controls="pane-data"><span class="ico" aria-hidden="true">▤</span>数据与权限</button>
       <button class="set-tab" type="button" data-pane="limits" aria-controls="pane-limits"><span class="ico" aria-hidden="true">!</span>已知限制</button>
       <button class="set-tab" type="button" data-pane="reset" aria-controls="pane-reset"><span class="ico" aria-hidden="true">⌫</span>重置本机设置</button>
@@ -90,11 +91,40 @@
             <span>工具栏「速览」</span><span>当前选中 token 的速览（与「选中即弹」同一个窗口）</span>
             <span>工具栏「角色卡」</span><span>导入 / 列表 / 预览 / 绑定</span>
             <span>工具栏「先攻」</span><span>先攻条（战斗准备 / 突袭 / 一键清空 / 回合推进 / 拖拽排序）</span>
-            <span>工具栏「骰子」</span><span>骰子（表达式 / 战斗优势 +2 / 重击取满 / 4E 预设 / 团队共享历史）</span>
+            <span>工具栏「骰子」</span><span>骰子（表达式 / 战斗优势 +2 / 重击取满 / 4E 预设 / 本次结果）；记录在它自己的「记录窗口」里（最近 4 条）+ 投骰动画</span>
             <span>工具栏「设置」</span><span>本窗口</span>
             <span>右下角 4E 按钮</span><span>角色卡 / 导入</span>
             <span>右键 token</span><span>绑定角色卡 / 加入先攻 / 隐形加入先攻（仅 GM）</span>
           </div>
+        </div>
+      </section>
+
+      <!-- ---------------- 骰子（v1.7.0：独立记录窗口 + 投骰动画开关） ---------------- -->
+      <section class="set-pane" id="pane-dice">
+        <h3>骰子</h3>
+        <p class="set-lead">骰子窗口（工具栏「骰子」）只负责组公式和显示<b>本次结果</b>；
+          <b>记录</b>已经搬到它自己的窗口：可以拖动、单独记位置，和骰子窗口<b>各自开关、可以同时开着</b>。</p>
+        <div class="set-sec">
+          <h4>投骰动画</h4>
+          <p class="set-muted">每次投掷后，在选中 token 的头顶（没选中时在屏幕中央）出现放大的骰子：
+            飞入 → 落地读数 → 放大一下 → 淡出，约 2.6 秒。动画层<b>不挡鼠标</b>，播放期间照样能平移 / 选中地图；
+            骰子的点数是这次的真实结果（先算完再播）。</p>
+          <div class="set-kv">
+            <span class="k">当前状态</span><span><b id="anim-state">—</b></span>
+          </div>
+          <p class="set-muted"><button class="btn" id="anim-toggle" type="button" data-bg-soft>关闭投骰动画</button></p>
+          <p class="set-hint">关掉之后投掷照常、结果照常显示在骰子窗口的「本次结果」里，只是不再弹出动画。
+            这是<b>本机</b>设置（只影响这台电脑 / 这个浏览器）。</p>
+        </div>
+        <div class="set-sec">
+          <h4>记录窗口</h4>
+          <ul class="set-list">
+            <li>骰子窗口里的 <b>「记录窗口」</b> 按钮打开 / 收起它；按住它的标题栏可以拖走，位置单独记住。</li>
+            <li>默认只显示<b>最近 4 条</b>，点「展开全部」看全部（最多 40 条，列表内滚动）。</li>
+            <li>与骰子窗口是<b>同一份数据</b>（房间数据 <code>com.4enext-owlbear/rolls</code>，城主客户端落笔）：
+              40 条封顶，<b>超出时自动删最旧</b>的那条。</li>
+            <li>清空记录仍然只在骰子窗口里、且只有城主能做（要点两次）。</li>
+          </ul>
         </div>
       </section>
 

@@ -2,6 +2,7 @@
 // ---------------------------------------------------------------------------
 // 先攻条（initiative.html，popover id = common.js 的 ID_STRIP）：
 //   · 折叠 120×40 小药丸 / 展开 720×(129|139|159)，高度随 phase 三档（规格 §3.1）；
+//     **v1.6.2：宽高是常量**（applySize 不量 DOM）；内容变化只重绘卡片，不再改 popover 尺寸；
 //   · 控制行：战斗准备 / 突袭 / 一键清空（二次确认）、准备态「开始战斗 / 取消」、
 //     战斗态「上一回合 / 下一回合 / 结束战斗」；
 //   · 横向卡片：56×80 头像卡，当前回合 100 高，左上加值、底部合计 + 公式行 (d20+加值)；
@@ -138,16 +139,20 @@ function scrollActiveIntoView() {
   try { el.scrollIntoView({ behavior: "smooth", block: "nearest", inline: "nearest" }); } catch (e) { /* 老浏览器 */ }
 }
 
-/** 量一次控制行再改窗口尺寸（规格 §3.3；高度按 phase 三档，规格 §3.1）。 */
+/**
+ * 改窗口尺寸（v1.6.2：**不再量内容**）。
+ *
+ * v1.6.1 及以前这里会取 .strip-ctl 的 scrollWidth 当「内容宽度」→ 投骰后点数 / 名字 / 状态文字
+ * 一变长一缩短，整条就跟着变宽变窄（用户截图的 bug）。现在宽高全是常量：
+ * 折叠 120×40 / 展开 720（仅视口太窄时缩）×(129|139|159)，内容再长由卡片区内部横向滚动。
+ * 下面的 lastSize 判等也保证「内容变化 → 尺寸没变 → 不调 setWidth / setHeight」。
+ */
 async function applySize() {
   if (VIEW !== "strip" || !stripRoot) return;
-  const st = stripRoot.querySelector(".strip");
-  const ctl = st ? st.querySelector(".strip-ctl") : null;
-  const clusterW = ctl ? ctl.scrollWidth : 0;
   let vw = 0;
   try { vw = await OBR.viewport.getWidth(); } catch (e) { vw = 0; }
   const phase = collapsed ? "idle" : initiative.phase;
-  const size = stripSizeFor(phase, collapsed, clusterW, vw);
+  const size = stripSizeFor(phase, collapsed, vw);
   if (size.width === lastSize.w && size.height === lastSize.h) return;
   lastSize = { w: size.width, h: size.height };
   try {

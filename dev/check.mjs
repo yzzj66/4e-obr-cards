@@ -65,7 +65,7 @@ for (const f of files.filter((f) => f.endsWith(".js") && !f.includes("vendor")))
 // 不能 spawn 一个 node --check（有些环境禁止子进程管道），所以这里把 import/export 剥掉、
 // 用 vm.Script 解析一遍 —— 只能查语法，不执行，够用来兜住「引号没闭合 / 括号不配对」这类事故。
 console.log("== ESM 页面脚本语法");
-for (const f of ["assets/common.js", "assets/glance.js", "assets/track.js", "assets/initiative.js", "assets/window.js", "assets/info.js", "assets/panel.js", "assets/initiative-page.js", "assets/dice-core.js", "assets/dice-4e.js", "assets/dice-page.js", "assets/settings-page.js", "assets/bind.js", "assets/button.js", "assets/index.js"]) {
+for (const f of ["assets/common.js", "assets/glance.js", "assets/track.js", "assets/initiative.js", "assets/window.js", "assets/info.js", "assets/panel.js", "assets/initiative-page.js", "assets/dice-core.js", "assets/dice-4e.js", "assets/dice-page.js", "assets/dice-history-page.js", "assets/effect-page.js", "assets/settings-page.js", "assets/bind.js", "assets/button.js", "assets/index.js"]) {
   const src = fs.readFileSync(path.join(ROOT, f), "utf8");
   let body = src.replace(/^\s*import\s+[^;]*?from\s+["'][^"']+["'];?\s*$/gm, "");
   body = body.replace(/^\s*export\s*\{[^}]*\};?\s*$/gm, "");
@@ -82,7 +82,7 @@ for (const f of ["assets/common.js", "assets/glance.js", "assets/track.js", "ass
 }
 
 console.log("== 目录内容");
-for (const p of ["manifest.json", "manifest.relative.json", "background.html", "panel.html", "info.html", "initiative.html", "dice.html", "settings.html", "bind.html", "button.html", "index.html", "icon.svg", "icon-tool.svg", "icon-tool-initiative.svg", "icon-tool-dice.svg", "icon-tool-glance.svg", "icon-tool-settings.svg", "README.md", "assets/glance.js", "assets/glance.css", "assets/track.js", "assets/window.js", "assets/panel.js", "assets/initiative-page.js", "assets/dice-core.js", "assets/dice-4e.js", "assets/dice-page.js", "assets/settings-page.js", "assets/background.core.js", "assets/background.bundle.js", "data/rules.js", "vendor/obr-sdk.js", "samples/sample-card.json", "docs/owlbear-debug.md", "docs/hp-bar-and-tracking.md", "docs/ui-tweaks-v121.md", "docs/popover-drag.md", "docs/initiative-v13.md", "docs/separate-windows-v131.md", "docs/settings-window.md", "docs/initiative-v14.md", "docs/dice-v15.md", "docs/hpbar-boss-v16.md"]) {
+for (const p of ["manifest.json", "manifest.relative.json", "background.html", "panel.html", "info.html", "initiative.html", "dice.html", "dice-history.html", "effect.html", "settings.html", "bind.html", "button.html", "index.html", "icon.svg", "icon-tool.svg", "icon-tool-initiative.svg", "icon-tool-dice.svg", "icon-tool-glance.svg", "icon-tool-settings.svg", "README.md", "assets/glance.js", "assets/glance.css", "assets/track.js", "assets/window.js", "assets/panel.js", "assets/initiative-page.js", "assets/dice-core.js", "assets/dice-4e.js", "assets/dice-page.js", "assets/dice-history-page.js", "assets/effect-page.js", "assets/settings-page.js", "assets/background.core.js", "assets/background.bundle.js", "data/rules.js", "vendor/obr-sdk.js", "samples/sample-card.json", "docs/owlbear-debug.md", "docs/hp-bar-and-tracking.md", "docs/ui-tweaks-v121.md", "docs/popover-drag.md", "docs/initiative-v13.md", "docs/separate-windows-v131.md", "docs/settings-window.md", "docs/initiative-v14.md", "docs/dice-v15.md", "docs/hpbar-boss-v16.md", "docs/dice-v17.md", "docs/ui-v162.md"]) {
   if (exists(path.join(ROOT, p))) ok(p); else bad("缺少 " + p);
 }
 
@@ -93,6 +93,8 @@ const PAGES = [
   ["info.html", "assets/info.js"],
   ["initiative.html", "assets/initiative-page.js"],
   ["dice.html", "assets/dice-page.js"],
+  ["dice-history.html", "assets/dice-history-page.js"],
+  ["effect.html", "assets/effect-page.js"],
   ["settings.html", "assets/settings-page.js"],
   ["bind.html", "assets/bind.js"],
   ["button.html", "assets/button.js"],
@@ -117,16 +119,14 @@ const man = JSON.parse(fs.readFileSync(path.join(ROOT, "manifest.json"), "utf8")
 const isAbs = (u) => typeof u === "string" && /^https:\/\//.test(u);
 const manUrls = [
   ["icon", man.icon],
-  ["background_url", man.background_url],
-  ["action.icon", man.action && man.action.icon],
-  ["action.popover", man.action && man.action.popover]
+  ["background_url", man.background_url]
 ];
 for (const [label, url] of manUrls) {
   if (isAbs(url)) ok(label + " → " + url);
   else bad(label + " 不是绝对地址：" + url + "（Owlbear 可能按站点根解析相对路径）");
 }
 if (man.action && man.action.title) ok("action.title → " + man.action.title);
-else bad("manifest 缺少 action（左上角入口没了 → 后台脚本坏掉时就没有任何入口）");
+  // [v1.6.1 移除] manifest 不再带 action（真机验证：无 action 也能加载；入口由工具栏 tool 提供）// else bad("manifest 缺少 action（左上角入口没了 → 后台脚本坏掉时就没有任何入口）");
 if (man.manifest_version === 1) ok("manifest_version = 1"); else bad("manifest_version 不是 1");
 ok("version = " + man.version);
 
@@ -275,8 +275,8 @@ if (man.name === "4eNEXT to owlbear") ok("manifest.name = 4eNEXT to owlbear");
 else bad("manifest.name 不是 4eNEXT to owlbear：" + man.name);
 if (manRel.name === man.name) ok("manifest.relative.json 名字一致");
 else bad("manifest.relative.json 名字不一致：" + manRel.name);
-if (man.version === "1.6.0" && manRel.version === man.version) ok("版本 1.6.0（绝对 + 相对 manifest）");
-else bad("版本不是 1.6.0：" + man.version + " / " + manRel.version);
+if (man.version === "1.7.0" && manRel.version === man.version) ok("版本 1.7.0（绝对 + 相对 manifest）");
+else bad("版本不是 1.7.0：" + man.version + " / " + manRel.version);
 
 /* ---- 1) 三 tab 合并必须拆干净（用户明确不要） ---- */
 const panelHtmlV131 = fs.readFileSync(path.join(ROOT, "panel.html"), "utf8");
@@ -365,9 +365,9 @@ for (const [file, label] of [["icon-tool.svg", "角色卡"], ["icon-tool-initiat
   else bad("缺少工具栏图标：" + file);
 }
 if (man.action && /\/panel\.html$/.test(String(man.action.popover))) ok("manifest.action.popover = panel.html（左上角入口打开角色卡 / 导入面板）");
-else bad("manifest.action.popover 不是 panel.html：" + (man.action && man.action.popover));
+  // [v1.6.1 移除] manifest 不再带 action（真机验证：无 action 也能加载；入口由工具栏 tool 提供）// else bad("manifest.action.popover 不是 panel.html：" + (man.action && man.action.popover));
 if (man.action && !/\?tab=/.test(String(man.action.popover))) ok("action.popover 不再带 ?tab=...（没有 tab 概念了）");
-else bad("action.popover 还带着 ?tab=...");
+  // [v1.6.1 移除] manifest 不再带 action（真机验证：无 action 也能加载；入口由工具栏 tool 提供）// else bad("action.popover 还带着 ?tab=...");
 if (/label: "加入先攻"/.test(coreSrcV131) && /label: "隐形加入先攻"/.test(coreSrcV131)) ok("右键菜单有「加入先攻」「隐形加入先攻」两项");
 else bad("右键菜单缺少「加入先攻」/「隐形加入先攻」");
 if (/id: NS \+ "\/init-add"/.test(coreSrcV131) && /id: NS \+ "\/init-add-hidden"/.test(coreSrcV131)) ok("右键两项是独立注册（各自 id + filter）");
@@ -496,7 +496,7 @@ if (exists(path.join(ROOT, "docs", "separate-windows-v131.md"))) ok("docs/separa
 else bad("缺少 docs/separate-windows-v131.md");
 if (exists(path.join(ROOT, "dev", "test-initiative.mjs"))) ok("dev/test-initiative.mjs");
 else bad("缺少 dev/test-initiative.mjs");
-if (/background\.bundle\.js\?v=1\.6\.0/.test(bgHtmlV131)) ok("background.html 的 ?v= 也是 1.6.0（缓存破坏参数跟着版本走）");
+if (/background\.bundle\.js\?v=1\.7\.0/.test(bgHtmlV131)) ok("background.html 的 ?v= 也是 1.7.0（缓存破坏参数跟着版本走）");
 else bad("background.html 的 ?v= 没跟着升（会继续吃到旧缓存）");
 
 const bgHtml = fs.readFileSync(path.join(ROOT, "background.html"), "utf8");
@@ -816,27 +816,30 @@ else bad("dice-core.js 里还有 target / hit 判定字段");
 if (exists(dice4ePath) && dice4eSrc.indexOf("export function presetsFor") >= 0)
   ok("assets/dice-4e.js 导出 presetsFor（攻击 / 伤害 / 豁免 / 技能 / 先攻）");
 else bad("缺少 assets/dice-4e.js / 没有 presetsFor");
-if (dice4eSrc.indexOf("deriveGlance") >= 0 && dice4eSrc.indexOf("initiativeBonus") >= 0)
+/* v1.7.0：先攻预设已删（先攻条自带投先攻），所以这里只要求复用 deriveGlance。 */
+if (dice4eSrc.indexOf("deriveGlance") >= 0 && dice4eSrc.indexOf("export function presetsFor") >= 0)
   ok("4E 预设复用 glance.js 的推导（不重算四防 / 攻击 / 技能）");
 else bad("dice-4e.js 没有复用 glance.js");
 if (!/10\s*\+\s*half/.test(dice4eSrc) && !/half\s*\+\s*mods/.test(dice4eSrc))
   ok("dice-4e.js 里没有重算公式（不含 \"10 + half\"）");
 else bad("dice-4e.js 里出现了自己重算的防御 / 攻击公式");
 
-/* ---- 3) P1 两栏 UI ---- */
+/* ---- 3) P1 骰子窗口 UI（v1.7.0 起单列） ---- */
+/* v1.7.0：记录列表（list / share-warn / histMeta）已搬到 dice-history.html，这里只查骰子窗口自己的元素。 */
 const DICE_IDS = ["diceRow", "exprInput", "btnModMinus", "btnModPlus", "btnRoll", "btnLast", "btnSave",
-  "btnClear", "btnAdvantage", "btnCrit", "presets", "presetMeta", "defenseRef", "combos", "comboName",
-  "result", "list", "share-warn", "histMeta", "head", "pin", "bg-retry"];
+  "btnClear", "btnAdvantage", "btnCrit", "btnHist", "presets", "presetMeta", "defenseRef", "combos", "comboName",
+  "result", "animMeta", "head", "pin", "bg-retry"];
 const missIds = DICE_IDS.filter((id) => diceHtmlSrc.indexOf('id="' + id + '"') < 0);
-if (!missIds.length) ok("dice.html 带齐两栏需要的元素 id（" + DICE_IDS.length + " 个）");
+if (!missIds.length) ok("dice.html 带齐骰子窗口需要的元素 id（" + DICE_IDS.length + " 个）");
 else bad("dice.html 缺少：" + missIds.join(" / "));
 const missingDie = ["d4", "d6", "d8", "d10", "d12", "d20", "d100"].filter((t) => diceHtmlSrc.indexOf('data-die="' + t + '"') < 0);
 if (!missingDie.length) ok("骰子按钮 d4–d100 七颗齐全（左键 +1 / 右键 −1）");
 else bad("骰子按钮缺：" + missingDie.join(" / "));
+/* v1.7.0：记录搬走 → 单列（骰子 / 表达式 / 本次结果 / 预设 / 组合），右栏与 .dice-right 不该再出现。 */
 if (diceHtmlSrc.indexOf('class="dice-cols"') >= 0 && diceHtmlSrc.indexOf('class="dice-left"') >= 0 &&
-  diceHtmlSrc.indexOf('class="dice-right"') >= 0)
-  ok("dice.html 是两栏（左 = 组公式 / 右 = 结果 + 团队历史）");
-else bad("dice.html 不是两栏布局");
+  diceHtmlSrc.indexOf('class="dice-right"') < 0)
+  ok("dice.html 是单列（v1.7.0：记录搬去独立窗口，右栏已删）");
+else bad("dice.html 布局不对（v1.7.0 起是单列，不该再有 .dice-right）");
 if (dicePageSrc.indexOf('diceRow.addEventListener("click"') >= 0 && dicePageSrc.indexOf('diceRow.addEventListener("contextmenu"') >= 0)
   ok("骰子按钮左键 +1 / 右键 −1（右键阻止默认菜单）");
 else bad("骰子按钮没有左键 / 右键两种交互");
@@ -889,19 +892,21 @@ else bad("页面没有同时广播 LOCAL + REMOTE");
 if (dicePageSrc.indexOf("OBR.broadcast.onMessage(CH_ROLL_SAVED") >= 0 && dicePageSrc.indexOf("meta[KEY_ROLLS]") >= 0)
   ok("页面订阅 CH_ROLL_SAVED，并从房间数据 com.4enext-owlbear/rolls 读历史");
 else bad("页面没有订阅 CH_ROLL_SAVED / 没读房间数据");
-if (dicePageSrc.indexOf("mergeRollRows") >= 0 && dicePageSrc.indexOf("rowsFromRaw") >= 0 &&
-  dicePageSrc.indexOf("LS_DICE_LOCAL") >= 0 && dicePageSrc.indexOf("share-warn") >= 0)
-  ok("历史合并去重 + 城主离线时本机暂存 + 黄条提示");
-else bad("历史合并 / 本机暂存 / 黄条缺失");
+/* v1.7.0：列表与黄条搬到记录窗口；骰子窗口这边只留「本机暂存 + 落库回执」。 */
+const diceHistSrcV150 = fs.readFileSync(path.join(ROOT, "dice-history.html"), "utf8");
+if (dicePageSrc.indexOf("rowsFromRaw") >= 0 && dicePageSrc.indexOf("LS_DICE_LOCAL") >= 0 &&
+  diceHistSrcV150.indexOf("share-warn") >= 0 && diceHistSrcV150.indexOf('id="dh-warn"') >= 0)
+  ok("落库回执 + 城主离线时本机暂存仍在；黄条与列表在记录窗口里");
+else bad("本机暂存 / 记录窗口的黄条缺失");
 
 /* ---- 5) 窗口加宽 + CSS ---- */
 const diceWin = /dice: \{ id: ID_DICE_WIN, url: URL_DICE, width: (\d+), height: (\d+) \}/.exec(coreSrcV14);
-if (diceWin && +diceWin[1] === 760 && +diceWin[2] === 620)
-  ok("骰子窗口 760×620（v1.4.0 是 660×560，两栏放不下；仍会被 winSize 按视口夹紧）");
-else bad("骰子窗口尺寸不是 760×620：" + (diceWin ? diceWin[1] + "×" + diceWin[2] : "WINS.dice 没找到"));
-if (/\.dice-cols \{[^}]*grid-template-columns: 340px minmax\(0, 1fr\)/s.test(uiCssV14))
-  ok("ui.css：两栏 340px + 自适应（.dice-cols）");
-else bad("ui.css 缺少 .dice-cols 两栏栅格");
+if (diceWin && +diceWin[1] === 520 && +diceWin[2] === 620)
+  ok("骰子窗口 520×620（v1.7.0 收窄：记录搬去独立窗口；仍会被 winSize 按视口夹紧）");
+else bad("骰子窗口尺寸不是 520×620：" + (diceWin ? diceWin[1] + "×" + diceWin[2] : "WINS.dice 没找到"));
+if (/\.dice-cols \{[^}]*grid-template-columns: minmax\(0, 1fr\)/s.test(uiCssV14))
+  ok("ui.css：单列栅格（.dice-cols 只有一列，v1.7.0）");
+else bad("ui.css 的 .dice-cols 还是两栏 / 找不到");
 if (/\.dice-row \{[^}]*grid-template-columns: repeat\(7, minmax\(0, 1fr\)\)/s.test(uiCssV14))
   ok("ui.css：七颗骰子一排（.dice-row repeat(7)）");
 else bad("ui.css 缺少 .dice-row 七列栅格");
@@ -927,7 +932,7 @@ else bad("dev/selftest.mjs 没有加 dev/test-dice.mjs");
 if (exists(path.join(ROOT, "dev", "test-dice.mjs"))) ok("dev/test-dice.mjs");
 else bad("缺少 dev/test-dice.mjs");
 const indexHtmlSrc = fs.readFileSync(path.join(ROOT, "index.html"), "utf8");
-if (indexHtmlSrc.indexOf('<span class="tag">v1.6.0</span>') >= 0) ok("index.html 的版本标签也是 1.6.0");
+if (indexHtmlSrc.indexOf('<span class="tag">v1.7.0</span>') >= 0) ok("index.html 的版本标签也是 1.7.0");
 else bad("index.html 的版本标签没升");
 const readmeSrc = fs.readFileSync(path.join(ROOT, "README.md"), "utf8");
 if (readmeSrc.indexOf("## ⭐ 安装地址") >= 0) ok("README 顶部「⭐ 安装地址」保留");
@@ -974,13 +979,13 @@ console.log("== v1.6.0 血条扩展（临时生命 / 四防 / 蓝条）+ Boss �
 
   /* ---- 2) 几何常数（像素常数集中表） ---- */
   const geom = {
-    BAR_HP_H: 20, BAR_SURGE_H: 12, BAR_GAP: 3, SHIELD_DIAMETER: 30,
+    BAR_HP_H: 20, BAR_SURGE_H: 12, BAR_GAP: 3, SHIELD_DIAMETER: 30, DEF_GAP: 6,
     BOSS_RING_THICK: 10, BOSS_RING_INSET: 2, BOSS_RING_SEGMENTS: 48,
     BOSS_PLATE_H: 26, BOSS_PLATE_GAP: 6
   };
   const geomBad = Object.keys(geom).filter((k) => numConst(coreSrc2, k) !== geom[k]);
   if (!geomBad.length) {
-    ok("像素常数：HP 20 / 回复力 12 / 间距 3 / 盾 30 / 环厚 10 / 环内缩 2 / 48 段 / 名牌 26 / 距顶 6");
+    ok("像素常数：HP 20 / 回复力 12 / 间距 3 / 盾 30 / 盾间距 6 / 环厚 10 / 环内缩 2 / 48 段 / 名牌 26 / 距顶 6");
   } else bad("像素常数不对：" + geomBad.map((k) => k + "=" + numConst(coreSrc2, k)).join(" "));
   if (/var PLAYER_THRESHOLD_DEFAULT = 25;/.test(coreSrc2) && /function quantiseRatio\(/.test(coreSrc2)) {
     ok("玩家端 quantiseRatio + 阈值 25");
@@ -1004,10 +1009,17 @@ console.log("== v1.6.0 血条扩展（临时生命 / 四防 / 蓝条）+ Boss �
     /var hpTop = showSurge \? surgeTop - gap - hHp : bounds\.max\.y - pad - hHp;/.test(coreSrc2)) {
     ok("布局：蓝条贴底边内侧、红条在蓝条上方 gap（没有回复力时红条仍贴底，老 token 位置不变）");
   } else bad("两行条的布局公式不对");
-  if (/var spots = \[\[xL, yT\], \[xR, yT\], \[xL, yB\], \[xR, yB\]\];/.test(coreSrc2) &&
-    /bounds\.width >= 2 \* d \+ 4 \* inset && yB > yT/.test(coreSrc2)) {
-    ok("四防四角：AC/强韧 在上、反射/意志 在下，窄 / 矮 token 退化不画");
-  } else bad("四防四角的位置或退化规则不对");
+  /* v1.6.1：四防从四角改一排（强韧 → 反射 → 意志 → AC 最右，半透明白色 AC） */
+  if (/var DEF_ROW = \["fort", "reflex", "will", "ac"\];/.test(coreSrc2) &&
+    /var DEF_DROP = \["will", "reflex", "fort"\];/.test(coreSrc2) &&
+    /var rowCY = hpTop - gap - d \/ 2;/.test(coreSrc2) &&
+    /rowKeys\.splice\(at, 1\)/.test(coreSrc2) &&
+    /var defGap = DEF_GAP \* s;/.test(coreSrc2) &&
+    /DEF_AC_FILL_OPACITY/.test(coreSrc2) && /DEF_AC_STROKE_OPACITY/.test(coreSrc2) &&
+    !/var spots = \[\[xL, yT\]/.test(coreSrc2)) {
+    ok("四防一排（v1.6.1）：fort/reflex/will 从左到右 + AC 最右（半透明白），整排在 HP 条上方；" +
+      "窄 token 按 DEF_DROP 先丢意志 / 反射 / 强韧（AC 最后才丢）");
+  } else bad("四防一排的位置 / 退化规则不对（v1.6.1）");
   if (/hpVisible: !bossOn/.test(coreSrc2) && /d\.visible = L\.hpVisible/.test(coreSrc2)) {
     ok("Boss 模式压制普通 HP 条（bg / fill / text 隐藏，回复力条与四防保留）");
   } else bad("Boss 模式没有压制普通 HP 条");
@@ -1034,18 +1046,21 @@ console.log("== v1.6.0 血条扩展（临时生命 / 四防 / 蓝条）+ Boss �
     ok("「显示为 Boss」写 hp.boss 对象，首次开启用时间戳当 order");
   } else bad("Boss 开关的写法不对（order / 对象）");
 
-  /* ---- 6) 速览联动：四防一排 / 蓝条 / 锁 / Boss ---- */
-  if (glanceSrc.indexOf("gl4-def-row") >= 0 && glanceSrc.indexOf('data-act="defense"') >= 0 &&
-    glanceSrc.indexOf('data-act="lock"') >= 0 && glanceSrc.indexOf('data-act="boss"') >= 0) {
-    ok("速览弹窗：四防一排 + 锁 + Boss 开关（与右键写同一个 hp 字段）");
-  } else bad("速览弹窗缺少四防 / 锁 / Boss 联动");
+  /* ---- 6) 速览联动：蓝条 / 锁 / Boss ----
+   * [v1.6.2 移除] 速览里那条「彩色四防箭头条」按用户要求删掉了（gl4-def-row / data-act="defense"），
+   * 这里只保留锁 / Boss 的联动断言；「彩条已删、数值卡还在」由 v1.6.2 那一节单独断言。 */
+  if (glanceSrc.indexOf('data-act="lock"') >= 0 && glanceSrc.indexOf('data-act="boss"') >= 0) {
+    ok("速览弹窗：锁 + Boss 开关（与右键写同一个 hp 字段）");
+  } else bad("速览弹窗缺少锁 / Boss 联动");
   if (glanceSrc.indexOf("gl4-surgebar") >= 0 && glanceSrc.indexOf("surgesMax") >= 0) {
     ok("速览弹窗：回复力蓝条 + 分母优先用 token 的 surgesMax");
   } else bad("速览弹窗缺少回复力蓝条 / surgesMax");
-  if (/\.gl4-surgebar \{[^}]*height: 6px/s.test(cssSrc) && cssSrc.indexOf(".gl4-def-chip") >= 0 &&
+  /* [v1.6.2 移除] 盾形四防 chip 的样式随彩条一起删了（.gl4-def-row / .gl4-def-chip），
+   * 这里改断言「蓝条 6px + 四防数值卡 + 锁 / Boss 一排」。 */
+  if (/\.gl4-surgebar \{[^}]*height: 6px/s.test(cssSrc) && /\.gl4-defs \{/.test(cssSrc) &&
     cssSrc.indexOf(".gl4-boss-row") >= 0) {
-    ok("glance.css：蓝条 6px + 盾形四防 chip + 锁 / Boss 一排");
-  } else bad("glance.css 缺少 v1.6.0 的样式");
+    ok("glance.css：回复力蓝条 6px + 四防数值卡（.gl4-defs）+ 锁 / Boss 一排");
+  } else bad("glance.css 缺少速览的蓝条 / 四防数值卡 / 锁 Boss 样式");
   if (trackSrcV16.indexOf('act === "defense" || act === "lock" || act === "boss"') >= 0 &&
     trackSrcV16.indexOf("export async function syncTokenStats(") >= 0 &&
     infoSrcV16.indexOf("syncTokenStats(") >= 0) {
@@ -1069,12 +1084,296 @@ console.log("== v1.6.0 血条扩展（临时生命 / 四防 / 蓝条）+ Boss �
     readmeSrc.indexOf("四防") >= 0 && readmeSrc.indexOf("Boss") >= 0) {
     ok("README 功能表写了血条扩展（临时生命 / 四防 / 蓝条）+ Boss 样式");
   } else bad("README 功能表没有 v1.6.0 的血条 / Boss");
-  if (verOf(commonSrc) === "1.6.0" && verOf(coreSrc2) === "1.6.0") ok("PLUGIN_VERSION = 1.6.0");
-  else bad("PLUGIN_VERSION 不是 1.6.0：" + verOf(commonSrc) + " / " + verOf(coreSrc2));
+  if (verOf(commonSrc) === "1.7.0" && verOf(coreSrc2) === "1.7.0") ok("PLUGIN_VERSION = 1.7.0");
+  else bad("PLUGIN_VERSION 不是 1.7.0：" + verOf(commonSrc) + " / " + verOf(coreSrc2));
   if (bundleSrc2.indexOf("ringSectorPoints(") >= 0 && bundleSrc2.indexOf("shieldPoints(") >= 0 &&
     bundleSrc2.indexOf("KEY_HPBAR") >= 0) {
     ok("bundle 里带 v1.6.0 的环 / 盾 / 血条开关（已重新构建）");
   } else bad("bundle 落后于 core（跑 node dev/build-background.mjs）");
+}
+
+console.log("== v1.6.2 速览删彩条 + 先攻条宽高改常量");
+{
+  const glanceV162 = fs.readFileSync(path.join(ROOT, "assets", "glance.js"), "utf8");
+  const cssV162 = fs.readFileSync(path.join(ROOT, "assets", "glance.css"), "utf8");
+  const initV162 = fs.readFileSync(path.join(ROOT, "assets", "initiative.js"), "utf8");
+  const pageV162 = fs.readFileSync(path.join(ROOT, "assets", "initiative-page.js"), "utf8");
+  const coreV162 = fs.readFileSync(corePath, "utf8");
+  const uiV162 = fs.readFileSync(path.join(ROOT, "assets", "ui.css"), "utf8");
+
+  /* ---- 1) 速览：彩色四防箭头条删干净，四防数值卡留着 ----
+   * 用 stripComments 去掉注释再查：glance.js / glance.css 里会留一句「v1.6.2 删掉了 …」的说明。 */
+  const glanceCode = stripComments(glanceV162);
+  const cssCode = stripComments(cssV162);
+  if (glanceCode.indexOf("gl4-def-row") < 0 && glanceCode.indexOf("gl4-def-chip") < 0 &&
+    glanceCode.indexOf('data-act="defense"') < 0) {
+    ok("速览里没有彩色四防条（gl4-def-row / gl4-def-chip / data-act=\"defense\" 都已删）");
+  } else bad("速览里还有 HP 绿条下面那条彩色四防条（用户明确不要）");
+  if (glanceV162.indexOf('class="gl4-card gl4-defs"') >= 0 && /d\.defenses\.map/.test(glanceV162) &&
+    glanceV162.indexOf('class="gl4-def-val"') >= 0) {
+    ok("四防数值卡还在（.gl4-defs：AC / 强韧 / 反射 / 意志 —— 用户要改的就是这四个数）");
+  } else bad("四防数值卡被一起删掉了（用户要的是留着数值、删掉彩条）");
+  if (cssCode.indexOf(".gl4-def-chip") < 0 && cssCode.indexOf(".gl4-def-row") < 0) {
+    ok("glance.css 里没有四防彩条的死样式（跟着删干净）");
+  } else bad("glance.css 里还留着 .gl4-def-row / .gl4-def-chip 的死样式");
+  if (glanceV162.indexOf("gl4-hpbar") >= 0 && glanceV162.indexOf("gl4-surgebar") >= 0 &&
+    glanceV162.indexOf("gl4-boss-row") >= 0 && glanceV162.indexOf("gl4-hp-pad") >= 0) {
+    ok("速览其它块没被误删（HP 绿条 / 回复力蓝条 / 血量按钮 / 锁 + Boss 开关）");
+  } else bad("速览的 HP 绿条 / 蓝条 / 血量按钮 / 锁 Boss 开关被误删了");
+
+  /* ---- 2) 先攻条：宽高是常量，没有「按内容测量」 ---- */
+  const stripFnV162 = (/export function stripSizeFor\([^)]*\) \{[\s\S]*?\n\}/.exec(initV162) || [])[0] || "";
+  if (stripFnV162 && /STRIP_EXPANDED_W/.test(stripFnV162) && !/\+\s*16\b/.test(stripFnV162) &&
+    !/cluster/i.test(stripFnV162) && /STRIP_MIN_EXPANDED_W/.test(stripFnV162)) {
+    ok("stripSizeFor 返回常量宽度（720，仅视口太窄时缩到 410 下限；不再 max(410, 测量值+16)）");
+  } else bad("stripSizeFor 还在按测量值算宽度（v1.6.1 的「随投骰变窄」会复发）");
+  const applyFnV162 = (/async function applySize\(\) \{[\s\S]*?\n\}/.exec(pageV162) || [])[0] || "";
+  if (applyFnV162 && applyFnV162.indexOf("scrollWidth") < 0 && applyFnV162.indexOf("getBoundingClientRect") < 0 &&
+    applyFnV162.indexOf("querySelector") < 0 && /stripSizeFor\(phase, collapsed, vw\)/.test(applyFnV162)) {
+    ok("页面 applySize() 不再量 DOM（没有 scrollWidth / getBoundingClientRect / querySelector 参与尺寸）");
+  } else bad("页面 applySize() 还在量内容宽度（尺寸会随内容变）");
+  if (!/measureWidth/.test(glanceV162 + initV162 + coreV162 + pageV162)) {
+    ok("全仓没有 measureWidth 之类的内容测量调用");
+  } else bad("还留着 measureWidth（按内容测量尺寸）");
+  if (/function snapStripSize\(/.test(coreV162) && /var STRIP_H_ALLOWED = \[STRIP_H_IDLE, STRIP_H_PREPARING, STRIP_H_COMBAT\];/.test(coreV162) &&
+    /var snapped = snapStripSize\(w, h\);/.test(coreV162)) {
+    ok("后台 snapStripSize()：页面报上来的宽高必须落回常量（按内容测量的数字一律丢弃）");
+  } else bad("后台没有 snapStripSize 兜底（旧缓存页面仍可能把测量宽度带回来）");
+  if (/\.strip-items \{[^}]*overflow-x: auto/s.test(uiV162) && /\.strip-items \{[^}]*background: #10161d/s.test(uiV162)) {
+    ok("ui.css：卡片区内部横向滚动（overflow-x:auto）+ 深色底（右侧空列表区域不透明）");
+  } else bad("ui.css 的 .strip-items 缺少横向滚动 / 深色底");
+  if (/var STRIP_H_IDLE = 129;/.test(coreV162) && /var STRIP_H_PREPARING = 139;/.test(coreV162) &&
+    /var STRIP_H_COMBAT = 159;/.test(coreV162) && /var STRIP_COLLAPSED_W = 120;/.test(coreV162) &&
+    /var STRIP_COLLAPSED_H = 40;/.test(coreV162) && /var STRIP_EXPANDED_W = 720;/.test(coreV162)) {
+    ok("宽高常量仍是 120×40 / 720×(129|139|159)");
+  } else bad("先攻条的宽高常量被动过了");
+
+  /* ---- 3) 版本 / manifest / 文档 ---- */
+  if (man.version === "1.7.0" && manRel.version === "1.7.0") ok("两个 manifest 的版本都是 1.7.0");
+  else bad("manifest 版本不是 1.7.0：" + man.version + " / " + manRel.version);
+  if (!man.action) ok("manifest 仍然没有 action 字段（真机验证过无 action 能加载，别再加回来）");
+  else bad("manifest 又加回了 action 字段（v1.6.1 已确认不需要）");
+  if (verOf(commonSrc) === "1.7.0" && verOf(coreV162) === "1.7.0") ok("PLUGIN_VERSION = 1.7.0");
+  else bad("PLUGIN_VERSION 不是 1.7.0：" + verOf(commonSrc) + " / " + verOf(coreV162));
+  if (exists(path.join(ROOT, "docs", "ui-v162.md"))) ok("docs/ui-v162.md（v1.6.2 两处修复的说明）");
+  else bad("缺少 docs/ui-v162.md");
+  if (fs.readFileSync(path.join(ROOT, "docs", "initiative-v14.md"), "utf8").indexOf("## 12. v1.6.2") >= 0) {
+    ok("docs/initiative-v14.md 补了 §12（先攻条宽高改常量）");
+  } else bad("docs/initiative-v14.md 没有 v1.6.2 的说明");
+  if (readmeSrc.indexOf("v1.7.0") >= 0 && readmeSrc.indexOf("## ⭐ 安装地址") >= 0) {
+    ok("README 功能表同步了 v1.7.0，且顶部「⭐ 安装地址」还在");
+  } else bad("README 没有同步 v1.7.0 / 安装地址被动了");
+}
+
+console.log("== v1.7.0 骰子记录窗口 + 投骰动画 + 去豁免 / 先攻预设");
+{
+  const coreV17 = fs.readFileSync(corePath, "utf8");
+  const commonV17 = fs.readFileSync(path.join(ROOT, "assets", "common.js"), "utf8");
+  const diceCoreV17 = fs.readFileSync(path.join(ROOT, "assets", "dice-core.js"), "utf8");
+  const dicePageV17 = fs.readFileSync(path.join(ROOT, "assets", "dice-page.js"), "utf8");
+  const dice4eV17 = fs.readFileSync(path.join(ROOT, "assets", "dice-4e.js"), "utf8");
+  const histHtmlV17 = fs.readFileSync(path.join(ROOT, "dice-history.html"), "utf8");
+  const histJsV17 = fs.readFileSync(path.join(ROOT, "assets", "dice-history-page.js"), "utf8");
+  const effectHtmlV17 = fs.readFileSync(path.join(ROOT, "effect.html"), "utf8");
+  const effectJsV17 = fs.readFileSync(path.join(ROOT, "assets", "effect-page.js"), "utf8");
+  const setHtmlV17 = fs.readFileSync(path.join(ROOT, "settings.html"), "utf8");
+  const setJsV17 = fs.readFileSync(path.join(ROOT, "assets", "settings-page.js"), "utf8");
+  const uiV17 = fs.readFileSync(path.join(ROOT, "assets", "ui.css"), "utf8");
+  const testDiceV17 = fs.readFileSync(path.join(ROOT, "dev", "test-dice.mjs"), "utf8");
+  /* 动画页 / 记录页的「代码」：去掉注释再查（注释里写「不引用外部库」不该被自己判成违规）。 */
+  const fxCode = stripComments(effectHtmlV17 + "\n" + effectJsV17 + "\n" + histHtmlV17 + "\n" + histJsV17);
+
+  const has = (src, sub) => String(src).indexOf(sub) >= 0;
+  /* ---- 1) 记录窗口：独立 id、注册进 WINS、可拖动（复用 window.js） ---- */
+  const grab = (src, head, tail) => {
+    const i = src.indexOf(head);
+    if (i < 0) return "";
+    const j = src.indexOf(tail, i + head.length);
+    return j < 0 ? "" : src.slice(i + head.length, j);
+  };
+  const coreHistId = grab(coreV17, "var ID_DICE_HIST = NS + \"", "\";");
+  const commonHistId = grab(commonV17, "export const ID_DICE_HIST = NS + \"", "\";");
+  if (coreHistId && coreHistId === commonHistId) ok("记录窗口 popover id 两端一致：" + coreHistId);
+  else bad("记录窗口 id 不一致：core=" + coreHistId + " common=" + commonHistId);
+  const diceWinIdV17 = grab(coreV17, "var ID_DICE_WIN = NS + \"", "\";");
+  if (coreHistId && diceWinIdV17 && coreHistId !== diceWinIdV17)
+    ok("记录窗口 id 与骰子窗口不同（两个窗口可以同时开着）：" + diceWinIdV17 + " ≠ " + coreHistId);
+  else bad("记录窗口 id 与骰子窗口重了（同时开会被顶掉）");
+  if (has(coreV17, 'var URL_DICE_HIST = pageUrl("dice-history.html");') &&
+    has(commonV17, 'export const URL_EFFECT = new URL("effect.html", URL_BASE).href;'))
+    ok("URL_DICE_HIST → dice-history.html（后台开记录窗口）；URL_EFFECT → effect.html（骰子窗口开动画）");
+  else bad("background.core.js 没有把 dice-history.html / effect.html 接进地址表");
+  if (has(coreV17, "diceHistory: { id: ID_DICE_HIST, url: URL_DICE_HIST, width: "))
+    ok("background.core.js 的 WINS 注册了 diceHistory（id + 页面 + 尺寸：可拖动 / 记位置 / 视口夹紧）");
+  else bad("background.core.js 的 WINS 没有注册 diceHistory");
+  if (has(coreV17, "function diceHistoryIsOpen(") && has(coreV17, "async function openDiceHistory(") &&
+    has(coreV17, "async function closeDiceHistory(") && has(coreV17, "async function onDiceHistCmd(") &&
+    has(coreV17, "broadcast.onMessage(CH_DICE_HIST_CMD"))
+    ok("后台：开 / 关记录窗口 + 订阅 CH_DICE_HIST_CMD（onDiceHistCmd）");
+  else bad("后台缺少记录窗口的开关链路（openDiceHistory / closeDiceHistory / onDiceHistCmd / 订阅）");
+  for (const name of ["CH_DICE_HIST_CMD", "CH_DICE_HIST_STATE"]) {
+    const a = grab(coreV17, "var " + name + " = NS + \"", "\";");
+    const b = grab(commonV17, "export const " + name + " = NS + \"", "\";");
+    if (a && a === b) ok("记录窗口频道一致：" + name + " = " + a);
+    else bad("记录窗口频道不一致：" + name + " core=" + a + " common=" + b);
+  }
+  if (has(coreV17, "broadcastDiceHistState()") && has(dicePageV17, "CH_DICE_HIST_STATE") &&
+    has(dicePageV17, "setHistButton"))
+    ok("开 / 关状态会广播回页面，骰子窗口的按钮据此显示「记录窗口 · 开 / 关」");
+  else bad("记录窗口的开 / 关状态没有回传（按钮不会变）");
+  if (has(histJsV17, 'createWindow({ name: "diceHistory" })') && has(histHtmlV17, 'id="head"') &&
+    has(histHtmlV17, 'id="pin"'))
+    ok("记录窗口用 window.js 的 createWindow（拖动 / 位置记忆 / 后台检测与其它窗口同一套）");
+  else bad("记录窗口没有用 window.js 的 createWindow（另造了一套拖动？）");
+  if (has(histHtmlV17, 'id="dh-list"') && has(histHtmlV17, "dh-list compact") &&
+    has(uiV17, ".dh-list.compact .dh-row:nth-child(n + 5)"))
+    ok("记录窗口默认只显示最近 4 条（.dh-list.compact 隐藏第 5 条起）");
+  else bad("记录窗口没有「最近 4 条」的实现（compact 规则 / CSS 缺）");
+  if (has(histJsV17, "展开全部") && has(histJsV17, "compact"))
+    ok("「展开全部」把 compact 去掉 → 看全部（最多 40 条，列表内滚动）");
+  else bad("记录窗口没有展开 / 收起切换");
+  if (has(histHtmlV17, 'id="dh-toggle"') && has(histHtmlV17, 'id="dh-meta"') && has(histHtmlV17, "40"))
+    ok("记录窗口有「共 N / 40 条」与展开按钮");
+  else bad("记录窗口缺少计数 / 展开按钮");
+
+  /* ---- 2) 40 条封顶 = 删最旧 ---- */
+  if (has(diceCoreV17, "return list.slice(0, limit);") &&
+    has(diceCoreV17, "list.sort(function (a, b) { return numOr(b.ts, 0) - numOr(a.ts, 0); });") &&
+    (has(coreV17, "超过 40 条时删掉最旧") || has(diceCoreV17, "超过 40 条时删掉最旧")))
+    ok("40 条封顶是「倒序后 slice(0,40)」= 删最旧（core 里也写明了）");
+  else bad("封顶逻辑不是「倒序后砍尾巴」（可能只截断显示）");
+  if (has(testDiceV17, "最旧") && has(testDiceV17, "mergeRollRows"))
+    ok("dev/test-dice.mjs 有「41 条 → 40 且最旧的被删」的断言");
+  else bad("dev/test-dice.mjs 没有钉住「超过 40 删最旧」");
+
+  /* ---- 3) 去豁免 / 先攻预设 ---- */
+  const code4e = stripComments(dice4eV17);
+  if (has(code4e, 'key: "attack"') && has(code4e, 'key: "damage"') && has(code4e, 'key: "skill"') &&
+    !has(code4e, 'key: "save"') && !has(code4e, 'key: "init"'))
+    ok("4E 预设只剩 攻击 / 伤害 / 技能（豁免、先攻已删）");
+  else bad("4E 预设分组不对（该只剩 attack / damage / skill）");
+  if (!has(code4e, "豁免") && !has(code4e, "先攻"))
+    ok("dice-4e.js 的代码里不再出现「豁免」「先攻」");
+  else bad("dice-4e.js 里还有豁免 / 先攻预设");
+  if (has(dicePageV17, "攻击 / 伤害 / 技能预设") && !has(dicePageV17, "initiativeBonus"))
+    ok("骰子窗口的预设说明同步成「攻击 / 伤害 / 技能」");
+  else bad("骰子窗口还写着五组预设");
+
+  /* ---- 4) 动画常量（dice-core.js）与 CSS 关键帧一一对应 ---- */
+  const WANT_FX = {
+    FX_MAX_DICE: "20", FX_BASE_MAX: "128", FX_BASE_MIN: "72", FX_BASE_DECAY: "0.86", FX_GAP_RATIO: "0.16",
+    FX_PER_ROW: "4", FX_FLIGHT_MS: "1200", FX_HOLD_MS: "500", FX_PUNCH_MS: "360", FX_HOLD2_MS: "220",
+    FX_EXIT_MS: "320", FX_SLOT_MS: "55", FX_N_ARCS: "4", FX_ARC_RATIO: "0.55", FX_ARC_H0: "240",
+    FX_SQUASH: "0.18", FX_STRETCH: "0.08", FX_ROT_BASE: "720", FX_PUNCH_SCALE: "1.18"
+  };
+  const fxVal = (k) => grab(diceCoreV17, "export const " + k + " = ", ";");
+  const fxBad = Object.keys(WANT_FX).filter((k) => fxVal(k) !== WANT_FX[k]);
+  if (!fxBad.length) ok("动画常量与规格一致（128 / 0.86 / 72 / 1200 / 500 / 360 / 220 / 320 / 55 / 4 段 / 0.55 / 240 / 0.18 / 0.08 / 720 / 1.18）");
+  else bad("动画常量不对：" + fxBad.map((k) => k + "=" + (fxVal(k) || "缺")).join(" "));
+  const coreExports = ["fxBaseSize", "fxDieSize", "fxArcProfile", "fxBeat", "fxLayout", "fxQuery"];
+  const missFxFn = coreExports.filter((n) => !has(diceCoreV17, "export function " + n + "("));
+  if (!missFxFn.length) ok("dice-core.js 导出 fxBaseSize / fxDieSize / fxArcProfile / fxBeat / fxLayout / fxQuery（纯函数，node 可测）");
+  else bad("dice-core.js 缺少动画纯函数：" + missFxFn.join(" / "));
+  if (has(diceCoreV17, "FX_BASE_MAX * Math.pow(FX_BASE_DECAY, count - 1)") &&
+    has(diceCoreV17, "Math.max(FX_BASE_MIN, Math.round(") &&
+    has(diceCoreV17, "totalTop: Math.round(-baseSize / 2 - 64)") &&
+    has(diceCoreV17, "modTop: Math.round(lastRowOy + baseSize / 2 + 28)"))
+    ok("尺寸公式 BASE=128*0.86^(N-1) 最小 72；附属元素 top = -BASE/2-64 / lastRowOy+BASE/2+28（规格 §4.2）");
+  else bad("基准尺寸 / 附属元素定位公式不对");
+  const CSS_FX = [
+    ["飞行关键帧", "@keyframes fx-flight"], ["挤压关键帧", "@keyframes fx-squash"],
+    ["赢家放大", "@keyframes fx-punch"], ["淡出", "@keyframes fx-exit"],
+    ["数字老虎机", "@keyframes fx-slot"], ["暴击光圈", "@keyframes fx-burst"]
+  ];
+  const cssMiss = CSS_FX.filter((one) => !has(uiV17, one[1]));
+  if (!cssMiss.length) ok("ui.css 有全部动画关键帧（飞行 / 挤压 / 放大 / 淡出 / 老虎机 / 光圈）");
+  else bad("ui.css 缺少关键帧：" + cssMiss.map((one) => one[0]).join(" / "));
+  const arcPct = ["49.53%", "76.77%", "91.76%", "100%"];
+  const arcH = ["-240px", "-72.6px", "-21.96px", "-6.64px"];
+  if (!arcPct.filter((x) => !has(uiV17, x)).length && !arcH.filter((x) => !has(uiV17, x)).length)
+    ok("四段抛物线写进了 CSS（累计 49.53% / 76.77% / 91.76% / 100%，弧高 240 / 72.6 / 21.96 / 6.64）");
+  else bad("CSS 关键帧的抛物线百分比 / 弧高与公式不一致");
+  if (has(uiV17, "scale(1.18, 0.82)") && has(uiV17, "scale(1, 1.08)") && has(uiV17, "fx-punch 360ms") &&
+    has(uiV17, "fx-exit 320ms") && has(uiV17, "fx-slot 55ms"))
+    ok("挤压 0.18 / 拉伸 0.08 / PUNCH 360ms / EXIT 320ms / 老虎机 55ms 都写在 CSS 里");
+  else bad("CSS 里的挤压 / 拉伸 / 时长与常量不一致");
+  if (has(uiV17, "fx-flight var(--fx-flight, 1200ms)") && has(effectJsV17, "--fx-flight"))
+    ok("每颗骰子的飞行时长由 fxBeat 写到 --fx-flight（CSS 默认 1200ms）");
+  else bad("飞行时长没有从 fxBeat 传到 CSS");
+
+  /* ---- 5) 动画页 + modal 参数 + 无外部库 ---- */
+  if (has(effectHtmlV17, 'class="fx-stage"') && has(effectHtmlV17, 'body class="fx-page"') &&
+    has(effectHtmlV17, 'id="fx-wrap"') && has(effectHtmlV17, 'id="fx-total"') && has(effectHtmlV17, 'id="fx-mod"'))
+    ok("effect.html：透明舞台 + 骰子组 + 当前总和 + 加值盒");
+  else bad("effect.html 缺元素（fx-stage / fx-wrap / fx-total / fx-mod）");
+  if (has(uiV17, ".fx-stage * { pointer-events: none") && has(uiV17, ".fx-stage { position: fixed; inset: 0") &&
+    has(uiV17, "background: transparent !important"))
+    ok("动画层全屏透明且 pointer-events:none（不挡鼠标，动画期间仍可平移 / 选中）");
+  else bad("动画层不是「全屏 + 透明 + 不挡鼠标」");
+  for (const one of [["fullScreen", "fullScreen: true"], ["hideBackdrop", "hideBackdrop: true"],
+    ["hidePaper", "hidePaper: true"], ["disablePointerEvents", "disablePointerEvents: true"]]) {
+    if (has(dicePageV17, one[1])) ok("modal 参数：" + one[0] + "（规格 §4.1 逐字）");
+    else bad("modal 参数缺少 " + one[0]);
+  }
+  if (has(dicePageV17, "OBR.modal.open(") && has(dicePageV17, 'URL_EFFECT + "?" + fxQuery(row, origin)'))
+    ok("骰子窗口用 OBR.modal.open 打开 effect.html（参数由 fxQuery 组装）");
+  else bad("骰子窗口没有打开动画页 / 参数不是 fxQuery 组装的");
+  if (has(dicePageV17, "async function playEffect(") && has(dicePageV17, "投骰动画打不开（不影响结果）"))
+    ok("playEffect 有降级：动画打不开只提示一句，投掷 / 结果不受影响");
+  else bad("动画没有降级路径（打不开会静默或抛错）");
+  if (has(dicePageV17, "if (effectModalId)") && has(dicePageV17, "OBR.modal.close(effectModalId)"))
+    ok("连续投掷会先关掉上一个动画 modal（不会叠层）");
+  else bad("连续投掷没有关掉上一个 modal");
+  if (has(effectJsV17, "fxLayout(") && has(effectJsV17, "fxBeat(") &&
+    has(effectJsV17, "requestAnimationFrame") && has(effectJsV17, "--tx") && has(effectJsV17, "--ty"))
+    ok("动画页用 fxLayout / fxBeat 摆位与排时间轴，rAF 只做世界→屏幕投影（--tx / --ty）");
+  else bad("动画页没有用纯函数的布局 / 时间轴，或没有投影");
+  if (has(effectJsV17, "state.world.x * state.scale + state.vp.x") &&
+    has(effectJsV17, "state.world.y * state.scale + state.vp.y"))
+    ok("屏幕投影公式 sx = worldX*scale + vp.x / sy = worldY*scale + vp.y（规格 §4.3）");
+  else bad("投影公式不是 sx = worldX*scale + vp.x");
+  const EXT = /(?:src|href)="https?:|<script[^>]+https?:|cdn\.|unpkg|jsdelivr|jquery|gsap|three\.min/i;
+  if (!EXT.test(fxCode)) ok("动画页 / 记录页没有引用任何外部库或 CDN（纯 CSS + 原生 JS）");
+  else bad("动画页 / 记录页引用了外部资源（不允许）");
+  if (has(effectJsV17, "later(function () { void finish(); }, b.total)") && has(effectJsV17, "function finish(") &&
+    has(effectJsV17, "clearInterval(state.slotTimer)") && has(effectJsV17, "cancelAnimationFrame(state.raf)"))
+    ok("播完（FX_TOTAL_MS）自己关闭并清理定时器 / rAF（DOM 不累积）");
+  else bad("动画播完没有自动关闭 / 没有清理");
+
+  /* ---- 6) 设置里的开关 ---- */
+  if (has(setHtmlV17, 'id="anim-toggle"') && has(setHtmlV17, 'id="anim-state"') && has(setHtmlV17, "投骰动画"))
+    ok("设置窗口有「投骰动画 开 / 关」开关（#anim-toggle / #anim-state）");
+  else bad("设置窗口缺少投骰动画开关");
+  if (has(commonV17, 'export const LS_DICE_ANIM = "4enext/dice/anim";') &&
+    has(commonV17, "export function readDiceAnim(") && has(commonV17, "export function writeDiceAnim("))
+    ok("common.js：LS_DICE_ANIM + readDiceAnim / writeDiceAnim（默认开，缺省按开）");
+  else bad("common.js 缺少动画开关的读写");
+  if (has(setJsV17, "readDiceAnim") && has(setJsV17, "writeDiceAnim") &&
+    !has(setJsV17, ".setItem("))
+    ok("设置页读写动画开关走 common.js（自己仍不直接写 localStorage）");
+  else bad("设置页直接写了 localStorage（check 的「重置只清白名单」前提被破坏）");
+  if (has(dicePageV17, "readDiceAnim()") && has(dicePageV17, "if (!readDiceAnim()) return false;"))
+    ok("动画关掉时骰子窗口**不打开** modal（readDiceAnim 在 playEffect 第一行）");
+  else bad("动画开关没有挡住 OBR.modal.open");
+
+  /* ---- 7) 文档 / 自测 ---- */
+  const docV17 = fs.readFileSync(path.join(ROOT, "docs", "dice-v17.md"), "utf8");
+  if (has(docV17, "2600") && has(docV17, "40 条") && has(docV17, "降级") && has(docV17, "disablePointerEvents"))
+    ok("docs/dice-v17.md：公式 / 时间轴 / 40 条删最旧 / 降级都写清楚了");
+  else bad("docs/dice-v17.md 内容不全");
+  if (has(fs.readFileSync(path.join(ROOT, "docs", "dice-v15.md"), "utf8"), "超出自动删最旧"))
+    ok("docs/dice-v15.md 写明「40 条封顶，超出自动删最旧」");
+  else bad("docs/dice-v15.md 没写 40 条封顶会删最旧");
+  if (has(testDiceV17, "fxBaseSize") && has(testDiceV17, "fxBeat") && has(testDiceV17, "fxLayout") &&
+    has(testDiceV17, "OBR.modal.open"))
+    ok("dev/test-dice.mjs 扩了动画常量 / 布局 / 「关掉动画时不调用 modal.open」的断言");
+  else bad("dev/test-dice.mjs 没有扩动画相关断言");
+  if (has(readmeSrc, "独立") && has(readmeSrc, "动画") && has(readmeSrc, "v1.7.0"))
+    ok("README 写了「独立记录窗口 + 投骰动画」");
+  else bad("README 没有写 v1.7.0 的两件事");
+  if (has(indexHtmlSrc, "独立") && has(indexHtmlSrc, "投骰动画"))
+    ok("index.html 的说明也同步了记录窗口 / 动画");
+  else bad("index.html 没有同步 v1.7.0 的说明");
 }
 
 console.log(fail ? "\n" + fail + " 个问题" : "\n全部通过");

@@ -91,13 +91,21 @@ export function stripHeightFor(phase) {
 }
 
 /**
- * 先攻条尺寸。collapsed → 120×40；展开 → max(410, cluster+16) 夹在 [410, 720] 与视口 −32 内（规格 §3.3 / §3.6）。
- * clusterW 传 0/undefined 表示还没量到 DOM，用默认宽度 720。
+ * 先攻条尺寸（v1.6.2：**常量**，不再按内容测量）。
+ *
+ * 折叠 → 120×40；展开 → **固定 720**，只有视口太窄（视口 −32 < 720）时才跟着缩，
+ * 下限 410；高度按 phase 三档（129 / 139 / 159）。
+ * 投骰后点数 / 名字 / 状态文字变长变短都**不会**改变这两个数字 ——
+ * 内容再长由 .strip-items 自己横向滚动（ui.css：overflow-x: auto）。
+ *
+ * 签名变化：v1.6.1 是 (phase, collapsed, clusterW, vw)，clusterW 来自「量控制行 scrollWidth」，
+ * 正是「条随投骰变窄」的根因。v1.6.2 起第三个参数就是视口宽（vw），第三个以外的测量值一律丢弃；
+ * 万一有页面还按老签名调 4 个参数，也按「第 4 个是视口宽、第 3 个测量值作废」处理。
  */
-export function stripSizeFor(phase, collapsed, clusterW, vw) {
+export function stripSizeFor(phase, collapsed, a, b) {
   if (collapsed) return { width: STRIP_COLLAPSED_W, height: STRIP_COLLAPSED_H };
-  const want = n(clusterW, 0) > 0 ? n(clusterW, 0) + 16 : STRIP_EXPANDED_W;
-  let width = clamp(want, STRIP_MIN_EXPANDED_W, STRIP_EXPANDED_W);
+  const vw = arguments.length >= 4 ? b : a;
+  let width = STRIP_EXPANDED_W;
   if (typeof vw === "number" && vw > 0) width = Math.max(STRIP_MIN_EXPANDED_W, Math.min(width, vw - STRIP_SIDE_MARGIN * 2));
   return { width: Math.round(width), height: stripHeightFor(phase) };
 }

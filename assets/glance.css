@@ -242,23 +242,9 @@
 }
 .gl4-mini-btn:hover { color: var(--gl4-green); border-color: rgba(86, 211, 100, .45); }
 
-/* ---- v1.6.0：四防一排（盾形与 token 四角盾同一套视觉语言） ---- */
-.gl4-def-row { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px; }
-.gl4-def-chip {
-  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 1px;
-  padding: 4px 2px 9px; border: 0; border-radius: 0; color: #fff; cursor: pointer;
-  background: linear-gradient(180deg, var(--gl4-blue), #1f6feb);
-  clip-path: polygon(0% 8%, 100% 8%, 100% 60%, 50% 100%, 0% 60%);
-  transition: filter .15s;
-}
-.gl4-def-chip:nth-child(1) { background: linear-gradient(180deg, #3498db, #2471a3); }
-.gl4-def-chip:nth-child(2) { background: linear-gradient(180deg, #e3b341, #b8860b); }
-.gl4-def-chip:nth-child(3) { background: linear-gradient(180deg, #56d364, #2ea043); }
-.gl4-def-chip:nth-child(4) { background: linear-gradient(180deg, #a371f7, #7048c8); }
-.gl4-def-chip-name { font-size: 10px; opacity: .92; }
-.gl4-def-chip b { font-size: 16px; font-weight: 800; line-height: 1.1; }
-.gl4-def-chip.static { cursor: default; }
-.gl4-def-chip:hover { filter: brightness(1.08); }
+/* ---- v1.6.2：删掉 v1.6.0 的「彩色四防箭头条」（.gl4-def-row / .gl4-def-chip）----
+ * 速览弹窗里不再有那条蓝 / 黄 / 绿 / 紫的盾形夹片；四防数值只走下面 .gl4-defs（四张数值卡）。
+ * token 上的四防一排由 background.core.js 画，与这里的 CSS 无关。 */
 
 /* ---- v1.6.0：回复力蓝条（圆点行上方，高 6px） ---- */
 .gl4-surgebar {

@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>4eNEXT to owlbear · 投骰动画</title>
+<link rel="stylesheet" href="assets/ui.css">
+</head>
+<body class="fx-page">
+<!-- v1.7.0：投骰动画页（全屏 modal，由 assets/dice-page.js 在**算完结果之后**打开）。
+     布局 / 时间轴公式照抄 docs/spec-dice.md §4（来源 FullPeople/obr-suite 的
+     src/modules/dice/effect-page.ts + 仓库根 dice-effect.html），数值在 assets/dice-core.js 的
+     fxBaseSize / fxDieSize / fxLayout / fxBeat，本页只把结果摆到屏幕上。
+     · 背景透明（hideBackdrop + hidePaper），**整层 pointer-events:none**：骰子不挡鼠标，
+       动画期间照样能平移 / 选中地图（参考实现就是这么做的，见 dice-effect.html 的注释）；
+     · 骰子数量、尺寸、换行、居中、附属元素位置全部由 fxLayout 算，CSS 只做关键帧；
+     · 播放完（2600 ms）自己关掉；出任何错就把这一层隐藏并关闭 —— 结果早已显示在骰子窗口里。 -->
+<div class="fx-stage" id="fx-stage">
+  <div class="fx-flash" id="fx-flash" aria-hidden="true"></div>
+  <div class="fx-wrap" id="fx-wrap">
+    <div class="fx-total" id="fx-total"><span class="fx-total-num" id="fx-total-num">0</span></div>
+    <div class="fx-mod" id="fx-mod">
+      <span class="fx-mod-num" id="fx-mod-num"></span>
+      <span class="fx-mod-label" id="fx-mod-label"></span>
+    </div>
+  </div>
+</div>
+<script type="module" src="assets/effect-page.js"></script>
+</body>
+</html>

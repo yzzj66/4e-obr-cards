@@ -37,6 +37,10 @@ const token = {
   }
 };
 let sceneItems = [token];
+/* v1.6.1：四防改一排后要验证「窄 token 退化保留 AC」，所以每枚 token 可以有自己的包围盒。 */
+const boundsFor = {
+  [TOKEN_ID]: { min: { x: 0, y: 0 }, max: { x: 150, y: 150 }, center: { x: 75, y: 75 }, width: 150, height: 150 }
+};
 // 预置一个「上一次会话残留」的血条 item：后台启动后应该把它清掉，否则血条会叠成两层
 let localItems = [{ id: "stale-bar-1", type: "CURVE", metadata: { "com.4enext-owlbear/bar": { owner: "old-token", role: "bg" } } }];
 const itemsChangeCbs = [];
@@ -113,7 +117,12 @@ const OBR = {
     },
     items: {
       getItems: async (ids) => (Array.isArray(ids) ? sceneItems.filter((it) => ids.includes(it.id)) : sceneItems.slice()),
-      getItemBounds: async () => ({ min: { x: 0, y: 0 }, max: { x: 150, y: 150 }, center: { x: 75, y: 75 }, width: 150, height: 150 }),
+      getItemBounds: async (ids) => {
+        const wanted = Array.isArray(ids) && ids.length ? ids : [TOKEN_ID];
+        const box = boundsFor[wanted[0]];
+        return box ? JSON.parse(JSON.stringify(box))
+          : { min: { x: 0, y: 0 }, max: { x: 150, y: 150 }, center: { x: 75, y: 75 }, width: 150, height: 150 };
+      },
       /* v1.6.0：右键菜单会写 token metadata（hp-bar/enabled / hp.boss），必须真的落盘再读回来。 */
       updateItems(ids, fn) {
         const drafts = sceneItems.filter((it) => ids.includes(it.id)).map((it) => JSON.parse(JSON.stringify(it)));
@@ -368,9 +377,48 @@ run(OBR, stubBuilder("CURVE"), stubBuilder("SHAPE"), stubBuilder("TEXT"));
   } else {
     ok("文本：HP「12/20 +3」（临时生命在右侧）+ 回复力「5/6」");
   }
-  if (t2one("shield-text") && t2one("shield-text").text && t2one("shield-text").text.plainText === "28") {
-    ok("四防数字取自 token：「28」等（AC 在左上角）");
-  } else bad("四防数字没画出来 / 不是 28");
+  /* ---- v1.6.1：四防从「四角」改「一排」（强韧 / 反射 / 意志 从左到右 + AC 最右半透明白） ---- */
+  const shieldKeyOf = (it) => (it.metadata && it.metadata[BAR_KEY] ? it.metadata[BAR_KEY].key : "");
+  const shieldByKey = (key) => t2role("shield").filter((it) => shieldKeyOf(it) === key)[0] || null;
+  {
+    const shields = t2role("shield");
+    const ordered = shields.slice().sort((a, b) => a.position.x - b.position.x);
+    const keys = ordered.map(shieldKeyOf).join(",");
+    const ys = ordered.map((it) => it.position.y);
+    const sameY = ys.every((y) => Math.abs(y - ys[0]) < 0.01);
+    const incX = ordered.every((it, i) => i === 0 || it.position.x > ordered[i - 1].position.x);
+    const ac = shieldByKey("ac");
+    const COLORS_3 = { fort: "#e3b341", reflex: "#56d364", will: "#a371f7" };
+    const acText = t2role("shield-text").filter((it) => shieldKeyOf(it) === "ac")[0] || null;
+    if (shields.length !== 4) bad("四防盾不是 4 枚：" + shields.length + "（" + shields.map(shieldKeyOf).join(",") + "）");
+    else if (keys !== "fort,reflex,will,ac") bad("四防顺序不对（应 强韧→反射→意志→AC，AC 最右）：" + keys);
+    else if (!sameY) bad("四防不在同一行（y 不一致）：" + ys.map((y) => Math.round(y * 100) / 100).join("/"));
+    else if (!incX) bad("四防的 x 不是从左到右递增：" + ordered.map((it) => Math.round(it.position.x * 100) / 100).join("/"));
+    else if (!ac) bad("AC 那枚盾没画出来");
+    else if (ac.fillColor !== "#ffffff" || !(ac.fillOpacity > 0 && ac.fillOpacity <= 0.3) ||
+      ac.strokeColor !== "#ffffff" || !(ac.strokeOpacity >= 0.8)) {
+      bad("AC 不是半透明白色图标：fill=" + ac.fillColor + "@" + ac.fillOpacity + " stroke=" + ac.strokeColor + "@" + ac.strokeOpacity);
+    } else if (Object.keys(COLORS_3).some((k) => !shieldByKey(k) || shieldByKey(k).fillColor !== COLORS_3[k])) {
+      bad("三防不是橙 / 绿 / 紫：" + Object.keys(COLORS_3).map((k) => k + "=" + (shieldByKey(k) ? shieldByKey(k).fillColor : "无")).join(" "));
+    } else if (!acText || !acText.text || acText.text.plainText !== "28") {
+      bad("AC 的数字不是 28：" + JSON.stringify(acText && acText.text));
+    } else {
+      ok("四防一排（v1.6.1）：fort/reflex/will/ac 同一行（y=" + (Math.round(ys[0] * 100) / 100) +
+        "）、x 从左到右递增、AC 最右且半透明白色（fill #ffffff@" + ac.fillOpacity + " + 白描边@" + ac.strokeOpacity + "）");
+    }
+  }
+  /* 这一排必须在 HP 红条上方（同一份几何：盾的下缘 < 条的上缘） */
+  {
+    const shields = t2role("shield");
+    const barBg = t2one("bar-bg");
+    /* 盾的下缘 = 位置 + 多边形里最大的 y（盾尖）；条的上缘 = 位置 y */
+    const bottomOf = (it) => it.position.y +
+      Math.max.apply(null, (it.points || [{ y: 0 }]).map((pt) => pt.y));
+    const lowest = shields.length ? Math.max.apply(null, shields.map(bottomOf)) : 0;
+    if (!shields.length || !barBg) bad("四防 / HP 条缺件，无法比较上下关系");
+    else if (!(lowest <= barBg.position.y + 0.5)) bad("四防这一排没有在 HP 红条上方：" + lowest + " vs " + barBg.position.y);
+    else ok("四防这一排贴在 HP 红条上方（盾下缘 " + lowest + " ≤ 条上缘 " + barBg.position.y + "）");
+  }
   if (t2one("shield").zIndex < t2one("bar-fill").zIndex && t2one("bar-fill").zIndex < t2one("bar-text").zIndex) {
     ok("zIndex：盾 " + t2one("shield").zIndex + " < 填充 " + t2one("bar-fill").zIndex + " < 数值 " + t2one("bar-text").zIndex);
   } else bad("zIndex 顺序不对");
@@ -389,6 +437,17 @@ run(OBR, stubBuilder("CURVE"), stubBuilder("SHAPE"), stubBuilder("TEXT"));
   } else if (t2one("surge-bg").visible !== true) bad("Boss 模式把回复力条也压掉了（应保留）");
   else ok("Boss 模式（boss:true）：环形血条 + 名牌「Boss 巨魔」+ 锁，普通 HP 条被压制、蓝条保留");
 
+  /* v1.6.1：Boss 环形态下四防也要是一排（同 y、AC 最右） */
+  {
+    const shields = t2role("shield");
+    const ys = shields.map((it) => it.position.y);
+    const keys = shields.slice().sort((a, b) => a.position.x - b.position.x).map(shieldKeyOf).join(",");
+    if (shields.length !== 4) bad("Boss 形态四防不齐：" + shields.length + "（" + keys + "）");
+    else if (!ys.every((y) => Math.abs(y - ys[0]) < 0.01)) bad("Boss 形态四防不在同一行：" + ys.join("/"));
+    else if (keys !== "fort,reflex,will,ac") bad("Boss 形态四防顺序不对：" + keys);
+    else ok("Boss 环形态下四防仍是一排（4 枚、同一 y=" + (Math.round(ys[0] * 100) / 100) + "、AC 最右）");
+  }
+
   token2.metadata[HP_KEY].boss = { enabled: true, segments: 3, phase: "阶段二" };
   for (const cb of itemsChangeCbs) cb(sceneItems);
   await sleep(300);
@@ -396,6 +455,50 @@ run(OBR, stubBuilder("CURVE"), stubBuilder("SHAPE"), stubBuilder("TEXT"));
   if (t2role("divider").length !== 2) bad("segments=3 应有 2 条分段线，实际 " + t2role("divider").length);
   else if (!t2one("plate-phase") || t2one("plate-phase").text.plainText !== "阶段二") bad("Boss 阶段文案没显示");
   else ok("Boss 分段（3 段 → 2 条线）+ 阶段文案「阶段二」");
+
+  /* ---- v1.6.1：窄 token 退化——四枚放不下时优先保留 AC（最右那枚） ---- */
+  {
+    const TOKEN3 = "tok-3";
+    const token3 = {
+      id: TOKEN3,
+      type: "IMAGE",
+      name: "窄 token",
+      layer: "CHARACTER",
+      createdUserId: "user-owner",
+      position: { x: 0, y: 0 },
+      scale: { x: 1, y: 1 },
+      metadata: {
+        [HP_KEY]: {
+          cur: 9, max: 10, surges: 2, surgesMax: 3,
+          defenses: { ac: 21, fort: 15, reflex: 17, will: 19 },
+          locked: true, updatedAt: 4
+        }
+      }
+    };
+    sceneItems.push(token3);
+    const t3keysNow = () => liveOf(TOKEN3).filter((it) => barRoleOf(it) === "shield").map(shieldKeyOf).join(",");
+
+    /* ① 20×20：s 夹到 0.2，一排只放得下 2 枚 → 按 DEF_DROP 先丢意志、再丢反射 → 剩「强韧 + AC」 */
+    boundsFor[TOKEN3] = { min: { x: 0, y: 0 }, max: { x: 20, y: 20 }, center: { x: 10, y: 10 }, width: 20, height: 20 };
+    for (const cb of itemsChangeCbs) cb(sceneItems);
+    await sleep(340);
+    if (t3keysNow() !== "fort,ac") bad("窄 token 退化顺序不对（应剩 fort,ac：先丢意志再丢反射）：" + t3keysNow());
+    else ok("窄 token 退化（20×20）：放得下 2 枚 → 先丢意志、再丢反射，剩「强韧 + AC」");
+
+    /* ② 14×40：只放得下一枚 → AC 优先保留（最后才丢） */
+    boundsFor[TOKEN3] = { min: { x: 0, y: 0 }, max: { x: 14, y: 40 }, center: { x: 7, y: 20 }, width: 14, height: 40 };
+    for (const cb of itemsChangeCbs) cb(sceneItems);
+    await sleep(340);
+    const t3keys = t3keysNow();
+    if (t3keys !== "ac") bad("窄 token 退化到 1 枚时应只剩 AC，实际：" + t3keys);
+    else if (liveOf(TOKEN3).filter((it) => barRoleOf(it) === "shield-text").length !== 1) bad("窄 token 退化后 AC 的数字也没了");
+    else ok("窄 token 退化（14×40）：只放得下 1 枚时 AC 优先保留（半透明白），数字仍在");
+    /* 收尾：把这枚临时 token 移出场景（后面的断言只看 tok-2） */
+    sceneItems = sceneItems.filter((it) => it.id !== TOKEN3);
+    delete boundsFor[TOKEN3];
+    for (const cb of itemsChangeCbs) cb(sceneItems);
+    await sleep(340);
+  }
 
   /* ---- 锁：只改颜色，不重建 ---- */
   token2.metadata[HP_KEY].locked = false;

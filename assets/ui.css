@@ -362,16 +362,17 @@ body.dragging .pop-head { background: #17212b; }
   border-radius: 9px; padding: 7px 10px;
 }
 
-/* ---------- v1.5.0：骰子窗口（dice.html，两栏） ----------
- * 布局：左固定 340px（骰子按钮 / 表达式 / 战斗优势 / 重击 / 4E 预设 / 组合），右自适应
- * （本次结果 + 团队共享历史）。两栏各自滚动，窗口本身不滚（.win 高度 100vh，打开前由后台夹紧）。
- * 窗口默认 760×620（background.core.js 的 WINS.dice），比 v1.4.0 的 660×560 更宽。 */
+/* ---------- v1.5.0：骰子窗口（dice.html）----------
+ * v1.7.0：**单列**（记录搬去独立的 dice-history.html）——
+ *   骰子按钮 / 表达式 / 战斗优势 +2 / 重击取满 / 本次结果 / 4E 预设（攻击·伤害·技能）/ 组合。
+ * 窗口默认 520×620（background.core.js 的 WINS.dice）；v1.5.0 是 760×620 的两栏。
+ * 容器自身不滚，列内滚动（.win 高度 100vh，打开前由后台按视口夹紧）。 */
 .win-body.dice-wrap { overflow: hidden; padding: 10px 12px 12px; }
 .dice-cols {
-  display: grid; grid-template-columns: 340px minmax(0, 1fr); gap: 12px;
+  display: grid; grid-template-columns: minmax(0, 1fr); gap: 12px;
   height: 100%; min-height: 0;
 }
-.dice-left, .dice-right {
+.dice-left {
   min-height: 0; overflow-y: auto; overflow-x: hidden; padding-right: 2px;
   display: flex; flex-direction: column; gap: 10px;
 }
@@ -523,8 +524,7 @@ body.dragging .pop-head { background: #17212b; }
 .shake { animation: dice-shake .22s ease-in-out 2; }
 
 @media (max-width: 720px) {
-  .dice-cols { grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(0, auto) minmax(0, 1fr); }
-  .dice-left, .dice-right { max-height: 46vh; }
+  .dice-left { max-height: 78vh; }
 }
 
 /* ---------- v1.3.1：独立窗口外壳（先攻 / 骰子 / 角色卡面板共用） ----------
@@ -732,12 +732,15 @@ body.strip-page { background: transparent; padding: 0; overflow: hidden; height:
 body.dragging, body.dragging .strip-grip { cursor: grabbing; }
 body.sorting, body.sorting .initiative-item { cursor: grabbing; }
 
+/* v1.6.2：卡片区**内部横向滚动**（条宽固定 720，卡片再多也不会挤压整条）；
+ * 卡片右侧的空列表区域保持**深色不透明**（与 .strip 同一个底色，不要透明 → 露出发白的画布）。 */
 .strip-items {
   position: relative;
   flex: 1 1 auto; min-height: 80px;
   display: flex; align-items: flex-start; gap: 6px;
   overflow-x: auto; overflow-y: hidden; padding: 0 4px;
   scrollbar-width: none;
+  background: #10161d;
 }
 .strip-items::-webkit-scrollbar { display: none; }
 .strip-empty { flex: 0 0 auto; padding: 10px 6px; font-size: 11.5px; color: #93a1b0; white-space: nowrap; }
@@ -821,3 +824,210 @@ body.sorting, body.sorting .initiative-item { cursor: grabbing; }
   position: absolute; top: 0; bottom: 0; width: 3px; z-index: 5;
   background: #f5d76e; border-radius: 2px; pointer-events: none;
 }
+
+
+/* =====================================================================
+ * v1.7.0：投骰动画（effect.html，纯 CSS 关键帧）
+ * =====================================================================
+ * 数值来源：assets/dice-core.js 的 FX_*（fxBaseSize / fxDieSize / fxBeat / fxArcProfile），
+ * 公式与参考实现一致（docs/spec-dice.md §4.2 / §4.4，来源 effect-page.ts）：
+ *   BASE_SIZE = N<=1 ? 128 : max(72, round(128 * 0.86^(N-1)))，--fx-base 由 JS 写到 .fx-wrap
+ *   gap = round(BASE_SIZE * 0.16)；每行最多 4 颗（换行与居中都在 fxLayout 里算好）
+ *   时间轴 FLIGHT 1200 / HOLD 500 / PUNCH 360 / HOLD2 220 / EXIT 320（合计 2600 ms）
+ *   数字老虎机 55 ms 跳一格；四段抛物线 N_ARCS 4 / r 0.55 / H0 240：
+ *     第 i 段弧高 H0·r^(2i) = 240 / 72.6 / 21.96 / 6.64 px
+ *     段时长占比 r^i/Σr → 累计 49.53% / 76.77% / 91.76% / 100%（峰值取两段中点）
+ *     挤压 0.18（落地 scale(1.18, .82)）/ 拉伸 0.08（scale(1, 1.08)）/ 总旋转 720°
+ * 整层 pointer-events:none：骰子不挡鼠标，动画期间照样能平移 / 选中地图
+ * （与参考实现 dice-effect.html 顶部那段注释同一做法）。 */
+
+body.fx-page {
+  margin: 0; padding: 0; height: 100vh;
+  background: transparent !important; overflow: hidden; color-scheme: dark;
+}
+.fx-stage { position: fixed; inset: 0; overflow: hidden; pointer-events: none; }
+.fx-stage * { pointer-events: none !important; user-select: none; }
+.fx-done { display: none; }
+
+/* 骰子组的原点 = token 顶部中心（世界坐标投影到屏幕），JS 每 4 帧更新一次 */
+.fx-wrap {
+  position: absolute; left: var(--tx, 50%); top: var(--ty, 50%);
+  width: 0; height: 0;
+}
+.fx-wrap.exit { animation: fx-exit 320ms ease-in forwards; }
+
+.fx-die {
+  position: absolute;
+  width: var(--dice-size, 128px); height: var(--dice-size, 128px);
+  opacity: 0;
+  filter: drop-shadow(0 8px 14px rgba(0, 0, 0, .55));
+  animation: fx-flight var(--fx-flight, 1200ms) linear both;
+  will-change: transform, opacity;
+}
+.fx-box {
+  position: absolute; inset: 0;
+  display: flex; align-items: center; justify-content: center;
+  border-radius: 18%;
+  background: radial-gradient(120% 120% at 30% 20%, #2b3644 0%, #161d26 62%, #0e141b 100%);
+  border: 2px solid rgba(230, 237, 243, .35);
+  box-shadow: inset 0 -6px 14px rgba(0, 0, 0, .55), inset 0 6px 12px rgba(255, 255, 255, .08);
+  animation: fx-squash var(--fx-flight, 1200ms) linear both;
+  transform-origin: 50% 100%;
+}
+.fx-face {
+  position: absolute; left: 8%; top: 5%;
+  font: 800 calc(var(--dice-size, 128px) * 0.14)/1 ui-monospace, "Cascadia Code", Consolas, monospace;
+  color: rgba(230, 237, 243, .55); letter-spacing: .5px;
+}
+.fx-num {
+  font: 900 calc(var(--dice-size, 128px) * 0.44)/1 ui-monospace, "Cascadia Code", Consolas, monospace;
+  color: #f2f7fb; letter-spacing: -2px; font-variant-numeric: tabular-nums;
+  text-shadow: 0 2px 6px rgba(0, 0, 0, .85), 0 0 10px rgba(0, 0, 0, .5);
+  transform-origin: 50% 50%;
+}
+.fx-num.rolling { filter: blur(2.5px); animation: fx-slot 55ms linear infinite; }
+.fx-num.snap { filter: blur(0); }
+.fx-num.land { animation: fx-punch 360ms cubic-bezier(.34, 1.56, .64, 1) forwards; }
+.fx-orig {
+  position: absolute; left: 50%; top: 76%; transform: translate(-50%, -50%);
+  font: 700 calc(var(--dice-size, 128px) * 0.16)/1 ui-monospace, Consolas, monospace;
+  color: rgba(230, 237, 243, .72);
+  text-shadow: 0 1px 3px rgba(0, 0, 0, .85);
+}
+
+/* 四种状态：被丢弃（半透明 + 删除线）/ 减骰（虚线 + 前缀 −）/ 暴击金 / 大失败红 */
+.fx-die.is-loser .fx-box { opacity: .32; }
+.fx-die.is-loser .fx-num { text-decoration: line-through; }
+.fx-die.is-subtract .fx-box { opacity: .62; border-style: dashed; }
+.fx-die.is-subtract .fx-num::before { content: "−"; margin-right: .04em; opacity: .85; }
+.fx-die.is-crit .fx-box {
+  border-color: rgba(255, 215, 94, .95);
+  box-shadow: 0 0 22px rgba(255, 200, 60, .75), inset 0 -6px 14px rgba(0, 0, 0, .5);
+}
+.fx-die.is-crit .fx-num { color: #fff4c2; }
+.fx-die.is-fail .fx-box {
+  border-color: rgba(248, 81, 73, .95);
+  box-shadow: 0 0 22px rgba(248, 81, 73, .7), inset 0 -6px 14px rgba(0, 0, 0, .5);
+}
+.fx-die.is-fail .fx-num { color: #ffd9d7; }
+
+/* 当前总和（骰子行上方）与加值 / 备注（最后一行下方）——位置由 fxLayout 的
+ * totalTop = -BASE_SIZE/2 - 64、modTop = lastRowOy + BASE_SIZE/2 + 28 写到 inline top。 */
+.fx-total, .fx-mod {
+  position: absolute; left: 0; transform: translate(-50%, 0);
+  display: flex; align-items: center; justify-content: center;
+  white-space: nowrap; opacity: 0;
+  transition: opacity .2s ease-out;
+  filter: drop-shadow(0 4px 10px rgba(0, 0, 0, .7));
+}
+.fx-total.on, .fx-mod.on { opacity: 1; }
+.fx-total-num {
+  font: 900 64px/1 ui-monospace, "Cascadia Code", Consolas, monospace;
+  color: #fff; letter-spacing: -2px; font-variant-numeric: tabular-nums;
+  text-shadow: 0 3px 8px rgba(0, 0, 0, .95), 0 0 16px rgba(0, 0, 0, .55);
+}
+/* 只在淡入的那一帧弹一下（否则页面加载时动画就播完了，看不到） */
+.fx-total.on .fx-total-num { animation: fx-total-pop 420ms cubic-bezier(.34, 1.56, .64, 1) both; }
+.fx-mod { flex-direction: column; gap: 2px; }
+.fx-mod-num {
+  font: 900 calc(var(--fx-base, 128px) * 0.30)/1 ui-monospace, Consolas, monospace;
+  color: #fff; letter-spacing: -1px;
+  text-shadow: 0 2px 6px rgba(0, 0, 0, .9);
+}
+.fx-mod-label {
+  font: 600 18px/1.2 system-ui, "Microsoft YaHei", sans-serif;
+  color: #cdd2e0; text-shadow: 0 2px 4px rgba(0, 0, 0, .85);
+}
+
+/* 暴击 / 大失败的光圈（以骰子组原点为中心） */
+.fx-flash {
+  position: absolute; left: var(--tx, 50%); top: var(--ty, 50%);
+  width: 780px; height: 780px; margin-left: -390px; margin-top: -390px;
+  border-radius: 50%; opacity: 0;
+}
+.fx-flash.fire.crit {
+  background: radial-gradient(circle, rgba(255, 215, 0, .85), rgba(255, 165, 0, .38) 30%, transparent 65%);
+  animation: fx-burst 700ms ease-out forwards;
+}
+.fx-flash.fire.fail {
+  background: radial-gradient(circle, rgba(231, 76, 60, .85), rgba(180, 40, 40, .38) 30%, transparent 65%);
+  animation: fx-burst 700ms ease-out forwards;
+}
+
+/* ---- 关键帧（数字与 dice-core.js 的 FX_* 一一对应） ---- */
+@keyframes fx-flight {
+  0%     { opacity: 0; transform: translate3d(0, calc(var(--fx-base, 128px) * -0.22), 0) rotate(0deg); }
+  6%     { opacity: 1; }
+  24.77% { transform: translate3d(0, -240px, 0) rotate(calc(var(--fx-rot, 720deg) * 0.25)); }
+  49.53% { transform: translate3d(0, 0, 0) rotate(calc(var(--fx-rot, 720deg) * 0.50)); }
+  63.15% { transform: translate3d(0, -72.6px, 0) rotate(calc(var(--fx-rot, 720deg) * 0.64)); }
+  76.77% { transform: translate3d(0, 0, 0) rotate(calc(var(--fx-rot, 720deg) * 0.77)); }
+  84.27% { transform: translate3d(0, -21.96px, 0) rotate(calc(var(--fx-rot, 720deg) * 0.85)); }
+  91.76% { transform: translate3d(0, 0, 0) rotate(calc(var(--fx-rot, 720deg) * 0.92)); }
+  95.88% { transform: translate3d(0, -6.64px, 0) rotate(calc(var(--fx-rot, 720deg) * 0.96)); }
+  100%   { opacity: 1; transform: translate3d(0, 0, 0) rotate(var(--fx-rot, 720deg)); }
+}
+/* 落地挤压 0.18 / 空中拉伸 0.08（四次落地：49.53% / 76.77% / 91.76% / 100%） */
+@keyframes fx-squash {
+  0%    { transform: scale(1, 1); }
+  20%   { transform: scale(1, 1.08); }
+  46%   { transform: scale(1.18, 0.82); }
+  52%   { transform: scale(1, 1); }
+  61%   { transform: scale(1, 1.08); }
+  73%   { transform: scale(1.18, 0.82); }
+  78%   { transform: scale(1, 1); }
+  82%   { transform: scale(1, 1.08); }
+  89%   { transform: scale(1.12, 0.88); }
+  93%   { transform: scale(1, 1); }
+  96%   { transform: scale(1.06, 0.94); }
+  100%  { transform: scale(1, 1); }
+}
+@keyframes fx-slot {
+  0%   { transform: translateY(-6%); }
+  50%  { transform: translateY(6%); }
+  100% { transform: translateY(-6%); }
+}
+/* 赢家放大 1 → 1.18 → 1（峰值 45%，PUNCH 360ms） */
+@keyframes fx-punch {
+  0%   { transform: scale(1); }
+  45%  { transform: scale(1.18); }
+  100% { transform: scale(1); }
+}
+@keyframes fx-total-pop {
+  0%   { transform: scale(.86); opacity: .2; }
+  45%  { transform: scale(1.12); opacity: 1; }
+  100% { transform: scale(1); opacity: 1; }
+}
+/* 淡出 320ms：上浮 + 收小 */
+@keyframes fx-exit {
+  0%   { opacity: 1; transform: translateY(0) scale(1); }
+  100% { opacity: 0; transform: translateY(-24px) scale(.92); }
+}
+@keyframes fx-burst {
+  0%   { opacity: 0; transform: scale(.35); }
+  18%  { opacity: 1; transform: scale(1); }
+  100% { opacity: 0; transform: scale(1.7); }
+}
+
+/* =====================================================================
+ * v1.7.0：骰子记录窗口（dice-history.html，独立 popover）
+ * =====================================================================
+ * 默认只显示**最近 4 条**（.dh-list.compact 隐藏第 5 条起），点「展开全部」看全部
+ * （最多 40 条，列表内滚动）。行样式沿用 v1.5.0 的 .hist-row / .die-chip。 */
+.win-body.dh-wrap {
+  padding: 8px 10px 10px; min-height: 0;
+  display: flex; flex-direction: column; gap: 6px;
+  overflow: hidden;
+}
+.dh-bar { flex: 0 0 auto; display: flex; align-items: center; gap: 8px; }
+.dh-meta {
+  font-size: 11px; color: var(--muted); font-variant-numeric: tabular-nums;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.dh-toggle { margin-left: auto; }
+.dh-list {
+  flex: 1 1 auto; min-height: 0; overflow-y: auto; overflow-x: hidden;
+  padding-right: 2px;
+}
+.dh-list.compact .dh-row:nth-child(n + 5) { display: none; }
+.dh-row { flex: 0 0 auto; }

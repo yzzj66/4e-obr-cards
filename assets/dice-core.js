@@ -727,7 +727,8 @@ export function rowsFromRaw(raw) {
   return out.slice(0, ROLL_MAX_ROWS);
 }
 
-/** GM 侧合并：**幂等**（同 rollId 不重复插）→ 按 ts 倒序 → 封顶 40。 */
+/** GM 侧合并：**幂等**（同 rollId 不重复插）→ 按 ts 倒序 → 封顶 40。
+ *  **超过 40 条时删掉最旧的那条**：倒序后 slice(0, 40) 砍掉的正是 ts 最小的尾巴。 */
 export function mergeRollRows(rows, incoming, cap) {
   const limit = Math.max(1, Math.min(200, typeof cap === "number" ? cap : ROLL_MAX_ROWS));
   const list = Array.isArray(rows) ? rows.slice() : [];
@@ -749,4 +750,225 @@ export function rollsBox(rows, seq) {
     seq: Math.max(0, Math.round(numOr(seq, 0))),
     rows: (rows || []).slice(0, ROLL_MAX_ROWS)
   };
+}
+
+/* ---------------------------------------------------------------------------
+ * 6) 投骰动画（v1.7.0）：布局与时间轴公式（纯函数，node 可测）
+ * ---------------------------------------------------------------------------
+ * 公式全部照抄 docs/spec-dice.md §4.2 / §4.4（来源：FullPeople/obr-suite 的
+ * src/modules/dice/effect-page.ts 与仓库根 dice-effect.html）：
+ *
+ *   BASE_SIZE = N <= 1 ? 128 : max(72, round(128 * 0.86^(N-1)))
+ *   dieSize   = round(BASE_SIZE * DIE_SIZE_FACTOR[imgTypeFor(type)])
+ *   gap       = round(BASE_SIZE * 0.16)；rowH = BASE_SIZE + gap；每行最多 4 颗
+ *   居中      = cursor 从 -rowW/2 起；rowOy = (r - (rowCount-1)/2) * rowH
+ *   附属元素  = runningTotal.top = -BASE_SIZE/2 - 64；
+ *               modBox.top = lastRowOy + BASE_SIZE/2 + 28
+ *
+ *   时间轴    = FLIGHT 1200 → HOLD 500 → PUNCH 360 → HOLD2 220 → EXIT 320
+ *               （合计 2600 ms，与参考实现「2.6 s 后自动关」一致）
+ *   数字老虎机 = 每 55 ms 跳一格
+ *   抛物线    = N_ARCS 4、r 0.55、H0 240、第 i 段高 H0*r^(2i)，
+ *               位置 y + (-h * 4 * t * (1-t))；挤压 0.18 / 拉伸 0.08；总旋转 720°
+ *
+ * 为什么放在这个文件（而不是 effect-page.js）：
+ *   · 这里不 import OBR、不碰 DOM，所以 dev/test-dice.mjs 能直接断言公式；
+ *   · CSS 只负责「把同样的数字写成关键帧」，数字只有这一份，改公式不会两边不一致。
+ * 动画页 effect.html + assets/effect-page.js 只是把这里的结果摆到屏幕上。
+ * ------------------------------------------------------------------------- */
+/** 一次动画里最多画多少颗骰（再多只画前 N 颗 + 「还有 N 颗」提示；总和仍按真实结果）。 */
+export const FX_MAX_DICE = 20;
+/** 基准尺寸：1 颗 128；每多一颗乘 0.86；最小 72（规格 §4.2）。 */
+export const FX_BASE_MAX = 128;
+export const FX_BASE_MIN = 72;
+export const FX_BASE_DECAY = 0.86;
+/** 行距 / 列距 = round(BASE_SIZE * 0.16)。 */
+export const FX_GAP_RATIO = 0.16;
+/** 每行最多几颗（超出换行）。 */
+export const FX_PER_ROW = 4;
+/** 时间轴（毫秒，规格 §4.4）。 */
+export const FX_FLIGHT_MS = 1200;
+export const FX_HOLD_MS = 500;
+export const FX_PUNCH_MS = 360;
+export const FX_HOLD2_MS = 220;
+export const FX_EXIT_MS = 320;
+export const FX_SLOT_MS = 55;
+export const FX_TOTAL_MS = FX_FLIGHT_MS + FX_HOLD_MS + FX_PUNCH_MS + FX_HOLD2_MS + FX_EXIT_MS;
+/** 抛物线参数（规格 §4.4）。 */
+export const FX_N_ARCS = 4;
+export const FX_ARC_RATIO = 0.55;
+export const FX_ARC_H0 = 240;
+export const FX_SQUASH = 0.18;
+export const FX_STRETCH = 0.08;
+export const FX_ROT_BASE = 720;
+/** 赢家放大：1 → 1.18 → 1，峰值在 45%（effect-page.ts 的 getPunchScale）。 */
+export const FX_PUNCH_SCALE = 1.18;
+export const FX_PUNCH_PEAK = 0.45;
+
+/** 基准尺寸：骰子越多越小，最小 72（规格 §4.2 公式，逐字）。 */
+export function fxBaseSize(n) {
+  const count = Math.max(1, Math.round(numOr(n, 1)));
+  if (count <= 1) return FX_BASE_MAX;
+  return Math.max(FX_BASE_MIN, Math.round(FX_BASE_MAX * Math.pow(FX_BASE_DECAY, count - 1)));
+}
+
+/** 类型 → 尺寸系数用的「图片类型」：自定义面数（d600 / d7）就近归到七种之一。 */
+export function fxImageType(type) {
+  const key = str(type).toLowerCase();
+  if (DIE_SIZE_FACTOR[key] != null) return key;
+  const sides = sidesOf(key);
+  if (!sides) return "d20";
+  if (sides <= 4) return "d4";
+  if (sides <= 6) return "d6";
+  if (sides <= 8) return "d8";
+  if (sides <= 10) return "d10";
+  if (sides <= 12) return "d12";
+  if (sides <= 20) return "d20";
+  return "d100";
+}
+
+/** 单颗骰子的像素尺寸 = round(BASE_SIZE * 系数)。 */
+export function fxDieSize(baseSize, type) {
+  const factor = DIE_SIZE_FACTOR[fxImageType(type)] || 1;
+  return Math.max(24, Math.round(numOr(baseSize, FX_BASE_MAX) * factor));
+}
+
+/**
+ * 抛物线四段：每段的起止比例与弧高（规格 §4.4）。
+ * 段时长 t0*r^i，归一化后就是 [from, to]；弧高 H0*r^(2i)。
+ */
+export function fxArcProfile() {
+  const r = FX_ARC_RATIO;
+  const weights = [];
+  let sum = 0;
+  for (let i = 0; i < FX_N_ARCS; i++) {
+    const w = Math.pow(r, i);
+    weights.push(w);
+    sum += w;
+  }
+  const out = [];
+  let acc = 0;
+  for (let i = 0; i < weights.length; i++) {
+    const from = acc / sum;
+    acc += weights[i];
+    out.push({
+      index: i,
+      from: Math.round(from * 10000) / 10000,
+      to: Math.round((acc / sum) * 10000) / 10000,
+      height: Math.round(FX_ARC_H0 * Math.pow(r, 2 * i) * 100) / 100
+    });
+  }
+  return out;
+}
+
+/** 完整时间轴（effect-page.js 用它排 setTimeout，CSS 关键帧用同样的毫秒数）。 */
+export function fxBeat() {
+  return {
+    flight: FX_FLIGHT_MS,
+    hold: FX_HOLD_MS,
+    punch: FX_PUNCH_MS,
+    hold2: FX_HOLD2_MS,
+    exit: FX_EXIT_MS,
+    slot: FX_SLOT_MS,
+    total: FX_TOTAL_MS,
+    arcs: fxArcProfile(),
+    punchScale: FX_PUNCH_SCALE,
+    punchPeak: FX_PUNCH_PEAK,
+    squash: FX_SQUASH,
+    stretch: FX_STRETCH,
+    rotBase: FX_ROT_BASE,
+    perRow: FX_PER_ROW,
+    maxDice: FX_MAX_DICE
+  };
+}
+
+/**
+ * 摆放：以 wrap 原点（token 顶部中心 = 世界坐标投影后的屏幕点）为 (0,0)。
+ * dice = [{ type, value, ... }]，opts = { rowStarts }（repeat 的行起点，可选）。
+ * 返回 { baseSize, gap, rowH, rowCount, slots:[{ index, ox, oy, size }], totalTop, modTop, hidden }
+ *   hidden = 超过 FX_MAX_DICE 没画出来的颗数（总和仍按真实结果，不在这里算）。
+ */
+export function fxLayout(dice, opts) {
+  const all = (dice || []).filter(Boolean);
+  const list = all.slice(0, FX_MAX_DICE);
+  const n = list.length;
+  const baseSize = fxBaseSize(n);
+  const gap = Math.round(baseSize * FX_GAP_RATIO);
+  const rowH = baseSize + gap;
+
+  const rows = [];
+  const starts = opts && Array.isArray(opts.rowStarts) ? opts.rowStarts : [];
+  if (starts.length > 1) {
+    for (let i = 0; i < starts.length; i++) {
+      const from = Math.max(0, Math.min(list.length, Math.round(numOr(starts[i], 0))));
+      const to = i + 1 < starts.length ? Math.max(from, Math.min(list.length, Math.round(numOr(starts[i + 1], list.length)))) : list.length;
+      rows.push(list.slice(from, to));
+    }
+  } else {
+    for (let i = 0; i < list.length; i += FX_PER_ROW) rows.push(list.slice(i, i + FX_PER_ROW));
+  }
+  if (!rows.length) rows.push([]);
+
+  const rowCount = Math.max(1, rows.length);
+  const slots = [];
+  let index = 0;
+  for (let r = 0; r < rows.length; r++) {
+    const row = rows[r];
+    let rowW = 0;
+    for (const d of row) rowW += fxDieSize(baseSize, d.type);
+    rowW += gap * Math.max(0, row.length - 1);
+    let cursor = -rowW / 2;
+    const rowOy = (r - (rowCount - 1) / 2) * rowH;
+    for (const d of row) {
+      const size = fxDieSize(baseSize, d.type);
+      slots.push({
+        index: index++,
+        ox: Math.round(cursor + size / 2),
+        oy: Math.round(rowOy),
+        size: size
+      });
+      cursor += size + gap;
+    }
+  }
+
+  const lastRowOy = ((rowCount - 1) - (rowCount - 1) / 2) * rowH;
+  return {
+    baseSize: baseSize,
+    gap: gap,
+    rowH: rowH,
+    rowCount: rowCount,
+    count: n,
+    hidden: Math.max(0, all.length - n),
+    slots: slots,
+    totalTop: Math.round(-baseSize / 2 - 64),
+    modTop: Math.round(lastRowOy + baseSize / 2 + 28)
+  };
+}
+
+/** 动画页的 URL 查询串（effect.html 按这些参数画；全部是标量 / 逗号分隔，便于手查）。 */
+export function fxQuery(row, origin) {
+  const one = row || {};
+  const dice = Array.isArray(one.dice) ? one.dice : [];
+  const parts = [];
+  const put = function (k, v) {
+    const s = v == null ? "" : String(v);
+    parts.push(encodeURIComponent(k) + "=" + encodeURIComponent(s));
+  };
+  put("dtypes", dice.map(function (d) { return d.type; }).join(","));
+  put("dvalues", dice.map(function (d) { return d.value; }).join(","));
+  put("doriginals", dice.map(function (d) { return typeof d.originalValue === "number" ? d.originalValue : ""; }).join(","));
+  put("dlosers", dice.map(function (d) { return d.loser ? 1 : 0; }).join(","));
+  put("dsubtract", dice.map(function (d) { return d.subtract ? 1 : 0; }).join(","));
+  put("total", numOr(one.total, 0));
+  put("modifier", numOr(one.modifier, 0));
+  put("label", str(one.label).slice(0, 40));
+  put("rollId", str(one.rollId));
+  put("color", colorOf(one.rollerColor));
+  const rows = Array.isArray(one.rowStarts) ? one.rowStarts : [];
+  if (rows.length > 1) put("rowStarts", rows.join(","));
+  if (origin && typeof origin.x === "number" && typeof origin.y === "number") {
+    put("wx", Math.round(origin.x * 100) / 100);
+    put("wy", Math.round(origin.y * 100) / 100);
+  }
+  return parts.join("&");
 }

@@ -548,16 +548,10 @@ function renderHpBlock(d, ed) {
     (ed.hp ? '<button type="button" class="gl4-mini-btn" data-act="surge-use" title="消耗一次回复力：回复 ' + d.surgeValue + ' 点生命">使用回复力 ＋' + d.surgeValue + "</button>" : "") +
     "</div>";
 
-  /* v1.6.0：四防一排（盾形语言与 token 四角盾一致）。可编辑时点一下 = 把这四项写进 token；
-   * 只读时退化成展示，不生成点不动的按钮。 */
-  const defRow = '<div class="gl4-def-row">' + d.defenses.map(function (x) {
-    const inner = '<span class="gl4-def-chip-name">' + esc(x.label) + "</span><b>" + x.value + "</b>";
-    if (ed.hp) {
-      return '<button type="button" class="gl4-def-chip" data-act="defense" data-k="' + esc(x.key) + '" title="' +
-        esc(partsText(x.parts)) + ' · 点一下把这四项写进 token 四角">' + inner + "</button>";
-    }
-    return '<span class="gl4-def-chip static" title="' + esc(partsText(x.parts)) + '">' + inner + "</span>";
-  }).join("") + "</div>";
+  /* v1.6.2：删掉 HP 绿条下面那条「彩色四防箭头条」（.gl4-def-row / .gl4-def-chip）。
+   * 用户原话：「图1在显示的预览部分不需要显示，直接修改下面对应的数值栏位就行」——
+   * 四防数值改由下面「AC / 强韧 / 反射 / 意志」那四张数值卡（.gl4-defs）显示。
+   * 注意：token 上那排四防（v1.6.1）不在这个文件里，别跟着删。 */
 
   /* v1.6.0：锁 + Boss 开关（与右键菜单写同一个 hp 字段，两个入口不能有两套逻辑）。 */
   const bossOn = !!(d.boss && d.boss.enabled);
@@ -595,7 +589,6 @@ function renderHpBlock(d, ed) {
     '<div class="gl4-hpfill ' + cls + '" style="width:' + pct.toFixed(1) + '%"></div>' +
     (tempPct > 0 ? '<div class="gl4-hptempfill" style="width:' + tempPct.toFixed(1) + '%"></div>' : "") +
     '<div class="gl4-hpmark" style="left:' + bloodPct.toFixed(1) + '%"></div></div>' +
-    defRow +
     surgeBar +
     surgeLine +
     pad +

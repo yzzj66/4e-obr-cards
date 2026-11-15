@@ -1,29 +1,34 @@
-// v1.5.0：骰子独立窗口的页面脚本（dice.html 的两栏 UI）。
+// v1.7.0：骰子窗口的页面脚本（dice.html，**单列**）。
 // ---------------------------------------------------------------------------
 // 分工：
 //   · 规则 / 解析 / 掷骰 / 归一化全在 assets/dice-core.js（纯函数，node 可测）；
-//   · 4E 预设（攻击 / 伤害 / 豁免 / 技能 / 先攻）在 assets/dice-4e.js，**有绑定卡时才动态 import**
+//   · 4E 预设（攻击 / 伤害 / 技能）在 assets/dice-4e.js，**有绑定卡时才动态 import**
 //     （它会拉进 glance.js + data/rules.js，约 190KB）；
-//   · 本文件只管 DOM、广播、房间数据与本机存储。
+//   · 动画的布局 / 时间轴常量也在 dice-core.js（fxBeat / fxLayout / fxQuery），本文件只负责
+//     在**算完结果之后**打开动画页 effect.html；
+//   · 本文件只管 DOM、广播、房间数据（落库回执）与本机存储。
 //
-// 用户拍板（覆盖规格 D1–D3）：
-//   · 只显示点数：没有 TN 输入，没有命中 / 未命中 / 成功失败；
-//   · 重击 = 4E 版：所有伤害骰取满（d6→6），结果面板标注「重击 · 已取满」；
-//   · 没有优势 / 劣势按钮、没有暗骰、没有示例框。
+// v1.7.0 的三处变化（用户要求）：
+//   1) **记录搬去独立窗口**：本窗口不再渲染历史列表，只有一个「记录窗口」按钮，
+//      发 CH_DICE_HIST_CMD 让后台开 / 关 /dice-history-window（两个窗口各自开关、可同时开）；
+//   2) **投骰动画**：结果先算好 → 广播 → 若「设置」里动画开着，就 OBR.modal.open(effect.html)；
+//      动画打不开 / 关掉时什么都不影响，本次结果照样显示在本窗口的「本次结果」里；
+//   3) 预设去掉「豁免」「先攻」（4E 里前者就是一个 d20，后者先攻条自带）。
 //
-// 团队共享（规格 §4）：投掷 → CH_ROLL（LOCAL + REMOTE）→ 城主客户端后台校验合并 →
-// 写房间数据 com.4enext-owlbear/rolls → 广播 CH_ROLL_SAVED → 所有人重读右栏历史（40 条封顶）。
-// 城主不在线：本机暂存 + 顶部黄条（玩家只读，清空只有城主能做）。
+// 团队共享（不变）：投掷 → CH_ROLL（LOCAL + REMOTE）→ 城主客户端后台校验合并 →
+// 写房间数据 com.4enext-owlbear/rolls（40 条封顶，超出删最旧）→ 广播 CH_ROLL_SAVED。
+// 城主不在线：本机暂存 + 提示（玩家只读，清空只有城主能做）。
 import OBR from "../vendor/obr-sdk.js";
 import {
-  CH_ROLL, CH_ROLL_CLEAR, CH_ROLL_SAVED, ID_DICE_WIN, KEY_BIND, KEY_ROLLS,
-  LS_DICE_COMBOS, LS_DICE_LAST, LS_DICE_LOCAL, ROLL_MAX_ROWS,
-  esc, findCard, getCards, onReady
+  CH_DICE_HIST_CMD, CH_DICE_HIST_STATE, CH_ROLL, CH_ROLL_CLEAR, CH_ROLL_SAVED,
+  ID_DICE_WIN, KEY_BIND, KEY_ROLLS, LS_DICE_COMBOS, LS_DICE_LAST, LS_DICE_LOCAL,
+  NS, URL_EFFECT,
+  esc, findCard, getCards, onReady, readDiceAnim
 } from "./common.js";
 import { closeSelf, createWindow, feedback } from "./window.js";
 import {
   ROLL_CRIT_NOTE, adjustExprForType, adjustExprModifier, countDiceByType,
-  formatExpr, makeRollId, mergeRollRows, parseExpr, parsedIsEmpty, rollParsed, rollToPayload,
+  formatExpr, fxQuery, makeRollId, parseExpr, parsedIsEmpty, rollParsed, rollToPayload,
   rowTotals, rowsFromRaw, sidesOf
 } from "./dice-core.js";
 
@@ -42,15 +47,14 @@ var els = {
   btnClear: document.getElementById("btnClear"),
   btnAdvantage: document.getElementById("btnAdvantage"),
   btnCrit: document.getElementById("btnCrit"),
+  btnHist: document.getElementById("btnHist"),
   presets: document.getElementById("presets"),
   presetMeta: document.getElementById("presetMeta"),
   defenseRef: document.getElementById("defenseRef"),
   combos: document.getElementById("combos"),
   comboName: document.getElementById("comboName"),
   result: document.getElementById("result"),
-  list: document.getElementById("list"),
-  shareWarn: document.getElementById("share-warn"),
-  histMeta: document.getElementById("histMeta")
+  animMeta: document.getElementById("animMeta")
 };
 
 var MODE_LABEL = { attack: "攻击", damage: "伤害", save: "豁免", skill: "技能", init: "先攻", free: "投掷" };
@@ -59,7 +63,6 @@ var MODE_LABEL = { attack: "攻击", damage: "伤害", save: "豁免", skill: "�
 var exprParsed = parseExpr("1d20");
 var advOn = false;
 var critOn = false;
-var rows = [];
 var myId = "";
 var myName = "我";
 var myColor = "#5dade2";
@@ -72,6 +75,9 @@ var comboList = [];
 var savedIds = {};
 var pendingSaves = {};
 var presetBusy = false;
+var histOpen = false;
+/** 当前开着的动画 modal id（换新投掷前先关掉上一个，避免叠一层又一层）。 */
+var effectModalId = "";
 
 /* ---------------------------------------------------------------------------
  * 0) 小工具
@@ -84,13 +90,6 @@ function lsSet(key, value) {
 }
 function lsDel(key) {
   try { localStorage.removeItem(key); } catch (e) { /* 忽略 */ }
-}
-function clockOf(ts) {
-  try {
-    return new Date(ts).toLocaleTimeString("zh-CN", { hour12: false });
-  } catch (e) {
-    return "";
-  }
 }
 /** 窗口内状态行（与 window.js 的 feedback 同款外观，但**不发通知中心**：掷骰太频繁）。 */
 var flashTimer = 0;
@@ -115,13 +114,8 @@ function shake(el) {
   el.classList.add("shake");
   setTimeout(function () { el.classList.remove("shake"); }, 600);
 }
-function showWarn(msg) {
-  if (!els.shareWarn) return;
-  els.shareWarn.hidden = false;
-  els.shareWarn.textContent = msg;
-}
-function hideWarn() {
-  if (els.shareWarn) els.shareWarn.hidden = true;
+function paintAnimMeta() {
+  if (els.animMeta) els.animMeta.textContent = "投骰动画：" + (readDiceAnim() ? "开" : "关");
 }
 
 /* ---------------------------------------------------------------------------
@@ -239,31 +233,6 @@ function renderResult(row) {
     rowLine + note;
 }
 
-function renderRows() {
-  if (!els.list) return;
-  if (els.histMeta) els.histMeta.textContent = "共 " + rows.length + " / " + ROLL_MAX_ROWS + " 条";
-  if (!rows.length) {
-    els.list.innerHTML = '<div class="hist-empty">还没有人掷过骰子。掷一次就会出现在这里（全桌共享）。</div>';
-    return;
-  }
-  var html = "";
-  for (var i = 0; i < rows.length; i++) {
-    var r = rows[i];
-    var mode = r.mode && r.mode !== "free" ? MODE_LABEL[r.mode] || "" : "";
-    var lab = [mode, r.label].filter(Boolean).join(" · ");
-    html += '<div class="hist-row" title="' + esc(r.expression || "") + '">' +
-      '<div class="hist-top">' +
-      '<span class="hist-who" style="color:' + esc(r.rollerColor || "#5dade2") + '">' + esc(r.rollerName || "某人") + "</span>" +
-      (lab ? '<span class="hist-lab">' + esc(lab) + "</span>" : "") +
-      '<span class="hist-total">' + esc(String(r.total)) + "</span>" +
-      '<span class="hist-time">' + esc(clockOf(r.ts)) + "</span>" +
-      "</div>" +
-      '<div class="hist-chips">' + chipsHTML(r) + "</div>" +
-      "</div>";
-  }
-  els.list.innerHTML = html;
-}
-
 function rollSaved(rollId) {
   return !!(rollId && savedIds[rollId]);
 }
@@ -275,7 +244,6 @@ function markSaved(rollId) {
     clearTimeout(pendingSaves[rollId]);
     delete pendingSaves[rollId];
   }
-  hideWarn();
 }
 
 function stashLocal(row) {
@@ -295,12 +263,12 @@ function watchSave(row) {
     delete pendingSaves[row.rollId];
     if (rollSaved(row.rollId)) return;
     if (win.state === "bad") {
-      showWarn("后台未连接：这次结果没能写进房间数据（只有本机看得到）。");
+      flash("后台未连接：这次结果没能写进房间数据（只有本机看得到）。", "WARNING");
     } else if (!isGM) {
       stashLocal(row);
-      showWarn("城主不在线：本次结果只在本机（暂存最多 20 条），不会再同步给别人。");
+      flash("城主不在线：本次结果只在本机（暂存最多 20 条），不会再同步给别人。", "WARNING");
     } else {
-      showWarn("没能写进房间数据：这次结果只有本机看得到（房间数据可能已满）。");
+      flash("没能写进房间数据：这次结果只有本机看得到（房间数据可能已满）。", "WARNING");
     }
   }, 1200);
 }
@@ -316,6 +284,68 @@ async function broadcast(channel, data) {
     sent = true;
   } catch (e2) { /* 忽略：LOCAL 成功也算发出去了 */ }
   return sent;
+}
+
+/* ---------------------------------------------------------------------------
+ * 2.5) 投骰动画（effect.html）
+ * ---------------------------------------------------------------------------
+ * 顺序（规格 §4.1）：**先把结果算完**（renderResult 已经画好）→ 广播 → 再开动画。
+ * 动画只是「呈现」，播放失败 / 被关掉时本窗口的结果面板照样是真实点数。
+ * 落点：选中单个 token 时用它的**顶部中心世界坐标**（wx/wy），动画页自己按
+ * sx = worldX * scale + vp.x 换算并逐帧跟随；没选中就落到视口中心。
+ * modal 参数逐字照抄参考实现：fullScreen + hideBackdrop + hidePaper + disablePointerEvents
+ * （最后一项让整层点击穿透，动画期间照样能平移 / 选中地图）。
+ * ------------------------------------------------------------------------- */
+/** 选中 token 的顶部中心（世界坐标）；拿不到就返回 null（动画页用视口中心）。 */
+async function effectOrigin() {
+  try {
+    var sel = await OBR.player.getSelection();
+    if (!sel || sel.length !== 1) return null;
+    var items = await OBR.scene.items.getItems([sel[0]]);
+    var it = items && items[0];
+    if (!it || it.type !== "IMAGE" || !it.position) return null;
+    var sceneDpi = 150;
+    try {
+      var dpi = await OBR.scene.grid.getDpi();
+      if (typeof dpi === "number" && dpi > 0) sceneDpi = dpi;
+    } catch (e1) { /* 拿不到网格就用 150 */ }
+    var imgH = it.image && typeof it.image.height === "number" ? it.image.height : 0;
+    var itemDpi = it.grid && typeof it.grid.dpi === "number" && it.grid.dpi > 0 ? it.grid.dpi : sceneDpi;
+    var scaleY = it.scale && typeof it.scale.y === "number" ? it.scale.y : 1;
+    var halfH = imgH > 0 ? (imgH / itemDpi) * sceneDpi * scaleY / 2 : 75;
+    if (!isFinite(halfH) || halfH <= 0) halfH = 75;
+    return { x: it.position.x, y: it.position.y - halfH };
+  } catch (e2) {
+    return null;
+  }
+}
+
+/** 打开动画页；动画被关 / 打不开时返回 false（调用方什么都不用做）。 */
+async function playEffect(row, origin) {
+  if (!readDiceAnim()) return false;
+  if (!OBR.modal || typeof OBR.modal.open !== "function") return false;
+  try {
+    if (effectModalId) {
+      try { await OBR.modal.close(effectModalId); } catch (e0) { /* 已经自己关了 */ }
+      effectModalId = "";
+    }
+    var id = NS + "/dice-effect-" + row.rollId;
+    await OBR.modal.open({
+      id: id,
+      url: URL_EFFECT + "?" + fxQuery(row, origin),
+      fullScreen: true,
+      hideBackdrop: true,
+      hidePaper: true,
+      disablePointerEvents: true
+    });
+    effectModalId = id;
+    return true;
+  } catch (e) {
+    /* 降级：动画打不开只提示一句，投掷本身早就完成了 */
+    effectModalId = "";
+    flash("投骰动画打不开（不影响结果）：" + (e && e.message ? e.message : e), "WARNING");
+    return false;
+  }
 }
 
 async function doRoll() {
@@ -352,8 +382,7 @@ async function doRoll() {
     lsSet(LS_DICE_LAST, lastExpr);
 
     renderResult(payload);
-    rows = mergeRollRows(rows, payload, ROLL_MAX_ROWS);
-    renderRows();
+    paintAnimMeta();
 
     if (payload.critDegraded) {
       flash("重击未生效：公式里有包裹（adv / max 等），本次按普通投掷", "WARNING");
@@ -363,8 +392,14 @@ async function doRoll() {
     }
 
     var sent = await broadcast(CH_ROLL, payload);
-    if (!sent) showWarn("广播没发出去：后台未连接，这次结果只有本机看得到。");
+    if (!sent) flash("广播没发出去：后台未连接，这次结果只有本机看得到。", "WARNING");
     watchSave(payload);
+
+    /* 结果已经算完 / 已经广播，最后才开动画（失败也不影响上面任何一步） */
+    if (readDiceAnim()) {
+      var origin = await effectOrigin();
+      await playEffect(payload, origin);
+    }
   } catch (e) {
     feedback("投掷失败：" + (e && e.message ? e.message : e), "ERROR");
   } finally {
@@ -373,44 +408,17 @@ async function doRoll() {
 }
 
 /* ---------------------------------------------------------------------------
- * 3) 房间数据（团队共享历史）
+ * 3) 房间数据（只用来判断「我这条落库了没」+ 清空；列表在记录窗口里画）
  * ------------------------------------------------------------------------- */
-function mergeLocalRows(remote) {
-  var out = remote.slice();
-  for (var i = 0; i < rows.length; i++) {
-    var r = rows[i];
-    var dup = false;
-    for (var j = 0; j < out.length; j++) if (out[j].rollId === r.rollId) { dup = true; break; }
-    if (!dup) out.push(r);
-  }
-  out.sort(function (a, b) { return (b.ts || 0) - (a.ts || 0); });
-  return out.slice(0, ROLL_MAX_ROWS);
-}
-
-async function readRows() {
-  var remote = [];
+async function readSavedFlags() {
   try {
     var meta = await OBR.room.getMetadata();
     var box = meta ? meta[KEY_ROLLS] : null;
-    remote = rowsFromRaw(box);
+    var remote = rowsFromRaw(box);
     for (var i = 0; i < remote.length; i++) markSaved(remote[i].rollId);
   } catch (e) {
-    /* 读不到就只显示本机乐观结果 */
+    /* 读不到就算了：watchSave 会按「没落库」提示 */
   }
-  rows = mergeLocalRows(remote);
-  renderRows();
-}
-
-/** 启动时把本机暂存（城主离线时掷的）一起显示出来，别让人以为丢了。 */
-function loadLocalStash() {
-  try {
-    var raw = lsGet(LS_DICE_LOCAL);
-    var list = raw ? JSON.parse(raw) : [];
-    if (!Array.isArray(list) || !list.length) return;
-    rows = mergeLocalRows(rowsFromRaw(list));
-    renderRows();
-    showWarn("本机暂存了 " + list.length + " 条城主离线时的投掷（只在这台机器上）。");
-  } catch (e) { /* 忽略 */ }
 }
 
 async function clearHistory() {
@@ -422,10 +430,7 @@ async function clearHistory() {
     els.btnClear.setAttribute("data-armed", "0");
     els.btnClear.textContent = "清空记录";
     await broadcast(CH_ROLL_CLEAR, { by: myId, at: Date.now() });
-    rows = [];
     lsDel(LS_DICE_LOCAL);
-    renderRows();
-    hideWarn();
     feedback("已请求清空全桌记录", "SUCCESS");
     return;
   }
@@ -440,6 +445,26 @@ async function clearHistory() {
         els.btnClear.textContent = "清空记录";
       }
     }, 3000);
+  }
+}
+
+/* ---------------------------------------------------------------------------
+ * 3.5) 记录窗口（独立 popover，本窗口只管发开关命令 + 显示开 / 关）
+ * ------------------------------------------------------------------------- */
+function setHistButton(open) {
+  histOpen = !!open;
+  if (!els.btnHist) return;
+  els.btnHist.classList.toggle("on", histOpen);
+  els.btnHist.textContent = histOpen ? "记录窗口 · 开" : "记录窗口";
+  els.btnHist.title = (histOpen ? "收起" : "打开") + "独立的骰子记录窗口（最近 4 条，可展开全部）";
+}
+
+function toggleHistory() {
+  try {
+    var p = OBR.broadcast.sendMessage(CH_DICE_HIST_CMD, { op: "toggle", at: Date.now() }, { destination: "LOCAL" });
+    if (p && typeof p.catch === "function") p.catch(function () { /* 后台没起来 */ });
+  } catch (e) {
+    feedback("记录窗口打不开：后台未连接（记录本身仍会写进房间数据）", "WARNING");
   }
 }
 
@@ -480,7 +505,7 @@ async function refreshPresets() {
 function renderPresets(data, cardName) {
   if (!els.presets) return;
   if (!data || !data.ok) {
-    els.presets.innerHTML = '<p class="muted small">选中一枚<b>已绑定角色卡</b>的 token，这里会出现攻击 / 伤害 / 豁免 / 技能 / 先攻预设（只填公式，不判定）。</p>';
+    els.presets.innerHTML = '<p class="muted small">选中一枚<b>已绑定角色卡</b>的 token，这里会出现攻击 / 伤害 / 技能预设（只填公式，不判定）。</p>';
     if (els.defenseRef) els.defenseRef.innerHTML = "";
     if (els.presetMeta) els.presetMeta.textContent = "未选中绑定卡";
     return;
@@ -630,6 +655,7 @@ function wireEvents() {
   if (els.btnRoll) els.btnRoll.addEventListener("click", function () { void doRoll(); });
   if (els.btnSave) els.btnSave.addEventListener("click", onSaveCombo);
   if (els.btnClear) els.btnClear.addEventListener("click", function () { void clearHistory(); });
+  if (els.btnHist) els.btnHist.addEventListener("click", toggleHistory);
 
   if (els.btnLast) {
     els.btnLast.addEventListener("click", function () {
@@ -691,7 +717,8 @@ onReady(function () {
   if (els.btnAdvantage) els.btnAdvantage.title = "4E 战斗优势：公式 +2（再点一下撤回）";
   if (els.btnCrit) els.btnCrit.title = "4E 重击：所有伤害骰取最大值（d6→6），不是骰数翻倍";
   loadCombos();
-  renderRows();
+  paintAnimMeta();
+  setHistButton(false);
 
   /* 身份：广播里的名字 / 颜色，以及「清空只有城主能做」 */
   (async function identify() {
@@ -704,14 +731,13 @@ onReady(function () {
       els.btnClear.title = isGM ? "清空全桌记录（要点两次）" : "只有城主能清空全桌记录";
       els.btnClear.classList.toggle("ghost", !isGM);
     }
-    await readRows();
-    loadLocalStash();
+    await readSavedFlags();
     await refreshPresets();
   })();
 
-  /* 房间数据变化 = 有人投掷 / 城主清空 → 重画右栏 */
+  /* 房间数据变化 = 有人投掷 / 城主清空 → 只更新「已落库」标记（列表在记录窗口里画） */
   try {
-    OBR.room.onMetadataChange(function () { void readRows(); });
+    OBR.room.onMetadataChange(function () { void readSavedFlags(); });
   } catch (e) { /* 忽略 */ }
 
   /* 城主写完房间数据会广播 saved：清掉「未落库」计时器 */
@@ -719,9 +745,17 @@ onReady(function () {
     OBR.broadcast.onMessage(CH_ROLL_SAVED, function (ev) {
       var data = ev && ev.data !== undefined ? ev.data : ev;
       if (data && data.rollId) markSaved(String(data.rollId));
-      void readRows();
+      void readSavedFlags();
     });
   } catch (e2) { /* 忽略 */ }
+
+  /* 记录窗口的开 / 关状态（后台执行完命令后广播回来） */
+  try {
+    OBR.broadcast.onMessage(CH_DICE_HIST_STATE, function (ev) {
+      var data = ev && ev.data !== undefined ? ev.data : ev;
+      setHistButton(!!(data && data.open));
+    });
+  } catch (e4) { /* 忽略 */ }
 
   /* 选中不同的 token → 换预设 */
   try {
@@ -732,9 +766,7 @@ onReady(function () {
 
   win.onStatus(function (state) {
     if (state === "bad") {
-      showWarn("后台未连接：掷骰仍可用，但结果不会写进房间数据（别人看不到）。");
-    } else if (state === "ok") {
-      if (els.btnClear && !els.btnClear.getAttribute("data-armed")) hideWarn();
+      flash("后台未连接：掷骰仍可用，但结果不会写进房间数据（别人看不到）。", "WARNING");
     }
   });
 });

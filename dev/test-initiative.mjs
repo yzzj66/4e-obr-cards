@@ -478,15 +478,40 @@ else bad("折叠态渲染不对");
 if (I.stripHeightFor("idle") === 129 && I.stripHeightFor("preparing") === 139 && I.stripHeightFor("combat") === 159)
   ok("stripHeightFor：129 / 139 / 159 三档");
 else bad("stripHeightFor 三档不对");
-const sizeCollapsed = I.stripSizeFor("combat", true, 900, 1366);
+const sizeCollapsed = I.stripSizeFor("combat", true, 1366);
 if (sizeCollapsed.width === 120 && sizeCollapsed.height === 40) ok("折叠尺寸 120×40");
 else bad("折叠尺寸不对：" + JSON.stringify(sizeCollapsed));
-const sizeMin = I.stripSizeFor("combat", false, 300, 1366);
+const sizeMin = I.stripSizeFor("combat", false, 300);
 if (sizeMin.width === 410 && sizeMin.height === 159) ok("展开宽度下限 410、高度按 phase = 159");
 else bad("展开尺寸下限不对：" + JSON.stringify(sizeMin));
-const sizeSmall = I.stripSizeFor("idle", false, 900, 500);
+const sizeSmall = I.stripSizeFor("idle", false, 500);
 if (sizeSmall.width === 468) ok("小视口（500）下宽度夹到 468（视口 −32）");
 else bad("小视口没有夹紧：" + JSON.stringify(sizeSmall));
+
+/* ---- v1.6.2：宽高是常量，内容怎么变都不改尺寸 ---- */
+const sizeBig = I.stripSizeFor("combat", false, 1366);
+const sizeSameAgain = I.stripSizeFor("combat", false, 1366);
+/* 老页面（v1.6.1 的缓存）按 (phase, collapsed, clusterW, vw) 调 4 个参数：
+ * 第 3 个是「量控制行得到的宽度」—— 必须作废，不能让它把条改窄。 */
+const sizeLegacy = I.stripSizeFor("combat", false, 300, 1366);
+if (sizeBig.width === 720 && sizeBig.height === 159 &&
+  sizeSameAgain.width === 720 && sizeSameAgain.height === 159 &&
+  sizeLegacy.width === 720 && sizeLegacy.height === 159) {
+  ok("内容变化（投骰前后）尺寸不变：展开恒为 720×159，老 4 参调用里量出来的宽度被丢弃");
+} else bad("先攻条尺寸会随内容变：" + JSON.stringify([sizeBig, sizeSameAgain, sizeLegacy]));
+const phaseSizes = ["idle", "preparing", "combat"].map(function (p) { return I.stripSizeFor(p, false, 1366); });
+if (phaseSizes.every(function (s) { return s.width === 720; }) &&
+  phaseSizes[0].height === 129 && phaseSizes[1].height === 139 && phaseSizes[2].height === 159) {
+  ok("展开宽度三档都是常量 720（只有高度按 phase 变：129 / 139 / 159）");
+} else bad("展开宽度不是常量：" + JSON.stringify(phaseSizes));
+{
+  const pageSrcV162 = fs.readFileSync(path.join(ROOT, "assets", "initiative-page.js"), "utf8");
+  const applyBody = (/async function applySize\(\) \{[\s\S]*?\n\}/.exec(pageSrcV162) || [])[0] || "";
+  if (applyBody && applyBody.indexOf("scrollWidth") < 0 && applyBody.indexOf("getBoundingClientRect") < 0 &&
+    /stripSizeFor\(phase, collapsed, vw\)/.test(applyBody)) {
+    ok("页面 applySize() 只算常量、不量 DOM（没有 scrollWidth / getBoundingClientRect）");
+  } else bad("页面 applySize() 还在量内容宽度");
+}
 
 if (I.genTiebreak(10, () => 0) < I.genTiebreak(0, () => 0) &&
   I.genTiebreak(10, () => 0) >= 0.001 && I.genTiebreak(-99, () => 0.999999) <= 0.999) {
@@ -770,6 +795,33 @@ if (typeof api.onStripDrag === "function" && typeof api.onStripCmd === "function
   await sleep(60);
   if (openedPopovers.length === beforeSize) ok("尺寸命令只更新几何、不重开 popover");
   else bad("尺寸命令把 popover 重开了");
+
+  /* ---- v1.6.2：投骰 / 内容变化后 popover open 参数里的 width/height 不变 ----
+   * 模拟页面把「按内容量出来的宽度」（588）报上来 —— 后台 snapStripSize() 必须丢掉它；
+   * 之后拖动重开 popover，宽高仍是常量 720×159。 */
+  openedPopovers.length = 0;
+  api.onStripCmd({ data: { op: "size", width: 588, height: 159 } });
+  await sleep(40);
+  api.onStripDrag({ data: { phase: "start", dx: 0, dy: 0 } });
+  api.onStripDrag({ data: { phase: "move", dx: 10, dy: 10 } });
+  api.onStripDrag({ data: { phase: "end", dx: 10, dy: 10 } });
+  await sleep(200);
+  const afterRollCfg = openedPopovers.filter((c) => c && c.id === "com.4enext-owlbear/initiative-strip").pop();
+  if (afterRollCfg && afterRollCfg.width === 720 && afterRollCfg.height === 159) {
+    ok("投骰 / 内容变化后 popover 的 width/height 仍是 720×159（量出来的 588 被丢弃）");
+  } else bad("投骰后 popover 尺寸变了：" + JSON.stringify(afterRollCfg && [afterRollCfg.width, afterRollCfg.height]));
+  /* 折叠态也要是常量 120×40，不随内容变。 */
+  const pillSize = I.stripSizeFor("combat", true, 1366);
+  api.onStripCmd({ data: { op: "size", width: pillSize.width, height: pillSize.height } });
+  await sleep(40);
+  openedPopovers.length = 0;
+  api.onStripDrag({ data: { phase: "start", dx: 0, dy: 0 } });
+  api.onStripDrag({ data: { phase: "move", dx: 4, dy: 4 } });
+  api.onStripDrag({ data: { phase: "end", dx: 4, dy: 4 } });
+  await sleep(200);
+  const pillCfg = openedPopovers.filter((c) => c && c.id === "com.4enext-owlbear/initiative-strip").pop();
+  if (pillCfg && pillCfg.width === 120 && pillCfg.height === 40) ok("折叠态 popover 仍是常量 120×40");
+  else bad("折叠态尺寸不是常量：" + JSON.stringify(pillCfg && [pillCfg.width, pillCfg.height]));
 } else bad("后台没有暴露 onStripDrag / onStripCmd / openStrip");
 
 /* ---------------------------------------------------------------------------
@@ -777,8 +829,10 @@ if (typeof api.onStripDrag === "function" && typeof api.onStripCmd === "function
  * ------------------------------------------------------------------------- */
 console.log("== 静态检查");
 const man = JSON.parse(fs.readFileSync(path.join(ROOT, "manifest.json"), "utf8"));
-if (man.name === "4eNEXT to owlbear" && man.version === "1.6.0") ok("manifest 名称 / 版本 = 4eNEXT to owlbear 1.6.0");
+if (man.name === "4eNEXT to owlbear" && man.version === "1.7.0") ok("manifest 名称 / 版本 = 4eNEXT to owlbear 1.7.0");
 else bad("manifest 名称 / 版本不对：" + man.name + " " + man.version);
+if (!man.action) ok("manifest 仍然没有 action 字段（真机验证过无 action 能加载）");
+else bad("manifest 又加回了 action 字段");
 
 const panelHtml = fs.readFileSync(path.join(ROOT, "panel.html"), "utf8");
 if (panelHtml.indexOf('data-tab="') < 0 && panelHtml.indexOf("tab-pane") < 0 && panelHtml.indexOf('class="tabs"') < 0)
@@ -794,7 +848,7 @@ if (initHtml.indexOf('class="win"') >= 0 && initHtml.indexOf('id="head"') >= 0 &
 else bad("initiative.html 不是独立窗口（缺 .win / #head / #pin）");
 if (diceHtml.indexOf('class="win"') >= 0 && diceHtml.indexOf('id="diceRow"') >= 0 && diceHtml.indexOf('id="result"') >= 0 &&
   diceHtml.indexOf("即将推出") < 0)
-  ok("dice.html 是独立窗口，v1.5.0 已换成真正的骰子面板（两栏 / 骰子行 / 结果）");
+  ok("dice.html 是独立窗口（v1.7.0：单列 / 骰子行 / 本次结果，记录在独立窗口）");
 else bad("dice.html 不是独立窗口 / 还是占位文案");
 if (/createWindow\(\{ name: "initiative"/.test(initPageSrc) && /createWindow\(\{ name: "dice"/.test(dicePageSrc))
   ok("先攻 / 骰子各自 createWindow（拖动 + 后台检测共用 window.js）");

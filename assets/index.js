@@ -40,10 +40,10 @@ if (els.manifest) els.manifest.textContent = manifestUrl;
 
 const FALLBACK_MANIFEST = {
   name: "4eNEXT to owlbear",
-  version: "1.6.0",
+  version: "1.7.0",
   manifest_version: 1,
   author: "4E NEXT 玩家自制",
-  description: "4eNEXT to owlbear：血条扩展（临时生命 / 四防四角 / 蓝色回复力条）+ Boss 样式（环形血条 / 名牌 / 锁）+ 骰子 + 屏幕顶部先攻条 + 速览 / 角色卡导入 / 设置与关于各自独立窗口。",
+  description: "4eNEXT to owlbear：血条扩展（临时生命 / 四防一排 / 蓝色回复力条）+ Boss 样式（环形血条 / 名牌 / 锁）+ 骰子（独立记录窗口 / 投骰动画）+ 屏幕顶部先攻条 + 速览 / 角色卡导入 / 设置与关于各自独立窗口。",
   icon: "icon.svg",
   action: { title: "4eNEXT to owlbear", icon: "icon.svg", popover: "panel.html", width: 960, height: 660 },
   background_url: "background.html"

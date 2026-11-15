@@ -1,4 +1,9 @@
-// v1.5.0：4E 预设（攻击 / 伤害 / 豁免 / 技能 / 先攻）——**只生成表达式，不判定命中**。
+// v1.5.0：4E 预设（攻击 / 伤害 / 技能）——**只生成表达式，不判定命中**。
+//
+// v1.7.0：按用户要求**去掉「豁免」与「先攻」两组预设**——
+//   · 豁免：4E 里就一个 1d20，手点一下 d20 就有了，专门做一组预设反而占地方；
+//   · 先攻：先攻条（v1.4.0）已经自带「投先攻」，这里再来一组是重复功能。
+//   保留攻击（vs 四防，四防数值仍作为「防御参考」显示）/ 伤害 / 技能三组。
 // ---------------------------------------------------------------------------
 // 硬规矩（docs/spec-dice.md §3.5）：
 //   · 数值**只从 assets/glance.js 的推导结果里取**（四防 / 攻击 / 伤害 / 技能 / 先攻），
@@ -9,7 +14,7 @@
 //
 // 这个文件只被 dice-page.js 动态 import（有绑定卡时才加载，避免每次开骰子窗口都拉 190KB 规则）。
 
-import { deriveGlance, initiativeBonus } from "./glance.js";
+import { deriveGlance } from "./glance.js";
 
 /** 紧凑加值：+5 / -3 / +0（用于标签文案）。 */
 export function plus(n) {
@@ -31,13 +36,13 @@ export function withModifier(base, n) {
 }
 
 /**
- * 生成五组预设。
+ * 生成三组预设（v1.7.0：豁免 / 先攻已去掉）。
  * 返回 {
  *   ok, name,
  *   defenses: [{ key, label, value }],           // AC / 强韧 / 反射 / 意志（参考值，不判定）
  *   groups: [{ key, label, items: [{ label, expr, mode, name?, trained? }] }]
  * }
- * groups 顺序固定：攻击 / 伤害 / 豁免 / 技能 / 先攻。
+ * groups 顺序固定：攻击 / 伤害 / 技能。
  */
 export function presetsFor(char, rules) {
   if (!char || typeof char !== "object") return { ok: false, name: "", defenses: [], groups: [] };
@@ -65,9 +70,6 @@ export function presetsFor(char, rules) {
     return { label: title + " " + expr, name: title, expr: expr, mode: "damage" };
   });
 
-  /* 4E 标准豁免：1d20，≥10 成功；用户拍板不做判定，所以这里只有 1d20（不加任何加值）。 */
-  const saves = [{ label: "豁免 1d20", name: "豁免", expr: "1d20", mode: "save" }];
-
   const skills = (g.skills || []).map(function (s) {
     return {
       label: s.name + (s.trained ? "（受训）" : "") + " " + plus(s.total),
@@ -78,13 +80,6 @@ export function presetsFor(char, rules) {
     };
   });
 
-  const inits = [{
-    label: "先攻 " + plus(initiativeBonus(char, rules)),
-    name: "先攻",
-    expr: withModifier("1d20", initiativeBonus(char, rules)),
-    mode: "init"
-  }];
-
   return {
     ok: true,
     name: name,
@@ -92,9 +87,7 @@ export function presetsFor(char, rules) {
     groups: [
       { key: "attack", label: "攻击", items: attacks },
       { key: "damage", label: "伤害", items: damages },
-      { key: "save", label: "豁免", items: saves },
-      { key: "skill", label: "技能", items: skills },
-      { key: "init", label: "先攻", items: inits }
+      { key: "skill", label: "技能", items: skills }
     ]
   };
 }

@@ -1,4 +1,4 @@
-/*! 4eNEXT to owlbear · background.bundle.js  (v1.6.0)
+/*! 4eNEXT to owlbear · background.bundle.js  (v1.7.0)
  * ---------------------------------------------------------------------------
  * 这是后台页唯一加载的脚本：纯「经典脚本」，没有 type="module"，没有 import/export，
  * 不依赖任何 CDN。内容是：
@@ -7,7 +7,7 @@
  *
  * 不要手改本文件。改逻辑请改 assets/background.core.js，然后：
  *     node dev/build-background.mjs
- * 生成时间：2026-11-15T11:05:14.196Z
+ * 生成时间：2026-11-15T12:06:15.644Z
  * --------------------------------------------------------------------------- */
 (function () {
 "use strict";
@@ -58,7 +58,7 @@ if (!OBR || typeof OBR.onReady !== "function") {
  * v1.4.0：先攻条（按 docs/spec-initiative.md 实现）
  *   · 工具栏「先攻」不再打开 880×640 的大窗口，而是打开**屏幕顶部的先攻条**：
  *     popover id /initiative-strip、CENTER/TOP 锚点、top 45、默认 720×129（展开）、120×40（折叠）；
- *     宽度按控制行自适应（max(410, 测量值+16)），高度按 phase 三档 129 / 139 / 159；
+ *     宽度 **v1.6.2 起固定 720**（只有视口太窄时才缩，下限 410；不再按控制行测量），高度按 phase 三档 129 / 139 / 159；
  *     位置只记「相对屏幕中线的偏移」（localStorage["4enext/strip-pos"]），整条可拖动、双击拖动柄回中。
  *   · 原来的列表窗口还留着（?view=list，id 仍是 /initiative-window），先攻条上的「≡」打开它：
  *     重掷全部 / 同步加值 / 上下移 / 删除 / 清空这些管理动作在那里。
@@ -73,6 +73,28 @@ if (!OBR || typeof OBR.onReady !== "function") {
  *     与「显示为 Boss / 隐藏 Boss」（hp.boss，布尔或对象都读，写回一律对象）；
  *   · Boss 样式（方案 A）：环形血条（48 段）+ 名牌 + 分段线 + 锁，**压制 HP 普通条**
  *     （回复力条与四防保留）；玩家端 locked 时按 25% 阶梯向上取整、不画数字与四防。
+ * v1.6.1：四防从「四角」改「一排」（用户截图对照 Full Suite 图 2，真机 v1.6.0 已跑通）
+ *   · 顺序固定 **强韧 → 反射 → 意志 → AC**（AC 永远最右，半透明白色图标：fill 白 @0.18 + 白描边 @0.85），
+ *     整排在 HP 红条上方 gap 处，同一行（y 相同）、x 递增；圆心间距 = 盾直径 + DEF_GAP(6s)；
+ *   · 窄 token 退化（写死规则）：宽度放不下四枚时**优先保留 AC**，再依次丢意志 / 反射 / 强韧；
+ *     一枚都放不下、或这一排会顶出 token 上沿 → 整排不画（四防仍可在速览面板里看）；
+ *   · 只动四防的摆位与样式：HP 文本 / 蓝条 / 环 / Boss 环 / 锁的数值与位置一律不变。
+ * v1.7.0：骰子记录搬成独立窗口 + 投骰动画（按 docs/spec-dice.md §4 的公式，参考 FullPeople/obr-suite）
+ *   · 骰子记录从骰子窗口右栏搬出来，变成**第二个独立 popover** /dice-history-window
+ *     （页面 dice-history.html，注册进 WINS.diceHistory，沿用 window.js 的拖动 / 位置记忆 / 视口夹紧）；
+ *     骰子窗口随之变窄（760×620 → 520×620，只留骰子 / 表达式 / 本次结果 / 预设 / 组合）；
+ *   · 两个窗口独立开关：骰子窗口的「记录窗口」按钮发 CH_DICE_HIST_CMD，本文件开 / 关并回
+ *     CH_DICE_HIST_STATE（页面据此显示开 / 关）；
+ *   · 投骰动画页 effect.html 由**骰子窗口**在算完结果后用 OBR.modal.open 打开
+ *     （全屏 + 透明 + disablePointerEvents，不挡地图）；公式在 assets/dice-core.js（纯函数，node 可测）。
+ *   · 落库规则不变：仍然「新的在前 + 超过 40 条删最旧」。
+ * v1.6.2：两处收尾修复
+ *   ① 速览弹窗删掉 HP 绿条下面那条「彩色四防箭头条」（assets/glance.js 的 .gl4-def-row）——
+ *      四防数值仍由下面的四张数值卡（.gl4-defs）显示；token 上的四防一排（v1.6.1）一个字没动；
+ *   ② 先攻条**宽高改成常量**：折叠 120×40 / 展开 720（仅视口太窄时缩）×(129|139|159)。
+ *      v1.6.1 的页面量的是控制行 scrollWidth → 投骰后点数 / 名字一变整条就变窄（用户报的 bug）。
+ *      现在页面只算常量，本文件的 snapStripSize() 再把页面报上来的尺寸兜回常量；
+ *      卡片区 .strip-items 内部横向滚动，条右侧空列表区域保持深色（不透明）。
  * v1.5.0：骰子（按 docs/spec-dice.md 的 P0–P3，用户拍板覆盖 D1–D3）
  *   · 骰子窗口从 660×560 加宽到 760×620（仍按视口夹紧），两栏：组公式 / 结果 + 团队历史；
  *   · 规则全在 assets/dice-core.js（纯函数），4E 预设在 assets/dice-4e.js；本文件只负责**城主落库**：
@@ -103,6 +125,9 @@ var ID_BIND = NS + "/bind";
 /* v1.3.1：先攻 / 骰子各自独立的 popover id（与 assets/common.js 的 ID_INIT_WIN / ID_DICE_WIN 必须一致）。 */
 var ID_INIT_WIN = NS + "/initiative-window";
 var ID_DICE_WIN = NS + "/dice-window";
+/* v1.7.0：骰子记录是**另一个 popover**（与 assets/common.js 的 ID_DICE_HIST 必须一致）。
+ * id 与骰子窗口不同 → 记录窗口和骰子窗口可以同时打开、各自关闭。 */
+var ID_DICE_HIST = NS + "/dice-history-window";
 /* v1.3.2：设置 / 关于窗口（与 assets/common.js 的 ID_SETTINGS_WIN 必须一致）。 */
 var ID_SETTINGS_WIN = NS + "/settings-window";
 /* v1.4.0：先攻条是**另一个 popover**（屏幕顶部居中的条），
@@ -117,7 +142,7 @@ var TOOL_SETTINGS_ID = NS + "/settings-tool";
 var CH_HELLO = NS + "/diag-hello"; /* background → 各页面：我起来了 */
 var CH_PING = NS + "/diag-ping";   /* 页面 → background：在吗 */
 var CH_PONG = NS + "/diag-pong";   /* background → 页面：在，状态如下 */
-var PLUGIN_VERSION = "1.6.0";
+var PLUGIN_VERSION = "1.7.0";
 /* token 上的血量（与 assets/track.js 的 KEY_HP 必须一字不差）。 */
 var KEY_HP = NS + "/hp";
 /* v1.6.0：血条组件开关。**独立键**，不塞进 hp（hp 是数值容器，写开关会误触发判空）；
@@ -128,12 +153,13 @@ var KEY_HPBAR = NS + "/hp-bar/enabled";
 var KEY_PLAYER_THRESHOLD = NS + "/settings.playerThreshold";
 
 /* ---------------------------------------------------------------------------
- * v1.6.0 像素常数集中区（s = 1 时的数值；真机微调只改这里 + barLayout()）
+ * v1.6.0 / v1.6.1 像素常数集中区（s = 1 时的数值；真机微调只改这里 + barLayout()）
  * ---------------------------------------------------------------------------
  * 说明见 docs/hpbar-boss-v16.md §3「像素常数集中表」。所有几何都由 s 缩放，
  * s = min(token 渲染宽, 高) / 网格 dpi，并夹在 0.2~6（上界防止 4×4 巨图把条画到屏外）。
  *   · HP 条 20 高、回复力条 12 高、两行间距 3（规格 §6.4 A）
- *   · 四防盾直径 30、离 token 内边 4（规格 §6.4 B；窄 token 退化不画）
+ *   · 四防盾直径 30、离 token 内边 4；**v1.6.1 起是一排**（强韧 / 反射 / 意志 + AC 最右），
+ *     盾与盾之间的水平间距 6（DEF_GAP），整排在 HP 条上方 3（gap）处（规格 §6.4 B 的四角已被 v1.6.1 取代）
  *   · Boss 环厚 10、内缩 2、48 段；名牌 26 高、离 token 顶 6（规格 §6.4 C/D）
  * zIndex 全部固定并 disableAutoZIndex：盾 15000 / 填充 20000 / 数值 30000，向下加密到 9500~31050。
  * ------------------------------------------------------------------------- */
@@ -143,6 +169,13 @@ var BAR_GAP = 3;
 var BAR_PAD = 2;
 var SHIELD_DIAMETER = 30;
 var SHIELD_INSET = 4;
+/* v1.6.1：四防改「一排」——相邻两枚盾之间空出的水平间隙（圆心间距 = 盾直径 + 这一段）。 */
+var DEF_GAP = 6;
+/* v1.6.1：AC 用半透明白色图标（强韧 / 反射 / 意志 仍是各自的实色）。 */
+var DEF_AC_FILL_OPACITY = 0.18;
+var DEF_AC_STROKE_OPACITY = 0.85;
+var DEF_FILL_OPACITY = 0.9;
+var DEF_STROKE_OPACITY = 0.45;
 var BOSS_RING_THICK = 10;
 var BOSS_RING_INSET = 2;
 var BOSS_RING_SEGMENTS = 48;
@@ -165,7 +198,12 @@ var COLOR_LOCK_ON = "#f85149";
 var COLOR_LOCK_OFF = "#93a1b0";
 var COLOR_DIVIDER = "#281719";
 var DEF_KEYS = ["ac", "fort", "reflex", "will"];
-var DEF_COLORS = { ac: "#3498db", fort: "#e3b341", reflex: "#56d364", will: "#a371f7" };
+/* v1.6.1：摆位顺序（从左到右）——**AC 永远在最右边**。DEF_KEYS 是读取 / 签名顺序，不要混用。 */
+var DEF_ROW = ["fort", "reflex", "will", "ac"];
+/* v1.6.1：窄 token 放不下时的**丢弃顺序**（先丢意志 → 再丢反射 → 再丢强韧；AC 不在这张表里 = 最后才丢）。 */
+var DEF_DROP = ["will", "reflex", "fort"];
+/* v1.6.1：AC 改成「半透明白」（fill 白 + 白描边），三防沿用 v1.6.0 的橙 / 绿 / 紫。 */
+var DEF_COLORS = { ac: "#ffffff", fort: "#e3b341", reflex: "#56d364", will: "#a371f7" };
 /* role → zIndex（规格 §6.3） */
 var BAR_Z = {
   "ring-bg": 9500,
@@ -222,10 +260,18 @@ var WIN_MARGIN = 16;
 var WIN_DRAG_IDLE_MS = 1500;
 var WIN_POS_KEY = "4enext/win-pos";
 var CH_WIN_DRAG = NS + "/win-drag";
+/* v1.7.0：骰子记录窗口的开关命令 / 状态回执（与 assets/common.js 必须一字不差）。
+ * CH_DICE_HIST_CMD   骰子窗口 → 后台：{ op: "toggle" | "open" | "close" }
+ * CH_DICE_HIST_STATE 后台 → 所有页面：{ open: bool }（骰子窗口的按钮据此显示开 / 关） */
+var CH_DICE_HIST_CMD = NS + "/dice-hist-cmd";
+var CH_DICE_HIST_STATE = NS + "/dice-hist-state";
 
 /* v1.4.0：先攻条（规格 §3.1 / §3.2）。
  * 与 assets/initiative.js 里的 STRIP_* 必须一字不差（dev/check.mjs 会对比两边的数字）。
  *   · 折叠 120×40；展开 720×(129 idle / 139 preparing / 159 combat)，最小 410，按视口 −32 夹紧
+ *     **v1.6.2：宽高是常量，不按内容测量**（v1.6.1 按 .strip-ctl 的 scrollWidth 算宽度，
+ *     投骰后点数 / 名字一变整条就跟着变窄 —— 现在页面报上来的尺寸还会被 snapStripSize() 兜一道，
+ *     内容再长由 .strip-items 内部横向滚动）
  *   · 始终贴在视口顶部的 TOP_OFFSET（45），以屏幕中线为锚点左右伸缩（CENTER/TOP）
  *   · 位置记忆只存「相对中线的偏移」{ v:1, dx, dy }，换屏幕 / 缩放后仍然贴顶居中 */
 var STRIP_COLLAPSED_W = 120;
@@ -289,6 +335,10 @@ var URL_INFO = pageUrl("info.html");
 /* v1.3.1：先攻 / 骰子各自独立的窗口页。 */
 var URL_INITIATIVE = pageUrl("initiative.html");
 var URL_DICE = pageUrl("dice.html");
+/* v1.7.0：骰子记录窗口（独立 popover）。
+ * 投骰动画页（effect.html）由**骰子窗口**自己 OBR.modal.open，后台不参与 ——
+ * 它不是可拖动的窗口，所以不注册进 WINS，也没有 URL 常量（地址在 assets/common.js 的 URL_EFFECT）。 */
+var URL_DICE_HIST = pageUrl("dice-history.html");
 /* v1.3.2：设置 / 关于窗口页。 */
 var URL_SETTINGS = pageUrl("settings.html");
 var URL_BIND = pageUrl("bind.html");
@@ -387,9 +437,12 @@ var WINS = {
   panel: { id: ID_PANEL, url: URL_PANEL, width: 960, height: 660 },
   /* v1.4.0：先攻的大窗口变成「列表窗口」（先攻条上的 ≡ 打开它），地址带 ?view=list。 */
   initiative: { id: ID_INIT_WIN, url: URL_INITIATIVE + "?view=list", width: 880, height: 640 },
-  /* v1.5.0：骰子窗口加宽（660×560 → 760×620）——两栏要放得下"骰子 + 表达式 + 预设 + 历史"。
+  /* v1.7.0：骰子窗口**变窄**（760×620 → 520×620）——记录搬去独立的记录窗口，
+   * 这里只放骰子 / 表达式 / 本次结果 / 4E 预设 / 组合（单列）。
    * 仍然走 winSize() 夹紧：小屏（如 1366×768）下实际尺寸 ≤ 视口 − 2×WIN_MARGIN。 */
-  dice: { id: ID_DICE_WIN, url: URL_DICE, width: 760, height: 620 },
+  dice: { id: ID_DICE_WIN, url: URL_DICE, width: 520, height: 620 },
+  /* v1.7.0：独立记录窗口（默认只显示最近 4 条，可展开全部；位置按窗口名单独记住）。 */
+  diceHistory: { id: ID_DICE_HIST, url: URL_DICE_HIST, width: 380, height: 380 },
   /* v1.3.2：设置 / 关于。左侧分栏 + 右侧内容，860×620 在 1366×768 上也放得下。 */
   settings: { id: ID_SETTINGS_WIN, url: URL_SETTINGS, width: 860, height: 620 }
 };
@@ -708,6 +761,69 @@ async function openWinOrNotify(name, where) {
 }
 
 /* ---------------------------------------------------------------------------
+ * 2.4) 骰子记录窗口（v1.7.0）：独立 popover，与骰子窗口各自开关
+ * ---------------------------------------------------------------------------
+ * 为什么不让骰子窗口自己 OBR.popover.open：
+ *   · 位置记忆 / 视口夹紧 / 拖动全在 WINS + winOpen 这一套里，页面自己开就对不上；
+ *   · 记录窗口要能被「骰子窗口的按钮」和「它自己的 ✕」两边关，开 / 关状态只有后台知道。
+ * 页面（assets/dice-page.js）只发 CH_DICE_HIST_CMD { op: "toggle"|"open"|"close" }，
+ * 这里执行完广播 CH_DICE_HIST_STATE { open }（骰子窗口的按钮据此显示「记录窗口 · 开 / 关」）。
+ * ------------------------------------------------------------------------- */
+function diceHistoryIsOpen() {
+  var st = winOpen["diceHistory"];
+  return !!(st && st.geom);
+}
+
+function broadcastDiceHistState() {
+  var payload = { open: diceHistoryIsOpen(), at: Date.now() };
+  try {
+    var p1 = OBR.broadcast.sendMessage(CH_DICE_HIST_STATE, payload, { destination: "LOCAL" });
+    if (p1 && typeof p1.catch === "function") p1.catch(function () { /* 忽略 */ });
+  } catch (e) { /* 忽略 */ }
+  try {
+    var p2 = OBR.broadcast.sendMessage(CH_DICE_HIST_STATE, payload, { destination: "REMOTE" });
+    if (p2 && typeof p2.catch === "function") p2.catch(function () { /* 忽略 */ });
+  } catch (e2) { /* 忽略 */ }
+}
+
+async function openDiceHistory() {
+  if (diceHistoryIsOpen()) return true;
+  try {
+    await openWin("diceHistory");
+    stepOk("骰子记录窗口：已打开");
+    return true;
+  } catch (e) {
+    stepFail("打开骰子记录窗口", e);
+    return false;
+  }
+}
+
+async function closeDiceHistory() {
+  if (!diceHistoryIsOpen()) return;
+  try {
+    await closeWin("diceHistory");
+    stepOk("骰子记录窗口：已关闭");
+  } catch (e) {
+    stepFail("关闭骰子记录窗口", e);
+  }
+}
+
+/** 频道：com.4enext-owlbear/dice-hist-cmd，payload = { op }。 */
+async function onDiceHistCmd(ev) {
+  var data = ev && ev.data !== undefined ? ev.data : ev;
+  var op = data && typeof data.op === "string" ? data.op : "toggle";
+  try {
+    if (op === "close") await closeDiceHistory();
+    else if (op === "open") await openDiceHistory();
+    else if (diceHistoryIsOpen()) await closeDiceHistory();
+    else await openDiceHistory();
+  } catch (e) {
+    pageLog("err", "骰子记录窗口命令失败：" + errText(e));
+  }
+  broadcastDiceHistState();
+}
+
+/* ---------------------------------------------------------------------------
  * 2.5) 先攻条（v1.4.0）：贴在屏幕顶部的条
  * ---------------------------------------------------------------------------
  * 为什么不复用 openWin：
@@ -733,10 +849,23 @@ function stripHeightFor(phase) {
   return STRIP_H_IDLE;
 }
 
-/** 展开宽度：默认 720，按视口 − 2×16 夹紧，最小 410（规格 §3.3 / §3.6）。 */
+/** 展开宽度（v1.6.2：常量 720，只有视口太窄时才缩；**不读任何 DOM 尺寸**）。
+ *  = max(410, min(720, 视口宽 − 2×16))，规格 §3.3 / §3.6。 */
 function stripWidthFor(vp) {
   var avail = vp && vp.width > 0 ? vp.width - STRIP_SIDE_MARGIN * 2 : STRIP_EXPANDED_W;
   return Math.round(Math.max(STRIP_MIN_EXPANDED_W, Math.min(STRIP_EXPANDED_W, avail)));
+}
+
+/** v1.6.2：页面报上来的尺寸只允许落在「折叠 120×40」或「展开 stripWidthFor(视口) × 三档高」上。
+ * 为什么要兜一道：v1.6.1 的页面把控制行的 scrollWidth 当宽度传上来（投骰后点数 / 名字一变就变），
+ * 场景就是「先攻条随投骰内容缩短」。这里把任何测量值丢掉，只认常量。 */
+var STRIP_H_ALLOWED = [STRIP_H_IDLE, STRIP_H_PREPARING, STRIP_H_COMBAT];
+function snapStripSize(w, h) {
+  if (w === STRIP_COLLAPSED_W && h === STRIP_COLLAPSED_H) {
+    return { width: STRIP_COLLAPSED_W, height: STRIP_COLLAPSED_H };
+  }
+  var height = STRIP_H_ALLOWED.indexOf(h) >= 0 ? h : STRIP_H_IDLE;
+  return { width: stripWidthFor(stripGeom ? stripGeom.vp : null), height: height };
 }
 
 function readStripOffset() {
@@ -963,8 +1092,10 @@ function onStripCmd(ev) {
     if (!stripGeom) return;
     var w = typeof data.width === "number" && isFinite(data.width) ? Math.round(data.width) : stripGeom.width;
     var h = typeof data.height === "number" && isFinite(data.height) ? Math.round(data.height) : stripGeom.height;
-    stripGeom.width = w;
-    stripGeom.height = h;
+    /* v1.6.2：只收常量尺寸（页面若还按内容测量，数字在这里被丢掉）。 */
+    var snapped = snapStripSize(w, h);
+    stripGeom.width = snapped.width;
+    stripGeom.height = snapped.height;
   }
 }
 
@@ -1684,7 +1815,8 @@ async function sceneReady() {
  * 做法照抄参考实现 FullPeople/obr-suite 的 src/modules/bubbles/index.ts：
  *   · 不是「改 token 让 OBR 原生长血条」（OBR 没有这个能力），而是给 token 挂
  *     **本地图形子 item**。v1.5.0 是三件（Curve 底条 + Curve 填充 + Text 数字）；
- *     v1.6.0 扩成 role 表：HP 两行条 + 四角盾 + Boss 环 / 名牌 / 分段 / 锁（最多 23 件），
+ *     v1.6.0 扩成 role 表：HP 两行条 + 四防盾 + Boss 环 / 名牌 / 分段 / 锁（最多 23 件），
+ *     v1.6.1 把四防从四角改成**一排**（盾的 role / zIndex / 件数都没变，只改摆位与 AC 样式），
  *     attachedTo = token id、layer = "ATTACHMENT"、disableHit、locked、固定 zIndex。
  *   · 用 OBR.scene.local.* 而不是 OBR.scene.items.* ：本地图形只在自己这台机器上画，
  *     不需要场景写权限 —— 玩家也能看到血条（场景写权限只有 GM 有）。
@@ -1936,8 +2068,9 @@ function roundRectPoints(w, h, r, fill) {
   );
 }
 
-/** 由 token 的世界包围盒推出「一组几何」：HP 行 / 回复力行 / 四角盾 / Boss 环+名牌。
- *  v1.6.0 只是**加字段**，syncBars 的调用方式不变（规格 §6.4 / 附录 B 第 2 条）。
+/** 由 token 的世界包围盒推出「一组几何」：HP 行 / 回复力行 / 四防一排 / Boss 环+名牌。
+ *  v1.6.0 只是**加字段**，syncBars 的调用方式不变（规格 §6.4 / 附录 B 第 2 条）；
+ *  v1.6.1 只改四防的摆位与 AC 样式（HP 行 / 回复力行 / Boss 几何一个字没动）。
  *  viewer = { exact, threshold }：exact=false 时（其他玩家 + locked）比例按阶梯量化、不画数字与四防。 */
 function barLayout(bounds, dpi, hp, viewer) {
   var max = hp.max > 0 ? hp.max : (hp.cur !== null ? Math.max(1, hp.cur) : 1);
@@ -1976,25 +2109,54 @@ function barLayout(bounds, dpi, hp, viewer) {
     ? (String(surgeValue) + (hp.surgesMax !== null ? "/" + hp.surgesMax : "")) : "";
   var surgeFont = Math.max(5 * s, Math.min(hSurge * 0.95, (w / Math.max(3, surgeText.length || 3)) * 1.4));
 
-  /* B. 四防四角盾：底排让位给血条；窄 token / 矮 token 退化不画（规格 §6.4 B 的写死规则） */
+  /* B. v1.6.1：四防**一排**（原来四角的那套已删）
+   *    顺序固定 强韧 → 反射 → 意志 → AC（AC 永远最右、半透明白色图标）；
+   *    整排贴在 HP 红条上方 gap 处（同一行，y 相同），圆心间距 = d + DEF_GAP，按 s 缩放；
+   *    整排以 token 中线居中，右缘不会越过条的右缘（可用宽度就是条的宽 w 减两侧 inset）。
+   *    退化（写死规则，选「丢盾」而不是「整体缩小」）：
+   *      宽度只放得下 n 枚时，**AC 优先保留**，其余按 DEF_DROP 丢（先丢意志 → 再丢反射 → 再丢强韧）；
+   *      位置按剩下的枚数重新居中，不留空档；一枚都放不下、或这一排会顶出 token 上沿（矮 token）
+   *      → 整排不画，四防仍能在速览面板里看。 */
   var d = SHIELD_DIAMETER * s;
   var inset = SHIELD_INSET * s;
-  var yT = bounds.min.y + inset + d / 2;
-  var yB = hpTop - gap - d / 2;
-  var showDefenses = !!hp.defenses && exact && bounds.width >= 2 * d + 4 * inset && yB > yT;
+  var defGap = DEF_GAP * s;
+  var rowCY = hpTop - gap - d / 2;
+  var availW = w - inset * 2;
+  var fit = Math.floor((availW + defGap) / (d + defGap));
+  var showDefenses = !!hp.defenses && exact && fit >= 1 && rowCY - d / 2 >= bounds.min.y + inset;
   var shields = [];
   if (showDefenses) {
-    var xL = bounds.min.x + inset + d / 2;
-    var xR = bounds.max.x - inset - d / 2;
-    var spots = [[xL, yT], [xR, yT], [xL, yB], [xR, yB]];
-    for (var i = 0; i < DEF_KEYS.length; i++) {
-      var k = DEF_KEYS[i];
+    /* 先把「真的有数字」的那几项按 DEF_ROW 的顺序摆上，再按 DEF_DROP 丢掉放不下的：
+     * 先丢意志 → 再丢反射 → 再丢强韧（AC 不在 DEF_DROP 里 = **最后才丢 / 优先保留**）。 */
+    var rowKeys = [];
+    var i;
+    for (i = 0; i < DEF_ROW.length; i++) {
+      if (typeof hp.defenses[DEF_ROW[i]] === "number") rowKeys.push(DEF_ROW[i]);
+    }
+    while (rowKeys.length > Math.max(1, fit)) {
+      var dropped = false;
+      for (i = 0; i < DEF_DROP.length; i++) {
+        var at = rowKeys.indexOf(DEF_DROP[i]);
+        if (at < 0) continue;
+        rowKeys.splice(at, 1);
+        dropped = true;
+        break;
+      }
+      if (!dropped) break;   /* 只剩 AC 了：AC 最后才丢（fit < 1 时上面已经整排不画） */
+    }
+    var rowW = rowKeys.length * d + Math.max(0, rowKeys.length - 1) * defGap;
+    var xFirst = bounds.center.x - rowW / 2 + d / 2;
+    for (i = 0; i < rowKeys.length; i++) {
+      var k = rowKeys[i];
       var val = hp.defenses[k];
-      if (typeof val !== "number") continue;
       var txt = String(val);
+      /* AC = 半透明白色图标（fill 白 @0.18 + 白描边 @0.85）；三防 = 实色 @0.9 + 淡白描边 */
+      var ghost = k === "ac";
       shields.push({
-        key: k, value: val, text: txt, x: spots[i][0], y: spots[i][1], d: d,
-        color: DEF_COLORS[k],
+        key: k, value: val, text: txt, x: xFirst + i * (d + defGap), y: rowCY, d: d,
+        color: DEF_COLORS[k], ghost: ghost,
+        fillOpacity: ghost ? DEF_AC_FILL_OPACITY : DEF_FILL_OPACITY,
+        strokeOpacity: ghost ? DEF_AC_STROKE_OPACITY : DEF_STROKE_OPACITY,
         fontSize: Math.max(8 * s, txt.length > 2 ? d - 15 * s : d - 8 * s)
       });
     }
@@ -2042,12 +2204,14 @@ function barLayout(bounds, dpi, hp, viewer) {
   };
 }
 
-/** 角色集合指纹：一变就整体重建（Boss 开关 / 分段数 / 有无蓝条 / 有无盾 / 是否画数字）。 */
+/** 角色集合指纹：一变就整体重建（Boss 开关 / 分段数 / 有无蓝条 / 画了哪几枚盾 / 是否画数字）。
+ *  v1.6.1：盾要带上 **key 列表**而不只是数量 —— 窄 token 退化会改数量，换一组四防也可能「数量不变、key 变了」，
+ *  只比数量会让 patchBar 找不到对应的盾（数字就停在旧位置）。 */
 function barRolesKey(L) {
   return [
     L.boss.enabled ? "B" + L.boss.segments + (L.boss.phaseW > 0 ? "p" : "") : "",
     L.showSurge ? "S" : "",
-    L.shields.length ? "D" + L.shields.length : "",
+    L.shields.length ? "D" + L.shields.map(function (x) { return x.key; }).join("") : "",
     L.textVisible ? "T" : ""
   ].join("");
 }
@@ -2195,17 +2359,18 @@ function buildBarItems(tokenId, L) {
     }
   }
 
-  /* 5) 四防四角盾 + 数字（zIndex 15000 / 16000） */
+  /* 5) 四防一排（v1.6.1）+ 数字（zIndex 15000 / 16000）
+   *    一排四枚：强韧 / 反射 / 意志 实色，AC 最右且**半透明白色图标**（fill 白 @0.18 + 白描边 @0.85）。 */
   for (i = 0; i < L.shields.length; i++) {
     var sh = L.shields[i];
     items.push(barCurveItem(tokenId, "shield", shieldPoints(sh.d, sh.d), sh.x - sh.d / 2, sh.y - sh.d / 2,
       {
-        fill: sh.color, fillOpacity: 0.9, stroke: "#ffffff", strokeOpacity: 0.45,
+        fill: sh.color, fillOpacity: sh.fillOpacity, stroke: "#ffffff", strokeOpacity: sh.strokeOpacity,
         strokeWidth: Math.max(0.6, sh.d * 0.04), extra: { key: sh.key }
       }));
     items.push(barTextItem(tokenId, "shield-text", sh.text, sh.fontSize, "#ffffff",
       sh.x - sh.d / 2, sh.y - sh.d / 2, sh.d, sh.d,
-      { strokeWidth: Math.max(0.4, sh.d * 0.02), extra: { key: sh.key } }));
+      { strokeWidth: Math.max(0.4, sh.d * 0.02), strokeOpacity: sh.ghost ? 0.85 : 0.7, extra: { key: sh.key } }));
   }
 
   /* 6) Boss 分段线（zIndex 22000；只做视觉，不改血量） */
@@ -2958,7 +3123,9 @@ function rollNorm(raw) {
   if (raw.itemId) out.itemId = rollText(raw.itemId, 80);
   return out;
 }
-/** 幂等合并：同 rollId 不重复插 → 按 ts 倒序 → 封顶 40。 */
+/** 幂等合并：同 rollId 不重复插 → 按 ts 倒序 → 封顶 40。
+ *  **超过 40 条时删掉最旧的那条**：倒序后 slice(0, 40) 砍掉的正是 ts 最小的尾巴，
+ *  与 dice-core.js 的 mergeRollRows 是同一行为（dev/test-dice.mjs 第 13 条钉死）。 */
 function rollMerge(rows, incoming) {
   var list = Array.isArray(rows) ? rows.slice() : [];
   var row = rollNorm(incoming);
@@ -3190,6 +3357,9 @@ async function boot() {
   });
   await attempt("订阅 " + CH_ROLL_CLEAR + "（清空骰子记录）", function () {
     OBR.broadcast.onMessage(CH_ROLL_CLEAR, onRollClear);
+  });
+  await attempt("订阅 " + CH_DICE_HIST_CMD + "（记录窗口开关）", function () {
+    OBR.broadcast.onMessage(CH_DICE_HIST_CMD, onDiceHistCmd);
   });
   await attempt("订阅 viewport.onChange", function () {
     if (!OBR.viewport || typeof OBR.viewport.onChange !== "function") return; /* 旧版 SDK 没有 */

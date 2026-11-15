@@ -1,4 +1,7 @@
 // v1.5.0 骰子自测（无浏览器 / 无 OBR）：直接 import 纯函数模块。
+// v1.7.0 扩充：独立记录窗口的「41 条 → 40 且删最旧」、动画布局 / 时间轴常量（fxBaseSize / fxBeat / fxLayout / fxQuery）、
+//   以及「动画关掉时投掷**不调用** OBR.modal.open、开着时参数是 fullScreen + hideBackdrop + hidePaper +
+//   disablePointerEvents」；4E 预设只剩攻击 / 伤害 / 技能（豁免、先攻已删）。
 // ---------------------------------------------------------------------------
 // 覆盖规格 §8 的 16 条，外加用户拍板的三条（重击取满 / 战斗优势 +2 / 总和不含判定）：
 //   1. parseExpr("1d20+12") 结构正确，formatExpr 幂等
@@ -16,7 +19,7 @@
 //  13. 房间数据合并：重复 rollId 幂等、按 ts 倒序、封顶 40
 //  14. 40 条样例 JSON < 12000 字符（16 KB 的 75%）
 //  15. 频道常量 common.js ↔ background.core.js 逐字一致
-//  16. 窗口 760×620 在 1366×768 下仍 ≤ 视口 − 2×16
+//  16. 骰子窗口 520×620（v1.7.0）在 1366×768 下仍 ≤ 视口 − 2×16
 //   + 重击：2d6+3 全取 6，total = 15；带 adv 包裹时退化为普通投掷并提示
 //   + 战斗优势：+2 / −2 可逆，且直接进 modifier
 //   + 总和不含判定：total 只由骰子 + 加值决定
@@ -249,8 +252,16 @@ console.log("== 7 4E 预设");
 const presets = P.presetsFor(CHAR);
 const g = G.deriveGlance(CHAR);
 const keys = presets.groups.map((x) => x.key).join(",");
-if (presets.ok && keys === "attack,damage,save,skill,init") ok("presetsFor → 攻击 / 伤害 / 豁免 / 技能 / 先攻 五组");
-else bad("预设分组不对：" + keys);
+if (presets.ok && keys === "attack,damage,skill") ok("presetsFor → 攻击 / 伤害 / 技能 三组（v1.7.0 删掉豁免 / 先攻）");
+else bad("预设分组不对（该是 attack,damage,skill）：" + keys);
+{
+  const src4e = fs.readFileSync(path.join(ROOT, "assets", "dice-4e.js"), "utf8");
+  const code4e = src4e.replace(/\/\*[\s\S]*?\*\//g, " ").replace(/(^|[^:])\/\/[^\n]*/g, "$1 ");
+  if (code4e.indexOf("豁免") < 0 && code4e.indexOf("先攻") < 0 && code4e.indexOf('key: "save"') < 0 &&
+    code4e.indexOf('key: "init"') < 0 && code4e.indexOf("initiativeBonus") < 0)
+    ok("dice-4e.js 里没有豁免 / 先攻预设（代码里连字样都没了）");
+  else bad("dice-4e.js 里还留着豁免 / 先攻预设");
+}
 if (presets.defenses.length === 4 && presets.defenses.map((d) => d.key).join(",") === "ac,fort,ref,will")
   ok("防御参考 = AC / 强韧 / 反射 / 意志（只显示数值，不判定）");
 else bad("防御参考不对：" + JSON.stringify(presets.defenses));
@@ -262,20 +273,15 @@ const dmgItem = presets.groups[1].items[0];
 if (dmgItem && dmgItem.expr === P.withModifier(g.damages[0].dice || "1d8", g.damages[0].total))
   ok("伤害预设 = 武器骰 + glance.damages[0].total（" + g.damages[0].total + "）");
 else bad("伤害预设不对：" + JSON.stringify(dmgItem));
-const saveItem = presets.groups[2].items[0];
-if (saveItem && saveItem.expr === "1d20" && presets.groups[2].items.length === 1)
-  ok("豁免预设只有 1d20（4E 标准 ≥10，本插件不判定成败）");
-else bad("豁免预设不对：" + JSON.stringify(saveItem));
-const skillItems = presets.groups[3].items;
+const skillItems = presets.groups[2].items;
 const skillHit = skillItems.filter((s) => s.name === "侦查")[0];
 const glanceSkill = (g.skills || []).filter((s) => s.name === "侦查")[0];
 if (skillHit && glanceSkill && skillHit.expr === P.withModifier("1d20", glanceSkill.total))
   ok("技能预设 = 1d20 + glance.skills[].total（侦查 " + glanceSkill.total + "，共 " + skillItems.length + " 项）");
 else bad("技能预设不对");
-const initItem = presets.groups[4].items[0];
-if (initItem && initItem.expr === P.withModifier("1d20", G.initiativeBonus(CHAR)))
-  ok("先攻预设 = 1d20 + initiativeBonus（" + G.initiativeBonus(CHAR) + "）");
-else bad("先攻预设不对：" + JSON.stringify(initItem));
+if (presets.groups.filter((x) => x.key === "save" || x.key === "init").length === 0)
+  ok("豁免 / 先攻两组已从 presetsFor 里删掉（先攻由先攻条负责）");
+else bad("presetsFor 里还有 save / init 组");
 const dice4eSrc = fs.readFileSync(path.join(ROOT, "assets", "dice-4e.js"), "utf8");
 if (dice4eSrc.indexOf("10 + half") < 0 && dice4eSrc.indexOf("half + mods") < 0)
   ok("dice-4e.js 里没有重算公式（不含 \"10 + half\"）");
@@ -318,11 +324,68 @@ const margin = 16;
 if (winMatch) {
   const w = Math.min(+winMatch[1], vp.width - margin * 2);
   const h = Math.min(+winMatch[2], vp.height - margin * 2);
-  if (w === 760 && h === 620 && w <= 1334 && h <= 736)
-    ok("骰子窗口 760×620，在 1366×768 下 = " + w + "×" + h + "（≤ 视口 − 2×16）");
+  if (w === 520 && h === 620 && w <= 1334 && h <= 736)
+    ok("骰子窗口 520×620（v1.7.0 收窄），在 1366×768 下 = " + w + "×" + h + "（≤ 视口 − 2×16）");
   else bad("窗口尺寸不对：" + w + "×" + h);
 } else bad("WINS.dice 没找到（骰子窗口尺寸读不到）");
 
+/* ---------------------------------------------------------------------------
+ * 8.5 投骰动画（v1.7.0）：布局 / 时间轴 / URL 参数（纯函数，node 直接测）
+ * ------------------------------------------------------------------------- */
+console.log("== 8.5 投骰动画常量与布局");
+const beat = D.fxBeat();
+if (beat.flight === 1200 && beat.hold === 500 && beat.punch === 360 && beat.hold2 === 220 &&
+  beat.exit === 320 && beat.slot === 55 && beat.total === 2600)
+  ok("时间轴 = 1200 / 500 / 360 / 220 / 320（合计 2600 ms）+ 数字老虎机 55 ms（规格 §4.4）");
+else bad("时间轴常量不对：" + JSON.stringify(beat));
+const arcHeights = beat.arcs.map((a) => a.height).join(",");
+if (beat.arcs.length === 4 && arcHeights === "240,72.6,21.96,6.64")
+  ok("四段抛物线弧高 = 240 / 72.6 / 21.96 / 6.64（H0 * r^(2i)，H0 = 240、r = 0.55）");
+else bad("弧高不对：" + arcHeights);
+const arcEnds = beat.arcs.map((a) => a.to).join(",");
+if (Math.abs(beat.arcs[0].to - 0.4953) < 0.001 && beat.arcs[3].to === 1)
+  ok("四段时长占比累计到 100%（第一段 ≈ 49.53%，与 CSS 关键帧的 49.53% / 76.77% / 91.76% 对应）");
+else bad("段时长占比不对：" + arcEnds);
+const b1 = D.fxBaseSize(1), b2 = D.fxBaseSize(2), b5 = D.fxBaseSize(5), b20 = D.fxBaseSize(20);
+if (b1 === 128 && b2 === 110 && b5 === 72 && b20 === 72)
+  ok("fxBaseSize：1 颗 128 / 2 颗 110 / 5 颗起被 72 兜住（128 * 0.86^(N-1)，最小 72）");
+else bad("fxBaseSize 不对：" + [b1, b2, b5, b20].join(","));
+const sz20 = D.fxDieSize(b1, "d20"), sz4 = D.fxDieSize(b1, "d4"), sz100 = D.fxDieSize(b1, "d100");
+if (sz20 === 128 && sz4 < sz20 && sz100 > sz20)
+  ok("fxDieSize：d4 " + sz4 + " < d20 " + sz20 + " < d100 " + sz100 + "（类型系数生效）");
+else bad("fxDieSize 不对：" + [sz4, sz20, sz100].join(","));
+const lay3 = D.fxLayout([{ type: "d6" }, { type: "d6" }, { type: "d6" }]);
+if (lay3.rowCount === 1 && lay3.slots.length === 3 && Math.abs(lay3.slots[0].ox + lay3.slots[2].ox) <= 2 &&
+  lay3.gap === Math.round(lay3.baseSize * 0.16) && lay3.totalTop === Math.round(-lay3.baseSize / 2 - 64))
+  ok("fxLayout：3 颗一行、左右居中（ox 对称）、gap = round(BASE*0.16)、totalTop = -BASE/2-64");
+else bad("fxLayout（3 颗）不对：" + JSON.stringify(lay3));
+const lay5 = D.fxLayout([{ type: "d6" }, { type: "d6" }, { type: "d6" }, { type: "d6" }, { type: "d6" }]);
+if (lay5.rowCount === 2 && lay5.slots.length === 5 && lay5.modTop > 0)
+  ok("fxLayout：5 颗换成 2 行（每行最多 4），modBox.top = lastRowOy + BASE/2 + 28");
+else bad("fxLayout（5 颗）不对：" + JSON.stringify(lay5));
+const lay21 = D.fxLayout(new Array(21).fill({ type: "d20" }));
+if (lay21.count === 20 && lay21.hidden === 1)
+  ok("一次最多画 20 颗（FX_MAX_DICE），多出来的计入 hidden（总点数仍按真实结果）");
+else bad("FX_MAX_DICE 上限没生效：" + lay21.count + "/" + lay21.hidden);
+const q = D.fxQuery({ rollId: "r-1", dice: [{ type: "d20", value: 14 }], total: 26, modifier: 12, label: "攻击" }, { x: 12.34, y: -5.6 });
+const sp = new URLSearchParams(q);
+if (sp.get("dtypes") === "d20" && sp.get("dvalues") === "14" && sp.get("total") === "26" &&
+  sp.get("modifier") === "12" && sp.get("wx") === "12.34" && sp.get("wy") === "-5.6")
+  ok("fxQuery：dtypes / dvalues / total / modifier / wx / wy 都能原样解析回来（动画页参数协议）");
+else bad("fxQuery 参数不对：" + q);
+
+/* 13b. 41 条 → 40 条，被删的是最旧的一条 */
+const forty = [];
+for (let i = 1; i <= 40; i++) {
+  forty.push({ rollId: "cap" + i, ts: 1000 + i, rollerName: "甲", expression: "1d20", dice: [{ type: "d20", value: 10 }], total: 10 });
+}
+const fortyOne = D.mergeRollRows(forty, {
+  rollId: "cap41", ts: 1041, rollerName: "甲", expression: "1d20", dice: [{ type: "d20", value: 11 }], total: 11
+});
+const capIds = fortyOne.map((r) => r.rollId);
+if (fortyOne.length === 40 && capIds[0] === "cap41" && capIds.indexOf("cap1") < 0 && capIds.indexOf("cap2") >= 0)
+  ok("41 条 → 只剩 40 条，最旧的一条（ts 最小）被删掉、最新的排最前（不是只截断显示）");
+else bad("40 条封顶不是「删最旧」：" + fortyOne.length + " 条，首条 " + capIds[0] + "，还含 cap1=" + (capIds.indexOf("cap1") >= 0));
 /* ---------------------------------------------------------------------------
  * 9. 假 OBR 冒烟：dice.html 的脚本能初始化、能掷一次并广播（不启动浏览器）
  * ------------------------------------------------------------------------- */
@@ -380,6 +443,8 @@ domMap.diceRow.querySelectorAll = (sel) => (sel === "[data-die]" ? diceButtons :
 
 const sentRolls = [];
 const sentClears = [];
+const sentCmds = [];
+const modalOpens = [];
 const readyCbs = [];
 const fakeRoom = {};
 const fakeOBR = {
@@ -413,6 +478,7 @@ const fakeOBR = {
       const ch = String(channel);
       if (ch.slice(-5) === "/roll") sentRolls.push(data);
       else if (ch.slice(-11) === "/roll-clear") sentClears.push(data);
+      else if (ch.slice(-14) === "/dice-hist-cmd") sentCmds.push(data);
       return Promise.resolve();
     },
     onMessage() { return () => {}; }
@@ -420,7 +486,13 @@ const fakeOBR = {
   popover: { open: async () => {}, close: async () => {} },
   viewport: { getWidth: async () => 1200, getHeight: async () => 800, onChange() { return () => {}; } },
   tool: { create: async () => {}, remove: async () => {} },
-  modal: { open: async () => {}, close: async () => {} },
+  /* v1.7.0：记录动画 modal 的调用（断言「开关关掉时不调用」用） */
+  modal: {
+    opens: modalOpens,
+    open: async (cfg) => { modalOpens.push(cfg); },
+    close: async () => {},
+    getId: () => "com.4enext-owlbear/dice-effect-test"
+  },
   action: { open: async () => {}, close: async () => {} }
 };
 
@@ -488,8 +560,37 @@ else {
       } else bad("投掷广播不对：" + JSON.stringify(sent));
       if (domMap.result.innerHTML.indexOf("res-total") >= 0) ok("结果面板画出了总点数");
       else bad("结果面板没有渲染");
-      if (domMap.list.innerHTML.indexOf("hist-row") >= 0) ok("右栏历史插入了本次投掷（乐观显示）");
-      else bad("右栏历史没有更新");
+      /* 投骰动画（v1.7.0）：默认开 → 打开 effect.html，参数照抄规格 §4.1 */
+      const first = modalOpens[0] || null;
+      const firstUrl = first ? decodeURIComponent(String(first.url)) : "";
+      if (first && firstUrl.indexOf("effect.html?") >= 0 && firstUrl.indexOf("dtypes=d6,d6") >= 0 &&
+        firstUrl.indexOf("total=") >= 0 && first.fullScreen === true && first.hideBackdrop === true &&
+        first.hidePaper === true && first.disablePointerEvents === true)
+        ok("默认开动画：OBR.modal.open(effect.html, fullScreen + hideBackdrop + hidePaper + disablePointerEvents)");
+      else bad("动画 modal 参数不对：" + JSON.stringify(first));
+
+      /* 记录窗口按钮：点一下发 CH_DICE_HIST_CMD（后台负责开 / 关，回 CH_DICE_HIST_STATE） */
+      const histClicks = (domMap.btnHist.listeners.click || []);
+      if (histClicks.length) {
+        const cmdBefore = sentCmds.length;
+        histClicks[0]({ preventDefault() {} });
+        const cmd = sentCmds[sentCmds.length - 1] || null;
+        if (sentCmds.length === cmdBefore + 1 && cmd && cmd.op === "toggle")
+          ok("「记录窗口」按钮广播 CH_DICE_HIST_CMD { op: \"toggle\" }（与骰子窗口各自开关）");
+        else bad("记录窗口按钮没有发 toggle 命令：" + JSON.stringify(cmd));
+      } else bad("「记录窗口」按钮没有绑定 click");
+
+      /* 关掉动画 → 不再打开 modal，但投掷本身照常 */
+      lsStore["4enext/dice/anim"] = "0";
+      const opensBefore = modalOpens.length;
+      const rollsBefore = sentRolls.length;
+      await sleep(320); /* 等第一投的 busy 解锁（260 ms） */
+      clicks[0]({ preventDefault() {} });
+      await sleep(80);
+      if (modalOpens.length === opensBefore) ok("动画关掉时投掷**不调用** OBR.modal.open（result 面板照常）");
+      else bad("动画关掉后仍然打开了 modal");
+      if (sentRolls.length > rollsBefore) ok("关掉动画不影响投掷本身（CH_ROLL 仍然发出）");
+      else bad("关掉动画后投掷没有广播");
     } catch (e2) {
       bad("投掷流程抛错：" + (e2 && e2.message ? e2.message : e2));
     }
@@ -507,6 +608,163 @@ else {
     else bad("战斗优势按钮不对：" + after + " / " + domMap.exprInput.value);
   }
 }
+
+/* ---------------------------------------------------------------------------
+ * 10. 假 DOM 冒烟：动画页 / 记录页的脚本真的能跑起来（不启动浏览器）
+ * ------------------------------------------------------------------------- */
+console.log("== 10 动画页 / 记录页 假 DOM 冒烟");
+
+function makeEl2(tag) {
+  const el = {
+    tagName: String(tag || "div").toUpperCase(), id: "", className: "", textContent: "", innerHTML: "",
+    hidden: false, dataset: {}, attrs: {}, children: [], listeners: {},
+    style: {
+      props: {},
+      setProperty(k, v) { el.style.props[k] = String(v); },
+      getPropertyValue(k) { return el.style.props[k] || ""; }
+    },
+    classList: makeClassList(),
+    appendChild(c) { el.children.push(c); return c; },
+    addEventListener(t, fn) { (el.listeners[t] = el.listeners[t] || []).push(fn); },
+    removeEventListener() {},
+    setAttribute(k, v) { el.attrs[k] = String(v); },
+    getAttribute(k) { return el.attrs[k] === undefined ? null : el.attrs[k]; },
+    querySelector() { return null; },
+    querySelectorAll() { return []; },
+    closest() { return null; },
+    hasPointerCapture() { return false; },
+    setPointerCapture() {},
+    releasePointerCapture() {},
+    offsetWidth: 10
+  };
+  return el;
+}
+
+const savedTimers = {
+  setTimeout: globalThis.setTimeout, clearTimeout: globalThis.clearTimeout,
+  setInterval: globalThis.setInterval, clearInterval: globalThis.clearInterval,
+  raf: globalThis.requestAnimationFrame, caf: globalThis.cancelAnimationFrame
+};
+const fxTimers = [];
+const fxIntervals = [];
+const rafQueue = [];
+globalThis.setTimeout = (fn, ms) => { fxTimers.push({ fn, ms }); return savedTimers.setTimeout(fn, ms); };
+globalThis.setInterval = (fn, ms) => { fxIntervals.push({ fn, ms }); return savedTimers.setInterval(fn, ms); };
+globalThis.requestAnimationFrame = (fn) => { rafQueue.push(fn); return rafQueue.length; };
+globalThis.cancelAnimationFrame = () => {};
+globalThis.window = { innerWidth: 1200, innerHeight: 800, addEventListener() {} };
+
+/* ---- 10.1 effect.html：按 URL 参数摆骰子、落地定数、播完自己关 ---- */
+const fxIds = ["fx-stage", "fx-flash", "fx-wrap", "fx-total", "fx-total-num", "fx-mod", "fx-mod-num", "fx-mod-label"];
+const fxDom = {};
+for (const id of fxIds) fxDom[id] = makeEl2("div");
+globalThis.location = { href: "https://example.test/effect.html", protocol: "https:", search: "?dtypes=d20&dvalues=14&total=14&modifier=0&rollId=r-fx&wx=100&wy=200" };
+globalThis.document = {
+  getElementById: (id) => fxDom[id] || makeEl2("div"),
+  querySelectorAll: () => [],
+  addEventListener() {},
+  createElement: (tag) => makeEl2(tag),
+  body: makeEl2("body")
+};
+const closedModals = [];
+fakeOBR.modal.close = async (id) => { closedModals.push(id); };
+fakeOBR.viewport.getPosition = async () => ({ x: 0, y: 0 });
+fakeOBR.viewport.getScale = async () => 2;
+
+function copyPageWithStub(name) {
+  let src = fs.readFileSync(path.join(ROOT, "assets", name), "utf8");
+  src = src.replace('from "../vendor/obr-sdk.js"', 'from "../vendor/obr-stub.mjs"');
+  fs.writeFileSync(path.join(tmp, "assets", name), src, "utf8");
+}
+copyPageWithStub("effect-page.js");
+const readyBeforeFx = readyCbs.length;
+let fxErr = null;
+try {
+  await import(pathToFileURL(path.join(tmp, "assets", "effect-page.js")).href + "?fx=1");
+} catch (e) { fxErr = e; }
+if (fxErr) bad("effect-page.js 加载就抛错：" + (fxErr && fxErr.message ? fxErr.message : fxErr));
+else ok("effect-page.js 能在假 OBR + 假 DOM 下加载");
+for (const cb of readyCbs.slice(readyBeforeFx)) cb();
+await sleep(40);
+const wrapEl = fxDom["fx-wrap"];
+if (wrapEl.children.length === 1) ok("按 dtypes/dvalues 建出 1 颗骰子（DOM 挂到 .fx-wrap 上）");
+else bad("动画页没有建出骰子：children=" + wrapEl.children.length);
+const dieEl = wrapEl.children[0] || null;
+if (dieEl && dieEl.style.width === "128px" && dieEl.style.props["--dice-size"] === "128px" &&
+  dieEl.style.props["--fx-flight"] === "1200ms" && dieEl.style.left === "-64px" && dieEl.style.top === "-64px")
+  ok("单颗骰子 128×128、飞行 1200ms、按 fxLayout 的槽位居中摆放（left/top = ox-64 / oy-64）");
+else bad("骰子尺寸 / 位置不对：" + JSON.stringify(dieEl && { w: dieEl.style.width, p: dieEl.style.props, l: dieEl.style.left, t: dieEl.style.top }));
+if (rafQueue.length) { rafQueue.shift()(); }
+await sleep(30);
+if (fxDom["fx-wrap"].style.props["--tx"] === "200px" && fxDom["fx-wrap"].style.props["--ty"] === "400px")
+  ok("世界坐标投影：sx = 100*2 + 0 = 200px，sy = 200*2 + 0 = 400px（scale 来自 viewport）");
+else bad("投影不对：" + fxDom["fx-wrap"].style.props["--tx"] + " / " + fxDom["fx-wrap"].style.props["--ty"]);
+const settleTimer = fxTimers.filter((t) => t.ms === 1200).pop();
+if (settleTimer) { settleTimer.fn(); }
+const numEl = dieEl ? dieEl.children[0].children[1] : null;
+if (numEl && numEl.textContent === "14" && numEl.classList.contains("snap"))
+  ok("落地时数字定住真实点数（14）并加 .snap（老虎机停）");
+else bad("落地数字不对：" + (numEl ? numEl.textContent : "没有 num 元素"));
+const totalTimer = fxTimers.filter((t) => t.ms === 1450).pop(); /* flight + hold/2 */
+if (totalTimer) totalTimer.fn();
+if (fxDom["fx-total-num"].textContent === "14" && fxDom["fx-total"].classList.contains("on"))
+  ok("当前总和显示本次总点数（14），并在 flight + hold/2 时淡入（.on）");
+else bad("当前总和不对：" + fxDom["fx-total-num"].textContent);
+const closeTimer = fxTimers.filter((t) => t.ms === 2600).pop();
+if (closeTimer) { closeTimer.fn(); }
+await sleep(20);
+if (closedModals.length && fxDom["fx-stage"].classList.contains("fx-done"))
+  ok("播完 2600 ms 自己 OBR.modal.close 并把舞台标成 .fx-done（DOM 不累积）");
+else bad("播完没有关闭 / 没有隐藏：closed=" + closedModals.length + " done=" + fxDom["fx-stage"].classList.contains("fx-done"));
+
+/* ---- 10.2 dice-history.html：读房间数据 → 默认最近 4 条 → 可展开 ---- */
+const histDom = {};
+for (const id of ["head", "pin", "close", "dh-list", "dh-meta", "dh-toggle", "dh-warn", "bg-text", "bg-retry", "win-flash"]) histDom[id] = makeEl2("div");
+globalThis.location = { href: "https://example.test/dice-history.html", protocol: "https:", search: "" };
+globalThis.document = {
+  getElementById: (id) => histDom[id] || fxDom[id] || makeEl2("div"),
+  querySelectorAll: () => [],
+  addEventListener() {},
+  createElement: (tag) => makeEl2(tag),
+  body: makeEl2("body")
+};
+const histRows = [];
+for (let i = 1; i <= 6; i++) {
+  histRows.push({ rollId: "h" + i, ts: 1000 + i, rollerId: "u1", rollerName: "甲" + i, rollerColor: "#7fe07f",
+    label: "攻击", expression: "1d20 + 5", dice: [{ type: "d20", value: 10 + i }], modifier: 5, total: 15 + i });
+}
+fakeRoom["com.4enext-owlbear/rolls"] = { v: 1, updatedAt: Date.now(), seq: 6, rows: histRows };
+copyPageWithStub("dice-history-page.js");
+const readyBeforeHist = readyCbs.length;
+let histErr = null;
+try {
+  await import(pathToFileURL(path.join(tmp, "assets", "dice-history-page.js")).href + "?h=1");
+} catch (e) { histErr = e; }
+if (histErr) bad("dice-history-page.js 加载就抛错：" + (histErr && histErr.message ? histErr.message : histErr));
+else ok("dice-history-page.js 能在假 OBR + 假 DOM 下加载");
+for (const cb of readyCbs.slice(readyBeforeHist)) cb();
+await sleep(50);
+const listEl = histDom["dh-list"];
+if (listEl.innerHTML.indexOf("hist-row") >= 0 && listEl.innerHTML.indexOf("甲6") >= 0 && listEl.innerHTML.indexOf("21") >= 0)
+  ok("记录窗口把房间数据画成了历史行（掷骰者 / 总点数都在）");
+else bad("记录窗口没有画出历史行：" + listEl.innerHTML.slice(0, 160));
+if (listEl.classList.contains("compact")) ok("默认是 compact（只显示最近 4 条）");
+else bad("记录窗口默认不是 compact");
+if (histDom["dh-meta"].textContent.indexOf("6") >= 0) ok("顶部计数：共 6 / 40 条");
+else bad("计数不对：" + histDom["dh-meta"].textContent);
+const toggleFn = (histDom["dh-toggle"].listeners.click || [])[0];
+if (!toggleFn) bad("展开按钮没有绑定 click");
+else {
+  toggleFn({ preventDefault() {} });
+  if (!listEl.classList.contains("compact")) ok("点「展开全部」去掉 compact（看全部记录）");
+  else bad("展开后仍然是 compact");
+}
+
+/* 还原全局计时器（后面的 sleep 还要用真定时器） */
+globalThis.setTimeout = savedTimers.setTimeout;
+globalThis.setInterval = savedTimers.setInterval;
+globalThis.requestAnimationFrame = savedTimers.raf;
+globalThis.cancelAnimationFrame = savedTimers.caf;
 
 // 顺带确认「不启动浏览器」：本测试只用纯函数 + 假 OBR + 假 DOM，没有任何 GUI
 console.log("\n  info 未启动浏览器（沙箱环境禁止），以上全部为纯函数 / 假 OBR / 假 DOM 断言");

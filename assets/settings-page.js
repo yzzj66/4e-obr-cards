@@ -1,4 +1,8 @@
 // v1.3.2：设置 / 关于窗口的页面脚本（settings.html）。
+// v1.7.0：新增「骰子」一栏——只有**一个开关**（投骰动画 开 / 关）。
+//   读写都走 common.js 的 readDiceAnim / writeDiceAnim：这一页**仍然不直接写 localStorage**
+//   （dev/check.mjs 断言这一页不直接写本机存储、也不碰房间数据 / token 元数据），
+//   所以「重置本机设置」也不可能顺手改掉别的东西。
 // ---------------------------------------------------------------------------
 // 这个窗口只做两件事：
 //   1) 展示静态说明（关于 / 使用说明 / 数据与权限 / 已知限制 / 致谢）—— 内容写死在 HTML 里，
@@ -11,7 +15,7 @@
 //      这一页里没有任何写房间 / 写 token 的调用（自测 dev/check.mjs 会断言这一点），
 //      所以「重置」不可能误删全桌共享的东西。
 // 窗口壳（拖动 / 位置记忆 / 后台在线检测 / 统一 feedback）与先攻、骰子共用 window.js。
-import { ID_SETTINGS_WIN, PLUGIN_VERSION, onReady } from "./common.js";
+import { ID_SETTINGS_WIN, PLUGIN_VERSION, onReady, readDiceAnim, writeDiceAnim } from "./common.js";
 import { createWindow, feedback, closeSelf } from "./window.js";
 
 /** 构建日期：改后台脚本 / 重新生成 bundle 时一起改，只用于「关于」里的展示。 */
@@ -86,6 +90,33 @@ if (navEl) {
   const name = hash.indexOf("pane-") === 0 ? hash.slice(5) : hash;
   if (!showPane(name)) showPane("about");
 })();
+
+/* ---------------- 骰子：投骰动画开关（v1.7.0） ----------------
+ * 只改一个本机开关；骰子窗口每次投掷前都会重新读它，所以这里点完立刻生效。 */
+const animToggle = document.getElementById("anim-toggle");
+const animState = document.getElementById("anim-state");
+
+function paintAnim() {
+  const on = readDiceAnim();
+  if (animState) animState.textContent = on ? "投骰动画：开" : "投骰动画：关";
+  if (animToggle) {
+    animToggle.textContent = on ? "关闭投骰动画" : "打开投骰动画";
+    animToggle.classList.toggle("on", on);
+  }
+}
+
+if (animToggle) {
+  animToggle.addEventListener("click", function () {
+    const next = !readDiceAnim();
+    const saved = writeDiceAnim(next);
+    paintAnim();
+    if (!saved) {
+      feedback("这台机器存不下这个设置（隐私模式 / 存储被禁用？），本次仍按原设置", "WARNING");
+      return;
+    }
+    feedback(next ? "投骰动画已打开" : "投骰动画已关闭（结果照常显示在骰子窗口里）", "SUCCESS");
+  });
+}
 
 /* ---------------- 重置本机设置 ---------------- */
 const stateEl = document.getElementById("set-local-state");
@@ -207,6 +238,7 @@ if (closeEl) closeEl.addEventListener("click", function () { closeSelf(ID_SETTIN
 
 onReady(function () {
   renderLocal();
+  paintAnim();
   /* 后台很慢时先把窗口状态画一次（状态条本身由 window.js 画） */
   win.onStatus(function () { /* 这里只留挂点 */ });
 });

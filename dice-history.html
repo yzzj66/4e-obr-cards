@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>4eNEXT to owlbear · 骰子记录</title>
+<link rel="stylesheet" href="assets/ui.css">
+</head>
+<body class="win-page">
+<!-- v1.7.0：骰子记录（**独立 popover**，id = com.4enext-owlbear/dice-history-window）。
+     为什么单独一个窗口：用户要「独立可拖动的显示框」（参考 FullPeople 的 history-page），
+     于是记录从骰子窗口右栏搬出来；两个窗口各自开关、可以同时开着，位置各记各的。
+     默认只显示**最近 4 条**；「展开全部」后显示全部（最多 40 条，40 条封顶时删最旧）。
+     数据仍来自房间数据 com.4enext-owlbear/rolls（城主客户端落笔）+ 本机暂存。
+     窗口壳（拖动 / 位置记忆 / 后台在线检测 / 统一反馈）与其它窗口共用 assets/window.js。 -->
+<div class="win">
+  <div class="win-head" id="head" title="按住这里拖动窗口（位置会记住）">
+    <span class="grip" aria-hidden="true">⠿</span>
+    <div class="t"><b>骰子记录 · 4eNEXT to owlbear</b><small>最近 4 条 · 全桌共享 · 40 条封顶</small></div>
+    <div class="sp">
+      <button class="icon-btn" id="pin" title="回到默认位置（清除本窗口记住的位置）">⌖</button>
+      <button class="icon-btn" id="close" title="关闭记录窗口（骰子窗口不受影响）">✕</button>
+    </div>
+  </div>
+
+  <div class="bg-strip" id="bg-strip">
+    <span class="bg-text" id="bg-text">正在确认后台脚本…</span>
+    <button class="btn small" id="bg-retry" hidden>后台未连接，点这里重试</button>
+  </div>
+
+  <div class="win-body dh-wrap">
+    <div class="dh-bar">
+      <span class="dh-meta" id="dh-meta">共 0 / 40 条</span>
+      <button class="btn small dh-toggle" type="button" id="dh-toggle" data-bg-soft title="在「最近 4 条」和全部记录之间切换">展开全部</button>
+    </div>
+    <div class="share-warn" id="dh-warn" hidden>城主不在线：本次结果只在本机。</div>
+    <div class="dice-hist dh-list compact" id="dh-list">
+      <div class="hist-empty">还没有人掷过骰子。</div>
+    </div>
+  </div>
+
+  <div class="win-foot">
+    <span class="win-flash" id="win-flash"></span>
+    <span class="win-hint">按住标题栏可拖动 · 与骰子窗口各自开关</span>
+  </div>
+</div>
+<script type="module" src="assets/dice-history-page.js"></script>
+</body>
+</html>

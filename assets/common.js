@@ -22,10 +22,13 @@ export const ID_INIT_WIN = NS + "/initiative-window";
  * 所以「先攻条 + 列表窗口」可以同时开着。打开 / 关闭 / 拖动都在 assets/background.core.js。 */
 export const ID_STRIP = NS + "/initiative-strip";
 export const ID_DICE_WIN = NS + "/dice-window";
+/* v1.7.0：骰子记录从骰子窗口的右栏搬出来，变成**第二个独立 popover**（可拖动 / 记位置）。
+ * id 与骰子窗口不同 → 两个窗口可以同时打开、各自开关。 */
+export const ID_DICE_HIST = NS + "/dice-history-window";
 /* v1.3.2：设置 / 关于窗口（与 assets/background.core.js 的 ID_SETTINGS_WIN 必须一致）。 */
 export const ID_SETTINGS_WIN = NS + "/settings-window";
 
-export const PLUGIN_VERSION = "1.6.0";
+export const PLUGIN_VERSION = "1.7.0";
 
 /**
  * 站点根地址。
@@ -47,6 +50,9 @@ export const URL_BIND = new URL("bind.html", URL_BASE).href;
 /* v1.3.1：先攻 / 骰子各自独立的窗口页。 */
 export const URL_INITIATIVE = new URL("initiative.html", URL_BASE).href;
 export const URL_DICE = new URL("dice.html", URL_BASE).href;
+/* v1.7.0：骰子记录窗口（独立 popover）+ 投骰动画页（全屏 modal，透明 + 不挡鼠标）。 */
+export const URL_DICE_HIST = new URL("dice-history.html", URL_BASE).href;
+export const URL_EFFECT = new URL("effect.html", URL_BASE).href;
 /* v1.3.2：设置 / 关于窗口页。 */
 export const URL_SETTINGS = new URL("settings.html", URL_BASE).href;
 export const URL_BUTTON = new URL("button.html", URL_BASE).href;
@@ -73,6 +79,27 @@ export const ROLL_MAX_ROWS = 40;
 export const LS_DICE_COMBOS = "4enext/dice/combos";
 export const LS_DICE_LAST = "4enext/dice/last";
 export const LS_DICE_LOCAL = "4enext/dice/local";
+
+/* ---- v1.7.0：独立记录窗口 + 投骰动画 ----
+ * CH_DICE_HIST_CMD   骰子窗口 → 后台：{ op: "toggle" | "open" | "close" }（记录窗口开关）
+ * CH_DICE_HIST_STATE 后台 → 页面：{ open: true/false }（按钮据此显示「开 / 关」）
+ * 两个频道与 ID_DICE_HIST / URL_DICE_HIST 与 background.core.js 里的同名常量必须一字不差
+ * （后台是经典脚本，不能 import，dev/check.mjs 会逐项对比）。
+ * LS_DICE_ANIM = 投骰动画开关（"0" 关闭，缺省 / "1" 开启）；设置窗口里改它。 */
+export const CH_DICE_HIST_CMD = NS + "/dice-hist-cmd";
+export const CH_DICE_HIST_STATE = NS + "/dice-hist-state";
+export const LS_DICE_ANIM = "4enext/dice/anim";
+/** 记录窗口默认只显示最近几条（其余滚 / 点「展开全部」看）。 */
+export const HIST_VISIBLE_ROWS = 4;
+
+/** 投骰动画是否开启（默认开）。localStorage 不可用时也当「开」，不影响投掷。 */
+export function readDiceAnim() {
+  try { return localStorage.getItem(LS_DICE_ANIM) !== "0"; } catch (e) { return true; }
+}
+/** 写动画开关（设置窗口用；失败只影响记忆，不影响投掷）。 */
+export function writeDiceAnim(on) {
+  try { localStorage.setItem(LS_DICE_ANIM, on ? "1" : "0"); return true; } catch (e) { return false; }
+}
 
 /* ---- v1.4.0：先攻条（top-center 的条）----
  * STRIP_POS_KEY  只记「相对屏幕中线的偏移」{ v:1, dx, dy }，不记绝对 left（换屏幕 / 缩放后仍然贴顶居中）
