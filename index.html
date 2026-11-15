@@ -9,8 +9,9 @@
 </head>
 <body>
 <article class="doc">
-  <h1>4E NEXT 角色卡 <span class="tag">Owlbear Rodeo 插件</span> <span class="tag">v1.1.0</span></h1>
-  <p class="muted">在枭熊里看 4E NEXT 的「速览」页：右键 token 绑定角色卡，之后选中这枚 token 就会弹出速览。纯静态、免构建、不需要服务器。</p>
+  <h1>4E NEXT 角色卡 <span class="tag">Owlbear Rodeo 插件</span> <span class="tag">v1.2.0</span></h1>
+  <p class="muted">在枭熊里看 4E NEXT 的「速览」页：右键 token 绑定角色卡，之后选中这枚 token 就会弹出速览。
+    v1.2.0 起还能在弹窗里直接加减血量（token 上会画出血条），并把威能 / 专长 / 装备点掉记成「已用」。纯静态、免构建、不需要服务器。</p>
 
   <section class="diag-card" id="diag">
     <h3>自检 · 打开本页时会自动检查这几项</h3>
@@ -31,7 +32,9 @@
     <li><b>速览面板</b>：生命 / 血怒 / 回复力、AC 与三防、六属性、17 项技能、攻击与伤害、威能、专长、装备，全部来自 4E NEXT 的「导出存档（JSON）」。</li>
     <li><b>Token 绑定</b>：GM 右键地图上的 IMAGE token →「绑定 4E NEXT 角色卡」，选中卡之后，<b>任何人</b>选中这枚 token 都会看到速览。</li>
     <li><b>数据存房间</b>：卡片存在 Owlbear 的 room metadata 里，全房间共享，没有自建服务器，也不需要账号。</li>
-    <li><b>只读</b>：插件不改卡。要改角色请回 4E NEXT，改完重新导出、导入会覆盖同名卡。</li>
+    <li><b>血量与资源追踪</b>：速览弹窗里能 −1/−5/−10、＋1/＋5/＋10 或填数字改血，token 上会画出「当前/上限」血条；
+      威能 / 专长 / 装备点一下变灰 = 已用，再点恢复；行动点、里程碑、魔法物品每日威能都能点。</li>
+    <li><b>改卡还是要回 4E NEXT</b>：插件不改角色卡本身（威能选择、属性、装备都不动），只记录本场战斗的消耗。</li>
   </ul>
 
   <h2>三步部署（GitHub Pages）</h2>
@@ -82,22 +85,24 @@
 
   <h2>已知限制</h2>
   <ul>
-    <li>只读：不能在这里扣血、标威能；血量等是<b>导出那一刻的快照</b>，要更新就重新导出导入。</li>
+    <li>血量与资源状态<b>不在导出快照里改</b>：它们单独存在 token / 房间数据上，重新导入同名卡不会清掉。</li>
+    <li><b>谁都能看，改的人有限</b>：token 血量只有城主或这枚 token 的创建者能改（Owlbear 的 item 权限）；资源追踪写房间数据通常只有城主能写，玩家点了会退化成「只记在本机」。</li>
     <li>数值是插件离线推导的：职业特性自动加值（如信仰甲胄、蛮族机敏）和少数专长效果无法离线还原，可能和 4E NEXT 差 1~2 点，以 4E NEXT 为准。</li>
     <li>房间数据只有 GM 能写：玩家装好扩展能看，但导入/绑定要 GM 操作（Owlbear 对房间数据的权限限制）。</li>
     <li>卡片存在房间数据里：删掉扩展不会删数据；换房间要重新导入。</li>
-    <li>没有在真实 Owlbear 房间里做联机测试（开发环境无法起 GUI），只做了静态检查和本地渲染验证。</li>
+    <li>没有在真实 Owlbear 房间里做联机测试（开发环境无法起 GUI）：只做了静态检查、假 OBR 的后台冒烟测试与本地渲染验证。
+      血条按参考实现（FullPeople/obr-suite）的本地图形 API 写法实现，真机效果仍需验证。</li>
   </ul>
 
   <h2>目录结构</h2>
   <pre><code>manifest.json        扩展清单（Owlbear 加载的入口）
-background.html      后台页：右键菜单 / 浮动按钮 / 选中 token 弹窗
+background.html      后台页：右键菜单 / 浮动按钮 / 选中 token 弹窗 / token 血条
 button.html          右下角 4E 浮动按钮
 panel.html           全屏面板：导入、列表、预览、绑定
 info.html            选中 token 时弹出的速览小面板
 bind.html            右键「绑定」打开的选卡弹窗
 index.html           本页（说明 + 示例）
-assets/              渲染层与页面脚本、样式
+assets/              渲染层与页面脚本、样式（glance.js 渲染、track.js 血量与资源读写）
 data/rules.js        职业/种族/基础物品/装备等级索引（离线数据）
 vendor/obr-sdk.js    @owlbear-rodeo/sdk 3.1.0 的 ESM 打包（本地化，离线可用）
 samples/             示例卡（可删）

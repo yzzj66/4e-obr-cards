@@ -172,3 +172,132 @@
   .gl4-abis { grid-template-columns: repeat(3, 1fr); }
   .gl4-atk-head, .gl4-atk-row { grid-template-columns: 1fr 60px 90px; }
 }
+
+/* ===========================================================================
+ * v1.2.0 · 可交互层（血量加减 / 资源追踪 / 休整）
+ * 只加样式，不改上面已有的选择器；没开交互时这些元素根本不会出现。
+ * ========================================================================= */
+
+/* 速览弹窗底部的「数据存在哪」条 */
+.pop-foot {
+  padding: 5px 10px 7px;
+  font-size: 10.5px;
+  color: #6b7a89;
+  border-top: 1px solid rgba(38, 48, 60, .9);
+  background: #0d1218;
+  text-align: center;
+  flex: 0 0 auto;
+}
+
+/* 提示条（token 不在了之类） */
+.gl4-warn {
+  border: 1px solid rgba(227, 179, 65, .45);
+  background: rgba(227, 179, 65, .1);
+  color: #e3b341;
+  border-radius: 9px;
+  padding: 6px 9px;
+  font-size: 11.5px;
+  line-height: 1.5;
+}
+
+/* ---- 血量加减 ---- */
+.gl4-hp-pad { display: flex; flex-direction: column; gap: 5px; }
+.gl4-pad-row { display: flex; align-items: center; gap: 4px; flex-wrap: wrap; }
+.gl4-pad-btn {
+  flex: 1 1 0; min-width: 36px;
+  padding: 5px 4px; font-size: 12px; line-height: 1.1;
+  color: var(--gl4-text); background: var(--gl4-surface2);
+  border: 1px solid var(--gl4-line); border-radius: 8px; cursor: pointer;
+  font-family: inherit;
+}
+.gl4-pad-btn:hover { border-color: #3b4a5a; background: #202a35; }
+.gl4-pad-btn:active { transform: translateY(1px); }
+.gl4-pad-btn.hurt { border-color: rgba(248, 81, 73, .35); color: #ffb4b1; }
+.gl4-pad-btn.hurt:hover { background: rgba(248, 81, 73, .14); }
+.gl4-pad-btn.heal { border-color: rgba(86, 211, 100, .35); color: #a8f0b2; }
+.gl4-pad-btn.heal:hover { background: rgba(46, 160, 67, .16); }
+.gl4-pad-btn.wide { flex: 0 0 auto; min-width: 52px; }
+.gl4-num {
+  flex: 1 1 60px; min-width: 54px; width: 100%;
+  padding: 5px 7px; font-size: 12px; font-family: inherit;
+  color: var(--gl4-text); background: #0a0f14;
+  border: 1px solid var(--gl4-line); border-radius: 8px;
+}
+.gl4-num.sm { flex: 0 0 58px; text-align: center; }
+.gl4-num:focus { outline: none; border-color: rgba(86, 211, 100, .55); }
+.gl4-pad-row.temp { gap: 6px; }
+.gl4-pad-label { font-size: 11.5px; color: var(--gl4-muted); }
+.gl4-step {
+  width: 22px; height: 22px; line-height: 1;
+  font-size: 13px; font-family: inherit;
+  color: var(--gl4-text); background: var(--gl4-surface2);
+  border: 1px solid var(--gl4-line); border-radius: 6px; cursor: pointer;
+}
+.gl4-step:hover { background: #202a35; }
+.gl4-mini-btn {
+  font-size: 11px; font-family: inherit; color: var(--gl4-muted);
+  background: transparent; border: 1px solid var(--gl4-line);
+  border-radius: 6px; padding: 1px 6px; cursor: pointer;
+}
+.gl4-mini-btn:hover { color: var(--gl4-green); border-color: rgba(86, 211, 100, .45); }
+
+/* ---- 回复力圆点 ---- */
+.gl4-surge-line { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; font-size: 12px; }
+.gl4-surge-line b { color: var(--gl4-text); font-weight: 700; }
+.gl4-pips { display: inline-flex; gap: 3px; flex-wrap: wrap; }
+.gl4-pip {
+  width: 12px; height: 12px; padding: 0; border-radius: 50%;
+  border: 1px solid rgba(86, 211, 100, .45); background: transparent; cursor: pointer;
+}
+.gl4-pip.on { background: var(--gl4-green); border-color: var(--gl4-green); }
+.gl4-pip:hover { border-color: var(--gl4-green); }
+.gl4-pips.static .gl4-pip, .gl4-pips.static .gl4-pip:hover { cursor: default; border-color: rgba(86, 211, 100, .45); }
+
+/* ---- 行动点 / 里程碑 / 每日威能 计数器 ---- */
+.gl4-counter {
+  display: inline-flex; align-items: center; gap: 3px;
+  border: 1px solid var(--gl4-line); border-radius: 999px;
+  padding: 1px 4px 1px 8px; background: rgba(27, 35, 45, .6);
+}
+.gl4-counter i { font-style: normal; font-size: 11px; color: var(--gl4-muted); }
+.gl4-counter b { font-size: 12px; color: var(--gl4-text); min-width: 14px; text-align: center; }
+
+/* ---- 可点的威能 / 专长 / 物品 ---- */
+button.gl4-chip, button.gl4-item {
+  font: inherit; text-align: left; cursor: pointer;
+  font-size: 12px; color: var(--gl4-text);
+}
+button.gl4-chip { align-items: baseline; }
+button.gl4-chip:hover { border-color: rgba(86, 211, 100, .5); background: rgba(46, 160, 67, .12); }
+button.gl4-chip.used:hover { border-color: rgba(227, 179, 65, .5); background: rgba(227, 179, 65, .1); }
+button.gl4-item {
+  width: 100%; background: transparent; border: 0; border-radius: 6px; padding: 2px 4px;
+  font-size: 12.5px; color: var(--gl4-text);
+}
+button.gl4-item:hover { background: rgba(88, 166, 255, .1); }
+button.gl4-item.used:hover { background: rgba(227, 179, 65, .1); }
+
+/* ---- 休整 ---- */
+.gl4-rest { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; padding: 0 2px; }
+.gl4-rest-btn {
+  font-family: inherit; font-size: 12px; padding: 5px 12px;
+  color: var(--gl4-text); background: var(--gl4-surface2);
+  border: 1px solid var(--gl4-line); border-radius: 8px; cursor: pointer;
+}
+.gl4-rest-btn:hover { border-color: rgba(86, 211, 100, .45); }
+.gl4-rest-btn.strong { background: rgba(46, 160, 67, .16); border-color: rgba(86, 211, 100, .45); color: #b7f2c0; }
+.gl4-rest-hint { font-size: 10.5px; color: var(--gl4-muted); opacity: .85; }
+
+/* ---- 临时生命在血条上的那一段 ---- */
+.gl4-hptempfill {
+  position: absolute; top: 0; bottom: 0;
+  background: rgba(88, 166, 255, .75);
+  border-left: 1px solid rgba(88, 166, 255, .9);
+}
+
+/* ---- 紧凑模式（速览弹窗）微调 ---- */
+.gl4-compact .gl4-pad-btn { padding: 4px 3px; font-size: 11.5px; min-width: 30px; }
+.gl4-compact .gl4-hp-pad { gap: 4px; }
+.gl4-compact .gl4-surge-line { font-size: 11.5px; }
+.gl4-compact .gl4-counter { padding-right: 3px; }
+.gl4-compact .gl4-rest-hint { display: none; }

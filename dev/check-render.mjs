@@ -14,8 +14,25 @@ fs.writeFileSync(modPath, src, "utf8");
 const g = await import(pathToFileURL(modPath).href);
 
 const save = JSON.parse(fs.readFileSync(path.join(ROOT, "samples", "sample-card.json"), "utf8"));
-for (const mode of ["full", "compact"]) {
-  const html = g.renderGlanceHTML(save.pages.character, { mode });
+// v1.2.0：除了原来的只读形态，还要检查「带实时状态 + 可交互」的形态 —— 血量加减与资源追踪的
+// 按钮都是这里渲染出来的，标签没闭合会直接把弹窗画崩。
+const LIVE = {
+  hp: { cur: 120, max: 171, temp: 6, surges: 5 },
+  state: {
+    powerUsed: { "encounter-0": true, "daily-1": true },
+    featUsed: { "0": true },
+    equipmentUsed: { "e-5": true },
+    itemDailyUsed: 1, actionPoints: 2, milestones: 1
+  }
+};
+const VARIANTS = [
+  { label: "full", opts: { mode: "full" } },
+  { label: "compact", opts: { mode: "compact" } },
+  { label: "full+live", opts: { mode: "full", live: LIVE, editable: { hp: true, track: true, rest: true } } },
+  { label: "compact+live", opts: { mode: "compact", live: LIVE, editable: { hp: true, track: true, rest: true } } }
+];
+for (const { label: mode, opts } of VARIANTS) {
+  const html = g.renderGlanceHTML(save.pages.character, opts);
   const stack = [];
   const re = /<(\/?)([a-z0-9]+)([^>]*?)(\/?)>/gi;
   let m;

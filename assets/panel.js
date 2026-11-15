@@ -5,7 +5,8 @@ import {
   bindToken, selectedImageToken, notify, esc, fmtTime, onReady,
   pingBackground, CH_HELLO, PLUGIN_VERSION
 } from "./common.js";
-import { renderGlanceHTML, cardMeta } from "./glance.js";
+import { renderGlanceHTML, cardMeta, deriveGlance, magicItemDailyUses } from "./glance.js";
+import { applyAction, loadState, scopeText } from "./track.js";
 
 const listEl = document.getElementById("list");
 const countEl = document.getElementById("count");
@@ -19,6 +20,9 @@ const overlay = document.getElementById("overlay");
 let cards = [];
 let currentId = "";
 let selectedToken = null;
+// 当前预览这张卡的资源状态（威能 / 专长 / 装备的使用标记、行动点等）
+let liveState = null;
+let liveScope = "room";
 
 /* ---------------- 渲染 ---------------- */
 
@@ -49,7 +53,7 @@ function renderList() {
       if (ev.target && ev.target.getAttribute && ev.target.getAttribute("data-del")) return;
       currentId = el.getAttribute("data-id");
       renderList();
-      renderView();
+      void renderView();
     });
   });
   Array.prototype.forEach.call(listEl.querySelectorAll(".del"), function (el) {
@@ -77,14 +81,16 @@ function toolbar(card) {
   const tokenText = selectedToken ? "绑定到「" + esc(selectedToken.name || "选中 token") + "」" : "绑定到选中 token";
   return '<div class="card-toolbar" style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:10px">' +
     '<div style="font-size:12px;color:#93a1b0">Lv' + esc(m.level) + (ident ? " · " + esc(ident) : "") +
-    (card.updatedAt ? " · 导入于 " + esc(fmtTime(card.updatedAt)) : "") + "</div>" +
+    (card.updatedAt ? " · 导入于 " + esc(fmtTime(card.updatedAt)) : "") +
+    ' · <span title="' + esc(scopeText(liveScope)) + '">资源：' + (liveScope === "local" ? "本机" : "全桌") + "</span>" +
+    ' · <span title="血量写在 token 上，请选中 token 在速览弹窗里改">血量：见 token</span></div>' +
     '<div style="margin-left:auto;display:flex;gap:6px">' +
     '<button class="btn small" id="v-bind"' + (selectedToken ? "" : " disabled") + ">" + tokenText + "</button>" +
     '<button class="btn small danger" id="v-del">删除这张卡</button>' +
     "</div></div>";
 }
 
-function renderView() {
+async function renderView() {
   const card = cards.filter(function (c) { return c.id === currentId; })[0];
   if (!card) {
     viewEl.innerHTML = emptyViewHtml();
@@ -92,9 +98,18 @@ function renderView() {
     if (btn) btn.addEventListener("click", function () { void importSample(); });
     return;
   }
+  // 资源状态挂在卡上（房间数据），预览里也要能点；血量挂在 token 上，面板不碰
+  try {
+    const loaded = await loadState(card.id);
+    liveState = loaded.state;
+    liveScope = loaded.scope;
+  } catch (e) {
+    liveState = null;
+    liveScope = "room";
+  }
   let html = "";
   try {
-    html = renderGlanceHTML(card.char);
+    html = renderGlanceHTML(card.char, { live: { state: liveState }, editable: { track: true } });
   } catch (e) {
     console.error("[4enext] 渲染失败", e);
     html = '<div class="empty-panel"><p>渲染失败：' + esc(e && e.message ? e.message : e) + "</p></div>";
@@ -106,6 +121,39 @@ function renderView() {
   if (delBtn) delBtn.addEventListener("click", function () { void removeCard(card.id); });
 }
 
+/* 预览里的资源追踪：点击 = 标记使用 / 恢复（与速览弹窗同一套语义） */
+viewEl.addEventListener("click", async function (ev) {
+  const el = ev.target && ev.target.closest ? ev.target.closest("[data-act]") : null;
+  if (!el) return;
+  const card = cards.filter(function (c) { return c.id === currentId; })[0];
+  if (!card) return;
+  ev.preventDefault();
+  const act = el.getAttribute("data-act");
+  let derived = null;
+  try {
+    derived = deriveGlance(card.char);
+  } catch (e) { /* 推导失败时也只影响计数上限 */ }
+  try {
+    const res = await applyAction(act, el, {
+      cardId: card.id,
+      itemId: null,
+      state: liveState,
+      hp: null,
+      canHp: false,
+      maxHp: derived ? derived.hpMax : 0,
+      surgesMax: derived ? derived.surges : 0,
+      surgeValue: derived ? derived.surgeValue : 0,
+      itemDailyMax: derived ? magicItemDailyUses(derived.level, derived.milestones) : 0
+    });
+    if (res.state) liveState = res.state;
+    if (res.scope) liveScope = res.scope;
+    if (res.message) notify(res.message, res.tone || "INFO");
+    await renderView();
+  } catch (e) {
+    notify("操作失败：" + (e && e.message ? e.message : e), "ERROR");
+  }
+});
+
 async function refreshSelection() {
   try {
     selectedToken = await selectedImageToken();
@@ -115,7 +163,7 @@ async function refreshSelection() {
   selEl.innerHTML = selectedToken
     ? "已选中 token：<b>" + esc(selectedToken.name || "未命名") + "</b>"
     : "未选中 token（右键地图上的 token 可直接绑定）";
-  renderView();
+  void renderView();
 }
 
 /* ---------------- 数据操作 ---------------- */
@@ -126,7 +174,7 @@ async function refresh(preferId, authoritative) {
   if (preferId && cards.some(function (c) { return c.id === preferId; })) currentId = preferId;
   else if (!cards.some(function (c) { return c.id === currentId; })) currentId = cards.length ? cards[0].id : "";
   renderList();
-  renderView();
+  void renderView();
 }
 
 async function saveCards(next) {

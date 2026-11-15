@@ -12,7 +12,7 @@ export const ID_INFO = NS + "/info";
 export const ID_PANEL = NS + "/panel";
 export const ID_BIND = NS + "/bind";
 
-export const PLUGIN_VERSION = "1.1.0";
+export const PLUGIN_VERSION = "1.2.0";
 
 /**
  * 站点根地址。

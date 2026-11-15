@@ -61,8 +61,28 @@ for (const f of files.filter((f) => f.endsWith(".js") && !f.includes("vendor")))
   }
 }
 
+// ESM 页面脚本的语法自检。
+// 不能 spawn 一个 node --check（有些环境禁止子进程管道），所以这里把 import/export 剥掉、
+// 用 vm.Script 解析一遍 —— 只能查语法，不执行，够用来兜住「引号没闭合 / 括号不配对」这类事故。
+console.log("== ESM 页面脚本语法");
+for (const f of ["assets/common.js", "assets/glance.js", "assets/track.js", "assets/info.js", "assets/panel.js", "assets/bind.js", "assets/button.js", "assets/index.js"]) {
+  const src = fs.readFileSync(path.join(ROOT, f), "utf8");
+  let body = src.replace(/^\s*import\s+[^;]*?from\s+["'][^"']+["'];?\s*$/gm, "");
+  body = body.replace(/^\s*export\s*\{[^}]*\};?\s*$/gm, "");
+  body = body.replace(/\bexport\s+default\s+/g, "var __default__ = ");
+  // import.meta 在 vm.Script 里不合法（模块专用），换成一个普通对象顶上去
+  body = body.replace(/\bimport\.meta\b/g, "({ url: \"about:blank\" })");
+  body = body.replace(/\bexport\s+(async\s+function|function|const|let|var|class)\b/g, "$1");
+  try {
+    new vm.Script(body, { filename: f });
+    ok(f + " 语法通过");
+  } catch (e) {
+    bad(f + " 语法错误：" + e.message);
+  }
+}
+
 console.log("== 目录内容");
-for (const p of ["manifest.json", "manifest.relative.json", "background.html", "panel.html", "info.html", "bind.html", "button.html", "index.html", "icon.svg", "icon-tool.svg", "README.md", "assets/glance.js", "assets/background.core.js", "assets/background.bundle.js", "data/rules.js", "vendor/obr-sdk.js", "samples/sample-card.json", "docs/owlbear-debug.md"]) {
+for (const p of ["manifest.json", "manifest.relative.json", "background.html", "panel.html", "info.html", "bind.html", "button.html", "index.html", "icon.svg", "icon-tool.svg", "README.md", "assets/glance.js", "assets/glance.css", "assets/track.js", "assets/background.core.js", "assets/background.bundle.js", "data/rules.js", "vendor/obr-sdk.js", "samples/sample-card.json", "docs/owlbear-debug.md", "docs/hp-bar-and-tracking.md"]) {
   if (exists(path.join(ROOT, p))) ok(p); else bad("缺少 " + p);
 }
 
@@ -123,6 +143,36 @@ if (exists(bundlePath)) {
     else bad("bundle 落后于 background.core.js —— 跑 node dev/build-background.mjs");
   }
 } else bad("缺少 assets/background.bundle.js（跑 node dev/build-background.mjs）");
+
+console.log("== v1.2.0 血量 / 资源追踪");
+const trackPath = path.join(ROOT, "assets", "track.js");
+if (exists(trackPath)) {
+  const trackSrc = fs.readFileSync(trackPath, "utf8");
+  if (/export const KEY_HP = NS \+ "\/hp";/.test(trackSrc)) ok("track.js 定义了 KEY_HP");
+  else bad("track.js 里找不到 KEY_HP 定义");
+  if (/export async function applyAction\(/.test(trackSrc)) ok("track.js 导出 applyAction（点击处理的唯一入口）");
+  else bad("track.js 没有导出 applyAction");
+  if (/export async function commitState\(/.test(trackSrc)) ok("track.js 导出 commitState（房间数据写不进去时退回本机）");
+  else bad("track.js 没有导出 commitState");
+  // 后台是经典脚本、不能 import，常量只能各写一份 —— 这里保证两边不会写歪
+  if (exists(corePath)) {
+    const coreSrc = fs.readFileSync(corePath, "utf8");
+    const a = /var KEY_HP = NS \+ "([^"]+)";/.exec(coreSrc);
+    if (!a) bad("background.core.js 里找不到 KEY_HP");
+    else if (trackSrc.indexOf('NS + "' + a[1] + '"') < 0) bad("背景页的 KEY_HP 与 track.js 不一致：" + a[1]);
+    else ok("背景页与 track.js 的 KEY_HP 一致（" + a[1] + "）");
+  }
+}
+const bundleSrc2 = exists(bundlePath) ? fs.readFileSync(bundlePath, "utf8") : "";
+for (const name of ["buildCurve", "buildShape", "buildText"]) {
+  if (new RegExp("var " + name + " = [\\w$]+;").test(bundleSrc2)) ok("bundle 里接入了 SDK 具名导出 " + name);
+  else bad("bundle 里没有 var " + name + " = ...;（血条画不出来，跑 node dev/build-background.mjs）");
+}
+if (/BAR_TAG/.test(bundleSrc2) && /scene\.local/.test(bundleSrc2)) ok("bundle 内含 token 血条（scene.local 本地图形层）");
+else bad("bundle 里没有 token 血条代码（可能没重新构建）");
+const cssSrc = exists(path.join(ROOT, "assets", "glance.css")) ? fs.readFileSync(path.join(ROOT, "assets", "glance.css"), "utf8") : "";
+if (/\.gl4-hp-pad/.test(cssSrc) && /\.gl4-counter/.test(cssSrc) && /\.gl4-pips/.test(cssSrc)) ok("glance.css 含血量加减 / 计数器 / 回复力圆点样式");
+else bad("glance.css 缺少 v1.2.0 的交互样式");
 
 const bgHtml = fs.readFileSync(path.join(ROOT, "background.html"), "utf8");
 if (/<script[^>]*type="module"/.test(bgHtml)) bad('background.html 里还有 <script type="module">');

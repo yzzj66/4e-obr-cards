@@ -1,4 +1,4 @@
-// 4E NEXT「速览」渲染层：把导出的 Character 渲染成纯 HTML（只读、无框架、无构建）。
+// 4E NEXT「速览」渲染层：把导出的 Character 渲染成 HTML（只读 / 可交互两种形态）。
 //
 // 数值口径尽量对齐 4E NEXT 的 web/src/overview/derive.ts 与 sheet/defense.ts：
 //   · 属性 = 基础值 + 种族加值
@@ -7,6 +7,13 @@
 //   · 技能 = 半等级 + 属性调整 + 受训5 + 技能巧手 + 种族 + 自定义 - 护甲检定减值
 //   · 攻击 = 半等级 + 属性 + 职业 + 擅长 + 专长 + 增强 + 自定义；伤害 = 属性 + 专长 + 增强 + 自定义
 // 少数依赖完整规则正文的加值（职业特性自动加值、专长逐条效果）无法离线还原，见 README「已知限制」。
+//
+// v1.2.0 起：渲染时可以带一份「实时状态」——
+//   live.hp    = { cur, max, temp, surges }        ← token 元数据 com.4enext-owlbear/hp
+//   live.state = { powerUsed, featUsed, equipmentUsed, itemDailyUsed, actionPoints, milestones }
+//                                                 ← 房间数据 com.4enext-owlbear/state/<cardId>
+// 带 live 时才会出现可点的按钮；不带 live（index.html 的示例、check-render）就是原来的只读形态。
+// 交互语义照抄 4E NEXT：web/src/overview/GlanceVitals.tsx / GlanceResources.tsx。
 
 import { RULES } from "../data/rules.js";
 
@@ -29,11 +36,13 @@ const POWER_GROUPS = [
   { key: "utility", label: "辅助威能", color: "#58a6ff", track: true },
   { key: "special", label: "种族/职业威能", color: "#d29922", track: true }
 ];
+const POWER_KEYS = POWER_GROUPS.map((g) => g.key);
 const WEAPON_GROUPS = ["硬头锤", "轻刃", "矛", "徒手", "杖", "重刃", "斧", "连枷", "锤", "镐", "长武器", "鞭", "绞索", "弩", "投石索", "弓", "吹箭筒"];
 const DIFFICULTIES = ["简易", "军用", "优异"];
 const WEAPON_TYPES = ["近战", "远程"];
 const HANDEDNESS = ["单手", "双手"];
 const EQUIP_USED_PREFIX = { fixed: "e", other: "o", consumable: "c", wondrous: "w", companion: "m" };
+const QUICK_STEPS = [1, 5, 10];
 
 // ---------- 小工具 ----------
 export function esc(s) {
@@ -202,9 +211,17 @@ function proficiencyTokens(rules, char, cls) {
 }
 
 // ---------- 推导 ----------
-export function deriveGlance(char, rules) {
+/**
+ * 把导出的 Character 推成速览数值。
+ * live（可选）：{ hp:{cur,max,temp,surges}, state:{powerUsed,featUsed,equipmentUsed,itemDailyUsed,actionPoints,milestones} }
+ *   带 live 时用实时值覆盖导出快照里的对应字段；不带就是纯粹的只读推导（老行为）。
+ */
+export function deriveGlance(char, rules, live) {
   rules = rules || RULES;
   char = char || {};
+  live = live || {};
+  const liveHp = live.hp && typeof live.hp === "object" ? live.hp : null;
+  const st = live.state && typeof live.state === "object" ? live.state : null;
   const level = Math.max(1, n0(char.level) || 1);
   const half = Math.floor(level / 2);
   const cls = classStats(rules, char);
@@ -291,8 +308,17 @@ export function deriveGlance(char, rules) {
   const hpNow = char.hpNow || {};
   const surgeValue = typeof hpNow.surgeValue === "number" ? hpNow.surgeValue : surgeValueAuto;
   const surges = cls.surges + mods.con + n0(char.surgeBonus);
-  const hpCur = typeof hpNow.max === "number" ? hpNow.max : maxHp;
-  const surgesCur = typeof hpNow.surges === "number" ? hpNow.surges : surges;
+  // 生命：实时（token 元数据）> 导出快照（hpNow.max）> 自动上限
+  const hpMax = liveHp && typeof liveHp.max === "number" && liveHp.max > 0 ? Math.floor(liveHp.max) : maxHp;
+  const hpCur = liveHp && typeof liveHp.cur === "number"
+    ? Math.floor(liveHp.cur)
+    : (typeof hpNow.max === "number" ? hpNow.max : hpMax);
+  const hpTemp = liveHp && typeof liveHp.temp === "number" ? Math.max(0, Math.floor(liveHp.temp)) : n0(char.tempHp);
+  const surgesCur = liveHp && typeof liveHp.surges === "number"
+    ? Math.max(0, Math.floor(liveHp.surges))
+    : (typeof hpNow.surges === "number" ? hpNow.surges : surges);
+  const bloodiedLine = Math.floor(hpMax / 2);
+  const hpSurgeValue = typeof hpNow.surgeValue === "number" ? hpNow.surgeValue : (Math.floor(hpMax / 4) + n0(char.surgeValueBonus));
 
   // 技能
   const trainedSet = {};
@@ -355,9 +381,17 @@ export function deriveGlance(char, rules) {
   const initiative = mods.dex + half + sum((char.customBonuses || {}).init);
   const perception = (char.customBonuses || {}).perception || {};
 
+  // 使用状态：实时（房间数据）> 导出快照
+  const powerUsed = (st && st.powerUsed) || char.powerUsed || {};
+  const featUsed = (st && st.featUsed) || char.featUsed || {};
+  const equipmentUsed = (st && st.equipmentUsed) || char.equipmentUsed || {};
+  const itemDailyUsed = st && typeof st.itemDailyUsed === "number"
+    ? Math.max(0, Math.floor(st.itemDailyUsed))
+    : n0((char.glance || {}).itemDailyUsed);
+
   const powers = POWER_GROUPS.map(function (g) {
     const list = ((char.powerSlots || {})[g.key] || []).map((id, i) => ({ id: id, i: i })).filter((x) => !!x.id);
-    const used = list.filter((x) => (char.powerUsed || {})[g.key + "-" + x.i]).length;
+    const used = list.filter((x) => powerUsed[g.key + "-" + x.i]).length;
     return { key: g.key, label: g.label, color: g.color, track: g.track, list: list, used: used };
   });
 
@@ -378,22 +412,35 @@ export function deriveGlance(char, rules) {
   pushEquips(char.consumableSlots, "c", "消耗品");
   pushEquips(char.companionSlots, "m", "魔宠/坐骑");
 
+  const milestones = st && typeof st.milestones === "number" ? Math.max(0, Math.floor(st.milestones)) : n0(char.milestones);
+  const actionPoints = st && typeof st.actionPoints === "number" ? Math.max(0, Math.floor(st.actionPoints)) : n0(char.actionPoints);
+
   return {
     level: level, half: half, cls: cls, race: race,
     abilities: abilities, mods: mods, defenses: defenses,
-    maxHp: maxHp, bloodied: bloodied, surgeValue: surgeValue, surges: surges,
-    hpCur: hpCur, surgesCur: surgesCur, hpTemp: n0(char.tempHp),
+    maxHp: maxHp, bloodied: bloodiedLine, surgeValue: hpSurgeValue, surges: surges,
+    hpMax: hpMax, hpCur: hpCur, hpTemp: hpTemp, surgesCur: surgesCur,
+    derivedSurgeValue: surgeValueAuto,
     skills: skills, attacks: attacks, damages: damages,
     initiative: initiative, speed: speed,
     passivePerception: 10 + skillOf("侦查") + sum(perception.passivePerception),
     passiveInsight: 10 + skillOf("洞察") + sum(perception.passiveInsight),
     powers: powers, feats: feats, equipRows: equipRows,
+    powerUsed: powerUsed, featUsed: featUsed, equipmentUsed: equipmentUsed,
+    itemDailyUsed: itemDailyUsed,
     known: { cls: !!classRow(rules, char.classId), race: !!race, armor: !!armor, shield: !!shield },
-    actionPoints: n0(char.actionPoints), milestones: n0(char.milestones), powerPoints: n0(char.powerPoints),
+    actionPoints: actionPoints, milestones: milestones, powerPoints: n0(char.powerPoints),
     languages: (char.languages || []).join("、"),
     size: race ? race[2] : char.size || "",
     vision: race ? race[4] : char.vision || ""
   };
+}
+
+/** 魔法物品每日威能上限：英雄层 1 / 典范层 2 / 传奇层 3，每个里程碑 +1（sheet/powerpoints.ts）。 */
+export function magicItemDailyUses(level, milestones) {
+  const lv = n0(level) || 1;
+  const tier = lv <= 10 ? 1 : lv <= 20 ? 2 : 3;
+  return tier + Math.max(0, Math.floor(n0(milestones)));
 }
 
 // ---------- 渲染 ----------
@@ -407,47 +454,122 @@ function renderSkill(s) {
     esc(s.name) + "</b>" + signed(s.total) + "</span>";
 }
 
-function renderPowerGroup(d, char) {
+function pips(cur, total, interactive) {
+  const cls = "gl4-pips" + (interactive ? "" : " static");
+  const title = interactive ? "回复力：点第 N 颗 = 剩余 N 次" : "回复力：点亮 = 剩余（在 token 速览弹窗里可点）";
+  let out = '<span class="' + cls + '" title="' + title + '">';
+  for (let i = 1; i <= total; i++) {
+    const on = i <= cur ? " on" : "";
+    if (interactive) {
+      out += '<button type="button" class="gl4-pip' + on + '" data-act="surge" data-n="' + i +
+        '" aria-label="回复力设为 ' + i + '"></button>';
+    } else {
+      out += '<span class="gl4-pip' + on + '"></span>';
+    }
+  }
+  return out + "</span>";
+}
+
+function counter(label, value, act, title) {
+  return '<span class="gl4-counter" title="' + esc(title || "") + '"><i>' + esc(label) + "</i>" +
+    '<button type="button" class="gl4-step" data-act="' + act + '" data-d="-1" aria-label="' + esc(label) + ' −1">−</button>' +
+    "<b>" + esc(value) + "</b>" +
+    '<button type="button" class="gl4-step" data-act="' + act + '" data-d="1" aria-label="' + esc(label) + ' ＋1">＋</button></span>';
+}
+
+function renderHpBlock(d, ed) {
+  const dying = d.hpCur <= 0;
+  const bloodied = !dying && d.hpCur <= d.bloodied;
+  const state = dying ? "濒死" : bloodied ? "重伤" : "健康";
+  const cls = dying ? "dying" : bloodied ? "bloodied" : "ok";
+  const pct = d.hpMax > 0 ? Math.max(0, Math.min(100, (d.hpCur / d.hpMax) * 100)) : 0;
+  const bloodPct = d.hpMax > 0 ? Math.max(0, Math.min(100, (d.bloodied / d.hpMax) * 100)) : 50;
+  const tempPct = d.hpMax > 0 ? Math.max(0, Math.min(100 - pct, (d.hpTemp / d.hpMax) * 100)) : 0;
+
+  let pad = "";
+  if (ed.hp) {
+    pad = '<div class="gl4-hp-pad">' +
+      '<div class="gl4-pad-row">' +
+      QUICK_STEPS.map((n) => '<button type="button" class="gl4-pad-btn hurt" data-act="hurt" data-n="' + n + '" title="受到 ' + n + " 点伤害\">−" + n + "</button>").join("") +
+      QUICK_STEPS.map((n) => '<button type="button" class="gl4-pad-btn heal" data-act="heal" data-n="' + n + '" title="回复 ' + n + " 点生命\">＋" + n + "</button>").join("") +
+      "</div>" +
+      '<div class="gl4-pad-row">' +
+      '<input class="gl4-num" data-role="amount" type="number" min="0" inputmode="numeric" placeholder="数值" aria-label="自定义生命值增减">' +
+      '<button type="button" class="gl4-pad-btn hurt wide" data-act="hurt-amount" title="按输入数值扣血">受伤</button>' +
+      '<button type="button" class="gl4-pad-btn heal wide" data-act="heal-amount" title="按输入数值回血">治疗</button>' +
+      "</div>" +
+      '<div class="gl4-pad-row temp">' +
+      '<span class="gl4-pad-label">临时生命</span>' +
+      '<button type="button" class="gl4-step" data-act="temp" data-d="-1" aria-label="临时生命 −1">−</button>' +
+      '<input class="gl4-num sm" data-role="temp" type="number" min="0" inputmode="numeric" value="' + esc(d.hpTemp) + '" aria-label="临时生命值">' +
+      '<button type="button" class="gl4-step" data-act="temp" data-d="1" aria-label="临时生命 +1">＋</button>' +
+      "</div></div>";
+  }
+
+  const surgeLine = '<div class="gl4-surge-line"><span class="gl4-pad-label">回复力</span>' +
+    "<b>" + d.surgesCur + " / " + d.surges + "</b>" +
+    pips(d.surgesCur, d.surges, ed.hp) +
+    (ed.hp ? '<button type="button" class="gl4-mini-btn" data-act="surge-use" title="消耗一次回复力：回复 ' + d.surgeValue + ' 点生命">使用回复力 ＋' + d.surgeValue + "</button>" : "") +
+    "</div>";
+
+  return '<section class="gl4-card gl4-vitals">' +
+    '<div class="gl4-hp-line"><span class="gl4-hp-cur">' + esc(d.hpCur) + "</span>" +
+    '<span class="gl4-hp-max">/ ' + esc(d.hpMax) + "</span>" +
+    '<span class="gl4-state ' + cls + '">' + state + "</span>" +
+    (d.hpTemp > 0 ? '<span class="gl4-temp">临时 +' + esc(d.hpTemp) + "</span>" : "") +
+    "</div>" +
+    '<div class="gl4-hpbar" title="重伤线 ' + d.bloodied + '">' +
+    '<div class="gl4-hpfill ' + cls + '" style="width:' + pct.toFixed(1) + '%"></div>' +
+    (tempPct > 0 ? '<div class="gl4-hptempfill" style="width:' + tempPct.toFixed(1) + '%"></div>' : "") +
+    '<div class="gl4-hpmark" style="left:' + bloodPct.toFixed(1) + '%"></div></div>' +
+    surgeLine +
+    pad +
+    '<div class="gl4-tags">' +
+    "<span><i>血怒</i><b>" + d.bloodied + "</b></span>" +
+    "<span><i>回复值</i><b>" + d.surgeValue + "</b></span>" +
+    (ed.track ? counter("行动点", d.actionPoints, "ap", "每次遭遇可用 1 点；长休后回到 1 点") : "<span><i>行动点</i><b>" + d.actionPoints + "</b></span>") +
+    (ed.track ? counter("里程碑", d.milestones, "milestone", "每达成一个里程碑：+1 行动点，且多一次魔法物品每日威能") : (d.milestones ? "<span><i>里程碑</i><b>" + d.milestones + "</b></span>" : "")) +
+    (d.powerPoints ? "<span><i>灵能点</i><b>" + d.powerPoints + "</b></span>" : "") +
+    "</div></section>";
+}
+
+function renderPowerGroup(d, powerUsed, ed) {
   const body = d.list.map(function (x) {
-    const used = (char.powerUsed || {})[d.key + "-" + x.i] ? " used" : "";
-    return '<span class="gl4-chip' + used + '" title="' + esc(x.id) + '">' + esc(zhName(x.id)) + "</span>";
+    const used = powerUsed[d.key + "-" + x.i] ? " used" : "";
+    const name = esc(zhName(x.id));
+    const title = d.track
+      ? (used ? "点击恢复：" : "点击标记已使用：") + x.id
+      : "随意威能，无需追踪消耗";
+    if (ed.track && d.track) {
+      return '<button type="button" class="gl4-chip' + used + '" data-act="power" data-k="' + d.key + "-" + x.i +
+        '" title="' + esc(title) + '">' + name + "</button>";
+    }
+    return '<span class="gl4-chip' + used + '" title="' + esc(x.id) + '">' + name + "</span>";
   }).join("");
   const count = d.track ? d.list.length - d.used + " / " + d.list.length : "无限";
+  const reset = (ed.track && d.track && d.used > 0)
+    ? '<button type="button" class="gl4-mini-btn" data-act="power-reset" data-cat="' + d.key + '" title="恢复全部' + esc(d.label) + '">↺</button>'
+    : "";
   return '<div class="gl4-pgroup"><div class="gl4-phead"><span class="gl4-dot" style="background:' + d.color +
-    '"></span>' + esc(d.label) + '<span class="gl4-pcount">' + count + '</span></div><div class="gl4-chips">' + body + "</div></div>";
+    '"></span>' + esc(d.label) + '<span class="gl4-pcount">' + count + "</span>" + reset + "</div>" +
+    '<div class="gl4-chips">' + body + "</div></div>";
 }
 
 export function renderGlanceHTML(char, opts) {
   opts = opts || {};
-  const d = deriveGlance(char, opts.rules);
+  const live = opts.live || null;
+  const d = deriveGlance(char, opts.rules, live);
+  const ed = {
+    hp: !!(opts.editable && opts.editable.hp),
+    track: !!(opts.editable && opts.editable.track),
+    rest: !!(opts.editable && opts.editable.rest)
+  };
   const compact = opts.mode === "compact";
   const classNames = [prettyClass(char.classId)];
   if (char.hybrid && char.classId2) classNames.push(prettyClass(char.classId2));
   const classText = classNames.filter(Boolean).join(" / ");
   const sub = ["Lv" + d.level, zhName(char.raceId) || d.size, char.hybrid && classText ? "混职：" + classText : classText]
     .filter(Boolean).join(" · ");
-
-  const pct = d.maxHp > 0 ? Math.max(0, Math.min(100, (d.hpCur / d.maxHp) * 100)) : 0;
-  const bloodPct = d.maxHp > 0 ? Math.max(0, Math.min(100, (d.bloodied / d.maxHp) * 100)) : 50;
-  const state = d.hpCur <= 0 ? ["dying", "濒死"] : d.hpCur <= d.bloodied ? ["bloodied", "重伤"] : ["ok", "健康"];
-
-  const hpBlock = '<section class="gl4-card gl4-vitals">' +
-    '<div class="gl4-hp-line"><span class="gl4-hp-cur">' + esc(d.hpCur) + '</span>' +
-    '<span class="gl4-hp-max">/ ' + esc(d.maxHp) + '</span>' +
-    '<span class="gl4-state ' + state[0] + '">' + state[1] + "</span>" +
-    (d.hpTemp > 0 ? '<span class="gl4-temp">临时 +' + esc(d.hpTemp) + "</span>" : "") +
-    "</div>" +
-    '<div class="gl4-hpbar" title="重伤线 ' + d.bloodied + '">' +
-    '<div class="gl4-hpfill ' + state[0] + '" style="width:' + pct.toFixed(1) + '%"></div>' +
-    '<div class="gl4-hpmark" style="left:' + bloodPct.toFixed(1) + '%"></div></div>' +
-    '<div class="gl4-tags">' +
-    "<span><i>血怒</i><b>" + d.bloodied + "</b></span>" +
-    "<span><i>回复值</i><b>" + d.surgeValue + "</b></span>" +
-    "<span><i>回复力</i><b>" + d.surgesCur + " / " + d.surges + "</b></span>" +
-    "<span><i>行动点</i><b>" + d.actionPoints + "</b></span>" +
-    (d.milestones ? "<span><i>里程碑</i><b>" + d.milestones + "</b></span>" : "") +
-    (d.powerPoints ? "<span><i>灵能点</i><b>" + d.powerPoints + "</b></span>" : "") +
-    "</div></section>";
 
   const quick = '<div class="gl4-quick">' +
     '<span class="gl4-q"><i>先攻</i><b>' + signed(d.initiative) + "</b></span>" +
@@ -489,44 +611,72 @@ export function renderGlanceHTML(char, opts) {
   const powers = (function () {
     const groups = d.powers.filter((g) => g.list.length > 0);
     if (!groups.length) return '<section class="gl4-card"><h3 class="gl4-h">威能</h3><p class="gl4-empty">这张卡还没有选威能。</p></section>';
-    return '<section class="gl4-card gl4-powers"><h3 class="gl4-h">威能 <em>灰色 = 导出时已标记使用</em></h3>' +
-      groups.map((g) => renderPowerGroup(g, char)).join("") + "</section>";
+    return '<section class="gl4-card gl4-powers"><h3 class="gl4-h">威能 <em>' +
+      (ed.track ? "点一下 = 已用 / 再用一次 = 恢复" : "灰色 = 导出时已标记使用") + "</em></h3>" +
+      groups.map((g) => renderPowerGroup(g, d.powerUsed, ed)).join("") + "</section>";
   })();
 
   const feats = (function () {
     if (!d.feats.length) return '<section class="gl4-card"><h3 class="gl4-h">专长</h3><p class="gl4-empty">这张卡还没有选专长。</p></section>';
-    return '<section class="gl4-card gl4-feats"><h3 class="gl4-h">专长 <span class="gl4-count">' + d.feats.length + '</span></h3><div class="gl4-chips">' +
-      d.feats.map(function (f) {
-        const used = (char.featUsed || {})[f.key] ? " used" : "";
-        return '<span class="gl4-chip feat' + used + '" title="' + esc(f.id) + '">' + esc(zhName(f.id)) +
-          (f.granted ? '<em class="gl4-tag">赠送</em>' : "") + "</span>";
-      }).join("") + "</div></section>";
+    const used = d.feats.filter((f) => d.featUsed[f.key]).length;
+    const body = d.feats.map(function (f) {
+      const isUsed = d.featUsed[f.key] ? " used" : "";
+      const name = esc(zhName(f.id));
+      const extra = f.granted ? '<em class="gl4-tag">赠送</em>' : "";
+      if (ed.track) {
+        return '<button type="button" class="gl4-chip feat' + isUsed + '" data-act="feat" data-k="' + esc(f.key) +
+          '" title="' + esc((isUsed ? "点击恢复：" : "点击标记已使用：") + f.id) + '">' + name + extra + "</button>";
+      }
+      return '<span class="gl4-chip feat' + isUsed + '" title="' + esc(f.id) + '">' + name + extra + "</span>";
+    }).join("");
+    return '<section class="gl4-card gl4-feats"><h3 class="gl4-h">专长 <span class="gl4-count">' + d.feats.length +
+      '</span><em>' + (ed.track ? "已用 " + used + " / " + d.feats.length : "") + '</em></h3><div class="gl4-chips">' + body + "</div></section>";
   })();
 
+  const dailyMax = magicItemDailyUses(d.level, d.milestones);
   const equips = (function () {
     if (!d.equipRows.length) return '<section class="gl4-card"><h3 class="gl4-h">装备与魔法物品</h3><p class="gl4-empty">这张卡还没有装备物品。</p></section>';
-    return '<section class="gl4-card gl4-items"><h3 class="gl4-h">装备与魔法物品 <span class="gl4-count">' + d.equipRows.length +
-      '</span></h3><div class="gl4-item-list">' + d.equipRows.map(function (r) {
-        const used = (char.equipmentUsed || {})[r.key] ? " used" : "";
-        return '<div class="gl4-item' + used + '" title="' + esc(r.id) + '">' +
-          '<span class="gl4-item-slot">' + esc(r.slot) + "</span>" +
-          '<span class="gl4-item-name">' + esc(zhName(r.id)) + "</span>" +
-          (r.enh ? '<span class="gl4-item-enh">增强 +' + r.enh + "</span>" : "") + "</div>";
-      }).join("") + "</div></section>";
+    const used = d.equipRows.filter((r) => d.equipmentUsed[r.key]).length;
+    const rows = d.equipRows.map(function (r) {
+      const isUsed = d.equipmentUsed[r.key] ? " used" : "";
+      const name = esc(zhName(r.id));
+      const inner = '<span class="gl4-item-slot">' + esc(r.slot) + "</span>" +
+        '<span class="gl4-item-name">' + name + "</span>" +
+        (r.enh ? '<span class="gl4-item-enh">增强 +' + r.enh + "</span>" : "");
+      if (ed.track) {
+        return '<button type="button" class="gl4-item' + isUsed + '" data-act="item" data-k="' + esc(r.key) +
+          '" title="' + esc((isUsed ? "点击恢复：" : "点击标记已用：") + r.id) + '">' + inner + "</button>";
+      }
+      return '<div class="gl4-item' + isUsed + '" title="' + esc(r.id) + '">' + inner + "</div>";
+    }).join("");
+    const head = ed.track
+      ? '<h3 class="gl4-h">装备与魔法物品 <span class="gl4-count">' + d.equipRows.length + "</span>" +
+        '<em>已用 ' + used + " / " + d.equipRows.length + "</em>" +
+        counter("每日威能", d.itemDailyUsed + " / " + dailyMax, "item-daily", "魔法物品每日威能：英雄层 1 次 / 典范层 2 次 / 传奇层 3 次，每个里程碑 +1") + "</h3>"
+      : '<h3 class="gl4-h">装备与魔法物品 <span class="gl4-count">' + d.equipRows.length + "</span></h3>";
+    return '<section class="gl4-card gl4-items">' + head + '<div class="gl4-item-list">' + rows + "</div></section>";
   })();
 
-  const note = compact ? "" : '<p class="gl4-note">数值由插件离线推导；职业特性自动加值与部分专长效果无法离线还原，可能与 4E NEXT 差 1~2 点，以 4E NEXT 为准。面板只读，改卡请回 4E NEXT。</p>';
+  const rest = ed.rest
+    ? '<div class="gl4-rest"><button type="button" class="gl4-rest-btn" data-act="rest-short" title="恢复遭遇威能（专长需手动恢复）">短休</button>' +
+      '<button type="button" class="gl4-rest-btn strong" data-act="rest-long" title="生命、回复力、威能、专长、物品标记全部恢复；行动点回到 1">长休</button>' +
+      '<span class="gl4-rest-hint">长休会同时清空全部「已用」标记并回满生命</span></div>'
+    : "";
+
+  const note = compact ? "" : '<p class="gl4-note">数值由插件离线推导；职业特性自动加值与部分专长效果无法离线还原，可能与 4E NEXT 差 1~2 点，以 4E NEXT 为准。' +
+    (ed.hp ? "血量写回这枚 token（全桌可见），资源写回房间数据（写不进去时退回本机）。" : "") + "改卡请回 4E NEXT。</p>";
 
   return '<div class="gl4 ' + (compact ? "gl4-compact" : "gl4-full") + '">' +
     '<header class="gl4-head"><div class="gl4-id"><div class="gl4-name">' + esc(char.name || "未命名角色") +
     '</div><div class="gl4-sub">' + esc(sub) + "</div></div>" + quick + "</header>" +
-    hpBlock +
+    renderHpBlock(d, ed) +
     '<div class="gl4-grid2">' + defGrid + abiGrid + "</div>" +
     skills +
     attacks +
     powers +
     feats +
     equips +
+    rest +
     note +
     "</div>";
 }

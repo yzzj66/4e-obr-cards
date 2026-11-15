@@ -40,7 +40,7 @@ if (els.manifest) els.manifest.textContent = manifestUrl;
 
 const FALLBACK_MANIFEST = {
   name: "4E NEXT 角色卡",
-  version: "1.1.0",
+  version: "1.2.0",
   manifest_version: 1,
   author: "4E NEXT 玩家自制",
   description: "在枭熊房间查看 4E NEXT 角色卡速览。",
