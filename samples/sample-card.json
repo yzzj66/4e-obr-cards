@@ -1,0 +1,433 @@
+{
+  "app": "4enext",
+  "format": 1,
+  "exportedAt": "2026-11-15T06:26:44.316Z",
+  "pages": {
+    "character": {
+      "name": "申比软软",
+      "level": 30,
+      "abilities": {
+        "str": 13,
+        "con": 14,
+        "dex": 28,
+        "int": 10,
+        "wis": 24,
+        "cha": 12
+      },
+      "xp": "1000000",
+      "subraceBenefits": {},
+      "gender": "女",
+      "age": "",
+      "size": "中型",
+      "height": "",
+      "weight": "",
+      "alignment": "无阵营",
+      "faith": "鸦后",
+      "organization": "",
+      "powerSlots": {
+        "atWill": [
+          "双重攻击 Twin Strike",
+          "游击 Fading Strike"
+        ],
+        "encounter": [
+          "山崩奇袭 Landslide Strike",
+          "迅雷箭 Lightning Shot",
+          "蝎狮攒射 Manticore's Volley",
+          "猛烈箭雨 Pounding Barrage"
+        ],
+        "daily": [
+          "钢铁爆发 Eruption of Steel",
+          "五箭之舞 Five-Missile Dance",
+          "创伤射击 Bleeding Wounds",
+          "迷眩箭 Confounding Arrows"
+        ],
+        "utility": [
+          "晨雾步伐 Step of Morning Mist",
+          "狩猎势 Master of the Hunt",
+          "咆哮之风 Howling Winds",
+          "继续狩猎 Resume the Hunt",
+          "重整旗鼓 Invigorating Stride",
+          "迅雷备战 Quick-Draw Trick",
+          "黑暗之镰 Dark Scythe"
+        ],
+        "special": [
+          "先祖道标 Voyage of the Ancients",
+          "怒火驱逐 Wrath of the Destroyer",
+          "猎手追击 Pursuit of the Hunter"
+        ]
+      },
+      "defenseMods": {
+        "ac": {
+          "feat": 0,
+          "enhance": 0,
+          "armor": 0,
+          "shield": 0,
+          "other": 0
+        },
+        "fort": {
+          "feat": 3,
+          "enhance": 0,
+          "armor": 0,
+          "shield": 0,
+          "other": 0
+        },
+        "ref": {
+          "feat": 3,
+          "enhance": 0,
+          "armor": 0,
+          "shield": 1,
+          "other": 0
+        },
+        "will": {
+          "feat": 4,
+          "enhance": 0,
+          "armor": 0,
+          "shield": 0,
+          "other": 0
+        }
+      },
+      "speedMods": {
+        "power": 0,
+        "feat": 0,
+        "item": 0
+      },
+      "customBonuses": {
+        "init": [],
+        "speed": [
+          {
+            "label": "天命",
+            "value": 2
+          }
+        ],
+        "defense": {
+          "ac": [
+            {
+              "label": "盾牌",
+              "value": 1
+            },
+            {
+              "label": "物品",
+              "value": 3
+            }
+          ],
+          "fort": [
+            {
+              "label": "物品",
+              "value": 1
+            },
+            {
+              "label": "传奇",
+              "value": 4
+            }
+          ],
+          "ref": [
+            {
+              "label": "盾牌",
+              "value": 1
+            }
+          ],
+          "will": [
+            {
+              "label": "传奇",
+              "value": 4
+            }
+          ]
+        },
+        "perception": {
+          "passivePerception": [],
+          "passiveInsight": []
+        },
+        "attack": [
+          []
+        ],
+        "damage": [
+          [
+            {
+              "label": "龙晶",
+              "value": 5
+            },
+            {
+              "label": "手套",
+              "value": 4
+            },
+            {
+              "label": "物品",
+              "value": 5
+            }
+          ]
+        ],
+        "skill": {}
+      },
+      "skillMods": {
+        "运动": {
+          "race": 0,
+          "other": 0,
+          "armor": 0
+        },
+        "坚韧": {
+          "race": 0,
+          "other": 0,
+          "armor": 0
+        },
+        "杂技": {
+          "race": 0,
+          "other": 0,
+          "armor": 0
+        },
+        "隐秘": {
+          "race": 2,
+          "other": 0,
+          "armor": 0
+        },
+        "盗术": {
+          "race": 0,
+          "other": 0,
+          "armor": 0
+        },
+        "神秘": {
+          "race": 0,
+          "other": 0,
+          "armor": 0
+        },
+        "历史": {
+          "race": 0,
+          "other": 0,
+          "armor": 0
+        },
+        "宗教": {
+          "race": 0,
+          "other": 0,
+          "armor": 0
+        },
+        "地城": {
+          "race": 0,
+          "other": 0,
+          "armor": 0
+        },
+        "医疗": {
+          "race": 0,
+          "other": 0,
+          "armor": 0
+        },
+        "洞察": {
+          "race": 0,
+          "other": 0,
+          "armor": 0
+        },
+        "自然": {
+          "race": 2,
+          "other": 0,
+          "armor": 0
+        },
+        "侦查": {
+          "race": 0,
+          "other": 0,
+          "armor": 0
+        },
+        "唬骗": {
+          "race": 0,
+          "other": 0,
+          "armor": 0
+        },
+        "交涉": {
+          "race": 0,
+          "other": 0,
+          "armor": 0
+        },
+        "威吓": {
+          "race": 0,
+          "other": 0,
+          "armor": 0
+        },
+        "市井": {
+          "race": 0,
+          "other": 0,
+          "armor": 0
+        }
+      },
+      "combatMods": {
+        "attacks": [
+          {
+            "ability": "dex",
+            "classBonus": 0,
+            "profBonus": 0,
+            "profSlot": 0,
+            "profOverride": false,
+            "profImplement": false,
+            "feat": 3,
+            "enhanceSlot": 0
+          }
+        ],
+        "damages": [
+          {
+            "ability": "dex",
+            "feat": 4,
+            "enhanceSlot": 0
+          }
+        ]
+      },
+      "featSlots": [
+        "超级意志 Superior Will",
+        "传奇强韧 Epic Fortitude",
+        "传奇意志 Epic Will",
+        "高级防御 Improved Defenses",
+        "轻刃专精 Light Blade Expertise",
+        "盾牌擅长：轻盾 Shield Proficiency: Light",
+        "冰冷之心 Icy Heart",
+        "持久冻气 Lasting Frost",
+        "冬之触 Wintertouched",
+        "百步穿杨 Called Shot",
+        "强化准确射击 Improved Prime Shot",
+        "美德士兵 <兼职圣武士> Soldier of Virtue <Multiclass Paladin>",
+        "渗透之光 Pervasive Light",
+        "武术决心 Martial Resolve",
+        "回复专攻 Resilient Focus",
+        "战斗施法者防护 Battle Caster Defense",
+        "盲斗 Blind-Fight",
+        "卓越猎手 Peerless Hunter"
+      ],
+      "featChoices": {},
+      "classFeatureChoices": {
+        "游侠 Ranger::准确射击 Prime Shot": "准确射击 Prime Shot",
+        "游侠 Ranger::战斗流派 Fighting Style": "猎人战斗流派 Hunter Fighting Style（MP2）"
+      },
+      "equipmentSlots": [
+        "霜冻武器 Frost Weapon",
+        "韵律之刃 Rhythm Blade",
+        "西伯瑞斯无情寒冰龙晶 Siberys Shard of Merciless Cold",
+        "灵敏之艾恩石 Ioun Stone of Agility",
+        "易位斗篷 Cloak of Translocation",
+        "猎捕者革甲 Predator's Hide",
+        "凤凰腰带 Phoenix Sash",
+        "永久警戒之饰 Crest of Vigilance Eternal",
+        "冰雪手套 Gloves of Ice",
+        "自由时间之戒 Ring of Free Time",
+        null,
+        "传送靴 Boots of Teleportation"
+      ],
+      "adventureItems": [
+        {
+          "name": "",
+          "cost": 0
+        },
+        {
+          "name": "",
+          "cost": 0
+        }
+      ],
+      "money": {
+        "earned": 12500000,
+        "spent": 0
+      },
+      "equipmentEnhance": {
+        "0": 6,
+        "2": 3,
+        "4": 5,
+        "5": 6,
+        "8": 2
+      },
+      "baseItems": {
+        "0": "w:匕首 Dagger",
+        "1": "w:匕首 Dagger",
+        "5": "a:长者革甲 Elderhide",
+        "7": "s:轻盾"
+      },
+      "otherSlots": [],
+      "consumableSlots": [],
+      "wondrousSlots": [
+        "精灵链甲衫 Elven Chain Shirt"
+      ],
+      "companionBeastSlots": [
+        "受训精野豹 Trained Fey Panther"
+      ],
+      "companionSlots": [],
+      "trainedSkills": [],
+      "classTrainedSkills": [
+        "杂技",
+        "隐秘",
+        "侦查",
+        "医疗"
+      ],
+      "classGrantedPowerIds": [],
+      "raceGrantedPowerIds": [
+        "先祖道标 Voyage of the Ancients",
+        "怒火驱逐 Wrath of the Destroyer",
+        "猎手追击 Pursuit of the Hunter"
+      ],
+      "raceAutoGrantedPowerIds": [
+        "先祖道标 Voyage of the Ancients",
+        "怒火驱逐 Wrath of the Destroyer",
+        "猎手追击 Pursuit of the Hunter"
+      ],
+      "paragonGrantedPowerIds": [],
+      "epicDestinyGrantedPowerIds": [],
+      "classGrantedFeatIds": [
+        "即时备战 Quick Draw"
+      ],
+      "ritualSlots": [],
+      "classGrantedRitualIds": [],
+      "classGrantedRitualSources": {},
+      "themeId": "精野驯兽师 Fey Beast Tamer",
+      "themeGrantedPowerIds": [],
+      "featGrantedPowerIds": {},
+      "languages": [
+        "通用语",
+        "精灵语"
+      ],
+      "actionPoints": 1,
+      "creation": {
+        "personality": "",
+        "concept": "",
+        "background": "",
+        "notes": ""
+      },
+      "hpNow": {},
+      "hpBonus": 0,
+      "surgeBonus": 0,
+      "surgeValueBonus": 0,
+      "tempHp": 0,
+      "spellbook": [],
+      "backpack": [],
+      "powerUsed": {},
+      "equipmentUsed": {},
+      "featUsed": {},
+      "milestones": 0,
+      "powerPoints": 0,
+      "glance": {
+        "atkTemp": 0,
+        "dmgTemp": 0,
+        "defTemp": {
+          "ac": 0,
+          "fort": 0,
+          "ref": 0,
+          "will": 0
+        },
+        "surgeTemp": 0,
+        "itemDailyUsed": 0,
+        "secondWind": false,
+        "deathFails": 0
+      },
+      "paragonPathId": "崩山投掷者 Avalanche Hurler",
+      "epicDestinyId": "鸦后骑士 Raven Knight",
+      "raceId": "野精灵 Wilden",
+      "raceSwaps": {},
+      "vision": "昏暗视觉",
+      "raceAbility2Choice": "dex",
+      "hybrid": false,
+      "classId": "游侠 Ranger",
+      "ritualFreeIds": [],
+      "freeItemIds": []
+    },
+    "reserve": {
+      "spellbook": [],
+      "backpack": []
+    },
+    "overview": {},
+    "background": {
+      "personality": "",
+      "concept": "",
+      "background": "",
+      "notes": ""
+    }
+  }
+}

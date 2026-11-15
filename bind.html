@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>绑定角色卡</title>
+<link rel="stylesheet" href="assets/ui.css">
+</head>
+<body>
+<div class="bind-wrap">
+  <div>
+    <div class="bind-title">绑定 4E NEXT 角色卡</div>
+    <div class="bind-sub" id="sub">读取中…</div>
+  </div>
+  <input class="bind-search" id="q" placeholder="搜索名字 / 种族 / 职业" autocomplete="off">
+  <div class="bind-list" id="list"></div>
+  <div style="display:flex;gap:8px;align-items:center">
+    <button class="btn danger" id="unbind">解除绑定</button>
+    <button class="btn ghost" id="cancel" style="margin-left:auto">取消</button>
+  </div>
+  <div class="muted" style="font-size:11px">绑定只写在这枚 token 的元数据上，不改变 token 本身。</div>
+</div>
+<script type="module" src="assets/bind.js"></script>
+</body>
+</html>

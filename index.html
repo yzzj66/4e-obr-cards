@@ -1,0 +1,94 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>4E NEXT 角色卡 · Owlbear Rodeo 插件</title>
+<link rel="stylesheet" href="assets/ui.css">
+<link rel="stylesheet" href="assets/glance.css">
+</head>
+<body>
+<article class="doc">
+  <h1>4E NEXT 角色卡 <span class="tag">Owlbear Rodeo 插件</span></h1>
+  <p class="muted">在枭熊里看 4E NEXT 的「速览」页：右键 token 绑定角色卡，之后选中这枚 token 就会弹出速览。纯静态、免构建、不需要服务器。</p>
+
+  <h2>这是什么</h2>
+  <ul>
+    <li><b>速览面板</b>：生命 / 血怒 / 回复力、AC 与三防、六属性、17 项技能、攻击与伤害、威能、专长、装备，全部来自 4E NEXT 的「导出存档（JSON）」。</li>
+    <li><b>Token 绑定</b>：GM 右键地图上的 IMAGE token →「绑定 4E NEXT 角色卡」，选中卡之后，<b>任何人</b>选中这枚 token 都会看到速览。</li>
+    <li><b>数据存房间</b>：卡片存在 Owlbear 的 room metadata 里，全房间共享，没有自建服务器，也不需要账号。</li>
+    <li><b>只读</b>：插件不改卡。要改角色请回 4E NEXT，改完重新导出、导入会覆盖同名卡。</li>
+  </ul>
+
+  <h2>三步部署（GitHub Pages）</h2>
+  <ol class="steps">
+    <li>把本目录（<code>manifest.json</code>、<code>background.html</code>、<code>assets/</code>、<code>data/</code>、<code>vendor/</code>、<code>samples/</code> 等）整个上传到一个 GitHub 仓库。</li>
+    <li>仓库 <b>Settings → Pages</b>：Source 选 <code>Deploy from a branch</code>，Branch 选 <code>main</code> / 根目录 <code>/ (root)</code>，保存。</li>
+    <li>等 1 分钟，得到形如 <code>https://&lt;用户名&gt;.github.io/&lt;仓库名&gt;/</code> 的地址，那么 manifest 地址就是它加 <code>manifest.json</code>。</li>
+  </ol>
+  <p class="note">也可以直接把仓库挂到 jsDelivr：<code>https://cdn.jsdelivr.net/gh/&lt;用户名&gt;/&lt;仓库名&gt;@main/manifest.json</code>（改一次推一次，CDN 会缓存几分钟）。</p>
+
+  <h3>你的 manifest 地址</h3>
+  <div class="copy-row">
+    <input id="manifest-url" readonly>
+    <button class="btn primary" id="copy-url">复制</button>
+  </div>
+  <p class="muted" style="font-size:12.5px">这个地址是<b>当前页所在目录</b>下的 manifest.json。把整包放到任意静态托管（GitHub Pages / jsDelivr / Netlify / 自己的网站）都能用。</p>
+
+  <h2>在 Owlbear Rodeo 里添加扩展</h2>
+  <ol class="steps">
+    <li>打开 <a href="https://www.owlbear.rodeo/extensions" target="_blank" rel="noreferrer">owlbear.rodeo/extensions</a>（或在房间右上角菜单进 Extensions）。</li>
+    <li>点 <b>Add Extension</b>，把上面复制的 manifest 地址粘进去，确认。</li>
+    <li>回到房间，右下角会出现绿色的 <b>4E</b> 按钮；右键地图上的图片 token 也会多出「绑定 4E NEXT 角色卡」。</li>
+  </ol>
+  <p class="warn">扩展是<b>每个玩家各自安装</b>的（房主装了自己也装）。插件的数据在房间数据里，所以别人装好后无需再导入。</p>
+
+  <h2>使用流程</h2>
+  <ol class="steps">
+    <li><b>导出</b>：在 4E NEXT 里打开角色卡 →「导出存档（JSON）」，得到一个 <code>.json</code> 文件。</li>
+    <li><b>导入</b>：Owlbear 里点右下角 <b>4E</b> 按钮打开面板 → 把 json 拖进去（或点「导入 JSON」/「粘贴」）。同名卡会被就地更新，绑定关系不丢。</li>
+    <li><b>绑定</b>：右键地图上的角色 token →「绑定 4E NEXT 角色卡」→ 选一张卡。</li>
+    <li><b>看速览</b>：选中这枚 token，速览小面板就从 token 上方弹出来；点 ⤢ 可以打开完整面板。</li>
+  </ol>
+
+  <h2>示例</h2>
+  <p class="muted">下面是用 <code>samples/sample-card.json</code>（一张 30 级游侠）渲染的真实效果：</p>
+  <div class="demo-frame" id="demo"><p class="muted">示例加载中…</p></div>
+
+  <h2>如果扩展加载失败</h2>
+  <p>Owlbear 解析 manifest 里路径的方式取决于托管位置。如果上面这种<b>相对路径</b>的 manifest 加载不出来，把 manifest.json 换成下面这份<b>绝对地址</b>版本（把内容整段复制进你托管上的 manifest.json 即可）：</p>
+  <pre><code id="abs-manifest"></code></pre>
+  <div class="copy-row">
+    <button class="btn" id="copy-abs">复制这份 manifest</button>
+  </div>
+  <p class="muted" style="font-size:12.5px">绝对地址是按当前页面的域名算的，所以要在你最终使用的托管地址上打开本页再复制。</p>
+  <p class="warn">GitHub Pages 项目页是子路径（<code>/仓库名/</code>）。如果某个 Owlbear 版本把 manifest 里的相对路径当成站点根目录，就会找不到 <code>background.html</code>——用上面这份绝对 manifest，或直接改用 jsDelivr 直链。</p>
+
+  <h2>已知限制</h2>
+  <ul>
+    <li>只读：不能在这里扣血、标威能；血量等是<b>导出那一刻的快照</b>，要更新就重新导出导入。</li>
+    <li>数值是插件离线推导的：职业特性自动加值（如信仰甲胄、蛮族机敏）和少数专长效果无法离线还原，可能和 4E NEXT 差 1~2 点，以 4E NEXT 为准。</li>
+    <li>房间数据只有 GM 能写：玩家装好扩展能看，但导入/绑定要 GM 操作（Owlbear 对房间数据的权限限制）。</li>
+    <li>卡片存在房间数据里：删掉扩展不会删数据；换房间要重新导入。</li>
+    <li>没有在真实 Owlbear 房间里做联机测试（开发环境无法起 GUI），只做了静态检查和本地渲染验证。</li>
+  </ul>
+
+  <h2>目录结构</h2>
+  <pre><code>manifest.json        扩展清单（Owlbear 加载的入口）
+background.html      后台页：右键菜单 / 浮动按钮 / 选中 token 弹窗
+button.html          右下角 4E 浮动按钮
+panel.html           全屏面板：导入、列表、预览、绑定
+info.html            选中 token 时弹出的速览小面板
+bind.html            右键「绑定」打开的选卡弹窗
+index.html           本页（说明 + 示例）
+assets/              渲染层与页面脚本、样式
+data/rules.js        职业/种族/基础物品/装备等级索引（离线数据）
+vendor/obr-sdk.js    @owlbear-rodeo/sdk 3.1.0 的 ESM 打包（本地化，离线可用）
+samples/             示例卡（可删）
+dev/                 开发期工具（普通用户用不到）</code></pre>
+
+  <p class="muted" style="margin-top:28px;font-size:12px">非官方作品，与 Owlbear Rodeo、4E NEXT 均无隶属关系。角色卡数据只在你自己的房间与浏览器里流转。</p>
+</article>
+<script type="module" src="assets/index.js"></script>
+</body>
+</html>

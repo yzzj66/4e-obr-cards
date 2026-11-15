@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>4E NEXT 角色卡</title>
+<link rel="stylesheet" href="assets/ui.css">
+<link rel="stylesheet" href="assets/glance.css">
+</head>
+<body>
+<div class="panel">
+  <aside class="panel-side">
+    <div class="panel-head">
+      <div class="panel-title">4E NEXT 角色卡<small id="count">0 张</small></div>
+      <button class="icon-btn" id="close" title="关闭面板" style="margin-left:auto">✕</button>
+    </div>
+    <div class="import-box">
+      <div class="row">
+        <button class="btn primary small" id="pick">导入 JSON</button>
+        <button class="btn small" id="paste-toggle">粘贴</button>
+        <button class="btn small ghost" id="sample">载入示例</button>
+      </div>
+      <input type="file" id="file" accept=".json,application/json" multiple hidden>
+      <div id="paste-wrap" style="display:none;margin-top:8px">
+        <textarea id="paste" placeholder="把 4E NEXT「导出存档」得到的 JSON 全文粘贴到这里"></textarea>
+        <button class="btn small" id="paste-ok" style="margin-top:6px">导入这段 JSON</button>
+      </div>
+      <div class="drop-hint" style="margin-top:8px">也可以把 .json 文件直接拖进窗口</div>
+    </div>
+    <div class="sel-token" id="sel">未选中 token</div>
+    <div class="card-list" id="list"></div>
+    <div class="side-foot">
+      <p>数据保存在<b>房间数据</b>里：同一个房间的所有人（包括玩家）都能看到速览。</p>
+      <p>面板只读；改卡仍然在 4E NEXT 里做，改完重新导出导入即可覆盖同名卡。</p>
+    </div>
+  </aside>
+  <main class="panel-main"><div class="panel-main-inner" id="view"></div></main>
+</div>
+<div class="drag-overlay" id="overlay"><b>松手导入 4E NEXT 导出 JSON</b></div>
+<script type="module" src="assets/panel.js"></script>
+</body>
+</html>

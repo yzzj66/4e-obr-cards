@@ -1,0 +1,9 @@
+{
+  "name": "4E NEXT 角色卡",
+  "version": "1.0.0",
+  "manifest_version": 1,
+  "author": "4E NEXT 玩家自制",
+  "description": "查看 4E NEXT 导出的角色卡速览；右键 token 绑定角色卡，选中即弹出速览。",
+  "icon": "icon.svg",
+  "background_url": "background.html"
+}
