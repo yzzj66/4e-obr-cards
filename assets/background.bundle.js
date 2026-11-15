@@ -1,4 +1,4 @@
-/*! 4eNEXT to owlbear · background.bundle.js  (v1.3.0)
+/*! 4eNEXT to owlbear · background.bundle.js  (v1.6.0)
  * ---------------------------------------------------------------------------
  * 这是后台页唯一加载的脚本：纯「经典脚本」，没有 type="module"，没有 import/export，
  * 不依赖任何 CDN。内容是：
@@ -7,7 +7,7 @@
  *
  * 不要手改本文件。改逻辑请改 assets/background.core.js，然后：
  *     node dev/build-background.mjs
- * 生成时间：2026-11-15T09:40:09.342Z
+ * 生成时间：2026-11-15T11:05:14.196Z
  * --------------------------------------------------------------------------- */
 (function () {
 "use strict";
@@ -47,12 +47,46 @@ if (!OBR || typeof OBR.onReady !== "function") {
  *
  * 约定：外层作用域已经提供了 OBR（@owlbear-rodeo/sdk 的 default export）。
  *
- * 三个入口（任何一个活着就能打开面板）：
- *   1) manifest.action  → 房间左上角的扩展图标（由 manifest 提供，不依赖本文件）
- *   2) OBR.tool.create   → 左侧工具栏里的 4E 工具按钮
- *   3) OBR.popover.open  → 右下角浮动 4E 按钮（与参考实现 character-cards 相同写法）
- * 外加：右键 IMAGE token 的「绑定 4E NEXT 角色卡」/「加入先攻」/「隐形加入先攻」（仅 GM），
- *       以及玩家「结束我的回合」请求（只由 GM 客户端落笔）。
+ * v1.3.1：功能拆成**各自独立的窗口**（不再是一个面板的三个 tab），每个窗口有自己的 popover id：
+ *   · 速览       /info        选中绑定的 token 自动弹（页面 info.html，按 token 记位置）
+ *   · 角色卡面板 /panel       导入 / 列表 / 预览（页面 panel.html，按窗口名记位置）
+ *   · 先攻       /initiative-window  独立窗口（页面 initiative.html）
+ *   · 骰子       /dice-window        独立窗口（页面 dice.html，内容 v1.5.0 实现）
+ * v1.3.2：把工具栏补齐成「一排入口」，并新增设置窗口：
+ *   · 速览也有了工具栏入口（没选中时给出「先选 token」的提示，不再静默）；
+ *   · 设置/关于 /settings-window（页面 settings.html，左侧分栏 + 右侧内容，同样可拖动 / 视口夹紧）。
+ * v1.4.0：先攻条（按 docs/spec-initiative.md 实现）
+ *   · 工具栏「先攻」不再打开 880×640 的大窗口，而是打开**屏幕顶部的先攻条**：
+ *     popover id /initiative-strip、CENTER/TOP 锚点、top 45、默认 720×129（展开）、120×40（折叠）；
+ *     宽度按控制行自适应（max(410, 测量值+16)），高度按 phase 三档 129 / 139 / 159；
+ *     位置只记「相对屏幕中线的偏移」（localStorage["4enext/strip-pos"]），整条可拖动、双击拖动柄回中。
+ *   · 原来的列表窗口还留着（?view=list，id 仍是 /initiative-window），先攻条上的「≡」打开它：
+ *     重掷全部 / 同步加值 / 上下移 / 删除 / 清空这些管理动作在那里。
+ *   · 房间数据新增 phase / surprise / d20 / tb（只加字段、不改键名），条目上限 200 → 60；
+ *     normalize 截断不抛错，写失败降级本机 localStorage["4enext/state/initiative"] 并通知。
+ *   · 玩家「结束我的回合」仍然是广播请求，GM 侧按规格 §5 做四道校验（含「正在推进中」）。
+ * v1.6.0：血条扩展 + Boss（按 docs/spec-hpbar-boss.md 的 P0–P3，选方案 A：token 附带）
+ *   · HP 红条 + 临时生命 +N 仍在上（20s），新增**蓝色回复力条**在下（12s，间距 3s，共用 left/w）；
+ *   · **四防四角盾**（AC / 强韧 / 反射 / 意志，直径 30s）：SDK 3.1.0 没有 RING / 盾牌图元，
+ *     全部用 buildCurve().points() 手绘（盾形多边形 / 环形扇区 / 名牌 / 锁）；
+ *   · 右键菜单新增「添加 / 移除血条组件」（独立键 hp-bar/enabled，关闭写 false 不 delete）
+ *     与「显示为 Boss / 隐藏 Boss」（hp.boss，布尔或对象都读，写回一律对象）；
+ *   · Boss 样式（方案 A）：环形血条（48 段）+ 名牌 + 分段线 + 锁，**压制 HP 普通条**
+ *     （回复力条与四防保留）；玩家端 locked 时按 25% 阶梯向上取整、不画数字与四防。
+ * v1.5.0：骰子（按 docs/spec-dice.md 的 P0–P3，用户拍板覆盖 D1–D3）
+ *   · 骰子窗口从 660×560 加宽到 760×620（仍按视口夹紧），两栏：组公式 / 结果 + 团队历史；
+ *   · 规则全在 assets/dice-core.js（纯函数），4E 预设在 assets/dice-4e.js；本文件只负责**城主落库**：
+ *     收 CH_ROLL → 校验归一化（同 dice-core 的 rollNorm）→ 幂等合并（同 rollId 不重复插）→
+ *     写房间数据 com.4enext-owlbear/rolls（rows 上限 40）→ 广播 CH_ROLL_SAVED；
+ *   · 不做命中判定 / 豁免判定 / 优势劣势 / 暗骰（用户拍板）：载荷里没有 target / hit。
+ * 入口：
+ *   1) manifest.action   → 房间左上角的扩展图标（角色卡面板，由 manifest 提供、不依赖本文件）
+ *   2) OBR.tool.create×5 → 左侧工具栏：速览 / 角色卡 / 先攻 / 骰子 / 设置（各开各的窗口）
+ *   3) OBR.popover.open  → 右下角浮动 4E 按钮（角色卡面板，与参考实现 character-cards 相同写法）
+ *   4) 右键 IMAGE token   → 绑定角色卡 / 加入先攻 / 隐形加入先攻（仅 GM）
+ * 外加玩家「结束我的回合」请求（只由 GM 客户端落笔）。
+ * 参考实现 FullPeople/obr-suite 也是「一个功能一个 popover」：inINIT 与 dice 各自有
+ * POPOVER_ID + registerPanelBbox，面板之间靠 id 区分、可同时打开。
  *
  * 自诊断：每一步失败都 OBR.notification.show(..., "ERROR")，成功则在启动后汇总一条
  *        INFO 通知（可用 localStorage["4enext/diag"]="0" 关掉）。
@@ -66,13 +100,91 @@ var ID_BUTTON = NS + "/button";
 var ID_INFO = NS + "/info";
 var ID_PANEL = NS + "/panel";
 var ID_BIND = NS + "/bind";
-var TOOL_ID = NS + "/panel-tool";
+/* v1.3.1：先攻 / 骰子各自独立的 popover id（与 assets/common.js 的 ID_INIT_WIN / ID_DICE_WIN 必须一致）。 */
+var ID_INIT_WIN = NS + "/initiative-window";
+var ID_DICE_WIN = NS + "/dice-window";
+/* v1.3.2：设置 / 关于窗口（与 assets/common.js 的 ID_SETTINGS_WIN 必须一致）。 */
+var ID_SETTINGS_WIN = NS + "/settings-window";
+/* v1.4.0：先攻条是**另一个 popover**（屏幕顶部居中的条），
+ * id 与列表窗口 /initiative-window 不同 → 两个可以同时开着（与 assets/common.js 的 ID_STRIP 一致）。 */
+var ID_STRIP = NS + "/initiative-strip";
+var TOOL_ID = NS + "/panel-tool";      /* 旧 id 不变：工具栏里「角色卡」图标的位置不会跳 */
+var TOOL_INIT_ID = NS + "/initiative-tool";
+var TOOL_DICE_ID = NS + "/dice-tool";
+/* v1.3.2：工具栏补的两个入口（速览 / 设置）。旧 id 一个都没动，老用户看到的图标顺序不会跳。 */
+var TOOL_GLANCE_ID = NS + "/glance-tool";
+var TOOL_SETTINGS_ID = NS + "/settings-tool";
 var CH_HELLO = NS + "/diag-hello"; /* background → 各页面：我起来了 */
 var CH_PING = NS + "/diag-ping";   /* 页面 → background：在吗 */
 var CH_PONG = NS + "/diag-pong";   /* background → 页面：在，状态如下 */
-var PLUGIN_VERSION = "1.3.0";
+var PLUGIN_VERSION = "1.6.0";
 /* token 上的血量（与 assets/track.js 的 KEY_HP 必须一字不差）。 */
 var KEY_HP = NS + "/hp";
+/* v1.6.0：血条组件开关。**独立键**，不塞进 hp（hp 是数值容器，写开关会误触发判空）；
+ * 语义照参考实现 hpBar：flag === false 才不画，undefined 视为画 → 老 token 升级后血条不消失。
+ * 与 assets/common.js / assets/track.js 的同名常量必须一字不差。 */
+var KEY_HPBAR = NS + "/hp-bar/enabled";
+/* v1.6.0：玩家端量化阈值（场景元数据；全桌同一份，缺省 25%）。 */
+var KEY_PLAYER_THRESHOLD = NS + "/settings.playerThreshold";
+
+/* ---------------------------------------------------------------------------
+ * v1.6.0 像素常数集中区（s = 1 时的数值；真机微调只改这里 + barLayout()）
+ * ---------------------------------------------------------------------------
+ * 说明见 docs/hpbar-boss-v16.md §3「像素常数集中表」。所有几何都由 s 缩放，
+ * s = min(token 渲染宽, 高) / 网格 dpi，并夹在 0.2~6（上界防止 4×4 巨图把条画到屏外）。
+ *   · HP 条 20 高、回复力条 12 高、两行间距 3（规格 §6.4 A）
+ *   · 四防盾直径 30、离 token 内边 4（规格 §6.4 B；窄 token 退化不画）
+ *   · Boss 环厚 10、内缩 2、48 段；名牌 26 高、离 token 顶 6（规格 §6.4 C/D）
+ * zIndex 全部固定并 disableAutoZIndex：盾 15000 / 填充 20000 / 数值 30000，向下加密到 9500~31050。
+ * ------------------------------------------------------------------------- */
+var BAR_HP_H = 20;
+var BAR_SURGE_H = 12;
+var BAR_GAP = 3;
+var BAR_PAD = 2;
+var SHIELD_DIAMETER = 30;
+var SHIELD_INSET = 4;
+var BOSS_RING_THICK = 10;
+var BOSS_RING_INSET = 2;
+var BOSS_RING_SEGMENTS = 48;
+var BOSS_PLATE_H = 26;
+var BOSS_PLATE_GAP = 6;
+var BOSS_MAX_SEGMENTS = 5;
+var PLAYER_THRESHOLD_DEFAULT = 25;
+
+/* 颜色一律取 assets/ui.css 的 :root（--blue / --green / --red / --orange / --line / --bg），
+ * 不引入第二套色板（规格 §6.4 E 的结论）。 */
+var COLOR_HP_BG = "#A4A4A4";
+var COLOR_HP_FILL = "#a52424";
+var COLOR_SURGE_BG = "#1a222c";
+var COLOR_SURGE_FILL = "#58a6ff";
+var COLOR_BOSS_BG = "#0b0f14";
+var COLOR_PLATE_STROKE = "#253040";
+var COLOR_PLATE_TEXT = "#e6edf3";
+var COLOR_PHASE_TEXT = "#e3b341";
+var COLOR_LOCK_ON = "#f85149";
+var COLOR_LOCK_OFF = "#93a1b0";
+var COLOR_DIVIDER = "#281719";
+var DEF_KEYS = ["ac", "fort", "reflex", "will"];
+var DEF_COLORS = { ac: "#3498db", fort: "#e3b341", reflex: "#56d364", will: "#a371f7" };
+/* role → zIndex（规格 §6.3） */
+var BAR_Z = {
+  "ring-bg": 9500,
+  "ring-fill": 9800,
+  "bar-bg": 10000,
+  "surge-bg": 10500,
+  "plate": 12000,
+  "plate-text": 12400,
+  "plate-phase": 12450,
+  "shield": 15000,
+  "shield-text": 16000,
+  "bar-fill": 20000,
+  "surge-fill": 20500,
+  "divider": 22000,
+  "bar-text": 30000,
+  "surge-text": 30500,
+  "lock-body": 31000,
+  "lock-shackle": 31050
+};
 /* v1.3.0：token 上的先攻加值 / 房间数据里的先攻状态 / 玩家结束回合请求频道
  * （与 assets/common.js、assets/initiative.js 里的同名常量必须一字不差）。 */
 var KEY_INIT = NS + "/init";
@@ -103,6 +215,49 @@ var INFO_POS_MAX = 40;
 var INFO_POS_KEY = "4enext/info-pos";
 var CH_INFO_DRAG = NS + "/info-drag";
 
+/* v1.3.1：先攻 / 骰子 / 角色卡面板三个「独立窗口」的拖动与位置记忆
+ * （与 assets/common.js 的 WIN_POS_KEY / CH_WIN_DRAG / WIN_DRAG_THROTTLE_MS 必须一字不差）。
+ * 与速览弹窗的区别：速览按 token 记位置，这三个窗口各按**窗口名**记一份。 */
+var WIN_MARGIN = 16;
+var WIN_DRAG_IDLE_MS = 1500;
+var WIN_POS_KEY = "4enext/win-pos";
+var CH_WIN_DRAG = NS + "/win-drag";
+
+/* v1.4.0：先攻条（规格 §3.1 / §3.2）。
+ * 与 assets/initiative.js 里的 STRIP_* 必须一字不差（dev/check.mjs 会对比两边的数字）。
+ *   · 折叠 120×40；展开 720×(129 idle / 139 preparing / 159 combat)，最小 410，按视口 −32 夹紧
+ *   · 始终贴在视口顶部的 TOP_OFFSET（45），以屏幕中线为锚点左右伸缩（CENTER/TOP）
+ *   · 位置记忆只存「相对中线的偏移」{ v:1, dx, dy }，换屏幕 / 缩放后仍然贴顶居中 */
+var STRIP_COLLAPSED_W = 120;
+var STRIP_COLLAPSED_H = 40;
+var STRIP_EXPANDED_W = 720;
+var STRIP_MIN_EXPANDED_W = 410;
+var STRIP_H_IDLE = 129;
+var STRIP_H_PREPARING = 139;
+var STRIP_H_COMBAT = 159;
+var STRIP_TOP_OFFSET = 45;
+var STRIP_SIDE_MARGIN = 16;
+var STRIP_POS_KEY = "4enext/strip-pos";
+var CH_STRIP_DRAG = NS + "/strip-drag";
+var CH_STRIP_CMD = NS + "/strip-cmd";
+
+/* v1.5.0：骰子（团队共享）。
+ * 与 assets/common.js 的 CH_ROLL / CH_ROLL_CLEAR / CH_ROLL_SAVED / KEY_ROLLS / ROLL_MAX_ROWS
+ * 必须一字不差（后台是经典脚本，不能 import；dev/check.mjs 会逐项对比）。
+ *   · 投掷由**页面**广播，本文件只做城主侧的校验 / 合并 / 落库；
+ *   · 房间数据上限仍按 16 KB 预算：rows 封顶 40（规格 §1.6），label 40 字、expression 200 字、
+ *     单条最多 30 颗骰子（超出截断并标 truncated）。 */
+var CH_ROLL = NS + "/roll";
+var CH_ROLL_CLEAR = NS + "/roll-clear";
+var CH_ROLL_SAVED = NS + "/roll-saved";
+var KEY_ROLLS = NS + "/rolls";
+var ROLL_MAX_ROWS = 40;
+var ROLL_MAX_DICE = 30;
+var ROLL_LABEL_MAX = 40;
+var ROLL_EXPR_MAX = 200;
+var ROLL_ROOM_BYTES = 12000;
+var ROLL_COLOR_DEFAULT = "#5dade2";
+
 /* ---------------------------------------------------------------------------
  * 0) 站点根地址
  *    参考实现（character-cards/src/background.ts 第 7~11 行）把 panel/info/bind
@@ -123,8 +278,19 @@ function pageUrl(name) { return BASE + name; }
 
 var ICON_URL = pageUrl("icon.svg");
 var TOOL_ICON_URL = pageUrl("icon-tool.svg");
+/* 入口图标风格统一（同一套 24×24 线性图标），用文件上的小徽标区分：列表 / 旗 / 骰子 */
+var TOOL_INIT_ICON_URL = pageUrl("icon-tool-initiative.svg");
+var TOOL_DICE_ICON_URL = pageUrl("icon-tool-dice.svg");
+/* v1.3.2：速览（眼睛）/ 设置（滑杆）两个图标，仍是同一套 24×24 细线圆角风格。 */
+var TOOL_GLANCE_ICON_URL = pageUrl("icon-tool-glance.svg");
+var TOOL_SETTINGS_ICON_URL = pageUrl("icon-tool-settings.svg");
 var URL_PANEL = pageUrl("panel.html");
 var URL_INFO = pageUrl("info.html");
+/* v1.3.1：先攻 / 骰子各自独立的窗口页。 */
+var URL_INITIATIVE = pageUrl("initiative.html");
+var URL_DICE = pageUrl("dice.html");
+/* v1.3.2：设置 / 关于窗口页。 */
+var URL_SETTINGS = pageUrl("settings.html");
 var URL_BIND = pageUrl("bind.html");
 var URL_BUTTON = pageUrl("button.html");
 
@@ -204,24 +370,601 @@ function attempt(where, fn) {
 }
 
 /* ---------------------------------------------------------------------------
- * 2) 打开面板（唯一真正的目标动作）
- *    失败时依次兜底：manifest action popover → 通知用户。
+ * 2) 独立窗口（v1.3.1：先攻 / 骰子 / 角色卡面板都是各自一个 popover）
+ * ---------------------------------------------------------------------------
+ * 为什么要重写这一段：
+ *   · v1.3.0 用一个大面板装三个 tab，用户明确不要（每个功能应该是独立的块/窗口）；
+ *   · 面板常常**超出视口**（底部被切掉）—— 所以打开前必须用
+ *     OBR.viewport.getWidth()/getHeight() 夹紧：宽 ≤ 视口宽 − 2×margin，
+ *     高 ≤ 视口高 − 2×margin（margin = WIN_MARGIN = 16）；
+ *   · 每个窗口各记各的位置（localStorage["4enext/win-pos"]，按窗口名），
+ *     拖动沿用 v1.2.2 速览弹窗那一套：页面只发「起点 + 累计位移」，这里换算 / 夹取 / 落盘。
+ * 参考实现 FullPeople/obr-suite 的做法一致：每个模块有自己的 POPOVER_ID，
+ * 打开时 registerPanelBbox 记几何、BC_PANEL_DRAG_END 记拖动后的位置。
  * ------------------------------------------------------------------------- */
+var WINS = {
+  /* 角色卡 / 导入面板：比速览大一点，但同样按视口夹紧；内部列表与预览各自滚动。 */
+  panel: { id: ID_PANEL, url: URL_PANEL, width: 960, height: 660 },
+  /* v1.4.0：先攻的大窗口变成「列表窗口」（先攻条上的 ≡ 打开它），地址带 ?view=list。 */
+  initiative: { id: ID_INIT_WIN, url: URL_INITIATIVE + "?view=list", width: 880, height: 640 },
+  /* v1.5.0：骰子窗口加宽（660×560 → 760×620）——两栏要放得下"骰子 + 表达式 + 预设 + 历史"。
+   * 仍然走 winSize() 夹紧：小屏（如 1366×768）下实际尺寸 ≤ 视口 − 2×WIN_MARGIN。 */
+  dice: { id: ID_DICE_WIN, url: URL_DICE, width: 760, height: 620 },
+  /* v1.3.2：设置 / 关于。左侧分栏 + 右侧内容，860×620 在 1366×768 上也放得下。 */
+  settings: { id: ID_SETTINGS_WIN, url: URL_SETTINGS, width: 860, height: 620 }
+};
+/* name -> { geom: {left,top,width,height,url,vp}, drag, timer } */
+var winOpen = {};
+/* 拖动中待应用的位置（按窗口名合并，上一帧还没 open 完就只留最后一个） */
+var winDragWanted = {};
+var winDragBusy = false;
+
+function winDef(name) {
+  return WINS[name] || null;
+}
+
+/** 窗口尺寸：取「默认值」与「视口 − 2×margin」的较小者，绝不超出视口。 */
+function winSize(def, vp) {
+  var availW = (vp && vp.width > 0 ? vp.width : def.width) - WIN_MARGIN * 2;
+  var availH = (vp && vp.height > 0 ? vp.height : def.height) - WIN_MARGIN * 2;
+  return {
+    width: Math.round(Math.min(def.width, Math.max(240, availW))),
+    height: Math.round(Math.min(def.height, Math.max(220, availH)))
+  };
+}
+
+/** 没有记住过位置时的默认点：水平居中、稍微偏上（不挡住 token 区）。 */
+function winDefaultPos(size, vp) {
+  var vw = vp && vp.width > 0 ? vp.width : size.width + WIN_MARGIN * 2;
+  var vh = vp && vp.height > 0 ? vp.height : size.height + WIN_MARGIN * 2;
+  return clampInfoPos(
+    (vw - size.width) / 2,
+    Math.max(WIN_MARGIN, (vh - size.height) * 0.35),
+    size, vp
+  );
+}
+
+/* ---- 位置记忆：localStorage["4enext/win-pos"] = { v:1, pos: { <name>: {left,top} } } ---- */
+function readWinPosMap() {
+  try {
+    var raw = localStorage.getItem(WIN_POS_KEY);
+    if (!raw) return {};
+    var box = JSON.parse(raw);
+    if (!box || typeof box !== "object") return {};
+    var src = box.pos && typeof box.pos === "object" ? box.pos : box;
+    var out = {};
+    for (var k in src) {
+      if (!Object.prototype.hasOwnProperty.call(src, k)) continue;
+      var one = src[k];
+      if (!one || typeof one !== "object") continue;
+      if (typeof one.left !== "number" || typeof one.top !== "number") continue;
+      if (!isFinite(one.left) || !isFinite(one.top)) continue;
+      out[k] = { left: one.left, top: one.top };
+    }
+    return out;
+  } catch (e) {
+    return {};
+  }
+}
+
+function readWinPos(name) {
+  if (!name) return null;
+  return readWinPosMap()[name] || null;
+}
+
+function writeWinPos(name, pos) {
+  if (!name || !pos) return;
+  try {
+    var map = readWinPosMap();
+    map[name] = { left: Math.round(pos.left), top: Math.round(pos.top) };
+    localStorage.setItem(WIN_POS_KEY, JSON.stringify({ v: 1, pos: map }));
+  } catch (e) { /* 隐私模式 / 空间满：记不住位置不影响用 */ }
+}
+
+function clearWinPos(name) {
+  if (!name) return;
+  try {
+    var map = readWinPosMap();
+    delete map[name];
+    if (!Object.keys(map).length) localStorage.removeItem(WIN_POS_KEY);
+    else localStorage.setItem(WIN_POS_KEY, JSON.stringify({ v: 1, pos: map }));
+  } catch (e) { /* 忽略 */ }
+}
+
+/** popover 参数：一律按「左上角」定位（与速览弹窗同一套字段写法）。 */
+function winPopoverOptions(def, pos, size, url) {
+  return {
+    id: def.id,
+    url: url,
+    width: size.width,
+    height: size.height,
+    anchorReference: "POSITION",
+    anchorPosition: { left: pos.left, top: pos.top },
+    anchorOrigin: { horizontal: "LEFT", vertical: "TOP" },
+    transformOrigin: { horizontal: "LEFT", vertical: "TOP" },
+    hidePaper: true,
+    disableClickAway: true
+  };
+}
+
+/** 打开（或按记住的位置重开）一个独立窗口。 */
+async function openWin(name) {
+  var def = winDef(name);
+  if (!def) throw new Error("未知窗口：" + name);
+  var vp = await infoViewport();
+  var size = winSize(def, vp);
+  var saved = readWinPos(name);
+  var pos = saved ? clampInfoPos(saved.left, saved.top, size, vp) : winDefaultPos(size, vp);
+  await OBR.popover.open(winPopoverOptions(def, pos, size, def.url));
+  winOpen[name] = {
+    geom: {
+      left: pos.left, top: pos.top, width: size.width, height: size.height,
+      url: def.url, vp: { width: vp.width, height: vp.height }
+    },
+    drag: null,
+    timer: null
+  };
+  return true;
+}
+
+async function closeWin(name) {
+  var st = winOpen[name];
+  if (st && st.timer) { clearTimeout(st.timer); st.timer = null; }
+  delete winOpen[name];
+  var def = winDef(name);
+  if (!def) return;
+  try { await OBR.popover.close(def.id); } catch (e) { /* 已经关了 */ }
+}
+
+/** 「回到默认位置」：清掉记住的位置，重新居中摆一次。 */
+async function resetWin(name) {
+  if (!winOpen[name]) return;
+  var def = winDef(name);
+  var vp = await infoViewport();
+  var size = winSize(def, vp);
+  var pos = winDefaultPos(size, vp);
+  var url = winOpen[name].geom ? winOpen[name].geom.url : def.url;
+  try {
+    await OBR.popover.open(winPopoverOptions(def, pos, size, url));
+    winOpen[name].geom = {
+      left: pos.left, top: pos.top, width: size.width, height: size.height,
+      url: url, vp: { width: vp.width, height: vp.height }
+    };
+    winOpen[name].drag = null;
+    pageLog("info", "窗口 " + name + " 已回到默认位置");
+  } catch (e) {
+    stepFail("把窗口 " + name + " 移回默认位置", e);
+  }
+}
+
+/* ---- 拖动：页面（assets/window.js）只发「起点 + 累计位移」 ---- */
+function queueWinDrag(name, pos) {
+  var st = winOpen[name];
+  if (!st || !st.geom) return;
+  winDragWanted[name] = {
+    pos: { left: pos.left, top: pos.top },
+    size: { width: st.geom.width, height: st.geom.height },
+    url: st.geom.url
+  };
+  void pumpWinDrag();
+}
+
+async function pumpWinDrag() {
+  if (winDragBusy) return;
+  winDragBusy = true;
+  try {
+    while (true) {
+      var names = Object.keys(winDragWanted);
+      if (!names.length) break;
+      var name = names[0];
+      var job = winDragWanted[name];
+      delete winDragWanted[name];
+      var def = winDef(name);
+      var st = winOpen[name];
+      if (!def || !st) continue;
+      try {
+        await OBR.popover.open(winPopoverOptions(def, job.pos, job.size, job.url));
+        st.geom.left = job.pos.left;
+        st.geom.top = job.pos.top;
+      } catch (e) {
+        pageLog("err", "拖动窗口 " + name + " 失败：" + errText(e));
+      }
+    }
+  } finally {
+    winDragBusy = false;
+    if (Object.keys(winDragWanted).length) void pumpWinDrag();
+  }
+}
+
+/** 拖动中这么久没消息就当结束：兜住指针跑出 iframe、页面被重载导致的丢 pointerup。 */
+function touchWinDrag(name) {
+  var st = winOpen[name];
+  if (!st) return;
+  if (st.timer) clearTimeout(st.timer);
+  st.timer = setTimeout(function () {
+    st.timer = null;
+    if (!st.drag) return;
+    if (st.drag.moved && st.geom) writeWinPos(name, st.geom);
+    st.drag = null;
+  }, WIN_DRAG_IDLE_MS);
+}
+
+function endWinDrag(name) {
+  var st = winOpen[name];
+  if (!st) return;
+  if (st.timer) { clearTimeout(st.timer); st.timer = null; }
+  st.drag = null;
+}
+
+/** 频道：com.4enext-owlbear/win-drag，payload = { win, phase: start/move/end/reset, dx, dy }。 */
+function onWinDrag(ev) {
+  var data = ev && ev.data !== undefined ? ev.data : ev;
+  if (!data || typeof data.phase !== "string") return;
+  var name = String(data.win == null ? "" : data.win);
+  var st = winOpen[name];
+  /* 不是我们自己开的窗口（比如左上角 action 弹窗里的同一个页面）→ 忽略，
+     免得「在 action 弹窗里拖」把另一个 popover 挪走。 */
+  if (!st || !st.geom) return;
+
+  if (data.phase === "reset") {
+    clearWinPos(name);
+    st.drag = null;
+    if (st.timer) { clearTimeout(st.timer); st.timer = null; }
+    void resetWin(name);
+    return;
+  }
+
+  var dx = typeof data.dx === "number" && isFinite(data.dx) ? data.dx : 0;
+  var dy = typeof data.dy === "number" && isFinite(data.dy) ? data.dy : 0;
+
+  if (data.phase === "start" || !st.drag) {
+    /* 起点 = 窗口现在的位置；move 一律按「起点 + 累计位移」算，不会越拖越偏。 */
+    st.drag = { base: { left: st.geom.left, top: st.geom.top }, moved: false };
+    touchWinDrag(name);
+    if (data.phase === "start") return;
+  }
+
+  if (Math.abs(dx) > 1 || Math.abs(dy) > 1) st.drag.moved = true;
+
+  if (!st.drag.moved) {
+    if (data.phase === "end") endWinDrag(name);
+    return;
+  }
+
+  var target = clampInfoPos(st.drag.base.left + dx, st.drag.base.top + dy, st.geom, st.geom.vp);
+  queueWinDrag(name, target);
+  touchWinDrag(name);
+
+  if (data.phase === "end") {
+    writeWinPos(name, target);
+    endWinDrag(name);
+  }
+}
+
+/** 视口变小 / 换屏幕方向后，把开着的窗口重新夹回视口内。 */
+async function reclampWins() {
+  var names = Object.keys(winOpen);
+  if (!names.length) return;
+  var vp = await infoViewport();
+  for (var i = 0; i < names.length; i++) {
+    var name = names[i];
+    var def = winDef(name);
+    var st = winOpen[name];
+    if (!def || !st || !st.geom) continue;
+    var size = winSize(def, vp);
+    var pos = clampInfoPos(st.geom.left, st.geom.top, size, vp);
+    if (pos.left === st.geom.left && pos.top === st.geom.top &&
+      size.width === st.geom.width && size.height === st.geom.height) continue;
+    try {
+      await OBR.popover.open(winPopoverOptions(def, pos, size, st.geom.url));
+      st.geom = {
+        left: pos.left, top: pos.top, width: size.width, height: size.height,
+        url: st.geom.url, vp: { width: vp.width, height: vp.height }
+      };
+    } catch (e) { /* 窗口已经关了，忽略 */ }
+  }
+}
+
+/**
+ * 打开角色卡面板：先按独立窗口开（可拖动 / 记位置 / 夹紧视口），
+ * 不行再退回全屏 modal，最后退回 manifest action 弹窗。
+ * 三层兜底是因为「打不开」对用户来说就是「点了没反应」。
+ */
 async function openPanel(where) {
   try {
-    await OBR.modal.open({ id: ID_PANEL, url: URL_PANEL, fullScreen: true });
-    stepOk((where || "面板") + "：已打开");
+    await openWin("panel");
+    stepOk((where || "面板") + "：已打开（独立窗口）");
     return true;
   } catch (e) {
     stepFail("打开角色卡面板（" + (where || "入口") + "）", e);
     try {
-      await OBR.action.open();
-      stepOk("面板打开失败，已改用左上角 action 弹窗");
+      await OBR.modal.open({ id: ID_PANEL, url: URL_PANEL, fullScreen: true });
+      stepOk("面板窗口打不开，已改用全屏 modal");
       return true;
     } catch (e2) {
-      stepFail("改用 action 弹窗也失败", e2);
-      return false;
+      stepFail("改用全屏 modal 也失败", e2);
+      try {
+        await OBR.action.open();
+        stepOk("面板打开失败，已改用左上角 action 弹窗");
+        return true;
+      } catch (e3) {
+        stepFail("改用 action 弹窗也失败", e3);
+        return false;
+      }
     }
+  }
+}
+
+/** 打开先攻 / 骰子窗口：失败就让用户看见（通知里带原因），不静默。 */
+async function openWinOrNotify(name, where) {
+  try {
+    await openWin(name);
+    stepOk((where || name) + "：已打开");
+    return true;
+  } catch (e) {
+    stepFail("打开窗口（" + (where || name) + "）", e);
+    return false;
+  }
+}
+
+/* ---------------------------------------------------------------------------
+ * 2.5) 先攻条（v1.4.0）：贴在屏幕顶部的条
+ * ---------------------------------------------------------------------------
+ * 为什么不复用 openWin：
+ *   · 锚点是 CENTER/TOP：展开宽度会在运行中被面板自己改（720 ↔ 410 ↔ 折叠 120），
+ *     用 LEFT 锚点会「左边缘不动、整条向右长」；CENTER 则始终以屏幕中线对称伸缩（规格 §3.2）；
+ *   · top 固定 45，不参与「居中偏上」的默认位置计算；
+ *   · 位置记忆只存偏移 { dx, dy }（相对屏幕中线 / 相对 TOP_OFFSET），不存绝对 left，
+ *     换屏幕宽度 / 缩放后仍然贴顶居中（规格 §P1 第 4 条：localStorage["4enext/strip-pos"]）。
+ * 参考：obr-suite src/modules/initiative/index.ts:233-258（popover 参数）、
+ *       panel-page.tsx:44-58（三档高度）/ 449-466（宽度自适应）。
+ * ------------------------------------------------------------------------- */
+var stripOpen = false;
+/* { left, top, width, height, offset:{dx,dy}, vp:{width,height} } —— left 是「中线 x」，不是左边缘 */
+var stripGeom = null;
+var stripDragTimer = null;
+var stripDragWanted = null;
+var stripDragBusy = false;
+
+/** 三档高度（规格 §3.1）：idle 129 / preparing 139 / combat 159。 */
+function stripHeightFor(phase) {
+  if (phase === "combat") return STRIP_H_COMBAT;
+  if (phase === "preparing") return STRIP_H_PREPARING;
+  return STRIP_H_IDLE;
+}
+
+/** 展开宽度：默认 720，按视口 − 2×16 夹紧，最小 410（规格 §3.3 / §3.6）。 */
+function stripWidthFor(vp) {
+  var avail = vp && vp.width > 0 ? vp.width - STRIP_SIDE_MARGIN * 2 : STRIP_EXPANDED_W;
+  return Math.round(Math.max(STRIP_MIN_EXPANDED_W, Math.min(STRIP_EXPANDED_W, avail)));
+}
+
+function readStripOffset() {
+  try {
+    var raw = localStorage.getItem(STRIP_POS_KEY);
+    if (!raw) return { dx: 0, dy: 0 };
+    var box = JSON.parse(raw);
+    if (!box || typeof box !== "object") return { dx: 0, dy: 0 };
+    return {
+      dx: typeof box.dx === "number" && isFinite(box.dx) ? box.dx : 0,
+      dy: typeof box.dy === "number" && isFinite(box.dy) ? box.dy : 0
+    };
+  } catch (e) {
+    return { dx: 0, dy: 0 };
+  }
+}
+
+function writeStripOffset(dx, dy) {
+  try {
+    localStorage.setItem(STRIP_POS_KEY, JSON.stringify({ v: 1, dx: Math.round(dx), dy: Math.round(dy) }));
+  } catch (e) { /* 隐私模式 / 空间满：记不住位置不影响用 */ }
+}
+
+function clearStripOffset() {
+  try { localStorage.removeItem(STRIP_POS_KEY); } catch (e) { /* 忽略 */ }
+}
+
+/** 由偏移算出 anchorPosition（CENTER/TOP 锚点：left 是中线 x）。整条必须留在视口内。 */
+function stripPosFor(dx, dy, size, vp) {
+  var vw = vp && vp.width > 0 ? vp.width : 0;
+  var vh = vp && vp.height > 0 ? vp.height : 0;
+  var cx = Math.round((vw > 0 ? vw : size.width + STRIP_SIDE_MARGIN * 2) / 2) + Math.round(dx);
+  var top = STRIP_TOP_OFFSET + Math.round(dy);
+  if (vw > 0) {
+    var half = size.width / 2;
+    cx = Math.min(Math.max(cx, Math.round(STRIP_SIDE_MARGIN + half)), Math.round(vw - STRIP_SIDE_MARGIN - half));
+  }
+  if (vh > 0) top = Math.min(Math.max(top, 0), Math.max(0, Math.round(vh - size.height - STRIP_SIDE_MARGIN)));
+  return { left: cx, top: top };
+}
+
+/** popover 参数：POSITION + CENTER/TOP + top 45（规格 §3.2）。 */
+function stripPopoverOptions(pos, size) {
+  return {
+    id: ID_STRIP,
+    url: URL_INITIATIVE,
+    width: size.width,
+    height: size.height,
+    anchorReference: "POSITION",
+    anchorPosition: { left: pos.left, top: pos.top },
+    anchorOrigin: { horizontal: "CENTER", vertical: "TOP" },
+    transformOrigin: { horizontal: "CENTER", vertical: "TOP" },
+    disableClickAway: true,
+    hidePaper: true
+  };
+}
+
+/** 打开先攻条；已经开着就只按记住的偏移重新摆一次（页面不会重载）。 */
+async function openStrip() {
+  var vp = await infoViewport();
+  var size = { width: stripWidthFor(vp), height: STRIP_H_IDLE };
+  var offset = readStripOffset();
+  var pos = stripPosFor(offset.dx, offset.dy, size, vp);
+  await OBR.popover.open(stripPopoverOptions(pos, size));
+  stripOpen = true;
+  stripGeom = {
+    left: pos.left, top: pos.top, width: size.width, height: size.height,
+    offset: { dx: pos.left - Math.round((vp.width || 0) / 2), dy: pos.top - STRIP_TOP_OFFSET },
+    vp: { width: vp.width, height: vp.height }
+  };
+  return true;
+}
+
+/** 打开先攻条：失败要让用户看见（不静默）。 */
+async function openStripOrNotify(where) {
+  try {
+    await openStrip();
+    stepOk((where || "先攻条") + "：已打开");
+    return true;
+  } catch (e) {
+    stepFail("打开先攻条（" + (where || "入口") + "）", e);
+    return false;
+  }
+}
+
+async function closeStrip() {
+  if (stripDragTimer) { clearTimeout(stripDragTimer); stripDragTimer = null; }
+  stripDragWanted = null;
+  stripOpen = false;
+  stripGeom = null;
+  try { await OBR.popover.close(ID_STRIP); } catch (e) { /* 已经关了 */ }
+}
+
+/** 「回到顶部中间」：清掉偏移再摆一次。 */
+async function resetStrip() {
+  if (!stripOpen) return;
+  clearStripOffset();
+  var vp = await infoViewport();
+  var size = stripGeom
+    ? { width: stripGeom.width, height: stripGeom.height }
+    : { width: stripWidthFor(vp), height: STRIP_H_IDLE };
+  var pos = stripPosFor(0, 0, size, vp);
+  try {
+    await OBR.popover.open(stripPopoverOptions(pos, size));
+    stripGeom = {
+      left: pos.left, top: pos.top, width: size.width, height: size.height,
+      offset: { dx: 0, dy: 0 },
+      vp: { width: vp.width, height: vp.height }
+    };
+    pageLog("info", "先攻条已回到顶部中间");
+  } catch (e) {
+    stepFail("把先攻条移回顶部中间", e);
+  }
+}
+
+/** 拖动：页面只发累计位移；这里换算 / 夹紧 / 落盘（只存偏移）。 */
+function queueStripDrag(want) {
+  stripDragWanted = want;
+  void pumpStripDrag();
+}
+
+async function pumpStripDrag() {
+  if (stripDragBusy) return;
+  stripDragBusy = true;
+  try {
+    while (stripDragWanted) {
+      var job = stripDragWanted;
+      stripDragWanted = null;
+      if (!stripOpen || !stripGeom) break;
+      var vp = await infoViewport();
+      var size = { width: stripGeom.width, height: stripGeom.height };
+      var pos = stripPosFor(job.dx, job.dy, size, vp);
+      try {
+        await OBR.popover.open(stripPopoverOptions(pos, size));
+        stripGeom.left = pos.left;
+        stripGeom.top = pos.top;
+        stripGeom.vp = { width: vp.width, height: vp.height };
+        stripGeom.offset = {
+          dx: pos.left - Math.round((vp.width || 0) / 2),
+          dy: pos.top - STRIP_TOP_OFFSET
+        };
+      } catch (e) {
+        pageLog("err", "拖动先攻条失败：" + errText(e));
+        break;
+      }
+    }
+  } finally {
+    stripDragBusy = false;
+    if (stripDragWanted) void pumpStripDrag();
+  }
+}
+
+/** 拖动中 1.5 秒没消息就当结束：兜住指针跑出 iframe、页面被重载导致的丢 pointerup。 */
+function touchStripDrag() {
+  if (stripDragTimer) clearTimeout(stripDragTimer);
+  stripDragTimer = setTimeout(function () {
+    stripDragTimer = null;
+    if (stripGeom && stripGeom.offset) writeStripOffset(stripGeom.offset.dx, stripGeom.offset.dy);
+  }, WIN_DRAG_IDLE_MS);
+}
+
+/** 频道：com.4enext-owlbear/strip-drag，payload = { phase: start/move/end/reset, dx, dy }。 */
+function onStripDrag(ev) {
+  var data = ev && ev.data !== undefined ? ev.data : ev;
+  if (!data || typeof data.phase !== "string") return;
+  if (!stripOpen || !stripGeom) return;
+  if (data.phase === "reset") {
+    if (stripDragTimer) { clearTimeout(stripDragTimer); stripDragTimer = null; }
+    void resetStrip();
+    return;
+  }
+  var dx = typeof data.dx === "number" && isFinite(data.dx) ? data.dx : 0;
+  var dy = typeof data.dy === "number" && isFinite(data.dy) ? data.dy : 0;
+  if (data.phase === "start") {
+    stripGeom.base = stripGeom.offset || readStripOffset();
+    touchStripDrag();
+    return;
+  }
+  if (Math.abs(dx) <= 1 && Math.abs(dy) <= 1 && data.phase !== "end") return;
+  var base = stripGeom.base || stripGeom.offset || { dx: 0, dy: 0 };
+  queueStripDrag({ dx: base.dx + dx, dy: base.dy + dy });
+  touchStripDrag();
+  if (data.phase === "end") {
+    /* 等最后一帧落定再写位置（pump 里已经更新过 stripGeom.offset）。 */
+    setTimeout(function () {
+      if (!stripGeom || !stripGeom.offset) return;
+      writeStripOffset(stripGeom.offset.dx, stripGeom.offset.dy);
+      stripGeom.base = null;
+      if (stripDragTimer) { clearTimeout(stripDragTimer); stripDragTimer = null; }
+    }, 60);
+  }
+}
+
+/** 视口变了（窗口缩放 / 换屏幕）：按当前偏移重新夹紧先攻条。 */
+async function reclampStrip() {
+  if (!stripOpen || !stripGeom) return;
+  var vp = await infoViewport();
+  var size = { width: stripGeom.width, height: stripGeom.height };
+  var off = stripGeom.offset || readStripOffset();
+  var pos = stripPosFor(off.dx, off.dy, size, vp);
+  if (pos.left === stripGeom.left && pos.top === stripGeom.top) return;
+  try {
+    await OBR.popover.open(stripPopoverOptions(pos, size));
+    stripGeom.left = pos.left;
+    stripGeom.top = pos.top;
+    stripGeom.vp = { width: vp.width, height: vp.height };
+    stripGeom.offset = {
+      dx: pos.left - Math.round((vp.width || 0) / 2),
+      dy: pos.top - STRIP_TOP_OFFSET
+    };
+  } catch (e) { /* 先攻条已经关了，忽略 */ }
+}
+
+/** 频道：com.4enext-owlbear/strip-cmd —— list / size / close。 */
+function onStripCmd(ev) {
+  var data = ev && ev.data !== undefined ? ev.data : ev;
+  if (!data || typeof data.op !== "string") return;
+  if (data.op === "list") {
+    void openWinOrNotify("initiative", "先攻列表");
+    return;
+  }
+  if (data.op === "close") { void closeStrip(); return; }
+  if (data.op === "size") {
+    if (!stripGeom) return;
+    var w = typeof data.width === "number" && isFinite(data.width) ? Math.round(data.width) : stripGeom.width;
+    var h = typeof data.height === "number" && isFinite(data.height) ? Math.round(data.height) : stripGeom.height;
+    stripGeom.width = w;
+    stripGeom.height = h;
   }
 }
 
@@ -257,28 +1000,76 @@ async function closeButton() {
 }
 
 /* ---------------------------------------------------------------------------
- * 4) 入口 B：左侧工具栏（OBR.tool.create，第三种入口，不依赖 popover）
+ * 4) 入口 B：左侧工具栏（OBR.tool.create ×5）
+ * ---------------------------------------------------------------------------
+ * v1.3.1：三个功能各有自己的图标，点哪个开哪个窗口 —— 这就是用户要的
+ * 「FullPeople 那种分块」：不是一个大面板里的 tab，而是工具栏上并列的入口。
+ * v1.3.2：补齐成「一排入口」：速览 / 角色卡 / 先攻 / 骰子 / 设置，
+ * 参考实现（obr-suite/src/background.ts）也是把每个模块的入口分开注册，
+ * 各自 open 自己的 popover；顺序只影响图标排列。
+ * 图标统一用 24×24 线性风格，靠文件上的小徽标区分（列表 / 旗 / 骰子 / 眼睛 / 滑杆）。
  * ------------------------------------------------------------------------- */
-async function registerTool() {
-  if (!OBR.tool || typeof OBR.tool.create !== "function") {
-    throw new Error("SDK 没有 OBR.tool.create");
-  }
-  var def = {
-    id: TOOL_ID,
-    icons: [{ icon: TOOL_ICON_URL, label: "4eNEXT to owlbear：打开面板" }],
-    /* 返回 false = 不切换成激活状态，只执行我们的回调 */
-    onClick: function () {
-      void openPanel("工具栏按钮");
-      return false;
-    }
-  };
+async function registerOneTool(def) {
   try {
     await OBR.tool.create(def);
   } catch (e) {
     // 后台被重新加载过（同 id 还在）时先删再建，避免把"重复注册"误报成错误
-    await OBR.tool.remove(TOOL_ID);
+    await OBR.tool.remove(def.id);
     await OBR.tool.create(def);
   }
+}
+
+async function registerTools() {
+  if (!OBR.tool || typeof OBR.tool.create !== "function") {
+    throw new Error("SDK 没有 OBR.tool.create");
+  }
+  /* 返回 false = 不切换成激活状态，只执行我们的回调 */
+  await registerOneTool({
+    id: TOOL_ID,
+    icons: [{ icon: TOOL_ICON_URL, label: "4eNEXT to owlbear：角色卡 / 导入面板" }],
+    onClick: function () {
+      void openPanel("工具栏「角色卡」");
+      return false;
+    }
+  });
+  /* v1.4.0：工具栏「先攻」打开**先攻条**（屏幕顶部），不再是 880×640 的大窗口。
+     大窗口降级成「列表窗口」，从先攻条上的「≡」打开 —— 两个 popover 可以同时开着。 */
+  await registerOneTool({
+    id: TOOL_INIT_ID,
+    icons: [{ icon: TOOL_INIT_ICON_URL, label: "4eNEXT to owlbear：先攻条" }],
+    onClick: function () {
+      void openStripOrNotify("工具栏「先攻」");
+      return false;
+    }
+  });
+  await registerOneTool({
+    id: TOOL_DICE_ID,
+    icons: [{ icon: TOOL_DICE_ICON_URL, label: "4eNEXT to owlbear：骰子窗口" }],
+    onClick: function () {
+      void openWinOrNotify("dice", "工具栏「骰子」");
+      return false;
+    }
+  });
+  /* v1.3.2：速览也上工具栏。它打开的是 v1.2.2 那个按 token 记位置的 /info 小窗
+     （与「选中即弹」同一个 popover），所以没选中 token 时要明确告诉用户先选一个，
+     而不是点了没反应。 */
+  await registerOneTool({
+    id: TOOL_GLANCE_ID,
+    icons: [{ icon: TOOL_GLANCE_ICON_URL, label: "4eNEXT to owlbear：速览（当前选中的 token）" }],
+    onClick: function () {
+      void openGlance("工具栏「速览」");
+      return false;
+    }
+  });
+  /* v1.3.2：设置 / 关于。和先攻 / 骰子一样走 openWin（可拖动 / 视口夹紧 / 记位置）。 */
+  await registerOneTool({
+    id: TOOL_SETTINGS_ID,
+    icons: [{ icon: TOOL_SETTINGS_ICON_URL, label: "4eNEXT to owlbear：设置 / 关于" }],
+    onClick: function () {
+      void openWinOrNotify("settings", "工具栏「设置」");
+      return false;
+    }
+  });
 }
 
 /* ---------------------------------------------------------------------------
@@ -291,6 +1082,74 @@ async function createContextMenu(def) {
     // 后台重载后同 id 可能还在，先删再建
     await OBR.contextMenu.remove(def.id);
     await OBR.contextMenu.create(def);
+  }
+}
+
+/** v1.6.0：写血条组件开关。**关掉写 false，绝不 delete** ——
+ *  自动开启 / 兼容逻辑用 undefined 判断「老 token」，delete 会让血条下次刷新又冒出来。 */
+async function writeHpBarFlag(context, on) {
+  var src = context && context.items ? context.items : [];
+  var ids = [];
+  for (var i = 0; i < src.length; i++) {
+    var it = src[i];
+    if (!it || !it.id || it.type !== "IMAGE") continue;
+    ids.push(it.id);
+  }
+  if (!ids.length) {
+    notify("没有读到可用的 IMAGE token，右键请对着一个图片 token 再试", "WARNING");
+    return;
+  }
+  try {
+    await OBR.scene.items.updateItems(ids, function (drafts) {
+      for (var j = 0; j < drafts.length; j++) {
+        var d = drafts[j];
+        if (!d.metadata || typeof d.metadata !== "object") d.metadata = {};
+        d.metadata[KEY_HPBAR] = !!on;
+      }
+    });
+    scheduleBars();
+    stepOk("血条组件：" + (on ? "已添加 " : "已移除 ") + ids.length + " 个 token");
+  } catch (e) {
+    notify("改不了血条组件开关：" + errText(e), "ERROR");
+  }
+}
+
+/** v1.6.0：「显示为 Boss / 隐藏 Boss」。写 hp.boss 对象（保留 segments / phase / exact），
+ *  首次开启用时间戳当 order，保证新 Boss 排在已有之后；之后不再动。 */
+async function writeBossFlag(context, on) {
+  var item = context && context.items && context.items[0] ? context.items[0] : null;
+  if (!item) {
+    notify("没有读到选中的 token，右键请对着一个图片 token 再试", "WARNING");
+    return;
+  }
+  var hp = readHpMeta(item);
+  if (on && (!hp || !(hp.max > 0))) {
+    notify("这枚 token 还没有生命上限：先在速览弹窗里加减过血量，再「显示为 Boss」", "WARNING");
+    return;
+  }
+  try {
+    await OBR.scene.items.updateItems([item.id], function (drafts) {
+      for (var i = 0; i < drafts.length; i++) {
+        var d = drafts[i];
+        if (!d.metadata || typeof d.metadata !== "object") d.metadata = {};
+        var raw = d.metadata[KEY_HP];
+        if (!raw || typeof raw !== "object") raw = {};
+        var conf = readBoss(raw.boss);
+        raw.boss = {
+          enabled: !!on,
+          segments: conf.segments,
+          phase: conf.phase,
+          exact: conf.exact,
+          order: conf.order || (on ? Date.now() : 0)
+        };
+        raw.updatedAt = Date.now();
+        d.metadata[KEY_HP] = raw;
+      }
+    });
+    scheduleBars();
+    stepOk("Boss 样式：" + (on ? "已开启 " : "已关闭 ") + (item.name || item.id));
+  } catch (e) {
+    notify("改不了 Boss 开关：" + errText(e), "ERROR");
   }
 }
 
@@ -359,6 +1218,76 @@ async function registerContextMenu() {
       }
     }],
     onClick: function (context) { return onInitMenuClick(context, true); }
+  });
+
+  /* 3) v1.6.0：血条组件（Full Suite 同款两项）+ Boss 两项。
+   *    每一项单独 create（现有风格）：filter 不同、回调不用猜 elementId。
+   *    「添加」用 operator:"!=" 同时覆盖 undefined 与 false；「移除」写 false 抑制自动重开。 */
+  await createContextMenu({
+    id: NS + "/hpbar-add",
+    icons: [{
+      icon: ICON_URL,
+      label: "添加血条组件",
+      filter: {
+        roles: ["GM"],
+        max: 1,
+        every: [{ key: "type", value: "IMAGE" }],
+        some: [{ key: ["metadata", KEY_HPBAR], operator: "!=", value: true }]
+      }
+    }],
+    onClick: function (context) { return writeHpBarFlag(context, true); }
+  });
+  await createContextMenu({
+    id: NS + "/hpbar-remove",
+    icons: [{
+      icon: ICON_URL,
+      label: "移除血条组件",
+      filter: {
+        roles: ["GM"],
+        max: 1,
+        every: [{ key: "type", value: "IMAGE" }],
+        some: [{ key: ["metadata", KEY_HPBAR], value: true }]
+      }
+    }],
+    onClick: function (context) { return writeHpBarFlag(context, false); }
+  });
+  await createContextMenu({
+    id: NS + "/boss-show",
+    icons: [{
+      icon: ICON_URL,
+      label: "显示为 Boss",
+      filter: {
+        roles: ["GM"],
+        max: 1,
+        every: [
+          { key: "type", value: "IMAGE" },
+          { key: "layer", value: "CHARACTER" },
+          { key: ["metadata", KEY_HP, "boss"], operator: "!=", value: true },
+          { key: ["metadata", KEY_HP, "boss", "enabled"], operator: "!=", value: true }
+        ]
+      }
+    }],
+    onClick: function (context) { return writeBossFlag(context, true); }
+  });
+  await createContextMenu({
+    id: NS + "/boss-hide",
+    icons: [{
+      icon: ICON_URL,
+      label: "隐藏 Boss 血条",
+      filter: {
+        roles: ["GM"],
+        max: 1,
+        every: [
+          { key: "type", value: "IMAGE" },
+          { key: "layer", value: "CHARACTER" }
+        ],
+        some: [
+          { key: ["metadata", KEY_HP, "boss"], value: true },
+          { key: ["metadata", KEY_HP, "boss", "enabled"], value: true }
+        ]
+      }
+    }],
+    onClick: function (context) { return writeBossFlag(context, false); }
   });
 }
 
@@ -671,27 +1600,62 @@ async function resetInfoToToken() {
   }
 }
 
-var infoErrorShown = false;
-async function refreshInfo() {
+/**
+ * 当前选中的**唯一** token 的绑定：{ itemId, cardId } 或 null。
+ * 「选中即弹」与工具栏「速览」共用这一份判定，免得两边对「算不算绑定」看法不一致。
+ */
+async function selectedBinding() {
   var sel = null;
-  try { sel = await OBR.player.getSelection(); } catch (e) { return; }
-  if (!sel || sel.length !== 1) return closeInfo();
+  try { sel = await OBR.player.getSelection(); } catch (e) { return null; }
+  if (!sel || sel.length !== 1) return null;
   var item = null;
   try {
     var items = await OBR.scene.items.getItems([sel[0]]);
     item = items[0] || null;
   } catch (e) {
-    return closeInfo();
+    return null;
   }
-  if (!item || !item.metadata) return closeInfo();
+  if (!item || !item.metadata) return null;
   var cardId = item.metadata[KEY_BIND];
-  if (typeof cardId !== "string" || !cardId) return closeInfo();
+  if (typeof cardId !== "string" || !cardId) return null;
   var cards = await getCards();
-  if (!findCard(cards, cardId)) return closeInfo();
-  if (infoOpen && infoItemId === item.id && infoCardId === cardId) return;
+  if (!findCard(cards, cardId)) return null;
+  return { itemId: item.id, cardId: cardId };
+}
+
+/**
+ * 工具栏「速览」：给**当前选中**的 token 打开速览弹窗。
+ * 它复用 v1.2.2 的 /info 小窗（内层是 infoOpen / infoGeom 那一套，位置按 token 记），
+ * 所以**不**注册进 WINS —— 两套状态混在一起会互相打架（选中变化会把窗口关掉再重开）。
+ * 与「选中即弹」的唯一区别是这里**一定有反馈**：没选中 / 没绑定都明确告诉用户。
+ */
+async function openGlance(where) {
+  var label = where || "工具栏「速览」";
+  var bind = await selectedBinding();
+  if (!bind) {
+    notify("速览：" + label + " 打开的是「当前选中的 token」。先选中一枚已绑定角色卡的 token" +
+      "（右键 token 可「绑定 4E NEXT 角色卡」），再点一次。", "WARNING");
+    pageLog("info", label + "：当前选中的不是「已绑定角色卡的单个 token」，已提示用户先选一个");
+    return false;
+  }
+  try {
+    await openInfo(bind.itemId, bind.cardId);
+    stepOk(label + "：已打开速览（token " + bind.itemId + "）");
+    return true;
+  } catch (e) {
+    stepFail("打开速览弹窗（" + label + "）", e);
+    return false;
+  }
+}
+
+var infoErrorShown = false;
+async function refreshInfo() {
+  var bind = await selectedBinding();
+  if (!bind) return closeInfo();
+  if (infoOpen && infoItemId === bind.itemId && infoCardId === bind.cardId) return;
   if (infoOpen) await closeInfo();
   try {
-    await openInfo(item.id, cardId);
+    await openInfo(bind.itemId, bind.cardId);
   } catch (e) {
     if (!infoErrorShown) {
       infoErrorShown = true;
@@ -719,7 +1683,8 @@ async function sceneReady() {
  * ---------------------------------------------------------------------------
  * 做法照抄参考实现 FullPeople/obr-suite 的 src/modules/bubbles/index.ts：
  *   · 不是「改 token 让 OBR 原生长血条」（OBR 没有这个能力），而是给 token 挂
- *     **本地图形子 item**（Curve 底条 + Curve 填充 + Text 数字），
+ *     **本地图形子 item**。v1.5.0 是三件（Curve 底条 + Curve 填充 + Text 数字）；
+ *     v1.6.0 扩成 role 表：HP 两行条 + 四角盾 + Boss 环 / 名牌 / 分段 / 锁（最多 23 件），
  *     attachedTo = token id、layer = "ATTACHMENT"、disableHit、locked、固定 zIndex。
  *   · 用 OBR.scene.local.* 而不是 OBR.scene.items.* ：本地图形只在自己这台机器上画，
  *     不需要场景写权限 —— 玩家也能看到血条（场景写权限只有 GM 有）。
@@ -728,12 +1693,17 @@ async function sceneReady() {
  *     避免 token 缩放时被二次放大；位移仍然跟着 token 走。
  *   · token 被删除时 OBR 会自动删掉挂在它上面的子 item；血条数据没了（解绑 / 手删）
  *     我们就主动清理自己的本地 item；本地 item 被外部删掉时会自动重建。
- * 数值来源：token 元数据 com.4enext-owlbear/hp = { cur, max, temp, updatedAt }，
- * 与速览弹窗是同一份数据，所以弹窗里加减血 → 血条立刻跟着变。
+ * 数值来源：token 元数据 com.4enext-owlbear/hp = { cur, max, temp, surges, surgesMax,
+ * defenses, boss, locked, updatedAt }，与速览弹窗是同一份数据，所以弹窗里加减血 → 血条立刻跟着变。
+ * 显式开关是独立键 com.4enext-owlbear/hp-bar/enabled（false 不画，undefined 照旧画）。
+ * v1.6.0 的 role 表 / 几何公式 / 像素常数集中表见 docs/hpbar-boss-v16.md。
  * ------------------------------------------------------------------------- */
-var BAR_TAG = NS + "/bar"; /* 本地图形 item 的元数据：{ owner: tokenId, role: "bg"|"fill"|"text" } */
+/* 本地图形 item 的元数据：{ owner: tokenId, role: "<见 v1.6 role 表>", key?, index? }
+ * v1.6.0 的 role 从 3 种扩到 16 种（环 / 条 / 牌 / 盾 / 分段 / 锁 / 数值），全部打同一个 tag，
+ * sweepStaleBars 与自愈逻辑不用改（它们只认 owner/role 是否存在）。 */
+var BAR_TAG = NS + "/bar";
 
-var barEntries = {};     /* tokenId -> { ids: [], sig: "" } */
+var barEntries = {};     /* tokenId -> { ids: [], sig: "", rolesKey: "", force?: true } */
 var barTimer = null;
 var barBusy = false;
 var barAgain = false;
@@ -741,19 +1711,99 @@ var barUnsupported = false;
 var barSwept = false;
 var cachedDpi = 0;
 
+/* v1.6.0：本机视角（角色 / 玩家 id / 玩家端量化阈值）。
+ * 只用于「这台机器画什么」——绝不写进 metadata、绝不广播（规格 §4.7 的同一条纪律）。
+ * 角色 / id 每次 syncBars 现读（切角色 / 换玩家要立刻生效）；阈值放场景元数据，缓存一次。 */
+var barThreshold = -1;
+async function sceneViewer() {
+  var out = { role: "", id: "", threshold: PLAYER_THRESHOLD_DEFAULT };
+  try { out.role = await OBR.player.getRole(); } catch (e1) { /* 忽略 */ }
+  try { out.id = await OBR.player.getId(); } catch (e2) { /* 忽略 */ }
+  if (barThreshold >= 0) { out.threshold = barThreshold; return out; }
+  try {
+    if (OBR.scene && typeof OBR.scene.getMetadata === "function") {
+      var meta = await OBR.scene.getMetadata();
+      var raw = meta ? meta[KEY_PLAYER_THRESHOLD] : null;
+      if (typeof raw === "number" && isFinite(raw) && raw >= 0 && raw <= 100) out.threshold = Math.round(raw);
+    }
+  } catch (e3) { /* 读不到就用 25 */ }
+  barThreshold = out.threshold;
+  return out;
+}
+
 /* 这些构建器由 dev/build-background.mjs 从 SDK 的具名导出接到本作用域（buildCurve 等）。 */
 function barBuildersOk() {
   return typeof buildCurve === "function" && typeof buildText === "function";
 }
 
+function readIntOrNull(v) {
+  return typeof v === "number" && isFinite(v) ? Math.round(v) : null;
+}
+
+/** 四防：只收 ac / fort / reflex / will 四个数字；一个都没有就返回 null（= 不画盾）。
+ *  ⚠ 卡里的键叫 ref，token 上一律叫 reflex —— 换算只在写盘 helper（track.js）里做一处，
+ *  渲染层只认 reflex（规格 §6.2 / 风险 R11）。 */
+function readDefenses(raw) {
+  if (!raw || typeof raw !== "object") return null;
+  var out = null;
+  for (var i = 0; i < DEF_KEYS.length; i++) {
+    var k = DEF_KEYS[i];
+    var n = readIntOrNull(raw[k]);
+    if (n === null) continue;
+    if (!out) out = {};
+    out[k] = Math.max(0, n);
+  }
+  return out;
+}
+
+/** Boss 开关：布尔（roadmap 里写的 boss:true）与对象两种都读，统一归一化成对象。
+ *  这样以后加 segments / phase 不用二次迁移。 */
+function readBoss(raw) {
+  var out = { enabled: false, segments: 1, phase: "", exact: false, order: 0 };
+  if (typeof raw === "boolean") { out.enabled = raw; return out; }
+  if (!raw || typeof raw !== "object") return out;
+  out.enabled = raw.enabled === true;
+  out.segments = typeof raw.segments === "number" && isFinite(raw.segments)
+    ? Math.max(1, Math.min(BOSS_MAX_SEGMENTS, Math.round(raw.segments))) : 1;
+  out.phase = typeof raw.phase === "string" ? raw.phase.slice(0, 48) : "";
+  out.exact = raw.exact === true;
+  out.order = typeof raw.order === "number" && isFinite(raw.order) ? raw.order : 0;
+  return out;
+}
+
+/** 血条组件开关：只有显式 false 才不画（undefined / true 都画）。 */
+function hpBarEnabled(item) {
+  var flag = item && item.metadata ? item.metadata[KEY_HPBAR] : undefined;
+  return flag !== false;
+}
+
+/** 玩家端比例量化：锁定时按 25% 阶梯**向上**取整（与参考实现 display-policy 同一套）。
+ *  注意：token metadata 对全桌可读，这里只是「本地不画精确数字」，不是加密（风险 R12）。 */
+function quantiseRatio(ratio, thresholdPercent) {
+  if (!(thresholdPercent > 0)) return ratio;
+  var step = thresholdPercent / 100;
+  if (step >= 1) return ratio > 0 ? 1 : 0;
+  return Math.max(0, Math.min(1, Math.ceil(ratio / step) * step));
+}
+
 function readHpMeta(item) {
   var m = item && item.metadata ? item.metadata[KEY_HP] : null;
   if (!m || typeof m !== "object") return null;
-  var cur = typeof m.cur === "number" && isFinite(m.cur) ? Math.round(m.cur) : null;
+  var cur = readIntOrNull(m.cur);
   var max = typeof m.max === "number" && isFinite(m.max) && m.max > 0 ? Math.round(m.max) : null;
   var temp = typeof m.temp === "number" && isFinite(m.temp) ? Math.max(0, Math.round(m.temp)) : 0;
   if (cur === null && max === null) return null;
-  return { cur: cur, max: max, temp: temp };
+  var surges = typeof m.surges === "number" && isFinite(m.surges) ? Math.max(0, Math.round(m.surges)) : null;
+  var surgesMax = typeof m.surgesMax === "number" && isFinite(m.surgesMax) && m.surgesMax > 0
+    ? Math.round(m.surgesMax) : null;
+  return {
+    cur: cur, max: max, temp: temp,
+    surges: surges, surgesMax: surgesMax,
+    defenses: readDefenses(m.defenses),
+    boss: readBoss(m.boss),
+    locked: m.locked !== false,
+    name: item && typeof item.name === "string" ? item.name.trim().slice(0, 120) : ""
+  };
 }
 
 async function sceneDpi() {
@@ -765,6 +1815,80 @@ async function sceneDpi() {
   }
   if (!(cachedDpi > 0)) cachedDpi = 150;
   return cachedDpi;
+}
+
+/** 环形扇区多边形（v1.6.0 Boss 环）。
+ *  SDK 3.1.0 的 ShapeType 只有 RECTANGLE / CIRCLE / TRIANGLE / HEXAGON —— **没有 RING**，
+ *  所以环必须用 Curve 的 points() 手绘：外弧 t=0→1 + 内弧 t=1→0，closed=true、tension=0。
+ *  坐标以 token 中心为原点（item.position 放中心），这样 token 移动时位置平移、形状不变。
+ *  规格 §6.4 C：a0 = -90°（12 点方向），sweep = ratio × 360°，N = 48 段（不要 128：脏矩形重绘翻倍）。 */
+function ringSectorPoints(radiusOuter, radiusInner, ratio, segments) {
+  var n = Math.max(8, Math.round(segments || BOSS_RING_SEGMENTS));
+  var sweep = Math.max(0.0001, Math.min(1, ratio)) * Math.PI * 2;
+  var a0 = -Math.PI / 2;
+  var pts = [];
+  var i;
+  for (i = 0; i <= n; i++) {
+    var a = a0 + sweep * (i / n);
+    pts.push({ x: Math.cos(a) * radiusOuter, y: Math.sin(a) * radiusOuter });
+  }
+  for (i = n; i >= 0; i--) {
+    var b = a0 + sweep * (i / n);
+    pts.push({ x: Math.cos(b) * radiusInner, y: Math.sin(b) * radiusInner });
+  }
+  return pts;
+}
+
+/** 圆弧折线（锁梁用；closed=false、只描边）。 */
+function arcPoints(cx, cy, r, from, to, seg) {
+  var out = [];
+  var n = Math.max(2, seg || 16);
+  for (var i = 0; i <= n; i++) {
+    var a = from + (to - from) * (i / n);
+    out.push({ x: cx + Math.cos(a) * r, y: cy + Math.sin(a) * r });
+  }
+  return out;
+}
+
+/** 盾形多边形（照抄参考实现 bubbles/index.ts 的 shieldPoints，完整公式在规格 §5.4）。
+ *  左上 / 右上圆角 → 右侧直边 → 右半下摆二次贝塞尔到 (W/2,H) → 左半镜像回 (0,sb)。 */
+function shieldPoints(W, H, segments) {
+  var seg = segments || 14;
+  var pts = [];
+  var cornerR = Math.min(W, H) * 0.18;
+  var sideStraightBottom = H * 0.42;
+  var i, t, a;
+  /* 左上圆角：角度 -π → -π/2 */
+  for (i = 0; i <= seg; i++) {
+    t = i / seg; a = -Math.PI + (Math.PI / 2) * t;
+    pts.push({ x: cornerR + Math.cos(a) * cornerR, y: cornerR + Math.sin(a) * cornerR });
+  }
+  /* 右上圆角：角度 -π/2 → 0 */
+  for (i = 0; i <= seg; i++) {
+    t = i / seg; a = -Math.PI / 2 + (Math.PI / 2) * t;
+    pts.push({ x: W - cornerR + Math.cos(a) * cornerR, y: cornerR + Math.sin(a) * cornerR });
+  }
+  pts.push({ x: W, y: sideStraightBottom });
+  /* 右半下摆：(W, sb) → (0.85W, 0.92H) → (W/2, H) */
+  var segs2 = seg * 2;
+  for (i = 1; i <= segs2; i++) {
+    t = i / segs2;
+    var u = 1 - t;
+    pts.push({
+      x: u * u * W + 2 * u * t * (W * 0.85) + t * t * (W / 2),
+      y: u * u * sideStraightBottom + 2 * u * t * (H * 0.92) + t * t * H
+    });
+  }
+  /* 左半下摆镜像：(W/2, H) → (0.15W, 0.92H) → (0, sb) */
+  for (i = 1; i <= segs2; i++) {
+    t = i / segs2;
+    var v = 1 - t;
+    pts.push({
+      x: v * v * (W / 2) + 2 * v * t * (W * 0.15) + t * t * 0,
+      y: v * v * H + 2 * v * t * (H * 0.92) + t * t * sideStraightBottom
+    });
+  }
+  return pts;
 }
 
 /** 圆角矩形（锚点在左上角、y 向下，与参考实现的 roundedRectanglePoints 同构）。 */
@@ -812,32 +1936,201 @@ function roundRectPoints(w, h, r, fill) {
   );
 }
 
-/** 由 token 的世界包围盒推出血条几何（与参考实现同一套比例）。 */
-function barLayout(bounds, dpi, hp) {
+/** 由 token 的世界包围盒推出「一组几何」：HP 行 / 回复力行 / 四角盾 / Boss 环+名牌。
+ *  v1.6.0 只是**加字段**，syncBars 的调用方式不变（规格 §6.4 / 附录 B 第 2 条）。
+ *  viewer = { exact, threshold }：exact=false 时（其他玩家 + locked）比例按阶梯量化、不画数字与四防。 */
+function barLayout(bounds, dpi, hp, viewer) {
   var max = hp.max > 0 ? hp.max : (hp.cur !== null ? Math.max(1, hp.cur) : 1);
   var cur = hp.cur === null ? max : hp.cur;
   var ratio = Math.max(0, Math.min(1, cur / max));
   var s = Math.min(bounds.width, bounds.height) / dpi;
   if (!isFinite(s) || s <= 0) s = 1;
   s = Math.max(0.2, Math.min(6, s));
-  var h = 20 * s;
-  var pad = 2 * s;
-  var w = Math.max(h * 2, bounds.width - pad * 2);
-  var radius = h / 2;
-  var text = String(cur) + "/" + max + (hp.temp > 0 ? " +" + hp.temp : "");
-  var fs = Math.min(h * 1.05, (w / Math.max(4, text.length)) * 1.5);
-  fs = Math.max(6 * s, fs);
+
+  var exact = !viewer || viewer.exact !== false;
+  var threshold = viewer && typeof viewer.threshold === "number" ? viewer.threshold : PLAYER_THRESHOLD_DEFAULT;
+  var shownRatio = exact ? ratio : quantiseRatio(ratio, threshold);
+
+  var hHp = BAR_HP_H * s;
+  var hSurge = BAR_SURGE_H * s;
+  var gap = BAR_GAP * s;
+  var pad = BAR_PAD * s;
+  var w = Math.max(hHp * 2, bounds.width - pad * 2);
+  var left = bounds.center.x - w / 2;
+
+  /* A. 两行条：底边内侧先放蓝条，蓝条上方 gap 再放红条（规格 §6.4 A）。
+   *    没有回复力数据时 HP 条仍贴底边内侧 —— 老 token 升级后血条位置不变。 */
+  var showSurge = hp.surges !== null;
+  var surgeTop = bounds.max.y - pad - hSurge;
+  var hpTop = showSurge ? surgeTop - gap - hHp : bounds.max.y - pad - hHp;
+
+  var hpText = exact ? (String(cur) + "/" + max + (hp.temp > 0 ? " +" + hp.temp : "")) : "";
+  var hpFont = Math.min(hHp * 1.05, (w / Math.max(4, hpText.length || 4)) * 1.5);
+  hpFont = Math.max(6 * s, hpFont);
+
+  var surgeMax = hp.surgesMax !== null ? hp.surgesMax : (hp.surges !== null ? Math.max(hp.surges, 1) : 1);
+  var surgeValue = hp.surges === null ? 0 : hp.surges;
+  /* 老 token 没有 surgesMax：分母回落 max(surges,1) 并把条画满、只显示一个数字（规格 §6.1） */
+  var surgeRatio = hp.surgesMax !== null ? Math.max(0, Math.min(1, surgeValue / surgeMax)) : 1;
+  var surgeText = exact && hp.surges !== null
+    ? (String(surgeValue) + (hp.surgesMax !== null ? "/" + hp.surgesMax : "")) : "";
+  var surgeFont = Math.max(5 * s, Math.min(hSurge * 0.95, (w / Math.max(3, surgeText.length || 3)) * 1.4));
+
+  /* B. 四防四角盾：底排让位给血条；窄 token / 矮 token 退化不画（规格 §6.4 B 的写死规则） */
+  var d = SHIELD_DIAMETER * s;
+  var inset = SHIELD_INSET * s;
+  var yT = bounds.min.y + inset + d / 2;
+  var yB = hpTop - gap - d / 2;
+  var showDefenses = !!hp.defenses && exact && bounds.width >= 2 * d + 4 * inset && yB > yT;
+  var shields = [];
+  if (showDefenses) {
+    var xL = bounds.min.x + inset + d / 2;
+    var xR = bounds.max.x - inset - d / 2;
+    var spots = [[xL, yT], [xR, yT], [xL, yB], [xR, yB]];
+    for (var i = 0; i < DEF_KEYS.length; i++) {
+      var k = DEF_KEYS[i];
+      var val = hp.defenses[k];
+      if (typeof val !== "number") continue;
+      var txt = String(val);
+      shields.push({
+        key: k, value: val, text: txt, x: spots[i][0], y: spots[i][1], d: d,
+        color: DEF_COLORS[k],
+        fontSize: Math.max(8 * s, txt.length > 2 ? d - 15 * s : d - 8 * s)
+      });
+    }
+  }
+
+  /* C/D. Boss（方案 A）：环 + 名牌 + 分段线 + 锁 */
+  var boss = hp.boss || readBoss(null);
+  var bossOn = boss.enabled === true;
+  var bossL = {
+    enabled: bossOn, segments: boss.segments, phase: boss.phase, exact: boss.exact,
+    locked: hp.locked, cx: bounds.center.x, cy: bounds.center.y,
+    Ro: 0, Ri: 0, T: 0, ringRatio: shownRatio,
+    name: hp.name || "", plateX: 0, plateY: 0, plateW: 0, plateH: 0,
+    nameFont: 14 * s, phaseFont: 10 * s, phaseW: 0,
+    lockX: 0, lockY: 0, lockBodyW: 10 * s, lockBodyH: 8 * s, lockR: 3.2 * s,
+    lockColor: hp.locked ? COLOR_LOCK_ON : COLOR_LOCK_OFF,
+    dividerCount: 0
+  };
+  if (bossOn) {
+    bossL.Ro = Math.max(4 * s, Math.min(bounds.width, bounds.height) / 2 - BOSS_RING_INSET * s);
+    bossL.T = Math.max(6 * s, Math.min(BOSS_RING_THICK * s, bossL.Ro * 0.30));
+    bossL.Ri = Math.max(1 * s, bossL.Ro - bossL.T);
+    bossL.plateH = BOSS_PLATE_H * s;
+    bossL.plateY = bounds.min.y - BOSS_PLATE_GAP * s - bossL.plateH;
+    bossL.plateW = Math.min(w, Math.max(140 * s, 0.62 * bossL.nameFont * Math.max(1, bossL.name.length)));
+    bossL.plateX = bounds.center.x - bossL.plateW / 2;
+    bossL.phaseW = (bossL.phase && bossL.plateW >= 120 * s) ? Math.min(90 * s, bossL.plateW * 0.32) : 0;
+    bossL.lockX = bossL.plateX + bossL.plateW - 13 * s;
+    bossL.lockY = bossL.plateY + bossL.plateH / 2;
+    bossL.dividerCount = boss.segments > 1 ? boss.segments - 1 : 0;
+  }
+
   return {
-    left: bounds.center.x - w / 2,
-    top: bounds.max.y - pad - h,
-    w: w, h: h, radius: radius, ratio: ratio, text: text, fontSize: fs, scale: s
+    scale: s, exact: exact, w: w, left: left, pad: pad, gap: gap,
+    hHp: hHp, hSurge: hSurge, hpTop: hpTop, surgeTop: surgeTop,
+    hpRadius: hHp / 2, surgeRadius: hSurge / 2,
+    ratio: shownRatio, rawRatio: ratio,
+    hpText: hpText, hpFont: hpFont,
+    showSurge: showSurge, surgeRatio: surgeRatio, surgeText: surgeText, surgeFont: surgeFont,
+    showDefenses: showDefenses, shields: shields, d: d,
+    boss: bossL,
+    /* Boss 模式压制普通 HP 条（bg / fill / text 三件保留但隐藏 → 关掉 Boss 时不用重建） */
+    hpVisible: !bossOn,
+    textVisible: exact
   };
 }
 
-function barMeta(tokenId, role) {
+/** 角色集合指纹：一变就整体重建（Boss 开关 / 分段数 / 有无蓝条 / 有无盾 / 是否画数字）。 */
+function barRolesKey(L) {
+  return [
+    L.boss.enabled ? "B" + L.boss.segments + (L.boss.phaseW > 0 ? "p" : "") : "",
+    L.showSurge ? "S" : "",
+    L.shields.length ? "D" + L.shields.length : "",
+    L.textVisible ? "T" : ""
+  ].join("");
+}
+
+/** 状态签名：只在真正影响画面时写盘。**不放 bounds 的全部字段**
+ *  （旋转 / 位移每帧都变，放进来会导致每条血条每帧重写）；几何只取几个整数（规格 §6.5）。 */
+function barSig(hp, L) {
+  var d = hp.defenses;
+  return [
+    hp.cur, hp.max, hp.temp, hp.surges, hp.surgesMax, hp.name,
+    d ? [d.ac, d.fort, d.reflex, d.will].join(",") : "",
+    L.boss.enabled ? 1 : 0, L.boss.segments, L.boss.phase, hp.locked ? 1 : 0,
+    L.exact ? 1 : 0,
+    Math.round(L.w), Math.round(L.left), Math.round(L.hpTop), Math.round(L.surgeTop),
+    Math.round(L.boss.plateY), Math.round(L.boss.plateW), Math.round(L.scale * 1000),
+    L.shields.length ? Math.round(L.shields[0].d) : 0
+  ].join("|");
+}
+
+function barMeta(tokenId, role, extra) {
   var box = {};
-  box[BAR_TAG] = { owner: tokenId, role: role };
+  var tag = { owner: tokenId, role: role };
+  if (extra) for (var k in extra) if (Object.prototype.hasOwnProperty.call(extra, k)) tag[k] = extra[k];
+  box[BAR_TAG] = tag;
   return box;
+}
+
+/** 一个 Curve item 的公共尾巴：位置 + 样式（fill / stroke 都是可选项）。 */
+function barCurveItem(tokenId, role, points, x, y, opt) {
+  opt = opt || {};
+  var b = barCommon(buildCurve(), tokenId, role, BAR_Z[role] || 10000)
+    .fillColor(opt.fill || "#ffffff")
+    .fillOpacity(typeof opt.fillOpacity === "number" ? opt.fillOpacity : 1)
+    .strokeColor(opt.stroke || "#000000")
+    .strokeOpacity(typeof opt.strokeOpacity === "number" ? opt.strokeOpacity : 0)
+    .strokeWidth(typeof opt.strokeWidth === "number" ? opt.strokeWidth : 0)
+    .tension(0)
+    .closed(opt.closed !== false)
+    .points(points)
+    .position({ x: x, y: y })
+    .visible(opt.visible !== false);
+  if (opt.extra) b.metadata(barMeta(tokenId, role, opt.extra));
+  return b.build();
+}
+
+function barTextItem(tokenId, role, text, font, color, x, y, w, h, opt) {
+  opt = opt || {};
+  var b = barCommon(buildText(), tokenId, role, BAR_Z[role] || 12400)
+    .plainText(text).textType("PLAIN")
+    .textAlign(opt.align || "CENTER").textAlignVertical("MIDDLE")
+    .fontFamily("Roboto, sans-serif").fontSize(font)
+    .fontWeight(opt.weight || 700)
+    .fillColor(color || "#ffffff").fillOpacity(1)
+    .strokeColor(opt.stroke || "#000000")
+    .strokeOpacity(typeof opt.strokeOpacity === "number" ? opt.strokeOpacity : 0.7)
+    .strokeWidth(Math.max(0.4, typeof opt.strokeWidth === "number" ? opt.strokeWidth : 0.5))
+    .lineHeight(0.95).width(w).height(h)
+    .position({ x: x, y: y })
+    .visible(opt.visible !== false);
+  /* 盾牌数字要带 key（patchBar 靠它找对应盾）；没有 extra 的 text 保持只有 owner/role */
+  if (opt.extra) b.metadata(barMeta(tokenId, role, opt.extra));
+  return b.build();
+}
+
+/** 环上的分段线：沿环厚画一小段径向四边形（N 段只做视觉，不改血量）。 */
+function ringDividerPoints(bossL, i) {
+  var seg = Math.max(1, bossL.segments);
+  var a = -Math.PI / 2 + (Math.PI * 2) * (i / seg);
+  var rMid = (bossL.Ri + bossL.Ro) / 2;
+  var half = (bossL.T * 0.18) / Math.max(1, rMid);
+  var a1 = a - half;
+  var a2 = a + half;
+  return [
+    { x: Math.cos(a1) * bossL.Ri, y: Math.sin(a1) * bossL.Ri },
+    { x: Math.cos(a1) * bossL.Ro, y: Math.sin(a1) * bossL.Ro },
+    { x: Math.cos(a2) * bossL.Ro, y: Math.sin(a2) * bossL.Ro },
+    { x: Math.cos(a2) * bossL.Ri, y: Math.sin(a2) * bossL.Ri }
+  ];
+}
+
+function findShield(L, key) {
+  for (var i = 0; i < L.shields.length; i++) if (L.shields[i].key === key) return L.shields[i];
+  return null;
 }
 
 function barCommon(builder, tokenId, role, z) {
@@ -854,33 +2147,97 @@ function barCommon(builder, tokenId, role, z) {
     .metadata(barMeta(tokenId, role));
 }
 
+/** 构建一个 token 的全部本地图形 item（role 表见规格 §6.3）。
+ *  只在有数据时创建：没有 surges 不建蓝条、没有 defenses 不建盾、不是 Boss 不建环/牌/锁。
+ *  角色集合一变（例如刚打开 Boss）由 syncBars 整体重建；只是数值变化走 patchBar。 */
 function buildBarItems(tokenId, L) {
   var items = [];
-  var bgPoints = roundRectPoints(L.w, L.h, L.radius, 1);
-  items.push(barCommon(buildCurve(), tokenId, "bg", 10000)
-    .fillColor("#A4A4A4").fillOpacity(0.6)
-    /* 参考实现的标准模式没有描边（顶部模式才有），这里保持一致 */
-    .strokeColor("#000000").strokeOpacity(0).strokeWidth(0)
-    .tension(0).closed(true).points(bgPoints)
-    .position({ x: L.left, y: L.top })
-    .build());
-  items.push(barCommon(buildCurve(), tokenId, "fill", 20000)
-    .fillColor("#a52424").fillOpacity(0.85)
-    .strokeOpacity(0).strokeWidth(0)
-    .tension(0).closed(true).points(roundRectPoints(L.w, L.h, L.radius, L.ratio))
-    .position({ x: L.left, y: L.top })
-    .build());
-  if (typeof buildText === "function") {
-    items.push(barCommon(buildText(), tokenId, "text", 30000)
-      .plainText(L.text).textType("PLAIN")
-      .textAlign("CENTER").textAlignVertical("MIDDLE")
-      .fontFamily("Roboto, sans-serif").fontSize(L.fontSize).fontWeight(700)
-      .fillColor("#ffffff").fillOpacity(1)
-      .strokeColor("#000000").strokeOpacity(0.7).strokeWidth(Math.max(0.4, L.h * 0.075))
-      .lineHeight(0.95).width(L.w).height(L.h)
-      .position({ x: L.left, y: L.top })
-      .build());
+  var B = L.boss;
+  var i;
+
+  /* 1) Boss 环（zIndex 9500 / 9800） */
+  if (B.enabled) {
+    items.push(barCurveItem(tokenId, "ring-bg",
+      ringSectorPoints(B.Ro, B.Ri, 1, BOSS_RING_SEGMENTS), B.cx, B.cy,
+      { fill: COLOR_BOSS_BG, fillOpacity: 0.55 }));
+    items.push(barCurveItem(tokenId, "ring-fill",
+      ringSectorPoints(B.Ro, B.Ri, B.ringRatio, BOSS_RING_SEGMENTS), B.cx, B.cy,
+      { fill: COLOR_HP_FILL, fillOpacity: 0.9, visible: B.ringRatio > 0 }));
   }
+
+  /* 2) HP 胶囊底 / 填充（Boss 模式下隐藏，但保留 item → 关掉 Boss 不用重建） */
+  items.push(barCurveItem(tokenId, "bar-bg", roundRectPoints(L.w, L.hHp, L.hpRadius, 1), L.left, L.hpTop,
+    { fill: COLOR_HP_BG, fillOpacity: 0.6, visible: L.hpVisible }));
+  items.push(barCurveItem(tokenId, "bar-fill", roundRectPoints(L.w, L.hHp, L.hpRadius, L.ratio), L.left, L.hpTop,
+    { fill: COLOR_HP_FILL, fillOpacity: 0.85, visible: L.hpVisible && L.ratio > 0 }));
+
+  /* 3) 回复力蓝条（zIndex 10500 / 20500 / 30500） */
+  if (L.showSurge) {
+    items.push(barCurveItem(tokenId, "surge-bg", roundRectPoints(L.w, L.hSurge, L.surgeRadius, 1), L.left, L.surgeTop,
+      { fill: COLOR_SURGE_BG, fillOpacity: 0.85 }));
+    items.push(barCurveItem(tokenId, "surge-fill", roundRectPoints(L.w, L.hSurge, L.surgeRadius, L.surgeRatio), L.left, L.surgeTop,
+      { fill: COLOR_SURGE_FILL, fillOpacity: 0.9, visible: L.surgeRatio > 0 }));
+  }
+
+  /* 4) Boss 名牌（zIndex 12000 / 12400 / 12450） */
+  if (B.enabled) {
+    items.push(barCurveItem(tokenId, "plate",
+      roundRectPoints(B.plateW, B.plateH, 4 * L.scale, 1), B.plateX, B.plateY,
+      { fill: COLOR_BOSS_BG, fillOpacity: 0.78, stroke: COLOR_PLATE_STROKE, strokeOpacity: 0.9, strokeWidth: Math.max(0.5, 1 * L.scale) }));
+    items.push(barTextItem(tokenId, "plate-text", B.name, B.nameFont, COLOR_PLATE_TEXT,
+      B.plateX + 4 * L.scale, B.plateY,
+      Math.max(24 * L.scale, B.plateW - 26 * L.scale - B.phaseW), B.plateH,
+      { align: "CENTER", strokeWidth: Math.max(0.4, 0.9 * L.scale) }));
+    if (B.phaseW > 0) {
+      items.push(barTextItem(tokenId, "plate-phase", B.phase, B.phaseFont, COLOR_PHASE_TEXT,
+        B.plateX + B.plateW - 28 * L.scale - B.phaseW, B.plateY, B.phaseW, B.plateH,
+        { align: "RIGHT", weight: 600, strokeWidth: Math.max(0.3, 0.6 * L.scale) }));
+    }
+  }
+
+  /* 5) 四防四角盾 + 数字（zIndex 15000 / 16000） */
+  for (i = 0; i < L.shields.length; i++) {
+    var sh = L.shields[i];
+    items.push(barCurveItem(tokenId, "shield", shieldPoints(sh.d, sh.d), sh.x - sh.d / 2, sh.y - sh.d / 2,
+      {
+        fill: sh.color, fillOpacity: 0.9, stroke: "#ffffff", strokeOpacity: 0.45,
+        strokeWidth: Math.max(0.6, sh.d * 0.04), extra: { key: sh.key }
+      }));
+    items.push(barTextItem(tokenId, "shield-text", sh.text, sh.fontSize, "#ffffff",
+      sh.x - sh.d / 2, sh.y - sh.d / 2, sh.d, sh.d,
+      { strokeWidth: Math.max(0.4, sh.d * 0.02), extra: { key: sh.key } }));
+  }
+
+  /* 6) Boss 分段线（zIndex 22000；只做视觉，不改血量） */
+  if (B.enabled && B.dividerCount > 0) {
+    for (i = 1; i <= B.dividerCount; i++) {
+      items.push(barCurveItem(tokenId, "divider", ringDividerPoints(B, i), B.cx, B.cy,
+        { fill: COLOR_DIVIDER, fillOpacity: 0.85, extra: { index: i } }));
+    }
+  }
+
+  /* 7) 数值（zIndex 30000 / 30500） */
+  if (typeof buildText === "function") {
+    items.push(barTextItem(tokenId, "bar-text", L.hpText, L.hpFont, "#ffffff", L.left, L.hpTop, L.w, L.hHp,
+      { strokeWidth: Math.max(0.4, L.hHp * 0.075), visible: L.hpVisible && L.textVisible }));
+    if (L.showSurge) {
+      items.push(barTextItem(tokenId, "surge-text", L.surgeText, L.surgeFont, "#ffffff", L.left, L.surgeTop, L.w, L.hSurge,
+        { strokeWidth: Math.max(0.3, L.hSurge * 0.06), visible: L.textVisible }));
+    }
+  }
+
+  /* 8) 锁（zIndex 31000 / 31050；body + shackle 两件） */
+  if (B.enabled) {
+    items.push(barCurveItem(tokenId, "lock-body",
+      roundRectPoints(B.lockBodyW, B.lockBodyH, 2 * L.scale, 1),
+      B.lockX - B.lockBodyW / 2, B.lockY - B.lockBodyH / 2,
+      { fill: B.lockColor, fillOpacity: 0.9, stroke: "#ffffff", strokeOpacity: 0.45, strokeWidth: Math.max(0.5, 0.8 * L.scale) }));
+    items.push(barCurveItem(tokenId, "lock-shackle",
+      arcPoints(0, 0, B.lockR, Math.PI, Math.PI * 2, 16),
+      B.lockX, B.lockY - B.lockBodyH / 2,
+      { fillOpacity: 0, closed: false, stroke: B.lockColor, strokeOpacity: 0.9, strokeWidth: Math.max(0.8, 1.6 * L.scale) }));
+  }
+
   return items;
 }
 
@@ -892,28 +2249,126 @@ async function addBar(tokenId, L) {
   return ids;
 }
 
+/** 就地刷新：按 role 分发（switch，不写一条长 if 链；未知 role 直接跳过 → 老 item 兼容）。
+ *  v1.6.0 的 role 表见规格 §6.3：环 2 + 条 4 + 牌 3 + 盾 8 + 分段 ≤4 + 锁 2 = 最多 23 件。 */
 async function patchBar(entry, L) {
+  var B = L.boss;
   await OBR.scene.local.updateItems(entry.ids, function (drafts) {
     for (var i = 0; i < drafts.length; i++) {
       var d = drafts[i];
       var tag = d.metadata && d.metadata[BAR_TAG] ? d.metadata[BAR_TAG] : null;
-      var role = tag && tag.role ? tag.role : (tag ? "bg" : "");
-      if (role === "bg") {
-        d.position = { x: L.left, y: L.top };
-        d.points = roundRectPoints(L.w, L.h, L.radius, 1);
-        d.visible = true;
-      } else if (role === "fill") {
-        d.position = { x: L.left, y: L.top };
-        d.points = roundRectPoints(L.w, L.h, L.radius, L.ratio);
-        d.visible = L.ratio > 0;
-      } else if (role === "text") {
-        if (!d.text) continue;
-        d.text.plainText = L.text;
-        d.text.style.fontSize = L.fontSize;
-        d.text.width = L.w;
-        d.text.height = L.h;
-        d.position = { x: L.left, y: L.top };
-        d.visible = true;
+      var role = tag && tag.role ? tag.role : "";
+      switch (role) {
+        case "ring-bg":
+          d.position = { x: B.cx, y: B.cy };
+          d.points = ringSectorPoints(B.Ro, B.Ri, 1, BOSS_RING_SEGMENTS);
+          d.visible = B.enabled;
+          break;
+        case "ring-fill":
+          d.position = { x: B.cx, y: B.cy };
+          d.points = ringSectorPoints(B.Ro, B.Ri, B.ringRatio, BOSS_RING_SEGMENTS);
+          d.visible = B.enabled && B.ringRatio > 0;
+          break;
+        case "bar-bg":
+          d.position = { x: L.left, y: L.hpTop };
+          d.points = roundRectPoints(L.w, L.hHp, L.hpRadius, 1);
+          d.visible = L.hpVisible;
+          break;
+        case "bar-fill":
+          d.position = { x: L.left, y: L.hpTop };
+          d.points = roundRectPoints(L.w, L.hHp, L.hpRadius, L.ratio);
+          d.visible = L.hpVisible && L.ratio > 0;
+          break;
+        case "surge-bg":
+          d.position = { x: L.left, y: L.surgeTop };
+          d.points = roundRectPoints(L.w, L.hSurge, L.surgeRadius, 1);
+          d.visible = L.showSurge;
+          break;
+        case "surge-fill":
+          d.position = { x: L.left, y: L.surgeTop };
+          d.points = roundRectPoints(L.w, L.hSurge, L.surgeRadius, L.surgeRatio);
+          d.visible = L.showSurge && L.surgeRatio > 0;
+          break;
+        case "plate":
+          d.position = { x: B.plateX, y: B.plateY };
+          d.points = roundRectPoints(B.plateW, B.plateH, 4 * L.scale, 1);
+          d.visible = B.enabled;
+          break;
+        case "plate-text":
+          if (!d.text) break;
+          d.text.plainText = B.name;
+          d.text.style.fontSize = B.nameFont;
+          d.text.width = Math.max(24 * L.scale, B.plateW - 26 * L.scale - B.phaseW);
+          d.text.height = B.plateH;
+          d.position = { x: B.plateX + 4 * L.scale, y: B.plateY };
+          d.visible = B.enabled;
+          break;
+        case "plate-phase":
+          if (!d.text) break;
+          d.text.plainText = B.phase;
+          d.text.style.fontSize = B.phaseFont;
+          d.text.width = B.phaseW;
+          d.text.height = B.plateH;
+          d.position = { x: B.plateX + B.plateW - 28 * L.scale - B.phaseW, y: B.plateY };
+          d.visible = B.enabled && B.phaseW > 0;
+          break;
+        case "shield": {
+          var sh = findShield(L, tag.key);
+          if (!sh) { d.visible = false; break; }
+          d.points = shieldPoints(sh.d, sh.d);
+          d.position = { x: sh.x - sh.d / 2, y: sh.y - sh.d / 2 };
+          d.visible = true;
+          break;
+        }
+        case "shield-text": {
+          var shx = findShield(L, tag.key);
+          if (!shx || !d.text) { d.visible = false; break; }
+          d.text.plainText = shx.text;
+          d.text.style.fontSize = shx.fontSize;
+          d.text.width = shx.d;
+          d.text.height = shx.d;
+          d.position = { x: shx.x - shx.d / 2, y: shx.y - shx.d / 2 };
+          d.visible = true;
+          break;
+        }
+        case "divider": {
+          var idx = typeof tag.index === "number" ? tag.index : 1;
+          if (!B.enabled || idx < 1 || idx > B.dividerCount) { d.visible = false; break; }
+          d.points = ringDividerPoints(B, idx);
+          d.position = { x: B.cx, y: B.cy };
+          d.visible = true;
+          break;
+        }
+        case "bar-text":
+          if (!d.text) break;
+          d.text.plainText = L.hpText;
+          d.text.style.fontSize = L.hpFont;
+          d.text.width = L.w;
+          d.text.height = L.hHp;
+          d.position = { x: L.left, y: L.hpTop };
+          d.visible = L.hpVisible && L.textVisible;
+          break;
+        case "surge-text":
+          if (!d.text) break;
+          d.text.plainText = L.surgeText;
+          d.text.style.fontSize = L.surgeFont;
+          d.text.width = L.w;
+          d.text.height = L.hSurge;
+          d.position = { x: L.left, y: L.surgeTop };
+          d.visible = L.showSurge && L.textVisible;
+          break;
+        case "lock-body":
+          d.position = { x: B.lockX - B.lockBodyW / 2, y: B.lockY - B.lockBodyH / 2 };
+          d.fillColor = B.lockColor;
+          d.visible = B.enabled;
+          break;
+        case "lock-shackle":
+          d.position = { x: B.lockX, y: B.lockY - B.lockBodyH / 2 };
+          d.strokeColor = B.lockColor;
+          d.visible = B.enabled;
+          break;
+        default:
+          break;
       }
     }
   });
@@ -978,6 +2433,7 @@ async function syncBars() {
       return;
     }
     await sweepStaleBars();
+    var viewer = await sceneViewer();
     var items = await OBR.scene.items.getItems();
     var dpi = await sceneDpi();
     var want = {};
@@ -985,9 +2441,11 @@ async function syncBars() {
     for (var i = 0; i < items.length; i++) {
       var it = items[i];
       if (it.type !== "IMAGE") continue;
+      /* v1.6.0：显式关掉血条组件（flag === false）就不画；undefined 仍画 → 老 token 不消失。 */
+      if (!hpBarEnabled(it)) continue;
       var hp = readHpMeta(it);
       if (!hp) continue;
-      want[it.id] = hp;
+      want[it.id] = { hp: hp, item: it };
       order.push(it.id);
     }
     var known = Object.keys(barEntries);
@@ -996,6 +2454,7 @@ async function syncBars() {
     }
     for (var k = 0; k < order.length; k++) {
       var id = order[k];
+      var rec = want[id];
       var bounds = null;
       try {
         bounds = await OBR.scene.items.getItemBounds([id]);
@@ -1003,27 +2462,30 @@ async function syncBars() {
         continue;
       }
       if (!bounds || !bounds.center) continue;
-      var L = barLayout(bounds, dpi, want[id]);
-      var sig = [want[id].cur, want[id].max, want[id].temp,
-        Math.round(L.w), Math.round(L.h), Math.round(L.left), Math.round(L.top)].join("|");
+      /* 玩家端可见性（规格 §6.8）：城主 / token 创建者 / 未锁 → 精确数字与四防；
+       * 其他玩家 + locked（默认）→ 只画阶梯比例，不写文字、不画盾（metadata 仍对全桌可读）。 */
+      var exact = viewer.role === "GM" || !!(viewer.id && rec.item.createdUserId === viewer.id) || !rec.hp.locked;
+      var L = barLayout(bounds, dpi, rec.hp, { exact: exact, threshold: viewer.threshold });
+      var sig = barSig(rec.hp, L);
+      var rolesKey = barRolesKey(L);
       var entry = barEntries[id];
-      if (entry && entry.sig === sig && !entry.force) continue;
-      if (entry && !entry.force) {
+      if (entry && entry.sig === sig && entry.rolesKey === rolesKey && !entry.force) continue;
+      if (entry && entry.rolesKey === rolesKey && !entry.force) {
         try {
           await patchBar(entry, L);
           entry.sig = sig;
           continue;
-        } catch (e) {
+        } catch (e2) {
           await removeBar(id);
         }
       } else if (entry) {
-        /* 本地图形被外部删掉了：删掉残留记录，下面按新几何重画 */
+        /* 角色集合变了，或本地图形被外部删掉了：删掉残留记录，下面按新几何重画 */
         await removeBar(id);
       }
       try {
-        barEntries[id] = { ids: await addBar(id, L), sig: sig };
-      } catch (e) {
-        pageLog("err", "画血条失败（" + id + "）：" + errText(e));
+        barEntries[id] = { ids: await addBar(id, L), sig: sig, rolesKey: rolesKey };
+      } catch (e3) {
+        pageLog("err", "画血条失败（" + id + "）：" + errText(e3));
       }
     }
   } catch (e) {
@@ -1058,31 +2520,47 @@ async function watchLocalBars() {
 }
 
 /* ---------------------------------------------------------------------------
- * 7.5) 先攻（v1.3.0）
+ * 7.5) 先攻（v1.3.0；v1.4.0 扩数据层）
  * ---------------------------------------------------------------------------
  * 右键「加入先攻 / 隐形加入先攻」直接写房间数据：
  *   room.metadata["com.4enext-owlbear/initiative"] =
- *     { v:1, updatedAt, round, activeId, entries:[{tokenId,name,init,bonus,hidden,ownerId,updatedAt}] }
+ *     { v:1, updatedAt, phase, round, surprise, activeId,
+ *       entries:[{tokenId,name,bonus,d20,init,tb,hidden,ownerId,updatedAt}] }
+ * v1.4.0 只**新增**字段（phase / surprise / d20 / tb），键名一个都没改 → 旧数据照旧能读。
  * 先攻加值取 token 上的 com.4enext-owlbear/init（绑定角色卡时由 common.js 写入），
  * 后台是经典脚本，不能 import glance.js 的推导函数 —— 所以这里只读元数据，不重算。
  *
- * 面板里的 GM 操作由面板自己写房间数据（同一套 initiative.js 逻辑）。
+ * 条目上限 60（规格 §9.3）：normalize 里截断、不抛错；写失败降级本机 + 通知，绝不静默。
+ * 先攻条 / 列表窗口里的 GM 操作由页面自己写房间数据（同一套 initiative.js 逻辑）。
  * 玩家点「结束我的回合」时不能写房间数据，改成 broadcast 请求；只有 GM 客户端
- * 收到后校验「当前条目确实是这个玩家的 token」才推进。
+ * 收到后按规格 §5 做四道校验才推进。
  * ------------------------------------------------------------------------- */
-var INIT_MAX_ENTRIES = 200;
+var INIT_MAX_ENTRIES = 60;
+var INIT_LS_FALLBACK = "4enext/state/initiative";
 
 function initInt(v, d) {
   return typeof v === "number" && isFinite(v) ? Math.round(v) : d;
 }
+function initNum(v, d) {
+  return typeof v === "number" && isFinite(v) ? v : d;
+}
 function initClamp(v, lo, hi) {
   return Math.max(lo, Math.min(hi, v));
 }
+function initPhase(v) {
+  var s = String(v == null ? "" : v);
+  return s === "preparing" || s === "combat" ? s : "idle";
+}
+function initTbOf(e) {
+  return e && typeof e.tb === "number" && isFinite(e.tb) ? e.tb : 0.5;
+}
 function initNorm(raw) {
-  var out = { v: 1, updatedAt: 0, round: 1, activeId: "", entries: [] };
+  var out = { v: 1, updatedAt: 0, phase: "idle", round: 1, surprise: false, activeId: "", entries: [] };
   if (!raw || typeof raw !== "object") return out;
   out.updatedAt = initInt(raw.updatedAt, 0);
+  out.phase = initPhase(raw.phase);
   out.round = Math.max(1, initInt(raw.round, 1));
+  out.surprise = out.phase === "combat" ? !!raw.surprise : false;
   var src = Array.isArray(raw.entries) ? raw.entries.slice(0, INIT_MAX_ENTRIES) : [];
   var seen = {};
   for (var i = 0; i < src.length; i++) {
@@ -1092,11 +2570,16 @@ function initNorm(raw) {
     if (!tokenId || seen[tokenId]) continue;
     seen[tokenId] = true;
     var name = String(e.name == null ? "" : e.name).trim().slice(0, 80) || "未命名";
+    var d20raw = initNum(e.d20, null);
+    var tbraw = initNum(e.tb, null);
     out.entries.push({
       tokenId: tokenId,
       name: name,
-      init: initClamp(initInt(e.init, 0), -99, 999),
+      /* init 允许小数：拖拽排序写的是两卡中点，显示时才 Math.round（规格 §4） */
+      init: initClamp(initNum(e.init, 0), -99, 999),
       bonus: initClamp(initInt(e.bonus, 0), -99, 999),
+      d20: d20raw === null ? null : initClamp(Math.round(d20raw), 1, 20),
+      tb: tbraw === null ? null : initClamp(tbraw, 0.001, 0.999),
       hidden: !!e.hidden,
       ownerId: String(e.ownerId == null ? "" : e.ownerId),
       updatedAt: initInt(e.updatedAt, 0)
@@ -1109,26 +2592,73 @@ function initNorm(raw) {
   if (!out.entries.length) out.round = 1;
   return out;
 }
+/** 排序（规格 §7.2，只有两级）：合计 DESC → tiebreak ASC。与 initiative.js 的 sortEntries 一致。 */
 function initSortEntries(list) {
   return list.slice().sort(function (a, b) {
-    return (b.init - a.init) || (b.bonus - a.bonus) ||
-      String(a.name).localeCompare(String(b.name), "zh-CN") || (a.updatedAt - b.updatedAt);
+    var d = initNum(b.init, 0) - initNum(a.init, 0);
+    if (d) return d;
+    var t = initTbOf(a) - initTbOf(b);
+    if (t) return t;
+    return String(a.name).localeCompare(String(b.name), "zh-CN") || (initInt(a.updatedAt, 0) - initInt(b.updatedAt, 0));
   });
 }
+/** tiebreak（规格 §7.1）：0.5 − bonus×0.01 + 抖动(<0.01)，夹在 (0.001, 0.999)。 */
+function initTiebreak(bonus) {
+  var m = typeof bonus === "number" && isFinite(bonus) ? bonus : 0;
+  var base = 0.5 - m * 0.01 + Math.random() * 0.008;
+  return Math.round(Math.max(0.001, Math.min(0.999, base)) * 1e6) / 1e6;
+}
+
+/** 本机降级副本（上次写失败留下的）。 */
+function initLocalFallback() {
+  try {
+    var raw = localStorage.getItem(INIT_LS_FALLBACK);
+    if (!raw) return null;
+    var box = JSON.parse(raw);
+    var st = box && box.state ? box.state : box;
+    if (!st || typeof st !== "object") return null;
+    var out = initNorm(st);
+    out.entries = initSortEntries(out.entries);
+    return out.entries.length ? out : null;
+  } catch (e) {
+    return null;
+  }
+}
+
 async function initRead() {
   try {
     var meta = await OBR.room.getMetadata();
-    return initNorm(meta ? meta[KEY_INITIATIVE] : null);
+    var raw = meta ? meta[KEY_INITIATIVE] : null;
+    if (raw) {
+      var st = initNorm(raw);
+      st.entries = initSortEntries(st.entries);
+      return st;
+    }
+    return initLocalFallback() || initNorm(null);
   } catch (e) {
     pageLog("err", "读取先攻失败：" + errText(e));
-    return initNorm(null);
+    return initLocalFallback() || initNorm(null);
   }
 }
+
+/** 写房间数据；失败 → 本机暂存 + WARNING（不抛错，界面上不会「点了没反应」）。 */
 async function initWrite(state) {
   var next = initNorm(state);
+  next.entries = initSortEntries(next.entries);
   next.updatedAt = Date.now();
-  await OBR.room.setMetadata({ [KEY_INITIATIVE]: next });
-  return next;
+  try {
+    await OBR.room.setMetadata({ [KEY_INITIATIVE]: next });
+    try { localStorage.removeItem(INIT_LS_FALLBACK); } catch (e2) { /* 忽略 */ }
+    return next;
+  } catch (e) {
+    var msg = errText(e);
+    try {
+      localStorage.setItem(INIT_LS_FALLBACK, JSON.stringify({ v: 1, updatedAt: Date.now(), state: next }));
+    } catch (e3) { /* 本机也存不下 */ }
+    notify("先攻没能写进房间数据（" + msg + "）：已暂存在本机。先攻最多 " + INIT_MAX_ENTRIES + " 条。", "WARNING");
+    next.local = true;
+    return next;
+  }
 }
 function initRollD20() {
   return Math.floor(Math.random() * 20) + 1;
@@ -1163,17 +2693,27 @@ async function initAdd(item, hidden) {
       name: name || old.name,
       init: old.init,
       bonus: bonus,
+      d20: old.d20,
+      tb: old.tb,
       hidden: !!(old.hidden || hidden),
       ownerId: ownerId || old.ownerId,
       updatedAt: Date.now()
     };
     state.entries[idx] = entry;
   } else {
+    if (state.entries.length >= INIT_MAX_ENTRIES) {
+      notify("先攻已经有 " + INIT_MAX_ENTRIES + " 条了（房间数据上限）：先清掉几个再加", "WARNING");
+      return null;
+    }
+    /* 加入时一次算好 d20 + 加值，并给一个 tiebreak（规格 §8：存的是合计，不显示时才加）。 */
+    var d20 = initRollD20();
     entry = {
       tokenId: item.id,
       name: name,
-      init: initRollD20() + bonus,
+      init: d20 + bonus,
       bonus: bonus,
+      d20: d20,
+      tb: initTiebreak(bonus),
       hidden: !!hidden,
       ownerId: ownerId,
       updatedAt: Date.now()
@@ -1205,12 +2745,19 @@ async function onInitMenuClick(context, hidden) {
     if (!res) return;
     stepOk("加入先攻：" + res.entry.name + (hidden ? "（隐形）" : ""));
     notify("「" + res.entry.name + "」" + (hidden ? "已隐形加入先攻" : "已加入先攻") +
-      "（先攻 " + res.entry.init + "）", "SUCCESS");
+      "（先攻 " + Math.round(res.entry.init) + "）", "SUCCESS");
+    /* v1.4.0：先攻条没开着就顺手打开 —— 右键加入后立刻能看到条（规格 §P2）。 */
+    if (!stripOpen) void openStripOrNotify("右键加入先攻");
   } catch (e) {
     stepFail("加入先攻", e);
   }
 }
 
+/**
+ * 推进 / 后退一回合（规格 §6，与 initiative.js 的 advanceInitiative 同一套公式）：
+ * nextIndex = (cur + 1 + len) % len；绕回第一张 → 轮数 +1（突袭轮绕回则进入正常第 1 轮）；
+ * 从第一张往回 → 轮数 −1，最小 1。
+ */
 function initAdvance(state, dir) {
   var out = initNorm(JSON.parse(JSON.stringify(state || {})));
   if (!out.entries.length) {
@@ -1227,43 +2774,323 @@ function initAdvance(state, dir) {
   var next = idx + step;
   if (next >= out.entries.length) {
     next = 0;
-    out.round = Math.max(1, out.round + 1);
+    if (out.surprise) out.surprise = false;
+    else out.round = Math.max(1, out.round + 1);
   } else if (next < 0) {
     next = out.entries.length - 1;
-    out.round = Math.max(1, out.round - 1);
+    if (out.round > 1) out.round -= 1;
   }
   out.activeId = out.entries[next].tokenId;
   out.updatedAt = Date.now();
   return out;
 }
 
-/** 玩家「结束我的回合」：广播到所有客户端，只有 GM 客户端会真正写入。 */
+/**
+ * 玩家「结束我的回合」：广播到所有客户端，只有 GM 客户端会真正写入。
+ * 规格 §5 的四道校验（缺一不可）：
+ *   1) 请求里必须带 activeId，且与当前一致（缺失 / 过期都拒绝 —— 老版本写反过，会连推两格）；
+ *   2) 当前条目必须是这个玩家的 token（优先 token.createdUserId 这个活值，其次存下来的 ownerId）；
+ *   3) 只有 GM 客户端处理（非 GM 直接返回，不写数据）；
+ *   4) 正在推进中（上一个请求还没写完）时忽略重复请求。
+ * 另外：不在 combat 阶段时不推进（准备阶段点「结束」没有意义）。
+ */
+var initBusy = false;
+
 async function onInitRequest(ev) {
   var data = ev && ev.data !== undefined ? ev.data : ev;
   if (!data || data.op !== "end-turn") return;
+  if (initBusy) {
+    pageLog("info", "正在推进回合，忽略重复的结束回合请求");
+    return;
+  }
+  initBusy = true;
   try {
     var role = await OBR.player.getRole();
     if (role !== "GM") return;
     var state = await initRead();
+    if (state.phase !== "combat") {
+      notify("现在不在战斗回合里，结束回合请求已忽略", "WARNING");
+      return;
+    }
     var active = null;
     for (var i = 0; i < state.entries.length; i++) {
       if (state.entries[i].tokenId === state.activeId) { active = state.entries[i]; break; }
     }
     if (!active) return;
-    if (data.activeId && data.activeId !== state.activeId) {
+    /* 第 1 道：缺失 / 过期都拒绝。 */
+    if (!data.activeId || data.activeId !== state.activeId) {
       notify("回合已经变了，结束回合请求已忽略", "WARNING");
       return;
     }
-    if (!data.playerId || active.ownerId !== data.playerId) {
+    /* 第 2 道：owner 以 token 上的活值为准（GM 用「Give Ownership」改过归属时，旧 ownerId 会失效）。 */
+    var owner = active.ownerId;
+    try {
+      var items = await OBR.scene.items.getItems([active.tokenId]);
+      var live = items && items[0] ? String(items[0].createdUserId || "") : "";
+      if (live) owner = live;
+    } catch (e2) { /* 拿不到就退回存下来的 ownerId */ }
+    if (!data.playerId || owner !== data.playerId) {
       notify("只能结束自己的回合", "WARNING");
       return;
     }
     var next = initAdvance(state, 1);
     await initWrite(next);
-    notify("「" + active.name + "」结束回合 → 第 " + next.round + " 轮", "INFO");
+    notify("「" + active.name + "」结束回合 → " +
+      (next.surprise ? "突袭轮" : "第 " + next.round + " 轮"), "INFO");
   } catch (e) {
     pageLog("err", "处理结束回合请求失败：" + errText(e));
+  } finally {
+    /* 第 4 道：等写入落定再解锁（避免广播里的重复请求再推一格）。 */
+    initBusy = false;
   }
+}
+
+/* ---------------------------------------------------------------------------
+ * 7.5) 骰子落库（v1.5.0）
+ * ---------------------------------------------------------------------------
+ * 数据流（规格 §4/§5）：
+ *   任何人的骰子窗口 → CH_ROLL（LOCAL + REMOTE）
+ *     → **只有城主客户端**的这里处理：校验 + 归一化 + 幂等合并
+ *     → OBR.room.setMetadata({ [KEY_ROLLS]: { v, updatedAt, seq, rows } })
+ *     → 广播 CH_ROLL_SAVED { seq, rollId }（页面据此清掉「未落库」计时器）
+ *   玩家永远不写房间数据（Owlbear 也不允许）；城主不在线时页面自己暂存本机 + 黄条提示。
+ *
+ * 校验边界（规格 §5 的安全边界）：假设同桌可信，**不校验骰值真伪**，只校验形状与范围：
+ *   type 必须是 ^d\d+$、value 夹在 1..sides（用 sidesOf 的同一规则，d600 不会被夹成 20）、
+ *   total 用同一公式重算（三端一致）、label / expression 截断、rollId 必填。
+ *   不合法的单条**丢弃并记日志**，绝不整批失败。
+ *
+ * 这一段的 rollNorm / rollMerge 是 assets/dice-core.js 里 normalizeRoll / mergeRollRows 的
+ * **同位实现**（经典脚本不能 import）；两边的上限与公式由 dev/check.mjs + dev/test-dice.mjs 钉住。
+ * ------------------------------------------------------------------------- */
+function rollSides(type) {
+  var m = /^d(\d+)$/i.exec(String(type == null ? "" : type).trim());
+  if (!m) return 0;
+  var n = parseInt(m[1], 10);
+  return n > 0 ? n : 0;
+}
+function rollInt(v, lo, hi, d) {
+  var n = typeof v === "number" && isFinite(v) ? Math.round(v) : d;
+  return Math.max(lo, Math.min(hi, n));
+}
+function rollColor(v) {
+  var s = String(v == null ? "" : v).trim();
+  return /^#[0-9a-f]{3,8}$/i.test(s) ? s : ROLL_COLOR_DEFAULT;
+}
+function rollText(v, n) {
+  var s = v == null ? "" : String(v);
+  return s.length > n ? s.slice(0, n) : s;
+}
+function rollTs(v) {
+  var n = typeof v === "number" && isFinite(v) ? Math.round(v) : Date.now();
+  return n > 0 ? n : Date.now();
+}
+function rollDieNorm(raw) {
+  if (!raw || typeof raw !== "object") return null;
+  var sides = rollSides(String(raw.type || "d20").toLowerCase());
+  if (!sides) return null;
+  var out = { type: "d" + sides, value: rollInt(raw.value, 1, sides, 1) };
+  if (raw.loser) out.loser = true;
+  if (raw.subtract) out.subtract = true;
+  if (typeof raw.originalValue === "number" && isFinite(raw.originalValue)) out.originalValue = Math.round(raw.originalValue);
+  if (typeof raw.burstParent === "number" && isFinite(raw.burstParent)) out.burstParent = Math.max(0, Math.round(raw.burstParent));
+  return out;
+}
+/** 归一化一条投掷（与 dice-core.js 的 normalizeRoll 同结果）。没有 rollId 就直接丢弃。 */
+function rollNorm(raw) {
+  if (!raw || typeof raw !== "object") return null;
+  var rollId = rollText(raw.rollId == null ? "" : String(raw.rollId).trim(), 80);
+  if (!rollId) return null;
+  var dice = [];
+  if (Array.isArray(raw.dice) && raw.dice.length) {
+    for (var i = 0; i < raw.dice.length; i++) {
+      var d = rollDieNorm(raw.dice[i]);
+      if (d) dice.push(d);
+    }
+  } else if (Array.isArray(raw.rolls)) {
+    for (var j = 0; j < raw.rolls.length; j++) {
+      var one = rollDieNorm({ type: "d20", value: raw.rolls[j] });
+      if (one) dice.push(one);
+    }
+  } else if (typeof raw.value === "number") {
+    var solo = rollDieNorm({ type: "d20", value: raw.value });
+    if (solo) dice.push(solo);
+  }
+  var truncated = false;
+  if (dice.length > ROLL_MAX_DICE) {
+    dice = dice.slice(0, ROLL_MAX_DICE);
+    truncated = true;
+  }
+  var rowStarts = [];
+  if (Array.isArray(raw.rowStarts)) {
+    for (var k = 0; k < raw.rowStarts.length && rowStarts.length < 20; k++) {
+      var n = raw.rowStarts[k];
+      if (typeof n === "number" && isFinite(n) && n >= 0) rowStarts.push(Math.round(n));
+    }
+  }
+  /* 加值只取整、不夹上下限：与 dice-core.js 的 normalizeRoll 必须算出一模一样的 total */
+  var modifier = typeof raw.modifier === "number" && isFinite(raw.modifier) ? Math.round(raw.modifier) : 0;
+  var base = 0;
+  for (var q = 0; q < dice.length; q++) {
+    if (dice[q].loser) continue;
+    base += dice[q].subtract ? -Math.abs(dice[q].value) : dice[q].value;
+  }
+  /* 总和公式与 dice-core.js 的 computeTotal 一致：kept 求和 + modifier × 行数（repeat 每行各算一次） */
+  var rows = rowStarts.length > 1 ? rowStarts.length : 1;
+  var out = {
+    v: 1,
+    rollId: rollId,
+    ts: rollTs(raw.ts),
+    rollerId: rollText(raw.rollerId, 80),
+    rollerName: rollText(raw.rollerName, 40) || "某人",
+    rollerColor: rollColor(raw.rollerColor),
+    label: rollText(raw.label, ROLL_LABEL_MAX),
+    expression: rollText(raw.expression, ROLL_EXPR_MAX),
+    mode: rollText(raw.mode || "free", 16),
+    dice: dice,
+    modifier: modifier,
+    total: base + modifier * rows,
+    crit: !!raw.crit
+  };
+  if (rowStarts.length > 1) out.rowStarts = rowStarts;
+  if (truncated) out.truncated = true;
+  if (raw.critDegraded) out.critDegraded = true;
+  if (raw.itemId) out.itemId = rollText(raw.itemId, 80);
+  return out;
+}
+/** 幂等合并：同 rollId 不重复插 → 按 ts 倒序 → 封顶 40。 */
+function rollMerge(rows, incoming) {
+  var list = Array.isArray(rows) ? rows.slice() : [];
+  var row = rollNorm(incoming);
+  if (!row) return list.slice(0, ROLL_MAX_ROWS);
+  for (var i = 0; i < list.length; i++) {
+    if (list[i] && list[i].rollId === row.rollId) return list.slice(0, ROLL_MAX_ROWS);
+  }
+  list.push(row);
+  list.sort(function (a, b) { return (b.ts || 0) - (a.ts || 0); });
+  return list.slice(0, ROLL_MAX_ROWS);
+}
+async function rollReadBox() {
+  try {
+    var meta = await OBR.room.getMetadata();
+    return meta ? meta[KEY_ROLLS] || null : null;
+  } catch (e) {
+    return null;
+  }
+}
+function rollRowsOf(box) {
+  var src = Array.isArray(box) ? box : box && Array.isArray(box.rows) ? box.rows : [];
+  var out = [];
+  var seen = {};
+  for (var i = 0; i < src.length && out.length < ROLL_MAX_ROWS; i++) {
+    var row = rollNorm(src[i]);
+    if (!row || seen[row.rollId]) continue;
+    seen[row.rollId] = true;
+    out.push(row);
+  }
+  out.sort(function (a, b) { return (b.ts || 0) - (a.ts || 0); });
+  return out.slice(0, ROLL_MAX_ROWS);
+}
+/** 写房间数据；超 12 KB 就先砍一半旧行（16 KB 的 75%，规格 §9.2 的风险对策）。 */
+async function rollWrite(rows, seq) {
+  var box = {
+    v: 1,
+    updatedAt: Date.now(),
+    seq: Math.max(0, rollInt(seq, 0, 999999, 0)),
+    rows: (rows || []).slice(0, ROLL_MAX_ROWS)
+  };
+  while (JSON.stringify(box).length > ROLL_ROOM_BYTES && box.rows.length > 1) {
+    box.rows = box.rows.slice(0, Math.ceil(box.rows.length / 2));
+  }
+  try {
+    await OBR.room.setMetadata({ [KEY_ROLLS]: box });
+    return true;
+  } catch (e) {
+    notify("骰子记录没能写进房间数据（" + errText(e) + "）：最多保留 " + ROLL_MAX_ROWS + " 条，旧行会自动裁掉。", "WARNING");
+    return false;
+  }
+}
+function rollBroadcastSaved(payload) {
+  try {
+    var p1 = OBR.broadcast.sendMessage(CH_ROLL_SAVED, payload, { destination: "LOCAL" });
+    if (p1 && typeof p1.catch === "function") p1.catch(function () { /* 忽略 */ });
+  } catch (e) { /* 忽略 */ }
+  try {
+    var p2 = OBR.broadcast.sendMessage(CH_ROLL_SAVED, payload, { destination: "REMOTE" });
+    if (p2 && typeof p2.catch === "function") p2.catch(function () { /* 忽略 */ });
+  } catch (e2) { /* 忽略 */ }
+}
+/* 收到投掷就排队：**串行**写入，避免两次 setMetadata 互相覆盖（丢一条历史比慢 10ms 糟得多）。 */
+var rollQueue = [];
+var rollBusy = false;
+
+async function rollRole() {
+  try { return await OBR.player.getRole(); } catch (e) { return ""; }
+}
+
+async function rollApply(job) {
+  if (job && job.clear) {
+    var box0 = await rollReadBox();
+    var seq0 = box0 && typeof box0.seq === "number" && isFinite(box0.seq) ? Math.round(box0.seq) : 0;
+    var okClear = await rollWrite([], seq0 + 1);
+    if (!okClear) return;
+    rollBroadcastSaved({ seq: seq0 + 1, rollId: "", cleared: true, by: job.by, at: Date.now() });
+    pageLog("info", "骰子记录已清空（城主）");
+    return;
+  }
+  var incoming = rollNorm(job);
+  if (!incoming) {
+    pageLog("info", "收到一条不合法的投掷（缺 rollId / 骰值越界），已丢弃");
+    return;
+  }
+  var box = await rollReadBox();
+  var seq = box && typeof box.seq === "number" && isFinite(box.seq) ? Math.round(box.seq) : 0;
+  var existing = rollRowsOf(box);
+  /* 幂等：同一个 rollId 已经落过库（LOCAL + REMOTE 各来一次、或页面重连重发）就只回一条 saved，不重复写 */
+  for (var i = 0; i < existing.length; i++) {
+    if (existing[i].rollId === incoming.rollId) {
+      rollBroadcastSaved({ seq: seq, rollId: incoming.rollId, duplicate: true, at: Date.now() });
+      pageLog("info", "重复的投掷（同 rollId）已忽略：" + incoming.rollId);
+      return;
+    }
+  }
+  var rows = rollMerge(existing, incoming);
+  var ok = await rollWrite(rows, seq + 1);
+  if (!ok) return;
+  rollBroadcastSaved({ seq: seq + 1, rollId: incoming.rollId, at: Date.now() });
+  pageLog("info", "骰子落库：" + (incoming.rollerName || "某人") + " " + (incoming.expression || "") + " = " + incoming.total);
+}
+
+async function pumpRolls() {
+  if (rollBusy) return;
+  rollBusy = true;
+  try {
+    while (rollQueue.length) {
+      var job = rollQueue.shift();
+      try { await rollApply(job); } catch (e) { pageLog("err", "骰子落库失败：" + errText(e)); }
+    }
+  } finally {
+    rollBusy = false;
+  }
+}
+
+/** 收到一次投掷：只有城主客户端会真的写；写入后广播 CH_ROLL_SAVED。 */
+async function onRoll(ev) {
+  var data = ev && ev.data !== undefined ? ev.data : ev;
+  if (!data || typeof data !== "object") return;
+  var role = await rollRole();
+  if (role !== "GM") return;
+  rollQueue.push(data);
+  void pumpRolls();
+}
+
+/** 清空全桌记录（只有城主能做）。 */
+async function onRollClear(ev) {
+  var data = ev && ev.data !== undefined ? ev.data : ev;
+  var role = await rollRole();
+  if (role !== "GM") return;
+  rollQueue.push({ clear: true, by: data && data.by });
+  void pumpRolls();
 }
 
 /* ---------------------------------------------------------------------------
@@ -1305,8 +3132,8 @@ async function boot() {
   pageLog("info", "OBR.onReady 触发；插件 v" + PLUGIN_VERSION + "；BASE=" + BASE);
   pageLog("info", "OBR.isAvailable=" + String(OBR.isAvailable) + "；isReady=" + String(OBR.isReady));
 
-  /* 7.1 入口 B：工具栏 */
-  bootStatus.tool = await attempt("注册工具栏按钮 (OBR.tool.create)", registerTool);
+  /* 7.1 入口 B：工具栏（v1.3.2：速览 / 角色卡 / 先攻 / 骰子 / 设置 五个并列入口） */
+  bootStatus.tool = await attempt("注册工具栏按钮 (OBR.tool.create ×5)", registerTools);
 
   /* 7.2 右键菜单 */
   bootStatus.menu = await attempt("注册右键菜单 (OBR.contextMenu.create)", registerContextMenu);
@@ -1349,6 +3176,21 @@ async function boot() {
   await attempt("订阅 " + CH_INIT_REQUEST + "（玩家结束回合）", function () {
     OBR.broadcast.onMessage(CH_INIT_REQUEST, onInitRequest);
   });
+  await attempt("订阅 " + CH_WIN_DRAG + "（独立窗口拖动）", function () {
+    OBR.broadcast.onMessage(CH_WIN_DRAG, onWinDrag);
+  });
+  await attempt("订阅 " + CH_STRIP_DRAG + "（先攻条拖动）", function () {
+    OBR.broadcast.onMessage(CH_STRIP_DRAG, onStripDrag);
+  });
+  await attempt("订阅 " + CH_STRIP_CMD + "（先攻条命令：列表 / 尺寸）", function () {
+    OBR.broadcast.onMessage(CH_STRIP_CMD, onStripCmd);
+  });
+  await attempt("订阅 " + CH_ROLL + "（骰子落库：仅城主处理）", function () {
+    OBR.broadcast.onMessage(CH_ROLL, onRoll);
+  });
+  await attempt("订阅 " + CH_ROLL_CLEAR + "（清空骰子记录）", function () {
+    OBR.broadcast.onMessage(CH_ROLL_CLEAR, onRollClear);
+  });
   await attempt("订阅 viewport.onChange", function () {
     if (!OBR.viewport || typeof OBR.viewport.onChange !== "function") return; /* 旧版 SDK 没有 */
     var timer = null;
@@ -1357,6 +3199,10 @@ async function boot() {
       timer = setTimeout(function () {
         timer = null;
         void syncSceneButton();
+        /* 视口变小（笔记本合盖 / 横向转纵向）后，开着的窗口重新夹回视口内 */
+        void reclampWins();
+        /* 先攻条贴顶居中，视口一变就按记住的偏移重新夹紧 */
+        void reclampStrip();
       }, 250);
     });
   });
@@ -1369,7 +3215,7 @@ async function boot() {
 
   /* 7.6 汇总一条通知：一眼看出哪个入口没注册上 */
   var mark = function (v) { return v ? "✓" : "✗"; };
-  var okLine = "4eNEXT to owlbear v" + PLUGIN_VERSION + " 已加载：工具栏" + mark(bootStatus.tool) +
+  var okLine = "4eNEXT to owlbear v" + PLUGIN_VERSION + " 已加载：工具栏×5 " + mark(bootStatus.tool) +
     " · 右键" + mark(bootStatus.menu) +
     " · 浮动按钮" + (bootStatus.scene ? mark(bootStatus.button) : "（等进地图）");
   var allOk = bootStatus.tool && bootStatus.menu;
@@ -1388,7 +3234,7 @@ async function boot() {
 }
 
 /* ---------------------------------------------------------------------------
- * 8) 启动保护：任何未捕获错误都变成可见通知（而不是静默死掉）
+ * 9) 启动保护：任何未捕获错误都变成可见通知（而不是静默死掉）
  * ------------------------------------------------------------------------- */
 try {
   window.addEventListener("error", function (ev) {
@@ -1401,9 +3247,31 @@ try {
     pageLog("err", "未处理的 Promise 拒绝：" + msg);
     if (booted) notify("4E插件出错（异步异常）：" + msg, "ERROR");
   });
-} catch (e) { /* 忽略 */ }
+} catch (e) { /* 忽略：注册失败也不能让后台在这里停下来 */ }
 
-/* OBR 环境自检 */
-if (typeof OBR === "undefined" || !OBR) {
+/* ---------------------------------------------------------------------------
+ * 10) OBR 环境自检 + 启动
+ * ------------------------------------------------------------------------- */
+if (typeof OBR === "undefined" || !OBR || typeof OBR.onReady !== "function") {
+  /* 没有拿到 SDK：把原因写出来。后台页是隐藏的，但绝不能静默退出 ——
+   * 一旦这里悄悄 return，面板的 diag-ping 就永远等不到 pong，只会看到「后台脚本没有响应」。 */
+  pageLog("err", "没有拿到 OBR 对象：vendor/obr-sdk.js 没拼进 bundle，或 SDK 加载失败");
+  try {
+    var stEl = document.getElementById("diag-state");
+    if (stEl) { stEl.className = "bad"; stEl.textContent = "没有拿到 OBR 对象：右键菜单 / 先攻都不会工作"; }
+  } catch (e2) { /* 忽略 */ }
+  if (diagNotifyEnabled()) notify("4E 后台：没有拿到 OBR 对象，右键菜单 / 先攻都不会工作", "ERROR");
+} else {
+  /* 启动：直接把 boot 交给 onReady（不要包一层丢弃返回值）。
+   *   · 已就绪 → SDK 会立刻同步调用；
+   *   · 未就绪 → 等 SDK 回调。
+   * 面板的 ping/pong 订阅在 boot 的最后一步，只有 boot 真的跑起来，面板才会显示「后台已连接」。 */
+  try {
+    OBR.onReady(boot);
+  } catch (e3) {
+    pageLog("err", "注册 OBR.onReady 失败：" + errText(e3));
+    if (diagNotifyEnabled()) notify("4E 后台：注册 OBR.onReady 失败：" + errText(e3), "ERROR");
+  }
+}
 
 })();

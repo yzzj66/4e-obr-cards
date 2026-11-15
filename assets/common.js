@@ -15,8 +15,17 @@ export const ID_BUTTON = NS + "/button";
 export const ID_INFO = NS + "/info";
 export const ID_PANEL = NS + "/panel";
 export const ID_BIND = NS + "/bind";
+/* v1.3.1：先攻 / 骰子各自独立一个 popover 窗口。
+ * id 与速览（/info）、角色卡面板（/panel）都不同 → 可以同时打开、互不嵌套。 */
+export const ID_INIT_WIN = NS + "/initiative-window";
+/* v1.4.0：先攻条。它是**另一个 popover**（top-center 的条），id 与上面那个列表窗口不同，
+ * 所以「先攻条 + 列表窗口」可以同时开着。打开 / 关闭 / 拖动都在 assets/background.core.js。 */
+export const ID_STRIP = NS + "/initiative-strip";
+export const ID_DICE_WIN = NS + "/dice-window";
+/* v1.3.2：设置 / 关于窗口（与 assets/background.core.js 的 ID_SETTINGS_WIN 必须一致）。 */
+export const ID_SETTINGS_WIN = NS + "/settings-window";
 
-export const PLUGIN_VERSION = "1.3.0";
+export const PLUGIN_VERSION = "1.6.0";
 
 /**
  * 站点根地址。
@@ -35,12 +44,46 @@ export const URL_ORIGIN = URL_BASE.href;
 export const URL_PANEL = new URL("panel.html", URL_BASE).href;
 export const URL_INFO = new URL("info.html", URL_BASE).href;
 export const URL_BIND = new URL("bind.html", URL_BASE).href;
+/* v1.3.1：先攻 / 骰子各自独立的窗口页。 */
+export const URL_INITIATIVE = new URL("initiative.html", URL_BASE).href;
+export const URL_DICE = new URL("dice.html", URL_BASE).href;
+/* v1.3.2：设置 / 关于窗口页。 */
+export const URL_SETTINGS = new URL("settings.html", URL_BASE).href;
 export const URL_BUTTON = new URL("button.html", URL_BASE).href;
 export const URL_INDEX = new URL("index.html", URL_BASE).href;
 export const URL_ICON = new URL("icon.svg", URL_BASE).href;
 
 /** 玩家「结束我的回合」请求频道（与 background.core.js 的 CH_INIT_REQUEST 必须一致）。 */
 export const CH_INIT_REQUEST = NS + "/init-request";
+
+/* ---- v1.5.0：骰子（团队共享）----
+ * CH_ROLL        任何人 → 全桌：一次投掷（LOCAL + REMOTE；投掷者自己也听 LOCAL）
+ * CH_ROLL_CLEAR  城主清空全桌历史（玩家点了只会收到 WARNING）
+ * CH_ROLL_SAVED  城主客户端写完房间数据后广播 { seq, rollId }，页面据此清掉「未落库」计时器
+ * KEY_ROLLS      房间数据：{ v, updatedAt, seq, rows } —— rows 上限 40（≈8~9 KB，给角色卡留空间）
+ * 前三个频道与 KEY_ROLLS / ROLL_MAX_ROWS 与 background.core.js 里的同名常量必须一字不差
+ * （后台是经典脚本，不能 import，dev/check.mjs 会逐项对比）。
+ * 本机键：组合 / 上次公式 / 城主离线时的暂存。 */
+export const CH_ROLL = NS + "/roll";
+export const CH_ROLL_CLEAR = NS + "/roll-clear";
+export const CH_ROLL_SAVED = NS + "/roll-saved";
+export const KEY_ROLLS = NS + "/rolls";
+/** 与 dice-core.js 的 ROLL_MAX_ROWS 相同（房间数据容量预算，规格 §1.6）。 */
+export const ROLL_MAX_ROWS = 40;
+export const LS_DICE_COMBOS = "4enext/dice/combos";
+export const LS_DICE_LAST = "4enext/dice/last";
+export const LS_DICE_LOCAL = "4enext/dice/local";
+
+/* ---- v1.4.0：先攻条（top-center 的条）----
+ * STRIP_POS_KEY  只记「相对屏幕中线的偏移」{ v:1, dx, dy }，不记绝对 left（换屏幕 / 缩放后仍然贴顶居中）
+ * CH_STRIP_DRAG  页面 → 后台：拖动先攻条（start / move / end / reset）
+ * CH_STRIP_CMD   页面 → 后台：折叠 / 列表 / 尺寸同步等命令
+ * 三个名字与 assets/background.core.js 里的同名常量必须一字不差。 */
+export const STRIP_POS_KEY = "4enext/strip-pos";
+export const CH_STRIP_DRAG = NS + "/strip-drag";
+export const CH_STRIP_CMD = NS + "/strip-cmd";
+/** 先攻条拖动时 pointermove 的节流间隔（毫秒）。 */
+export const STRIP_DRAG_THROTTLE_MS = 33;
 
 /** 后台心跳频道（与 assets/background.core.js 里的常量必须一致）。 */
 export const CH_HELLO = NS + "/diag-hello"; // 后台 → 页面：我起来了
@@ -54,6 +97,13 @@ export const INFO_POS_KEY = "4enext/info-pos";
 export const CH_INFO_DRAG = NS + "/info-drag";
 /** 拖动区 pointermove 的节流间隔（毫秒）：越小越跟手，越大越省。 */
 export const INFO_DRAG_THROTTLE_MS = 33;
+
+/* ---- v1.3.1：独立窗口（先攻 / 骰子 / 角色卡面板）的拖动与位置记忆 ----
+ * 与速览弹窗的区别：速览按 token 记位置（INFO_POS_KEY），这三个窗口各记一份（WIN_POS_KEY）。
+ * 频道与键名与 assets/background.core.js 里的同名常量必须一字不差。 */
+export const WIN_POS_KEY = "4enext/win-pos";
+export const CH_WIN_DRAG = NS + "/win-drag";
+export const WIN_DRAG_THROTTLE_MS = 33;
 
 /**
  * 自检：问后台「在吗」。

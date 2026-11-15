@@ -3,64 +3,59 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>4eNEXT to owlbear</title>
+<title>4eNEXT to owlbear · 角色卡</title>
 <link rel="stylesheet" href="assets/ui.css">
 <link rel="stylesheet" href="assets/glance.css">
 </head>
-<body>
+<body class="win-page">
+<!-- v1.3.1：「角色卡面板」只负责**导入 / 列表 / 预览 / 绑定**（用户口中的「导入面板」）。
+     先攻、骰子已经拆成各自独立的窗口（initiative.html / dice.html），这里**不再有 tab**。
+     面板打开时由后台按视口夹紧尺寸，内部列表与预览各自独立滚动，所以任何屏幕都看得全。 -->
 <div class="panel">
-  <header class="panel-top">
+  <header class="panel-top" id="head" title="按住这里可以拖动窗口（popover 模式下有效，位置会记住）">
+    <span class="grip" aria-hidden="true">⠿</span>
     <div class="panel-title">4eNEXT to owlbear<small id="count">0 张卡</small></div>
-    <nav class="tabs" id="tabs" role="tablist" aria-label="面板分区">
-      <button type="button" class="tab on" data-tab="glance" role="tab" aria-selected="true">速览</button>
-      <button type="button" class="tab" data-tab="init" role="tab" aria-selected="false">先攻</button>
-      <button type="button" class="tab" data-tab="dice" role="tab" aria-selected="false">骰子</button>
-    </nav>
     <div class="panel-top-right">
-      <span class="panel-sub">4E NEXT 角色卡</span>
+      <span class="panel-sub">4E NEXT 角色卡 · 导入 / 列表 / 预览</span>
+      <button class="icon-btn" id="pin" title="回到默认位置（清除本面板记住的位置）">⌖</button>
       <button class="icon-btn" id="close" title="关闭面板">✕</button>
     </div>
   </header>
 
+  <div class="bg-strip" id="bg-strip">
+    <span class="bg-text" id="bg-text">正在确认后台脚本…</span>
+    <button class="btn small" id="bg-retry" hidden>后台未连接，点这里重试</button>
+  </div>
+
   <div class="panel-body">
-    <section class="tab-pane on" id="tab-glance" role="tabpanel" aria-label="速览">
-      <aside class="panel-side">
-        <div class="import-box">
-          <div class="row">
-            <button class="btn primary small" id="pick">导入 JSON</button>
-            <button class="btn small" id="paste-toggle">粘贴</button>
-            <button class="btn small ghost" id="sample">载入示例</button>
-          </div>
-          <input type="file" id="file" accept=".json,application/json" multiple hidden>
-          <div id="paste-wrap" style="display:none;margin-top:8px">
-            <textarea id="paste" placeholder="把 4E NEXT「导出存档」得到的 JSON 全文粘贴到这里"></textarea>
-            <button class="btn small" id="paste-ok" style="margin-top:6px">导入这段 JSON</button>
-          </div>
-          <div class="drop-hint" style="margin-top:8px">也可以把 .json 文件直接拖进窗口</div>
+    <aside class="panel-side">
+      <div class="import-box">
+        <div class="row">
+          <button class="btn primary small" id="pick" data-bg-soft>导入 JSON</button>
+          <button class="btn small" id="paste-toggle" data-bg-soft>粘贴</button>
+          <button class="btn small ghost" id="sample" data-bg-soft>载入示例</button>
         </div>
-        <div class="sel-token" id="sel">未选中 token</div>
-        <div class="card-list" id="list"></div>
-        <div class="diag-strip" id="diag-strip" title="检查插件后台脚本是否在运行：右键菜单、先攻写入和右下角按钮都靠它">后台自检中…</div>
-        <div class="side-foot">
-          <p>数据保存在<b>房间数据</b>里：同一个房间的所有人（包括玩家）都能看到速览。</p>
-          <p>面板只读；改卡仍然在 4E NEXT 里做，改完重新导出导入即可覆盖同名卡。</p>
+        <input type="file" id="file" accept=".json,application/json" multiple hidden>
+        <div id="paste-wrap" style="display:none;margin-top:8px">
+          <textarea id="paste" placeholder="把 4E NEXT「导出存档」得到的 JSON 全文粘贴到这里"></textarea>
+          <button class="btn small" id="paste-ok" data-bg-soft style="margin-top:6px">导入这段 JSON</button>
         </div>
-      </aside>
-      <main class="panel-main"><div class="panel-main-inner" id="view"></div></main>
-    </section>
-
-    <section class="tab-pane" id="tab-init" role="tabpanel" aria-label="先攻">
-      <main class="init-main"><div id="init-view"><div class="init-empty">读取先攻…</div></div></main>
-    </section>
-
-    <section class="tab-pane" id="tab-dice" role="tabpanel" aria-label="骰子">
-      <div class="dice-placeholder">
-        <div class="dice-icon" aria-hidden="true">🎲</div>
-        <h2>骰子（即将推出）</h2>
-        <p>v1.5.0 会做成 4E 化的骰子面板：d20 攻击 / 豁免、伤害表达式、组合保存、历史记录与团队共享结果。</p>
-        <p class="muted">本版（v1.3.0）先放占位，先攻里的「掷先攻」已经可用。</p>
+        <div class="drop-hint" style="margin-top:8px">也可以把 .json 文件直接拖进窗口</div>
       </div>
-    </section>
+      <div class="sel-token" id="sel">未选中 token</div>
+      <div class="card-list" id="list"></div>
+      <div class="side-foot">
+        <p>数据保存在<b>房间数据</b>里：同一个房间的所有人（包括玩家）都能看到速览。</p>
+        <p>面板只读；改卡仍然在 4E NEXT 里做，改完重新导出导入即可覆盖同名卡。</p>
+        <p><b>先攻</b>与<b>骰子</b>已经是独立窗口：左侧工具栏的对应图标（或右键「加入先攻」）。</p>
+      </div>
+    </aside>
+    <main class="panel-main"><div class="panel-main-inner" id="view"></div></main>
+  </div>
+
+  <div class="win-foot">
+    <span class="win-flash" id="win-flash"></span>
+    <span class="win-hint">每个窗口各自记住位置，可以同时打开</span>
   </div>
 </div>
 <div class="drag-overlay" id="overlay"><b>松手导入 4E NEXT 导出 JSON</b></div>

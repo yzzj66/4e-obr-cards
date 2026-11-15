@@ -43,6 +43,7 @@ const notifications = [];
 const createdMenus = [];
 const broadcastCbs = {};
 const sentBroadcasts = [];
+const openedPopovers = [];
 
 function itemById(id) { return items.filter((it) => it.id === id)[0] || null; }
 function mergeRoom(update) {
@@ -104,7 +105,10 @@ const OBR = {
     remove() { return Promise.resolve(); }
   },
   tool: { create: async () => {}, remove: async () => {} },
-  popover: { open: async () => {}, close: async () => {} },
+  popover: {
+    open: async (cfg) => { openedPopovers.push(cfg); },
+    close: async () => {}
+  },
   modal: { open: async () => {}, close: async () => {} },
   action: { open: async () => {}, close: async () => {} },
   room: {
@@ -262,6 +266,15 @@ else bad("回合推进按钮的权限分支不对");
 if (playerHtml.indexOf('data-init-act="end"') >= 0) ok("玩家看到「结束我的回合」按钮");
 else bad("玩家没有「结束我的回合」按钮");
 
+/* 后台连接三态：checking 不吓人，只有 bad 才出红字（v1.3.0 修复附带） */
+const checkingHtml = I.renderInitiativeHTML(hiddenState, { role: "GM", playerId: "user-gm", backgroundState: "checking" });
+if (checkingHtml.indexOf("正在确认后台脚本") >= 0 && checkingHtml.indexOf("后台脚本没有响应") < 0)
+  ok("checking 状态只提示「正在确认」，不显示红字");
+else bad("checking 状态的提示不对（不该出现红字）");
+const badHtml = I.renderInitiativeHTML(hiddenState, { role: "GM", playerId: "user-gm", backgroundReady: false, backgroundState: "bad" });
+if (badHtml.indexOf("后台脚本没有响应") >= 0) ok("确认失败（bad）才显示「后台脚本没有响应」");
+else bad("bad 状态没有显示红字");
+
 /* ---------------------------------------------------------------------------
  * 4. 后台：右键两项注册 + 加入先攻写房间数据
  * ------------------------------------------------------------------------- */
@@ -281,7 +294,19 @@ function stubBuilder(type) {
   };
 }
 const run = new Function("OBR", "buildCurve", "buildShape", "buildText",
-  CORE + "\nreturn { boot: typeof boot === 'function' ? boot : null, onInitMenuClick: typeof onInitMenuClick === 'function' ? onInitMenuClick : null, onInitRequest: typeof onInitRequest === 'function' ? onInitRequest : null, initAdvance: typeof initAdvance === 'function' ? initAdvance : null };");
+  CORE + "\nreturn {" +
+  " boot: typeof boot === 'function' ? boot : null," +
+  " onInitMenuClick: typeof onInitMenuClick === 'function' ? onInitMenuClick : null," +
+  " onInitRequest: typeof onInitRequest === 'function' ? onInitRequest : null," +
+  " initAdvance: typeof initAdvance === 'function' ? initAdvance : null," +
+  " initNorm: typeof initNorm === 'function' ? initNorm : null," +
+  " initTiebreak: typeof initTiebreak === 'function' ? initTiebreak : null," +
+  " stripHeightFor: typeof stripHeightFor === 'function' ? stripHeightFor : null," +
+  " onStripDrag: typeof onStripDrag === 'function' ? onStripDrag : null," +
+  " onStripCmd: typeof onStripCmd === 'function' ? onStripCmd : null," +
+  " openStrip: typeof openStrip === 'function' ? openStrip : null," +
+  " closeStrip: typeof closeStrip === 'function' ? closeStrip : null" +
+  " };");
 const api = run(OBR, stubBuilder("CURVE"), stubBuilder("SHAPE"), stubBuilder("TEXT"));
 if (!api || typeof api.boot !== "function" || typeof readyCb !== "function") {
   bad("background.core.js 没有注册 OBR.onReady / 找不到 boot");
@@ -334,7 +359,7 @@ if (api && typeof api.initAdvance === "function") {
 }
 
 roomMeta[KEY_INITIATIVE] = I.normalizeInitiative({
-  round: 1, activeId: "tok-1",
+  phase: "combat", round: 1, activeId: "tok-1",
   entries: [
     { tokenId: "tok-1", name: "甲的 token", init: 20, bonus: 5, hidden: false, ownerId: "user-player" },
     { tokenId: "tok-2", name: "乙的 token", init: 10, bonus: 0, hidden: false, ownerId: "user-gm" }
@@ -347,7 +372,7 @@ if (state.activeId === "tok-2") ok("玩家结束自己的回合：GM 客户端�
 else bad("玩家结束自己的回合没有推进：" + JSON.stringify(state));
 
 roomMeta[KEY_INITIATIVE] = I.normalizeInitiative({
-  round: 1, activeId: "tok-1",
+  phase: "combat", round: 1, activeId: "tok-1",
   entries: [
     { tokenId: "tok-1", name: "甲的 token", init: 20, bonus: 5, hidden: false, ownerId: "user-player" },
     { tokenId: "tok-2", name: "乙的 token", init: 10, bonus: 0, hidden: false, ownerId: "user-gm" }
@@ -361,7 +386,7 @@ if (state.activeId === "tok-1" && notifications.slice(warnBefore).some((n) => /�
 else bad("别人的回合被推进了 / 没有提示");
 
 roomMeta[KEY_INITIATIVE] = I.normalizeInitiative({
-  round: 1, activeId: "tok-1",
+  phase: "combat", round: 1, activeId: "tok-1",
   entries: [{ tokenId: "tok-1", name: "甲的 token", init: 20, bonus: 5, hidden: false, ownerId: "user-player" }]
 });
 role = "PLAYER";
@@ -383,18 +408,412 @@ if (synced >= 1 && oldInit && oldInit.bonus === expectedBonus && oldInit.cardId 
   ok("syncInitBonuses 给旧绑定补写 init 元数据（+" + oldInit.bonus + "）");
 else bad("syncInitBonuses 没补写：" + JSON.stringify({ synced, init: oldInit }));
 
+
 /* ---------------------------------------------------------------------------
- * 7. 静态：三 tab / 骰子占位 / 版本
+ * 7. v1.4.0：先攻条数据层 / 排序 / 回合 / 权限 / 隐形 / 降级
+ * ------------------------------------------------------------------------- */
+console.log("== v1.4.0 先攻条：数据层");
+
+if (I.INIT_MAX_ENTRIES === 60) ok("条目上限 INIT_MAX_ENTRIES = 60");
+else bad("条目上限不是 60：" + I.INIT_MAX_ENTRIES);
+
+const manyRaw = { round: 1, entries: [] };
+for (let i = 0; i < 80; i++) manyRaw.entries.push({ tokenId: "t" + i, name: "单位" + i, init: 20 - i, bonus: 2 });
+const capped = I.normalizeInitiative(manyRaw);
+if (capped.entries.length === 60) ok("normalizeInitiative 把 80 条截成 60 条（不抛错）");
+else bad("截断没生效：仍然 " + capped.entries.length + " 条");
+const cappedSize = JSON.stringify(capped).length;
+if (cappedSize < 16 * 1024) ok("60 条的 JSON " + cappedSize + " 字符 < 16 KB（房间数据预算）");
+else bad("60 条的 JSON 超了 16 KB：" + cappedSize);
+
+const legacyState = I.normalizeInitiative({
+  round: 2, activeId: "a",
+  entries: [{ tokenId: "a", name: "甲", init: 31, bonus: 11, hidden: false, ownerId: "p1", updatedAt: 1 }]
+});
+if (legacyState.phase === "idle" && legacyState.entries[0].d20 === null && legacyState.entries[0].tb === null &&
+  legacyState.entries[0].init === 31 && legacyState.round === 2) {
+  ok("v1.3.x 旧数据：phase 缺省 idle、d20/tb 为 null、init 原样保留");
+} else bad("旧数据兼容没做好：" + JSON.stringify(legacyState));
+const legacyHtml = I.renderStripHTML(legacyState, { role: "GM", playerId: "gm", items: {} });
+if (legacyHtml.indexOf("(31)") >= 0) ok("旧数据没有 d20 时卡片公式行退回 (31)");
+else bad("旧数据的公式行不对");
+if (I.sortEntries([{ tokenId: "x", name: "甲", init: 31, bonus: 11 }, { tokenId: "y", name: "乙", init: 31, bonus: 0 }]).length === 2)
+  ok("tb 缺失时 sortEntries 不报错");
+
+const st14 = I.normalizeInitiative({
+  phase: "combat", round: 1, activeId: "a",
+  entries: [
+    { tokenId: "a", name: "甲", bonus: 25, d20: 12, init: 37, tb: 0.2, ownerId: "p1" },
+    { tokenId: "b", name: "乙", bonus: 5, d20: 3, init: 8, tb: 0.6, ownerId: "p2" }
+  ]
+});
+const html14 = I.renderStripHTML(st14, { role: "GM", playerId: "gm", items: {} });
+if (html14.indexOf("(12+25)") >= 0 && html14.indexOf("(3+5)") >= 0) ok("卡片公式行 = (d20+加值)");
+else bad("卡片公式行不对");
+if (html14.indexOf('class="initiative-item active"') >= 0) ok("当前回合卡带 .active（CSS 里 100 高）");
+else bad("当前回合卡没有 .active");
+if (html14.indexOf('data-strip-act="next"') >= 0 && html14.indexOf('data-strip-act="prev"') >= 0)
+  ok("战斗态有「上一回合 / 下一回合」");
+else bad("战斗态缺少回合推进按钮");
+if (html14.indexOf('data-strip-act="prepare"') < 0) ok("战斗态不再显示「战斗准备」");
+else bad("战斗态还显示「战斗准备」");
+if (html14.indexOf('data-roll="normal"') >= 0 && html14.indexOf('data-roll="adv"') >= 0 && html14.indexOf('data-roll="dis"') >= 0)
+  ok("GM 在战斗态看到三个掷骰按钮（劣势 / 普通 / 优势）");
+else bad("卡片下没有三个掷骰按钮");
+if (I.renderStripHTML(st14, { role: "PLAYER", playerId: "p2", items: {} }).indexOf("data-roll") < 0)
+  ok("玩家没有掷骰按钮（房间数据只有 GM 能写）");
+
+const idleHtml = I.renderStripHTML(I.normalizeInitiative({ entries: [{ tokenId: "a", name: "甲", init: 10 }] }), { role: "GM", playerId: "gm" });
+if (idleHtml.indexOf('data-strip-act="prepare"') >= 0 && idleHtml.indexOf('data-strip-act="surprise"') >= 0 &&
+  idleHtml.indexOf('data-strip-act="clear"') >= 0) {
+  ok("闲置态有 战斗准备 / 突袭 / 一键清空");
+} else bad("闲置态缺少 战斗准备 / 突袭 / 一键清空");
+if (I.renderStripHTML(st14, { role: "PLAYER", playerId: "p2" }).indexOf('data-strip-act="clear"') < 0)
+  ok("玩家没有「一键清空」");
+const pillHtml = I.renderStripHTML(st14, { role: "GM", collapsed: true });
+if (pillHtml.indexOf('class="strip collapsed') >= 0 && pillHtml.indexOf('data-strip-act="expand"') >= 0)
+  ok("折叠态是 120×40 药丸（⚔ 展开 + 轮数徽标）");
+else bad("折叠态渲染不对");
+
+if (I.stripHeightFor("idle") === 129 && I.stripHeightFor("preparing") === 139 && I.stripHeightFor("combat") === 159)
+  ok("stripHeightFor：129 / 139 / 159 三档");
+else bad("stripHeightFor 三档不对");
+const sizeCollapsed = I.stripSizeFor("combat", true, 900, 1366);
+if (sizeCollapsed.width === 120 && sizeCollapsed.height === 40) ok("折叠尺寸 120×40");
+else bad("折叠尺寸不对：" + JSON.stringify(sizeCollapsed));
+const sizeMin = I.stripSizeFor("combat", false, 300, 1366);
+if (sizeMin.width === 410 && sizeMin.height === 159) ok("展开宽度下限 410、高度按 phase = 159");
+else bad("展开尺寸下限不对：" + JSON.stringify(sizeMin));
+const sizeSmall = I.stripSizeFor("idle", false, 900, 500);
+if (sizeSmall.width === 468) ok("小视口（500）下宽度夹到 468（视口 −32）");
+else bad("小视口没有夹紧：" + JSON.stringify(sizeSmall));
+
+if (I.genTiebreak(10, () => 0) < I.genTiebreak(0, () => 0) &&
+  I.genTiebreak(10, () => 0) >= 0.001 && I.genTiebreak(-99, () => 0.999999) <= 0.999) {
+  ok("genTiebreak：加值越高 tb 越小，且夹在 [0.001, 0.999]");
+} else bad("genTiebreak 公式不对");
+
+const sorted14 = I.sortEntries([
+  { tokenId: "a", name: "甲", init: 20, bonus: 5, tb: 0.7 },
+  { tokenId: "b", name: "乙", init: 20, bonus: 5, tb: 0.2 },
+  { tokenId: "c", name: "丙", init: 25, bonus: 0, tb: 0.9 },
+  { tokenId: "d", name: "丁", init: 8, bonus: 3 }
+]);
+if (sorted14.map((e) => e.tokenId).join("") === "cbad") ok("sortEntries：合计降序 → tb 升序（缺 tb 按 0.5）");
+else bad("sortEntries 顺序不对：" + sorted14.map((e) => e.tokenId).join(""));
+
+const combatSt = I.normalizeInitiative({
+  phase: "combat", round: 1, activeId: "a",
+  entries: [{ tokenId: "a", name: "甲", init: 20 }, { tokenId: "b", name: "乙", init: 10 }]
+});
+const adv1 = I.advanceInitiative(combatSt, 1);
+const adv2 = I.advanceInitiative(adv1, 1);
+if (adv1.activeId === "b" && adv1.round === 1 && adv2.activeId === "a" && adv2.round === 2)
+  ok("回合推进：a→b→绕回 a 且轮数 +1");
+else bad("回合推进不对：" + JSON.stringify([adv1, adv2]));
+const advBack = I.advanceInitiative(adv2, -1);
+if (advBack.activeId === "b" && advBack.round === 1) ok("从第一张往回：回到 b、轮数 −1");
+else bad("往回推进不对：" + JSON.stringify(advBack));
+if (I.advanceInitiative(combatSt, -1).round === 1) ok("第一张往回不会把轮数减到 0");
+else bad("轮数被减到 0 了");
+
+const surpriseSt = I.normalizeInitiative({
+  phase: "combat", surprise: true, round: 1, activeId: "a",
+  entries: [{ tokenId: "a", name: "甲", init: 20 }, { tokenId: "b", name: "乙", init: 10 }]
+});
+const sur1 = I.advanceInitiative(surpriseSt, 1);
+const sur2 = I.advanceInitiative(sur1, 1);
+if (sur1.surprise === true && sur2.surprise === false && sur2.round === 1)
+  ok("突袭轮绕回第一张 → 进入正常第 1 轮（surprise=false）");
+else bad("突袭轮绕回不对：" + JSON.stringify([sur1, sur2]));
+
+const prepared = I.startPreparation(I.normalizeInitiative({
+  entries: [{ tokenId: "a", name: "甲", bonus: 5, d20: 20, init: 25, tb: 0.2 }]
+}));
+if (prepared.phase === "preparing" && prepared.activeId === "" && prepared.entries[0].d20 === null && prepared.entries[0].init === 0)
+  ok("战斗准备：清空 init / d20 / active，phase=preparing");
+else bad("战斗准备不对：" + JSON.stringify(prepared));
+if (I.renderStripHTML(prepared, { role: "GM", playerId: "gm" }).indexOf('data-strip-act="start"') >= 0)
+  ok("准备态有「开始战斗 / 取消准备」");
+else bad("准备态没有开始战斗");
+const started = I.startCombat(prepared, () => 0.5);
+if (started.phase === "combat" && started.round === 1 && started.activeId === "a" &&
+  started.entries[0].d20 >= 1 && started.entries[0].init === started.entries[0].d20 + 5) {
+  ok("开始战斗：没掷过的自动掷 d20+加值，第一张设为当前");
+} else bad("开始战斗不对：" + JSON.stringify(started));
+const surpriseStart = I.startSurprise(started, () => 0.5);
+if (surpriseStart.surprise === true && surpriseStart.phase === "combat") ok("突袭：phase=combat + surprise=true");
+else bad("突袭状态不对");
+const ended = I.endCombat(started);
+if (ended.phase === "idle" && ended.activeId === "" && ended.entries.length === 1) ok("结束战斗：回 idle、清指针、名单保留");
+else bad("结束战斗不对");
+if (I.clearInitiative().entries.length === 0) ok("一键清空：条目清零");
+else bad("一键清空没清掉");
+
+const dragSt = I.normalizeInitiative({
+  phase: "combat",
+  entries: [
+    { tokenId: "a", name: "甲", init: 30, bonus: 5, tb: 0.2 },
+    { tokenId: "b", name: "乙", init: 20, bonus: 5, tb: 0.4 },
+    { tokenId: "c", name: "丙", init: 10, bonus: 5, tb: 0.6 }
+  ]
+});
+const toTop = I.reorderEntry(dragSt, "c", 0);
+if (toTop.entries[0].tokenId === "c" && toTop.entries[0].init === 31) ok("拖到最顶：init = below + 1（31）");
+else bad("拖到最顶不对：" + JSON.stringify(toTop.entries.map((e) => [e.tokenId, e.init])));
+const toBottom = I.reorderEntry(dragSt, "a", 2);
+if (toBottom.entries[2].tokenId === "a" && toBottom.entries[2].init === 9) ok("拖到最底：init = above − 1（9）");
+else bad("拖到最底不对：" + JSON.stringify(toBottom.entries.map((e) => [e.tokenId, e.init])));
+const toMiddle = I.reorderEntry(dragSt, "c", 1);
+if (toMiddle.entries[1].tokenId === "c" && toMiddle.entries[1].init === 25) ok("拖到中间：init = 两张合计的中点（25）");
+else bad("拖到中间不对：" + JSON.stringify(toMiddle.entries.map((e) => [e.tokenId, e.init])));
+
+const tieSt = I.normalizeInitiative({
+  entries: [
+    { tokenId: "a", name: "甲", init: 20, bonus: 5, tb: 0.2 },
+    { tokenId: "b", name: "乙", init: 20, bonus: 5, tb: 0.8 },
+    { tokenId: "c", name: "丙", init: 20, bonus: 5, tb: 0.9 }
+  ]
+});
+const tieMove = I.reorderEntry(tieSt, "c", 1);
+const cMoved = tieMove.entries.filter((e) => e.tokenId === "c")[0];
+if (cMoved.init === 20 && Math.abs(cMoved.tb - 0.5) < 1e-9 && tieMove.entries[1].tokenId === "c")
+  ok("同分同组内：只把 tb 取中点，不改 init");
+else bad("同分排序不对：" + JSON.stringify(tieMove.entries.map((e) => [e.tokenId, e.init, e.tb])));
+
+const hiddenStrip = I.normalizeInitiative({
+  phase: "combat", round: 1, activeId: "h1",
+  entries: [
+    { tokenId: "h1", name: "潜行者", bonus: 11, d20: 20, init: 31, tb: 0.1, hidden: true, ownerId: "p1" },
+    { tokenId: "p1t", name: "战士", bonus: 2, d20: 18, init: 20, tb: 0.5, ownerId: "p2" }
+  ]
+});
+const playerStrip = I.renderStripHTML(hiddenStrip, { role: "PLAYER", playerId: "p2", items: {} });
+if (playerStrip.indexOf("潜行者") < 0 && playerStrip.indexOf("(20+11)") < 0)
+  ok("非 GM 的先攻条里没有隐形条目的名字 / 点数");
+else bad("非 GM 的先攻条泄露了隐形条目");
+if (playerStrip.indexOf("？？？") >= 0 && playerStrip.indexOf("战士") >= 0)
+  ok("玩家看到公开卡 + 当前回合「？？？」");
+else bad("玩家的先攻条渲染不对");
+const gmStrip = I.renderStripHTML(hiddenStrip, { role: "GM", playerId: "gm", items: {} });
+if (gmStrip.indexOf("潜行者") >= 0 && gmStrip.indexOf("is-invisible") >= 0) ok("GM 看到隐形卡（灰度 + 隐字）");
+else bad("GM 看不到隐形卡");
+
+const ownSt = I.normalizeInitiative({
+  phase: "combat", round: 1, activeId: "p1t",
+  entries: [{ tokenId: "p1t", name: "战士", init: 20, ownerId: "p2" }]
+});
+if (I.renderStripHTML(ownSt, { role: "PLAYER", playerId: "p2", items: {} }).indexOf('data-strip-act="end"') >= 0)
+  ok("轮到自己时玩家卡片上有「结束」");
+else bad("玩家的「结束」按钮没出现");
+if (I.renderStripHTML(ownSt, { role: "PLAYER", playerId: "p9", items: {} }).indexOf('data-strip-act="end"') < 0)
+  ok("不是自己的回合没有「结束」");
+if (I.renderStripHTML(ownSt, { role: "GM", playerId: "gm", items: {} }).indexOf('data-strip-act="end"') < 0)
+  ok("GM 的卡片上没有玩家的「结束」按钮");
+
+/* ---- 8) 写失败降级到本机 ---- */
+console.log("== v1.4.0 先攻条：写失败降级");
+const realSetMetadata = OBR.room.setMetadata;
+OBR.room.setMetadata = async () => { throw new Error("room metadata quota exceeded"); };
+const noteBefore = notifications.length;
+const degraded = await I.writeInitiative(I.normalizeInitiative({
+  entries: [{ tokenId: "z1", name: "丙", bonus: 2, d20: 9, init: 11, tb: 0.4 }]
+}));
+OBR.room.setMetadata = realSetMetadata;
+if (degraded && degraded.local === true && degraded.entries.length === 1)
+  ok("写房间数据失败：writeInitiative 不抛错，返回 .local = true");
+else bad("写失败没有降级：" + JSON.stringify(degraded));
+let stashedInit = null;
+try { stashedInit = JSON.parse(globalThis.localStorage.getItem("4enext/state/initiative") || "null"); } catch (e) { stashedInit = null; }
+if (stashedInit && stashedInit.state && stashedInit.state.entries.length === 1)
+  ok("写失败降级到本机 localStorage[4enext/state/initiative]");
+else bad("本机没有暂存：" + JSON.stringify(stashedInit));
+if (notifications.slice(noteBefore).some((n) => /先攻没能写进房间数据/.test(n.msg)))
+  ok("写失败弹 WARNING 通知（不静默）");
+else bad("写失败没有通知");
+globalThis.localStorage.removeItem("4enext/state/initiative");
+
+/* ---- 9) 后台：数据层镜像 + 右键加入写 d20/tb + 打开先攻条 ---- */
+console.log("== v1.4.0 后台：数据层 / 先攻条");
+if (api && typeof api.initNorm === "function") {
+  const bgCapped = api.initNorm(manyRaw);
+  if (bgCapped.entries.length === 60 && bgCapped.phase === "idle") ok("后台 initNorm 同样把 80 条截成 60 条");
+  else bad("后台 initNorm 截断不对：" + bgCapped.entries.length);
+  const bgCombat = api.initNorm({ phase: "combat", surprise: true, round: 2, entries: [{ tokenId: "a", name: "甲", init: 12.5, d20: 7, tb: 0.3 }] });
+  if (bgCombat.phase === "combat" && bgCombat.surprise === true && bgCombat.round === 2 &&
+    bgCombat.entries[0].init === 12.5 && bgCombat.entries[0].d20 === 7 && bgCombat.entries[0].tb === 0.3) {
+    ok("后台 initNorm 保留 phase / surprise / 小数 init / d20 / tb");
+  } else bad("后台 initNorm 丢字段：" + JSON.stringify(bgCombat));
+  const bgTb = api.initTiebreak(10);
+  if (bgTb >= 0.39 && bgTb <= 0.41) ok("后台 initTiebreak 与 genTiebreak 同一公式（+10 → ≈0.4）");
+  else bad("后台 initTiebreak 不对：" + bgTb);
+  if (api.stripHeightFor("idle") === 129 && api.stripHeightFor("preparing") === 139 && api.stripHeightFor("combat") === 159)
+    ok("后台 stripHeightFor 三档与页面一致");
+  else bad("后台 stripHeightFor 不对");
+}
+if (!api || typeof api.openStrip !== "function") bad("后台没有暴露 openStrip");
+if (typeof api.closeStrip === "function") await api.closeStrip();
+roomMeta[KEY_INITIATIVE] = null;
+openedPopovers.length = 0;
+if (addMenu) await addMenu.onClick({ items: [itemById("tok-1")] }, "x");
+await sleep(80);
+const addedState = I.normalizeInitiative(roomMeta[KEY_INITIATIVE]);
+const addedEntry = addedState.entries.filter((e) => e.tokenId === "tok-1")[0];
+if (addedEntry && addedEntry.d20 >= 1 && addedEntry.d20 <= 20 && addedEntry.init === addedEntry.d20 + addedEntry.bonus &&
+  typeof addedEntry.tb === "number" && addedEntry.tb >= 0.001 && addedEntry.tb <= 0.999) {
+  ok("「加入先攻」写入 d20 / init=d20+加值 / tb（" + addedEntry.d20 + "+" + addedEntry.bonus + "=" + addedEntry.init + "）");
+} else bad("加入先攻没有写 d20/tb：" + JSON.stringify(addedEntry));
+const stripOpenCfg = openedPopovers.filter((c) => c && c.id === "com.4enext-owlbear/initiative-strip").pop();
+if (stripOpenCfg) {
+  if (stripOpenCfg.anchorReference === "POSITION" &&
+    stripOpenCfg.anchorOrigin.horizontal === "CENTER" && stripOpenCfg.anchorOrigin.vertical === "TOP" &&
+    stripOpenCfg.transformOrigin.horizontal === "CENTER" && stripOpenCfg.transformOrigin.vertical === "TOP" &&
+    stripOpenCfg.anchorPosition.top === 45 && stripOpenCfg.width === 720 && stripOpenCfg.height === 129 &&
+    stripOpenCfg.disableClickAway === true && stripOpenCfg.hidePaper === true) {
+    ok("加入先攻后自动打开先攻条（720×129 @ top 45，CENTER/TOP）");
+  } else bad("先攻条的 popover 参数不对：" + JSON.stringify(stripOpenCfg));
+} else bad("加入先攻后没有打开先攻条");
+
+/* ---- 10) 权限：四道校验 ---- */
+console.log("== v1.4.0 玩家结束回合的四道校验");
+const combatFixture = () => I.normalizeInitiative({
+  phase: "combat", round: 1, activeId: "tok-1",
+  entries: [
+    { tokenId: "tok-1", name: "甲", init: 20, bonus: 5, ownerId: "user-player" },
+    { tokenId: "tok-2", name: "乙", init: 10, ownerId: "user-gm" },
+    { tokenId: "tok-3", name: "丙", init: 5, ownerId: "user-gm" }
+  ]
+});
+roomMeta[KEY_INITIATIVE] = combatFixture();
+role = "GM";
+const req1 = api.onInitRequest({ data: { op: "end-turn", playerId: "user-player", activeId: "tok-1" } });
+const req2 = api.onInitRequest({ data: { op: "end-turn", playerId: "user-player", activeId: "tok-1" } });
+await Promise.all([req1, req2]);
+let permState = I.normalizeInitiative(roomMeta[KEY_INITIATIVE]);
+if (permState.activeId === "tok-2") ok("同一个结束回合请求连发两次只推进一格（第四道校验：正在推进中）");
+else bad("重复请求推进了多格：" + permState.activeId);
+
+roomMeta[KEY_INITIATIVE] = combatFixture();
+await api.onInitRequest({ data: { op: "end-turn", playerId: "user-player" } });
+permState = I.normalizeInitiative(roomMeta[KEY_INITIATIVE]);
+if (permState.activeId === "tok-1") ok("请求里没有 activeId → 拒绝（老实现「缺失就放行」的 bug 不会复发）");
+else bad("没有 activeId 的请求也推进了");
+
+roomMeta[KEY_INITIATIVE] = combatFixture();
+await api.onInitRequest({ data: { op: "end-turn", playerId: "user-player", activeId: "tok-2" } });
+permState = I.normalizeInitiative(roomMeta[KEY_INITIATIVE]);
+if (permState.activeId === "tok-1") ok("请求里的 activeId 过期 → 拒绝");
+else bad("过期的 activeId 也推进了");
+
+roomMeta[KEY_INITIATIVE] = I.normalizeInitiative({
+  phase: "preparing", entries: [{ tokenId: "tok-1", name: "甲", init: 0, ownerId: "user-player" }]
+});
+await api.onInitRequest({ data: { op: "end-turn", playerId: "user-player", activeId: "tok-1" } });
+permState = I.normalizeInitiative(roomMeta[KEY_INITIATIVE]);
+if (permState.activeId === "tok-1") ok("准备阶段不推进回合");
+else bad("准备阶段被推进了");
+
+/* ---- 11) 先攻条拖动 / 命令频道 ---- */
+console.log("== v1.4.0 先攻条：拖动 / 命令");
+if (typeof api.onStripDrag === "function" && typeof api.onStripCmd === "function" && typeof api.openStrip === "function") {
+  /* 没打开时忽略拖动消息（避免把没开的 popover 挪走） */
+  if (typeof api.closeStrip === "function") await api.closeStrip();
+  await sleep(40);
+  const opensBefore = openedPopovers.length;
+  api.onStripDrag({ data: { phase: "start", dx: 0, dy: 0 } });
+  api.onStripDrag({ data: { phase: "move", dx: 100, dy: 50 } });
+  await sleep(40);
+  if (openedPopovers.length === opensBefore) ok("先攻条没打开时忽略拖动消息");
+  else bad("先攻条没开也被拖动了");
+
+  openedPopovers.length = 0;
+  await api.openStrip();
+  await sleep(60);
+  let stripCfg = openedPopovers.filter((c) => c && c.id === "com.4enext-owlbear/initiative-strip").pop();
+  if (!stripCfg) bad("openStrip 没有打开先攻条");
+  else {
+    api.onStripDrag({ data: { phase: "start", dx: 0, dy: 0 } });
+    api.onStripDrag({ data: { phase: "move", dx: 100, dy: 50 } });
+    await sleep(90);
+    let movedStrip = openedPopovers.filter((c) => c && c.id === "com.4enext-owlbear/initiative-strip").pop();
+    if (!movedStrip || movedStrip.anchorPosition.left !== 700 || movedStrip.anchorPosition.top !== 95)
+      bad("先攻条拖动没有跟手：" + JSON.stringify(movedStrip && movedStrip.anchorPosition));
+    else ok("先攻条拖动 100/50 → 中线 700 / top 95");
+    api.onStripDrag({ data: { phase: "move", dx: 5000, dy: 5000 } });
+    api.onStripDrag({ data: { phase: "end", dx: 5000, dy: 5000 } });
+    await sleep(160);
+    movedStrip = openedPopovers.filter((c) => c && c.id === "com.4enext-owlbear/initiative-strip").pop();
+    if (!movedStrip || movedStrip.anchorPosition.left !== 824 || movedStrip.anchorPosition.top !== 655)
+      bad("先攻条拖出视口没有夹住：" + JSON.stringify(movedStrip && movedStrip.anchorPosition));
+    else ok("先攻条拖出视口 → 夹在 (824, 655)");
+    let posBox = null;
+    try { posBox = JSON.parse(globalThis.localStorage.getItem("4enext/strip-pos") || "null"); } catch (e) { posBox = null; }
+    if (posBox && posBox.dx === 224 && posBox.dy === 610) ok("先攻条位置只记偏移 { dx: 224, dy: 610 }");
+    else bad("先攻条位置没落盘：" + JSON.stringify(posBox));
+    api.onStripDrag({ data: { phase: "reset" } });
+    await sleep(120);
+    movedStrip = openedPopovers.filter((c) => c && c.id === "com.4enext-owlbear/initiative-strip").pop();
+    if (movedStrip && movedStrip.anchorPosition.left === 600 && movedStrip.anchorPosition.top === 45 &&
+      !globalThis.localStorage.getItem("4enext/strip-pos")) {
+      ok("「回到顶部中间」→ (600,45) 且清掉偏移");
+    } else bad("回中不对：" + JSON.stringify(movedStrip && movedStrip.anchorPosition));
+  }
+
+  openedPopovers.length = 0;
+  api.onStripCmd({ data: { op: "list" } });
+  await sleep(140);
+  const listWin = openedPopovers.filter((c) => c && /initiative\.html\?view=list$/.test(String(c.url))).pop();
+  if (listWin && listWin.width === 880 && listWin.height === 640) ok("先攻条「≡」打开列表窗口（?view=list，880×640）");
+  else bad("列表窗口没打开：" + JSON.stringify(listWin && [listWin.url, listWin.width]));
+  const beforeSize = openedPopovers.length;
+  api.onStripCmd({ data: { op: "size", width: 410, height: 159 } });
+  await sleep(60);
+  if (openedPopovers.length === beforeSize) ok("尺寸命令只更新几何、不重开 popover");
+  else bad("尺寸命令把 popover 重开了");
+} else bad("后台没有暴露 onStripDrag / onStripCmd / openStrip");
+
+/* ---------------------------------------------------------------------------
+ * 8. 静态：v1.3.1 拆掉三 tab / 独立窗口 / 版本
  * ------------------------------------------------------------------------- */
 console.log("== 静态检查");
 const man = JSON.parse(fs.readFileSync(path.join(ROOT, "manifest.json"), "utf8"));
-if (man.name === "4eNEXT to owlbear" && man.version === "1.3.0") ok("manifest 名称 / 版本 = 4eNEXT to owlbear 1.3.0");
+if (man.name === "4eNEXT to owlbear" && man.version === "1.6.0") ok("manifest 名称 / 版本 = 4eNEXT to owlbear 1.6.0");
 else bad("manifest 名称 / 版本不对：" + man.name + " " + man.version);
+
 const panelHtml = fs.readFileSync(path.join(ROOT, "panel.html"), "utf8");
-if (panelHtml.indexOf('data-tab="glance"') >= 0 && panelHtml.indexOf('data-tab="init"') >= 0 &&
-  panelHtml.indexOf('data-tab="dice"') >= 0 && panelHtml.indexOf("即将推出") >= 0)
-  ok("面板有速览 / 先攻 / 骰子三个 tab，骰子写明「即将推出」");
-else bad("面板三 tab / 骰子占位缺失");
+if (panelHtml.indexOf('data-tab="') < 0 && panelHtml.indexOf("tab-pane") < 0 && panelHtml.indexOf('class="tabs"') < 0)
+  ok("panel.html 里没有 tab（v1.3.0 的三 tab 合并已拆掉）");
+else bad("panel.html 里还有 tab / tab-pane");
+
+const initHtml = fs.readFileSync(path.join(ROOT, "initiative.html"), "utf8");
+const initPageSrc = fs.readFileSync(path.join(ROOT, "assets", "initiative-page.js"), "utf8");
+const diceHtml = fs.readFileSync(path.join(ROOT, "dice.html"), "utf8");
+const dicePageSrc = fs.readFileSync(path.join(ROOT, "assets", "dice-page.js"), "utf8");
+if (initHtml.indexOf('class="win"') >= 0 && initHtml.indexOf('id="head"') >= 0 && initHtml.indexOf('id="pin"') >= 0)
+  ok("initiative.html 是独立窗口（.win + 拖动区 #head + ⌖ #pin）");
+else bad("initiative.html 不是独立窗口（缺 .win / #head / #pin）");
+if (diceHtml.indexOf('class="win"') >= 0 && diceHtml.indexOf('id="diceRow"') >= 0 && diceHtml.indexOf('id="result"') >= 0 &&
+  diceHtml.indexOf("即将推出") < 0)
+  ok("dice.html 是独立窗口，v1.5.0 已换成真正的骰子面板（两栏 / 骰子行 / 结果）");
+else bad("dice.html 不是独立窗口 / 还是占位文案");
+if (/createWindow\(\{ name: "initiative"/.test(initPageSrc) && /createWindow\(\{ name: "dice"/.test(dicePageSrc))
+  ok("先攻 / 骰子各自 createWindow（拖动 + 后台检测共用 window.js）");
+else bad("先攻 / 骰子没有各自 createWindow");
+if (/ID_INIT_WIN/.test(initPageSrc) && /ID_DICE_WIN/.test(dicePageSrc))
+  ok("先攻 / 骰子各自关闭自己的 popover id");
+else bad("先攻 / 骰子的 popover id 用错了");
+
+/* 窗口模式：不重复大标题，但操作按钮和「结束我的回合」的 data-bg 标记都在 */
+const winGmHtml = I.renderInitiativeHTML(hiddenState, { role: "GM", playerId: "user-gm", backgroundReady: true, inWindow: true });
+if (winGmHtml.indexOf('class="init-title"') < 0 && winGmHtml.indexOf('data-init-act="next"') >= 0)
+  ok("inWindow 模式不再渲染重复的「先攻」大标题，操作按钮仍在");
+else bad("inWindow 模式渲染不对");
+const playerWinHtml = I.renderInitiativeHTML(hiddenState, { role: "PLAYER", playerId: "p2", backgroundReady: false, backgroundState: "bad", inWindow: true });
+if (playerWinHtml.indexOf("data-bg data-init-act=\"end\"") >= 0)
+  ok("玩家的「结束我的回合」带 data-bg（后台离线时会被真正禁用）");
+else bad("「结束我的回合」没有标 data-bg（后台离线时不会被禁用）");
+if (winGmHtml.indexOf("data-bg-soft") >= 0) ok("GM 的回合按钮带 data-bg-soft（后台离线只弱化外观）");
+else bad("GM 的回合按钮没有标 data-bg-soft");
 
 console.log(fail ? "\n" + fail + " 个问题" : "\n全部通过");
 process.exit(fail ? 1 : 0);

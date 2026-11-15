@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>4eNEXT to owlbear · 先攻条</title>
+<link rel="stylesheet" href="assets/ui.css">
+</head>
+<body class="win-page">
+<!-- v1.4.0：同一张页面两种形态（由 assets/initiative-page.js 按 ?view= 决定）
+     · 先攻条（默认，popover id = /initiative-strip）：屏幕顶部 720×(129|139|159)，可折叠成 120×40；
+     · 列表窗口（?view=list，popover id = /initiative-window）：v1.3.x 的管理视图（重掷 / 同步加值 / 删除）。
+     先攻条上的「≡」广播 CH_STRIP_CMD {op:"list"}，由后台打开列表窗口。 -->
+<div class="strip-root" id="strip-root" hidden></div>
+
+<div class="win" id="win-shell">
+  <div class="win-head" id="head" title="按住这里拖动窗口（位置会记住）">
+    <span class="grip" aria-hidden="true">⠿</span>
+    <div class="t"><b>先攻列表 · 4eNEXT to owlbear</b><small>独立窗口 · 可拖动 · 先攻条的管理视图</small></div>
+    <div class="sp">
+      <button class="icon-btn" id="pin" title="回到默认位置（清除本窗口记住的位置）">⌖</button>
+      <button class="icon-btn" id="close" title="关闭窗口">✕</button>
+    </div>
+  </div>
+
+  <div class="bg-strip" id="bg-strip">
+    <span class="bg-text" id="bg-text">正在确认后台脚本…</span>
+    <button class="btn small" id="bg-retry" hidden>后台未连接，点这里重试</button>
+  </div>
+
+  <div class="win-body" id="init-body"><div class="init-empty">读取先攻…</div></div>
+
+  <div class="win-foot">
+    <span class="win-flash" id="win-flash"></span>
+    <span class="win-hint">按住标题栏可拖动 · 先攻条在屏幕顶部</span>
+  </div>
+</div>
+<script type="module" src="assets/initiative-page.js"></script>
+</body>
+</html>

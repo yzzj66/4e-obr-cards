@@ -16,6 +16,10 @@
 
 * { box-sizing: border-box; }
 
+/* hidden 属性必须真的隐藏：.btn 等类写了 display:inline-flex，会盖掉浏览器默认的 [hidden]{display:none}
+ * （「后台未连接，点这里重试」按钮就靠 hidden 控制显隐）。 */
+[hidden] { display: none !important; }
+
 html, body {
   margin: 0;
   padding: 0;
@@ -79,46 +83,41 @@ button, input, textarea, select {
 .fab b { font-size: 20px; letter-spacing: .5px; }
 .fab span { font-size: 9.5px; opacity: .85; }
 
-/* ---------- 面板（全屏 modal，v1.3.0 改为「标题栏 + 三 tab」） ---------- */
-.panel { display: flex; flex-direction: column; height: 100vh; }
+/* ---------- 面板（v1.3.1：只做导入 / 列表 / 预览，**没有 tab**） ----------
+ * 关键点（用户截图问题：面板底部被切掉）：
+ *   · 面板本身 100vh 且 overflow:hidden —— 绝不让内容把面板撑出视口；
+ *   · 左栏「卡片列表」与右栏「预览」各自 overflow-y:auto —— 任何屏幕尺寸都能滚到全部内容；
+ *   · 头部 / 状态条 / 底部状态行固定，不随内容滚动。 */
+.panel {
+  display: flex; flex-direction: column;
+  /* body.win-page 有 6px 内边距（上下共 12px），所以这里减掉，避免底部被 body 的 overflow:hidden 切掉 */
+  height: calc(100vh - 12px); max-height: calc(100vh - 12px); overflow: hidden;
+}
 .panel-top {
   flex: 0 0 auto;
-  display: flex; align-items: center; gap: 14px;
-  padding: 9px 14px; border-bottom: 1px solid var(--line);
+  display: flex; align-items: center; gap: 10px;
+  padding: 8px 12px; border-bottom: 1px solid var(--line);
   background: var(--bg2);
+  /* 面板以 popover 打开时，按住标题栏可以拖走（modal 模式下由 Owlbear 自己管，拖不动也不会坏） */
+  cursor: move; user-select: none; touch-action: none;
 }
+.panel-top .grip { color: #61707f; font-size: 13px; line-height: 1; }
 .panel-title { font-size: 15px; font-weight: 800; color: var(--green); white-space: nowrap; }
 .panel-title small { font-size: 11px; color: var(--muted); font-weight: 400; margin-left: 8px; }
 .panel-top-right { margin-left: auto; display: flex; align-items: center; gap: 10px; }
 .panel-sub { font-size: 11px; color: var(--muted); }
-.tabs {
-  display: flex; gap: 3px; padding: 3px;
-  background: #0d1218; border: 1px solid var(--line); border-radius: 10px;
+.panel-body {
+  flex: 1 1 auto; min-height: 0; overflow: hidden;
+  display: grid; grid-template-columns: 300px minmax(0, 1fr);
 }
-.tab {
-  border: 1px solid transparent; background: transparent; color: var(--muted);
-  border-radius: 7px; padding: 5px 14px; cursor: pointer; font-size: 12.5px;
-  transition: background .15s, color .15s, border-color .15s;
-}
-.tab:hover { color: var(--text); background: var(--bg3); }
-.tab.on {
-  color: var(--green); background: #17251b;
-  border-color: rgba(86, 211, 100, .45); font-weight: 700;
-}
-.panel-body { flex: 1 1 auto; min-height: 0; display: flex; }
-.tab-pane { display: none; width: 100%; height: 100%; min-height: 0; }
-.tab-pane.on { display: flex; }
-#tab-glance.on { display: grid; grid-template-columns: 300px 1fr; }
-#tab-init.on, #tab-dice.on { display: block; overflow: hidden; }
 .panel-side {
   background: var(--bg2); border-right: 1px solid var(--line);
-  display: flex; flex-direction: column; min-height: 0; height: 100%;
+  display: flex; flex-direction: column; min-height: 0; height: 100%; overflow: hidden;
 }
-.panel-main { overflow: auto; padding: 16px 20px 40px; height: 100%; }
+.panel-main { overflow-y: auto; overflow-x: hidden; padding: 14px 18px 32px; min-height: 0; height: 100%; }
 /* v1.2.1：速览弹窗加宽后，面板里的预览也跟着放宽一点（仍是居中单列，不影响左边列表） */
 .panel-main-inner { max-width: 1080px; margin: 0 auto; }
-.side-actions { display: flex; gap: 6px; padding: 10px 12px; border-bottom: 1px solid var(--line); flex-wrap: wrap; }
-.card-list { overflow: auto; flex: 1 1 auto; padding: 6px; }
+.card-list { overflow-y: auto; overflow-x: hidden; flex: 1 1 auto; min-height: 0; padding: 6px; }
 .card-row {
   width: 100%; text-align: left; border: 1px solid transparent; background: transparent;
   border-radius: 9px; padding: 7px 9px; cursor: pointer; display: block; margin-bottom: 2px;
@@ -132,10 +131,14 @@ button, input, textarea, select {
   cursor: pointer; font-size: 14px; line-height: 1; padding: 2px 4px; border-radius: 5px;
 }
 .card-row .del:hover { color: var(--red); background: rgba(248, 81, 73, .12); }
-.side-foot { border-top: 1px solid var(--line); padding: 10px 12px; font-size: 11.5px; color: var(--muted); }
+.side-foot {
+  flex: 0 0 auto; max-height: 34%;
+  overflow-y: auto;
+  border-top: 1px solid var(--line); padding: 10px 12px; font-size: 11.5px; color: var(--muted);
+}
 .side-foot p { margin: 0 0 6px; }
 
-.import-box { padding: 10px 12px; border-bottom: 1px solid var(--line); }
+.import-box { flex: 0 0 auto; padding: 10px 12px; border-bottom: 1px solid var(--line); }
 .import-box textarea {
   width: 100%; min-height: 74px; resize: vertical; margin-top: 6px;
   background: var(--bg3); border: 1px solid var(--line); border-radius: 8px; padding: 7px 8px;
@@ -164,6 +167,7 @@ button, input, textarea, select {
 .empty-panel p { max-width: 460px; line-height: 1.7; margin: 0; }
 
 .sel-token {
+  flex: 0 0 auto;
   display: flex; align-items: center; gap: 8px; padding: 8px 12px;
   border-bottom: 1px solid var(--line); font-size: 12px; color: var(--muted);
 }
@@ -176,7 +180,7 @@ body.info-body { padding: 6px; }
   border: 1px solid #2b3746;
   border-radius: 14px;
   box-shadow: 0 12px 34px rgba(0, 0, 0, .55);
-  height: calc(100vh - 12px);
+  height: calc(100vh - 12px); max-height: calc(100vh - 12px); min-height: 0;
   display: flex; flex-direction: column; overflow: hidden;
 }
 .pop-head {
@@ -300,9 +304,9 @@ body.dragging .pop-head { background: #17212b; }
 .diag-card .pill-wait { color: var(--orange); }
 .diag-card p.foot { margin: 8px 0 0; font-size: 11.5px; color: var(--muted); }
 
-/* ---------- v1.3.0：先攻 tab ---------- */
-.init-main { height: 100%; overflow: auto; padding: 16px 20px 40px; }
-.init-wrap { max-width: 980px; margin: 0 auto; display: flex; flex-direction: column; gap: 12px; }
+/* ---------- 先攻（v1.3.1：独立窗口 initiative.html，不再是一个 tab） ---------- */
+/* 窗口外壳（.win-body）负责滚动，这里的 .init-wrap 只管排版；max-width 给宽屏一个上限。 */
+.init-wrap { max-width: 1100px; margin: 0 auto; display: flex; flex-direction: column; gap: 12px; }
 .init-head { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
 .init-title { font-size: 20px; font-weight: 800; color: var(--text); }
 .init-status { font-size: 12px; color: var(--muted); margin-top: 2px; }
@@ -358,18 +362,462 @@ body.dragging .pop-head { background: #17212b; }
   border-radius: 9px; padding: 7px 10px;
 }
 
-/* ---------- v1.3.0：骰子 tab（占位） ---------- */
-.dice-placeholder {
-  height: 100%; min-height: 420px;
-  display: flex; flex-direction: column; align-items: center; justify-content: center;
-  gap: 10px; text-align: center; padding: 40px;
+/* ---------- v1.5.0：骰子窗口（dice.html，两栏） ----------
+ * 布局：左固定 340px（骰子按钮 / 表达式 / 战斗优势 / 重击 / 4E 预设 / 组合），右自适应
+ * （本次结果 + 团队共享历史）。两栏各自滚动，窗口本身不滚（.win 高度 100vh，打开前由后台夹紧）。
+ * 窗口默认 760×620（background.core.js 的 WINS.dice），比 v1.4.0 的 660×560 更宽。 */
+.win-body.dice-wrap { overflow: hidden; padding: 10px 12px 12px; }
+.dice-cols {
+  display: grid; grid-template-columns: 340px minmax(0, 1fr); gap: 12px;
+  height: 100%; min-height: 0;
 }
-.dice-placeholder .dice-icon { font-size: 54px; line-height: 1; filter: grayscale(.15); }
-.dice-placeholder h2 { margin: 0; font-size: 20px; color: var(--text); }
-.dice-placeholder p { margin: 0; max-width: 520px; color: var(--muted); font-size: 13px; line-height: 1.75; }
+.dice-left, .dice-right {
+  min-height: 0; overflow-y: auto; overflow-x: hidden; padding-right: 2px;
+  display: flex; flex-direction: column; gap: 10px;
+}
+.dice-sec { background: #0e141b; border: 1px solid var(--line); border-radius: 11px; padding: 9px 10px 10px; }
+.sec-head { display: flex; align-items: baseline; gap: 8px; margin-bottom: 7px; }
+.sec-head h3 { margin: 0; font-size: 12.5px; font-weight: 700; color: var(--text); }
+.sec-hint {
+  margin-left: auto; font-size: 10.5px; color: #5f6d7c;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 62%;
+}
+
+/* 七颗骰子一排：等宽格子 + 角标（只有 count≠0 才显示，与参考实现的 [data-count] 同义） */
+.dice-row { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 6px; }
+.dice-btn {
+  position: relative; display: flex; flex-direction: column; align-items: center;
+  justify-content: center; gap: 3px; padding: 7px 0 5px;
+  background: var(--bg3); border: 1px solid var(--line); border-radius: 9px;
+  cursor: pointer; color: var(--text); line-height: 1;
+}
+.dice-btn:hover { background: #22303f; border-color: #3b4a5a; }
+.dice-btn:active { transform: translateY(1px); }
+.dice-btn.on { border-color: rgba(86, 211, 100, .5); background: #17251b; }
+.dice-btn .face {
+  width: 28px; height: 28px; border-radius: 8px;
+  display: flex; align-items: center; justify-content: center;
+  font: 800 11.5px/1 ui-monospace, "Cascadia Code", Consolas, monospace;
+  color: var(--text); background: #0b0f14; border: 1px solid var(--line);
+}
+.dice-btn .badge {
+  position: absolute; top: 2px; right: 2px; min-width: 15px; height: 15px;
+  padding: 0 3px; border-radius: 8px; background: var(--red); color: #fff;
+  font-size: 10px; font-weight: 800; line-height: 15px; text-align: center;
+  display: none;
+}
+.dice-btn[data-count="0"] .badge, .dice-btn:not([data-count]) .badge { display: none; }
+.dice-btn[data-count]:not([data-count="0"]) .badge { display: block; }
+
+/* 表达式行：输入框 + 两个 36px 的加减按钮 */
+.expr-row { display: flex; gap: 6px; align-items: stretch; }
+.expr-input {
+  flex: 1 1 auto; min-width: 0; height: 40px; padding: 0 10px;
+  font: 700 15px/1 ui-monospace, "Cascadia Code", Consolas, monospace;
+  background: var(--bg3); border: 1px solid var(--line); border-radius: 9px;
+  color: var(--text);
+}
+.expr-input:focus { outline: none; border-color: rgba(86, 211, 100, .55); }
+.expr-row .step { width: 36px; height: 40px; padding: 0; font-size: 16px; font-weight: 800; }
+.dice-acts { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 8px; }
+.btn.toggle.on { border-color: rgba(86, 211, 100, .55); background: #17251b; color: var(--green); font-weight: 700; }
+
+/* 4E 预设：每行一个类别 + 可点按钮；技能多，限制高度内部滚 */
+.preset-box { max-height: 152px; overflow-y: auto; overflow-x: hidden; display: flex; flex-direction: column; gap: 6px; }
+.preset-line { display: flex; gap: 6px; align-items: flex-start; }
+.preset-lab { flex: 0 0 30px; font-size: 11px; color: var(--muted); line-height: 22px; }
+.preset-items { display: flex; flex-wrap: wrap; gap: 4px; min-width: 0; }
+.preset-btn {
+  border: 1px solid var(--line); background: var(--bg3); color: #cfd9e3;
+  border-radius: 7px; padding: 3px 7px; font-size: 11px; line-height: 1.4;
+  cursor: pointer; white-space: nowrap;
+}
+.preset-btn:hover { background: #22303f; color: var(--text); border-color: #3b4a5a; }
+.def-ref { display: flex; flex-wrap: wrap; gap: 4px; align-items: center; margin-top: 8px; }
+.def-lab { font-size: 10.5px; color: #5f6d7c; }
+.def-chip {
+  font-size: 10.5px; color: var(--muted); border: 1px solid var(--line);
+  border-radius: 999px; padding: 1px 7px; font-variant-numeric: tabular-nums;
+}
+
+/* 组合：本机保存的公式 */
+.combo-row { margin-bottom: 6px; }
+.combo-name {
+  width: 100%; height: 28px; padding: 0 8px; font-size: 11.5px;
+  background: var(--bg3); border: 1px solid var(--line); border-radius: 7px; color: var(--text);
+}
+.combo-box { display: flex; flex-wrap: wrap; gap: 4px; max-height: 96px; overflow-y: auto; }
+.combo-chip { display: inline-flex; align-items: center; border: 1px solid var(--line); border-radius: 7px; background: var(--bg3); overflow: hidden; }
+.combo-use {
+  border: 0; background: transparent; color: #cfd9e3; font-size: 11px; padding: 3px 6px;
+  cursor: pointer; max-width: 188px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.combo-use:hover { color: var(--green); }
+.combo-del { border: 0; border-left: 1px solid var(--line); background: transparent; color: #5f6d7c; font-size: 10px; padding: 3px 5px; cursor: pointer; }
+.combo-del:hover { color: var(--red); }
+
+/* 结果面板 */
+.res-box { min-height: 92px; }
+.res-empty { color: var(--muted); font-size: 12px; line-height: 1.7; padding: 8px 2px; }
+.res-main { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; }
+.res-total {
+  font: 800 34px/1 ui-monospace, "Cascadia Code", Consolas, monospace;
+  color: var(--green); font-variant-numeric: tabular-nums;
+}
+.res-chips { display: flex; flex-wrap: wrap; gap: 3px; min-width: 0; }
+.res-tags { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 7px; }
+.res-tag {
+  font-size: 10.5px; color: var(--muted); border: 1px solid var(--line);
+  border-radius: 999px; padding: 1px 7px;
+}
+.res-tag.crit { color: #ffd75e; border-color: rgba(227, 179, 65, .5); background: rgba(227, 179, 65, .1); }
+.res-formula { margin-top: 6px; font-size: 11.5px; color: var(--muted); word-break: break-all; }
+.res-rows { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 4px; font-size: 11.5px; color: var(--muted); }
+.res-row b { color: var(--text); font-variant-numeric: tabular-nums; }
+.res-note {
+  margin: 8px 0 0; font-size: 11px; line-height: 1.6; color: #ffd0cd;
+  border: 1px solid rgba(248, 81, 73, .35); background: rgba(248, 81, 73, .08);
+  border-radius: 7px; padding: 5px 7px;
+}
+
+/* 骰子 chip（结果 / 历史共用）：crit 金色、fail 红色、loser 半透明、subtract 前缀 − */
+.die-chip {
+  display: inline-flex; align-items: center; gap: 2px;
+  border: 1px solid var(--line); border-radius: 6px; background: #0b0f14;
+  padding: 1px 5px; font-family: ui-monospace, "Cascadia Code", Consolas, monospace;
+  font-size: 11.5px; font-variant-numeric: tabular-nums; color: var(--text);
+}
+.die-chip b { font-size: 9px; font-weight: 700; color: #5f6d7c; margin-right: 2px; }
+.die-chip.crit { border-color: rgba(227, 179, 65, .55); color: #ffd75e; }
+.die-chip.fail { border-color: rgba(248, 81, 73, .5); color: #ffb4b1; }
+.die-chip.loser { opacity: .35; text-decoration: line-through; }
+.die-chip.subtract { opacity: .75; border-style: dashed; }
+.mod-chip {
+  display: inline-flex; align-items: center; border: 1px dashed rgba(86, 211, 100, .45);
+  border-radius: 6px; padding: 1px 5px; font-size: 11.5px; color: #9fd4a8;
+  font-family: ui-monospace, "Cascadia Code", Consolas, monospace;
+}
+
+/* 团队共享历史 */
+.share-warn {
+  margin: 0 0 7px; font-size: 11px; line-height: 1.6; color: #e9d7a8;
+  border: 1px solid rgba(227, 179, 65, .4); background: rgba(227, 179, 65, .1);
+  border-radius: 7px; padding: 5px 7px;
+}
+.dice-hist { display: flex; flex-direction: column; gap: 5px; }
+.hist-empty { color: var(--muted); font-size: 12px; line-height: 1.7; padding: 8px 2px; }
+.hist-row { border: 1px solid var(--line); border-radius: 8px; background: #0b0f14; padding: 5px 7px; }
+.hist-top { display: flex; align-items: baseline; gap: 6px; }
+.hist-who { font-size: 11.5px; font-weight: 700; white-space: nowrap; }
+.hist-lab { font-size: 10.5px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+.hist-total { margin-left: auto; font: 800 14px/1 ui-monospace, Consolas, monospace; color: var(--green); font-variant-numeric: tabular-nums; }
+.hist-time { font-size: 10px; color: #5f6d7c; font-variant-numeric: tabular-nums; }
+.hist-chips { display: flex; flex-wrap: wrap; gap: 3px; margin-top: 4px; }
+
+/* 空公式 / 连点时抖一下（不弹通知也能看出点到了） */
+@keyframes dice-shake {
+  0%, 100% { transform: translateX(0); }
+  25% { transform: translateX(-3px); }
+  75% { transform: translateX(3px); }
+}
+.shake { animation: dice-shake .22s ease-in-out 2; }
+
+@media (max-width: 720px) {
+  .dice-cols { grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(0, auto) minmax(0, 1fr); }
+  .dice-left, .dice-right { max-height: 46vh; }
+}
+
+/* ---------- v1.3.1：独立窗口外壳（先攻 / 骰子 / 角色卡面板共用） ----------
+ * 尺寸与视口的关系：窗口由后台用 OBR.viewport.getWidth()/getHeight() 夹紧后打开
+ * （宽 ≤ 视口宽 − 2×margin，高 ≤ 视口高 − 2×margin，见 background.core.js 的 WIN_MARGIN），
+ * 页面这边只需要「100vh 装下、内部滚动」，不再自己做像素测量。 */
+body.win-page { padding: 6px; overflow: hidden; height: 100vh; }
+.win {
+  height: calc(100vh - 12px); max-height: calc(100vh - 12px);
+  display: flex; flex-direction: column; overflow: hidden;
+  background: #10161d; border: 1px solid #2b3746; border-radius: 14px;
+  box-shadow: 0 12px 34px rgba(0, 0, 0, .55);
+}
+.win-head {
+  flex: 0 0 auto;
+  display: flex; align-items: center; gap: 8px;
+  padding: 8px 10px; border-bottom: 1px solid var(--line); background: #131b24;
+  /* 标题栏就是拖动区（位置由后台重开同一个 popover id 实现） */
+  cursor: move; user-select: none; touch-action: none;
+}
+.win-head:hover { background: #16202a; }
+.win-head .grip { color: #61707f; font-size: 13px; line-height: 1; }
+.win-head .t { font-size: 12.5px; font-weight: 700; min-width: 0; }
+.win-head .t small { display: block; font-size: 10.5px; font-weight: 400; color: var(--muted); }
+.win-head .sp { margin-left: auto; display: flex; gap: 4px; }
+body.dragging, body.dragging .win-head, body.dragging .panel-top { cursor: grabbing; }
+body.dragging .win-head { background: #17212b; }
+.win-body { flex: 1 1 auto; min-height: 0; overflow-y: auto; overflow-x: hidden; padding: 12px 14px 16px; }
+.win-foot {
+  flex: 0 0 auto; min-height: 26px;
+  display: flex; align-items: center; gap: 10px;
+  padding: 5px 10px; border-top: 1px solid var(--line); background: #0e141b;
+}
+.win-flash { font-size: 11.5px; color: var(--muted); }
+.win-flash.on { color: var(--text); }
+.win-flash.on.success { color: var(--green); }
+.win-flash.on.error { color: #ffb4b1; }
+.win-flash.on.warning { color: var(--orange); }
+.win-hint { margin-left: auto; font-size: 10.5px; color: #5f6d7c; white-space: nowrap; }
+
+/* 面板里的预览工具栏（v1.3.1：从内联样式搬到这里） */
+.card-toolbar { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 10px; }
+.card-toolbar-meta { font-size: 12px; color: #93a1b0; }
+.card-toolbar-acts { margin-left: auto; display: flex; gap: 6px; }
+
+/* ---------- v1.3.1：后台连接状态条 + 离线置灰 ----------
+ * 起因：后台脚本一挂，面板里的按钮全部静默失效（点了没反应）。
+ * 现在 ping 不通时顶部会出现「后台未连接，点这里重试」，并且：
+ *   [data-bg]      硬依赖后台 → 真 disabled（window.js 逐个设置）
+ *   [data-bg-soft] 软依赖（只写房间数据 / token 元数据）→ 只弱化外观，仍然可点 */
+.bg-strip {
+  flex: 0 0 auto;
+  display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+  padding: 5px 10px; border-bottom: 1px solid var(--line);
+  background: var(--bg2); font-size: 11.5px; color: var(--muted);
+}
+.bg-text { min-width: 0; word-break: break-word; }
+.bg-text.good { color: #a8e6b0; }
+.bg-text.bad { color: #ffb4b1; }
+body.bg-off .win, body.bg-off .panel { border-color: rgba(248, 81, 73, .45); }
+[data-bg].bg-off, body.bg-off [data-bg].bg-off { opacity: .45; cursor: not-allowed; }
+body.bg-off [data-bg-soft] { opacity: .55; }
+body.bg-off .init-act, body.bg-off .btn:disabled { cursor: not-allowed; }
 
 @media (max-width: 760px) {
   .init-list-head, .init-row { grid-template-columns: 26px minmax(90px, 1fr) 54px 62px auto; gap: 6px; }
   .init-acts { flex-wrap: wrap; }
   .panel-sub { display: none; }
+  .panel-body { grid-template-columns: 1fr; grid-template-rows: auto minmax(0, 1fr); }
+  .panel-side { border-right: 0; border-bottom: 1px solid var(--line); }
+  .card-list { max-height: 180px; }
+  .win-hint { display: none; }
+}
+
+/* ---------- v1.3.2：设置 / 关于窗口（左侧分栏 + 右侧内容） ----------
+ * 窗口外壳仍用 .win（高度 100vh 装下、内部滚动，打开前由后台按视口夹紧）。
+ * 这里只加「左分栏 + 右内容」这一层：两栏各自滚动，窄屏下改成上下排列。 */
+.set-body {
+  flex: 1 1 auto; min-height: 0;
+  display: grid; grid-template-columns: 178px minmax(0, 1fr);
+}
+.set-nav {
+  min-height: 0; overflow-y: auto;
+  display: flex; flex-direction: column; gap: 4px;
+  padding: 10px 8px; border-right: 1px solid var(--line); background: #0e141b;
+}
+.set-tab {
+  display: flex; align-items: center; gap: 8px;
+  width: 100%; text-align: left;
+  border: 1px solid transparent; background: transparent; color: var(--muted);
+  border-radius: 9px; padding: 8px 10px; cursor: pointer; font-size: 13px; line-height: 1.2;
+  transition: background .15s, border-color .15s, color .15s;
+}
+.set-tab:hover { background: #16202a; color: var(--text); }
+.set-tab.on {
+  background: #17251b; border-color: rgba(86, 211, 100, .45);
+  color: var(--green); font-weight: 700;
+}
+.set-tab .ico { flex: 0 0 16px; width: 16px; text-align: center; font-size: 12.5px; opacity: .85; }
+.set-main { min-width: 0; min-height: 0; overflow-y: auto; overflow-x: hidden; padding: 14px 18px 26px; }
+.set-pane { display: none; }
+.set-pane.on { display: block; }
+.set-pane h3 { margin: 0 0 6px; font-size: 16px; color: var(--text); }
+.set-lead { margin: 0 0 10px; font-size: 13px; line-height: 1.75; color: #cbd5e1; }
+.set-muted { margin: 0 0 8px; font-size: 12.5px; line-height: 1.7; color: var(--muted); }
+.set-hint { margin: 12px 0 0; font-size: 11.5px; line-height: 1.7; color: #7c8b9a; }
+.set-sec { margin-top: 16px; }
+.set-sec h4 { margin: 0 0 6px; font-size: 12.5px; letter-spacing: .02em; color: var(--text); }
+.set-list { margin: 0 0 6px; padding-left: 20px; font-size: 13px; line-height: 1.75; color: #cbd5e1; }
+.set-list li { margin: 4px 0; }
+.set-main code {
+  background: #141b23; border: 1px solid var(--line); border-radius: 4px;
+  padding: 0 4px; font-family: ui-monospace, "Cascadia Code", Consolas, monospace;
+  font-size: 11.5px; word-break: break-all;
+}
+.set-kv {
+  display: grid; grid-template-columns: 84px minmax(0, 1fr); gap: 7px 12px;
+  margin: 10px 0 0; font-size: 13px; line-height: 1.6;
+}
+.set-kv .k { color: var(--muted); }
+.set-table {
+  display: grid; grid-template-columns: minmax(0, 14rem) minmax(0, 1fr); gap: 6px 14px;
+  font-size: 12.5px; line-height: 1.65;
+}
+.set-table > span { min-width: 0; }
+.set-table .h { color: var(--muted); font-size: 11.5px; letter-spacing: .02em; }
+.set-danger {
+  margin-top: 14px; padding: 12px 14px; border-radius: 11px;
+  border: 1px solid rgba(248, 81, 73, .38); background: rgba(248, 81, 73, .07);
+}
+.set-danger .btn { margin-top: 2px; }
+.btn.danger.armed { border-color: var(--red); background: rgba(248, 81, 73, .18); color: #ffd0cd; }
+.set-out { margin: 8px 0 0; font-size: 12px; line-height: 1.7; color: #9fd4a8; word-break: break-word; }
+.set-out:empty { display: none; }
+
+@media (max-width: 760px) {
+  .set-body { grid-template-columns: 1fr; grid-template-rows: auto minmax(0, 1fr); }
+  .set-nav {
+    flex-direction: row; overflow-x: auto; overflow-y: hidden;
+    border-right: 0; border-bottom: 1px solid var(--line); padding: 8px;
+  }
+  .set-tab { width: auto; white-space: nowrap; }
+  .set-kv { grid-template-columns: 76px minmax(0, 1fr); }
+  .set-table { grid-template-columns: 1fr; gap: 2px 0; }
+  .set-table .h { margin-top: 6px; }
+}
+
+/* ---------- v1.4.0：先攻条（top-center 的条，规格 §3 / §4） ----------
+ * 尺寸全部照抄规格表（dev/check.mjs 会用正则断言这里的常数）：
+ *   折叠 120×40 / 展开 720×129|139|159；卡片 56×80，当前回合 100 高（向下凸出）；
+ *   头像占 80%，底部合计占 24%，血条 4px 贴在合计上面，掷骰按钮上移 8px 藏在卡下面。 */
+body.strip-page { background: transparent; padding: 0; overflow: hidden; height: 100vh; }
+.strip-root { height: 100vh; }
+.strip {
+  position: relative; height: 100%;
+  display: flex; flex-direction: column; gap: 2px;
+  padding: 4px 8px 4px; overflow: hidden;
+  background: #10161d; border: 1px solid #2b3746; border-radius: 12px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, .5);
+}
+.strip.collapsed {
+  flex-direction: row; align-items: center; gap: 4px;
+  padding: 4px 6px; border-radius: 999px;
+}
+.strip-open {
+  flex: 0 0 auto; width: 26px; height: 26px; padding: 0;
+  border-radius: 8px; border: 1px solid #2b3746; background: #1a222c;
+  color: #e6edf3; cursor: pointer; line-height: 1; font-size: 13px;
+}
+.strip-open:hover { background: #22303f; }
+.strip-badge {
+  font-family: ui-monospace, "Cascadia Code", Consolas, monospace;
+  font-size: 11px; color: #9fd4a8; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.strip.offline { border-color: rgba(248, 81, 73, .45); }
+
+.strip-ctl {
+  flex: 0 0 auto; min-height: 30px;
+  display: flex; align-items: center; gap: 6px; padding: 0 2px; overflow: hidden;
+}
+.sc-left { display: flex; align-items: center; gap: 6px; flex: 0 0 auto; }
+.sc-right { margin-left: auto; display: flex; align-items: center; gap: 6px; min-width: 0; }
+.strip-btn {
+  flex: 0 0 auto; height: 22px; padding: 0 7px; font-size: 11px; line-height: 1;
+  border-radius: 6px; border: 1px solid #2b3746; background: #1a222c; color: #cfd9e3;
+  cursor: pointer; white-space: nowrap;
+}
+.strip-btn:hover { background: #22303f; color: #e6edf3; }
+.strip-btn.primary { background: #2ea043; border-color: #3fb950; color: #07130a; font-weight: 700; }
+.strip-btn.primary:hover { background: #3fb950; }
+.strip-btn.danger { color: #ffb4b1; border-color: rgba(248, 81, 73, .45); }
+.strip-btn.danger.armed { background: rgba(248, 81, 73, .2); border-color: #f85149; color: #ffd0cd; }
+.strip-btn.icon { width: 22px; padding: 0; font-size: 12px; }
+.strip-status {
+  font-size: 11px; color: #93a1b0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  max-width: 240px; min-width: 0;
+}
+.strip-status b { color: #e6edf3; }
+.strip-grip {
+  flex: 0 0 auto; width: 18px; height: 26px; border-radius: 5px;
+  display: inline-flex; align-items: center; justify-content: center;
+  color: #61707f; cursor: move; user-select: none; touch-action: none;
+}
+.strip-grip:hover { background: #1a222c; color: #93a1b0; }
+body.dragging, body.dragging .strip-grip { cursor: grabbing; }
+body.sorting, body.sorting .initiative-item { cursor: grabbing; }
+
+.strip-items {
+  position: relative;
+  flex: 1 1 auto; min-height: 80px;
+  display: flex; align-items: flex-start; gap: 6px;
+  overflow-x: auto; overflow-y: hidden; padding: 0 4px;
+  scrollbar-width: none;
+}
+.strip-items::-webkit-scrollbar { display: none; }
+.strip-empty { flex: 0 0 auto; padding: 10px 6px; font-size: 11.5px; color: #93a1b0; white-space: nowrap; }
+.strip-error { padding: 10px; font-size: 12px; color: #ffb4b1; }
+
+/* 卡片：56×80；当前回合 100 高并向下凸出（规格 §3.5） */
+.initiative-item {
+  position: relative; flex: 0 0 auto;
+  width: 56px; height: 80px;
+  border-radius: 6px; border: 2px solid rgba(255, 255, 255, .08);
+  background: #141b23; isolation: isolate;
+  cursor: pointer; user-select: none; touch-action: none;
+}
+.initiative-item:hover { border-color: rgba(255, 255, 255, .22); }
+.initiative-item.active { height: 100px; z-index: 2; box-shadow: 0 3px 10px rgba(233, 69, 96, .4); border-color: rgba(233, 69, 96, .55); }
+.initiative-item.is-mine { border-color: rgba(88, 166, 255, .45); }
+.initiative-item.is-invisible { filter: grayscale(.6) brightness(.85); }
+.initiative-item.is-invisible::after {
+  content: "隐"; position: absolute; right: 2px; bottom: 26%; z-index: 4;
+  font-size: 9px; color: #c9a7ff; background: rgba(20, 27, 35, .8);
+  border: 1px solid rgba(163, 113, 247, .45); border-radius: 999px; padding: 0 3px;
+}
+.initiative-item.dragging { outline: 2px dashed #f5d76e; outline-offset: -2px; opacity: .75; }
+.initiative-item.veil { display: flex; align-items: center; justify-content: center; border-style: dashed; }
+.initiative-item.veil .item-veil { font-size: 12px; color: #c9a7ff; letter-spacing: 1px; }
+
+.item-img { position: absolute; top: 0; left: 0; right: 0; height: 80%; overflow: hidden; border-radius: 4px 4px 0 0; background: #1b242e; }
+.item-img img { position: absolute; top: -12.5%; left: 0; width: 100%; height: 125%; object-fit: cover; object-position: center; }
+.item-img::after {
+  content: ""; position: absolute; left: 0; right: 0; bottom: 0; height: 30%;
+  background: linear-gradient(to top, rgba(0, 0, 0, .75), rgba(0, 0, 0, 0));
+}
+.item-initial {
+  position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
+  font-size: 20px; font-weight: 800; color: #3f4d5c;
+}
+.item-mod {
+  position: absolute; top: 2px; left: 2px; z-index: 3;
+  padding: 1px 4px; font-size: 10px; line-height: 1.1; border-radius: 4px;
+  font-family: ui-monospace, "Cascadia Code", Consolas, monospace;
+  background: rgba(11, 15, 20, .72); color: #e6edf3;
+}
+.item-hp-track { position: absolute; left: 0; right: 0; bottom: 24%; height: 4px; z-index: 2; background: rgba(0, 0, 0, .55); }
+.item-hp-track.slot { background: rgba(255, 255, 255, .06); }
+.item-hp-fill { height: 100%; background: #a52424; }
+.item-count {
+  position: absolute; left: 0; right: 0; bottom: 0; height: 24%; z-index: 3;
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  border-top: 1px solid rgba(255, 255, 255, .08); background: #10161d; overflow: hidden;
+}
+.item-count b {
+  font-family: ui-monospace, "Cascadia Code", Consolas, monospace;
+  font-size: 13px; line-height: 1; color: #e6edf3; font-variant-numeric: tabular-nums;
+}
+.item-count .count-formula {
+  font-size: 8px; line-height: 1.1; color: #93a1b0;
+  font-variant-numeric: tabular-nums; white-space: nowrap;
+}
+
+/* 掷骰按钮：上移 8px 藏在卡下面，露出 14px（规格 §3.5） */
+.roll-buttons { position: absolute; top: 100%; left: 0; right: 0; z-index: -1; display: flex; gap: 1px; margin-top: -8px; }
+.roll-btn {
+  flex: 1 1 0; height: 22px; padding: 0; line-height: 1;
+  border: 1px solid #2b3746; border-radius: 0 0 5px 5px;
+  font-size: 9px; color: #cfd9e3; background: #1b242e; cursor: pointer;
+}
+.roll-btn:hover { color: #fff; }
+.roll-btn.dis { background: #5b1f1f; }
+.roll-btn.normal { background: #2a3542; }
+.roll-btn.adv { background: #1f4a2c; }
+
+.end-turn-btn {
+  position: absolute; top: 100%; left: 0; right: 0; margin-top: 3px; height: 18px; z-index: 4;
+  padding: 0; font-size: 10px; line-height: 1; border-radius: 4px;
+  border: 1px solid rgba(86, 211, 100, .5); background: #17251b; color: #9fd4a8; cursor: pointer;
+}
+.end-turn-btn:hover { background: #1f3527; color: #d7ffe3; }
+
+/* 拖拽排序的落位指示线（绝对定位，不占布局） */
+.drop-mark {
+  position: absolute; top: 0; bottom: 0; width: 3px; z-index: 5;
+  background: #f5d76e; border-radius: 2px; pointer-events: none;
 }

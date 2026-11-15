@@ -1,0 +1,226 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>4eNEXT to owlbear · 设置 / 关于</title>
+<link rel="stylesheet" href="assets/ui.css">
+</head>
+<body class="win-page">
+<!-- v1.3.2：设置 / 关于窗口（独立 popover，入口 = 左侧工具栏「设置」）。
+     左侧分栏 + 右侧内容（参考 FullPeople 的「设置 / 关于」），窗口可拖动、打开前按视口夹紧。
+     内容全部是静态说明（不做多语言）；版本号一律由 assets/settings-page.js 从
+     common.js 的 PLUGIN_VERSION 写进来，HTML 里不写死版本。 -->
+<div class="win">
+  <div class="win-head" id="head" title="按住这里拖动窗口（位置会记住）">
+    <span class="grip" aria-hidden="true">⠿</span>
+    <div class="t"><b>设置 / 关于 · 4eNEXT to owlbear</b><small id="set-head-sub">加载中…</small></div>
+    <div class="sp">
+      <button class="icon-btn" id="pin" title="回到默认位置（清除本窗口记住的位置）">⌖</button>
+      <button class="icon-btn" id="close" title="关闭窗口">✕</button>
+    </div>
+  </div>
+
+  <div class="bg-strip" id="bg-strip">
+    <span class="bg-text" id="bg-text">正在确认后台脚本…</span>
+    <button class="btn small" id="bg-retry" hidden>后台未连接，点这里重试</button>
+  </div>
+
+  <div class="set-body">
+    <nav class="set-nav" id="set-nav" aria-label="设置分区">
+      <button class="set-tab on" type="button" data-pane="about" aria-controls="pane-about" aria-current="true"><span class="ico" aria-hidden="true">ℹ</span>关于</button>
+      <button class="set-tab" type="button" data-pane="guide" aria-controls="pane-guide"><span class="ico" aria-hidden="true">▸</span>使用说明</button>
+      <button class="set-tab" type="button" data-pane="data" aria-controls="pane-data"><span class="ico" aria-hidden="true">▤</span>数据与权限</button>
+      <button class="set-tab" type="button" data-pane="limits" aria-controls="pane-limits"><span class="ico" aria-hidden="true">!</span>已知限制</button>
+      <button class="set-tab" type="button" data-pane="reset" aria-controls="pane-reset"><span class="ico" aria-hidden="true">⌫</span>重置本机设置</button>
+      <button class="set-tab" type="button" data-pane="thanks" aria-controls="pane-thanks"><span class="ico" aria-hidden="true">♥</span>致谢</button>
+    </nav>
+
+    <div class="set-main" id="set-main">
+      <!-- ---------------- 关于 ---------------- -->
+      <section class="set-pane on" id="pane-about">
+        <h3>关于</h3>
+        <p class="set-lead">在 Owlbear Rodeo（枭熊）里看 <b>4E NEXT</b> 导出的角色卡速览：右键 token 绑定角色卡，
+          选中就弹速览，加减血量会画到 token 上，威能 / 装备点一下记成「已用」，先攻按卡里的加值推进。</p>
+        <div class="set-kv">
+          <span class="k">插件名</span><span><b>4eNEXT to owlbear</b></span>
+          <span class="k">版本</span><span><b id="set-version">—</b></span>
+          <span class="k">构建</span><span id="set-build">—</span>
+          <span class="k">作者</span><span>4E NEXT 玩家自制（非官方作品）</span>
+          <span class="k">性质</span><span>纯静态页面 + 一个后台脚本，无服务器、无账号、无构建步骤</span>
+        </div>
+        <div class="set-sec">
+          <h4>这个版本的入口（一排按钮）</h4>
+          <p class="set-muted">左上角扩展图标（角色卡 / 导入）、左侧工具栏的 <b>速览 / 角色卡 / 先攻 / 骰子 / 设置</b>
+            五个图标、右下角 4E 浮动按钮、右键地图 token。每个入口打开自己的窗口，可以同时开着、互不嵌套。</p>
+        </div>
+        <p class="set-hint">与 Owlbear Rodeo、4E NEXT 均无隶属关系；角色卡数据只在你自己的房间与浏览器里流转。</p>
+      </section>
+
+      <!-- ---------------- 使用说明 ---------------- -->
+      <section class="set-pane" id="pane-guide">
+        <h3>使用说明</h3>
+        <ol class="set-list">
+          <li><b>导出</b>：4E NEXT → 打开角色卡 →「导出存档（JSON）」→ 得到一个 <code>.json</code> 文件。</li>
+          <li><b>导入</b>：打开「角色卡 / 导入」窗口（左上角图标 / 工具栏「角色卡」/ 右下角 4E 按钮），
+            把文件拖进窗口、或点「导入 JSON」、或点「粘贴」贴上 JSON 全文。同名卡会就地更新，已绑定的 token 不丢。</li>
+          <li><b>绑定</b>：在地图上<b>右键</b>一个图片 token →「绑定 4E NEXT 角色卡」→ 选一张卡（可搜索）。</li>
+          <li><b>看速览</b>：选中这枚 token，速览小窗会从 token 上方弹出；
+            也可以点工具栏「速览」给当前选中的 token 开一次（没选中时会提示先选一个）。</li>
+          <li><b>打起来</b>：在速览里点 <code>−1 / −5 / −10</code> 或 <code>＋1 / ＋5 / ＋10</code> 改血，
+            token 上的血条会跟着变；威能 / 装备点一下变灰＝已用，再点恢复；「长休」一键还原。</li>
+          <li><b>先攻</b>：右键 token →「加入先攻」/「隐形加入先攻」（先攻条会自动弹出）→
+      先攻条上「战斗准备 / 突袭 / 开始战斗」，再「上一回合 / 下一回合」推进；GM 任意推进，玩家点卡片上的「结束」。</li>
+        </ol>
+        <div class="set-sec">
+          <h4>窗口怎么用</h4>
+          <ul class="set-list">
+            <li>按住标题栏（左侧 ⠿ 那一条）可以把窗口拖到不挡地图的地方；<b>每个窗口各自记位置</b>（存在本机）。</li>
+            <li>标题栏右上角的 <b>⌖</b> 清掉这个窗口记住的位置、回到默认点；速览小窗的 ⌖ 是「回到 token 上方」。</li>
+            <li>窗口打开前会按<b>视口尺寸夹紧</b>，小屏 / 合盖后再打开也不会超出屏幕。</li>
+            <li>窗口顶部有一条<b>后台连接状态</b>：显示「后台未连接，点这里重试」时，先点它重试；
+              仍然不行就打开插件根目录的 <code>background.html</code> 看自检日志。</li>
+          </ul>
+        </div>
+        <div class="set-sec">
+          <h4>入口一览</h4>
+          <div class="set-table">
+            <span class="h">入口</span><span class="h">打开什么</span>
+            <span>左上角扩展图标</span><span>角色卡 / 导入（由 manifest 的 action 提供，不依赖后台脚本）</span>
+            <span>工具栏「速览」</span><span>当前选中 token 的速览（与「选中即弹」同一个窗口）</span>
+            <span>工具栏「角色卡」</span><span>导入 / 列表 / 预览 / 绑定</span>
+            <span>工具栏「先攻」</span><span>先攻条（战斗准备 / 突袭 / 一键清空 / 回合推进 / 拖拽排序）</span>
+            <span>工具栏「骰子」</span><span>骰子（表达式 / 战斗优势 +2 / 重击取满 / 4E 预设 / 团队共享历史）</span>
+            <span>工具栏「设置」</span><span>本窗口</span>
+            <span>右下角 4E 按钮</span><span>角色卡 / 导入</span>
+            <span>右键 token</span><span>绑定角色卡 / 加入先攻 / 隐形加入先攻（仅 GM）</span>
+          </div>
+        </div>
+      </section>
+
+      <!-- ---------------- 数据与权限 ---------------- -->
+      <section class="set-pane" id="pane-data">
+        <h3>数据与权限</h3>
+        <p class="set-lead">没有自己的服务器：角色卡与战斗状态存在 <b>Owlbear 的房间数据</b>里（全桌共享），
+          单枚 token 的血量存在 <b>token 元数据</b>上，窗口位置这类「只跟我这台机器有关」的东西存在 <b>本机 localStorage</b>。</p>
+        <div class="set-sec">
+          <h4>房间数据（同房间所有人可见，通常只有 GM 能写）</h4>
+          <div class="set-table">
+            <span class="h">键</span><span class="h">内容</span>
+            <span><code>com.4enext-owlbear/cards</code></span><span>角色卡列表（导入的 JSON 精简后）</span>
+            <span><code>com.4enext-owlbear/state/&lt;cardId&gt;</code></span><span>威能 / 装备「已用」、行动点、里程碑</span>
+            <span><code>com.4enext-owlbear/initiative</code></span><span>先攻状态（阶段、回合、名单、顺序、d20 / tiebreak、隐形标记）</span>
+            <span><code>com.4enext-owlbear/rolls</code></span><span>骰子历史（团队共享，最多 40 条；只有城主客户端能写）</span>
+          </div>
+        </div>
+        <div class="set-sec">
+          <h4>Token 元数据（写在自己那枚 token 上）</h4>
+          <div class="set-table">
+            <span class="h">键</span><span class="h">内容</span>
+            <span><code>com.4enext-owlbear/cardId</code></span><span>绑定的角色卡 id</span>
+            <span><code>com.4enext-owlbear/hp</code></span><span><code>{ cur, max, temp, surges }</code>：这枚 token 的血量快照</span>
+            <span><code>com.4enext-owlbear/init</code></span><span><code>{ bonus, cardId }</code>：先攻加值</span>
+          </div>
+        </div>
+        <div class="set-sec">
+          <h4>本机 localStorage（只影响这台电脑 / 这个浏览器）</h4>
+          <div class="set-table">
+            <span class="h">键</span><span class="h">内容</span>
+            <span><code>4enext/win-pos</code></span><span>各独立窗口的位置（按窗口名）</span>
+            <span><code>4enext/info-pos</code></span><span>速览小窗的位置（按 token id，最多 40 枚）</span>
+            <span><code>4enext/state/&lt;cardId&gt;</code></span><span>房间数据写不进去时的追踪降级副本</span>
+            <span><code>4enext/dice/combos</code></span><span>骰子组合（最多 30 条）</span>
+            <span><code>4enext/dice/last</code></span><span>上一次掷过的骰子公式</span>
+            <span><code>4enext/dice/local</code></span><span>城主离线时的骰子暂存（最多 20 条）</span>
+          </div>
+        </div>
+        <div class="set-sec">
+          <h4>权限差异</h4>
+          <div class="set-table">
+            <span class="h">操作</span><span class="h">谁能做</span>
+            <span>导入角色卡 / 绑定 token</span><span>城主（房间数据写权限）</span>
+            <span>改某枚 token 的血量</span><span>城主，或这枚 token 的创建者</span>
+            <span>标记威能 / 装备已用</span><span>优先写房间数据（通常只有城主）；写不进去就只记在这台机器上</span>
+            <span>加入先攻 / 推进回合</span><span>城主；玩家可以「结束我的回合」，由城主客户端落笔</span>
+            <span>隐形先攻条目</span><span>只有城主看得见，玩家连名字都收不到</span>
+            <span>骰子历史落库 / 清空</span><span>城主（写房间数据）；玩家投掷只广播，城主不在线时结果只在本机</span>
+          </div>
+        </div>
+        <p class="set-hint">卸载扩展不会删除房间数据；换房间需要重新导入。自诊断通知的开关只影响提示，不属于上面这些键。</p>
+      </section>
+
+      <!-- ---------------- 已知限制 ---------------- -->
+      <section class="set-pane" id="pane-limits">
+        <h3>已知限制</h3>
+        <p class="set-lead">先说清楚做不到的部分，省得在团里踩坑。</p>
+        <ul class="set-list">
+          <li><b>没有真机联调</b>：开发环境起不了 Owlbear 房间，所以「拖动窗口是否重载页面」「血条像素位置」
+            这类只在纸面上按参考实现推过，真机可能有偏差。</li>
+          <li><b>数值是离线推导的</b>：依赖规则正文的加值（职业特性自动加值、部分专长的逐条效果）没有还原，
+            防御 / 攻击等可能与 4E NEXT 差 1~2 点甚至更多，<b>以 4E NEXT 为准</b>。</li>
+          <li><b>血量是快照</b>：<code>hp</code> 存在 token 元数据上，是插件记的一份「本场战斗」数据，
+            不会写回 4E NEXT 的角色卡；重新导入同名卡也不会清掉它。</li>
+          <li><b>房间数据有上限</b>：卡片存在房间数据里，所以导入的卡越多越占体积；立绘（原图 / 裁切图）会被丢弃。
+            多了建议删掉不用的卡。骰子历史也在这块预算里，固定封顶 40 条。</li>
+          <li><b>骰子不做判定</b>：只显示每颗骰子的点数与总点数，没有 TN 输入、不显示命中 / 豁免成败；
+            重击是 4E 口径（所有伤害骰取最大值），公式里带 adv / max 等包裹时会退化为普通投掷并提示。</li>
+          <li><b>右键菜单只对单个 IMAGE token 出现</b>：多选不显示，玩家（非 GM）看不到这几项。</li>
+          <li><b>先攻条没有镜头跟随</b>：轮到谁不会自动把镜头移过去；先攻条目最多 <b>60 条</b>（房间数据上限），
+      写不进房间数据时会降级到本机并提示。</li>
+          <li><b>窗口位置只记在本机</b>：换电脑 / 清浏览器数据就回到默认点；窗口不跟地图平移缩放走。</li>
+          <li><b>左上角图标打开的那份面板由 Owlbear 定位</b>，拖不动；要拖请用工具栏图标打开。</li>
+        </ul>
+      </section>
+
+      <!-- ---------------- 重置本机设置 ---------------- -->
+      <section class="set-pane" id="pane-reset">
+        <h3>重置本机设置</h3>
+        <p class="set-lead">只清<b>这台电脑上</b>的插件记忆，<b>不碰房间数据、不碰 token 元数据、不碰角色卡</b>。</p>
+        <div class="set-sec">
+          <h4>会被清掉的</h4>
+          <ul class="set-list">
+            <li><code>4enext/win-pos</code>：各独立窗口记住的位置（清完下次打开回到默认点）。</li>
+            <li><code>4enext/info-pos</code>：速览小窗按 token 记住的位置。</li>
+            <li><code>4enext/state/*</code>：追踪降级数据（房间数据写不进去时只记在本机的那份副本）。</li>
+          </ul>
+        </div>
+        <div class="set-sec">
+          <h4>不会被动的</h4>
+          <ul class="set-list">
+            <li>房间数据：角色卡列表、先攻状态、全桌共享的「已用」标记。</li>
+            <li>Token 元数据：绑定关系、血量、先攻加值。</li>
+            <li>4E NEXT 导出的 <code>.json</code> 文件。</li>
+          </ul>
+        </div>
+        <div class="set-danger">
+          <p class="set-muted" id="set-local-state">正在检查本机数据…</p>
+          <button class="btn danger" id="reset-btn" type="button">重置本机设置</button>
+          <p class="set-out" id="reset-out"></p>
+          <p class="set-hint">要点<b>两次</b>才会真的清（第一次只是「预备」，5 秒内不点第二次就自动取消）。
+            已经开着的窗口不会自己动，下次打开才回默认点。</p>
+        </div>
+      </section>
+
+      <!-- ---------------- 致谢 ---------------- -->
+      <section class="set-pane" id="pane-thanks">
+        <h3>致谢</h3>
+        <ul class="set-list">
+          <li><b>FullPeople/obr-suite</b>：本插件的窗口 / 入口 / 血条 / 先攻都参照了它的实现方式
+            （每个模块一个 popover、用 OBR.scene.local 画 token 子图形、广播频道驱动面板刷新）。</li>
+          <li><b>FullPeople/character-cards</b>：绝对地址 manifest、右键菜单与浮动按钮的写法。</li>
+          <li><b>4E NEXT</b>：角色卡 JSON 的结构与速览页的数值口径（防御 / 技能 / 攻击的推导）。</li>
+          <li><b>Owlbear Rodeo 与 @owlbear-rodeo/sdk</b>：房间数据、token 元数据、popover / tool / contextMenu 这些能力。</li>
+        </ul>
+        <p class="set-hint">以上均为开源实现或公开文档；本插件与它们没有隶属关系，角色卡数据只在你自己的房间和浏览器里流转。</p>
+      </section>
+    </div>
+  </div>
+
+  <div class="win-foot">
+    <span class="win-flash" id="win-flash"></span>
+    <span class="win-hint">按住标题栏可拖动 · 每个窗口各自记住位置</span>
+  </div>
+</div>
+<script type="module" src="assets/settings-page.js"></script>
+</body>
+</html>

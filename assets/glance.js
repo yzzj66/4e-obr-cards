@@ -341,6 +341,13 @@ export function deriveGlance(char, rules, live) {
     : (typeof hpNow.surges === "number" ? hpNow.surges : surges);
   const bloodiedLine = Math.floor(hpMax / 2);
   const hpSurgeValue = typeof hpNow.surgeValue === "number" ? hpNow.surgeValue : (Math.floor(hpMax / 4) + n0(char.surgeValueBonus));
+  /* v1.6.0：回复力分母优先用 token 上的 surgesMax（画布层的蓝条也用它），
+   * 没有就回落到卡里推导的 surges —— 老数据 / 没打开过速览的 token 也能显示。 */
+  const surgesMaxLive = liveHp && typeof liveHp.surgesMax === "number" && liveHp.surgesMax > 0
+    ? Math.floor(liveHp.surgesMax) : surges;
+  /* v1.6.0：GM 把 token 锁了 → 玩家端只看到阶梯比例；Boss 开关给速览里的按钮用。 */
+  const hpLocked = !(liveHp && liveHp.locked === false);
+  const hpBoss = liveHp && liveHp.boss && typeof liveHp.boss === "object" ? liveHp.boss : null;
 
   // 技能
   const trainedSet = {};
@@ -440,8 +447,10 @@ export function deriveGlance(char, rules, live) {
   return {
     level: level, half: half, cls: cls, race: race,
     abilities: abilities, mods: mods, defenses: defenses,
-    maxHp: maxHp, bloodied: bloodiedLine, surgeValue: hpSurgeValue, surges: surges,
+    maxHp: maxHp, bloodied: bloodiedLine, surgeValue: hpSurgeValue,
+    surges: surges, surgesMax: surgesMaxLive,
     hpMax: hpMax, hpCur: hpCur, hpTemp: hpTemp, surgesCur: surgesCur,
+    locked: hpLocked, boss: hpBoss,
     derivedSurgeValue: surgeValueAuto,
     skills: skills, attacks: attacks, damages: damages,
     initiative: initiative, speed: speed,
@@ -528,11 +537,43 @@ function renderHpBlock(d, ed) {
       "</div></div>";
   }
 
+  /* v1.6.0：回复力分母用 d.surgesMax（token 上优先），蓝条在圆点行上方（规格 §6.6-2）。 */
+  const surgeMaxShow = d.surgesMax > 0 ? d.surgesMax : (d.surges > 0 ? d.surges : 1);
+  const surgePct = Math.max(0, Math.min(100, (d.surgesCur / surgeMaxShow) * 100));
+  const surgeBar = '<div class="gl4-surgebar" title="回复力 ' + esc(d.surgesCur) + " / " + esc(surgeMaxShow) + '">' +
+    '<div class="gl4-surgefill" style="width:' + surgePct.toFixed(1) + '%"></div></div>';
   const surgeLine = '<div class="gl4-surge-line"><span class="gl4-pad-label">回复力</span>' +
-    "<b>" + d.surgesCur + " / " + d.surges + "</b>" +
-    pips(d.surgesCur, d.surges, ed.hp) +
+    "<b>" + d.surgesCur + " / " + surgeMaxShow + "</b>" +
+    pips(d.surgesCur, surgeMaxShow, ed.hp) +
     (ed.hp ? '<button type="button" class="gl4-mini-btn" data-act="surge-use" title="消耗一次回复力：回复 ' + d.surgeValue + ' 点生命">使用回复力 ＋' + d.surgeValue + "</button>" : "") +
     "</div>";
+
+  /* v1.6.0：四防一排（盾形语言与 token 四角盾一致）。可编辑时点一下 = 把这四项写进 token；
+   * 只读时退化成展示，不生成点不动的按钮。 */
+  const defRow = '<div class="gl4-def-row">' + d.defenses.map(function (x) {
+    const inner = '<span class="gl4-def-chip-name">' + esc(x.label) + "</span><b>" + x.value + "</b>";
+    if (ed.hp) {
+      return '<button type="button" class="gl4-def-chip" data-act="defense" data-k="' + esc(x.key) + '" title="' +
+        esc(partsText(x.parts)) + ' · 点一下把这四项写进 token 四角">' + inner + "</button>";
+    }
+    return '<span class="gl4-def-chip static" title="' + esc(partsText(x.parts)) + '">' + inner + "</span>";
+  }).join("") + "</div>";
+
+  /* v1.6.0：锁 + Boss 开关（与右键菜单写同一个 hp 字段，两个入口不能有两套逻辑）。 */
+  const bossOn = !!(d.boss && d.boss.enabled);
+  const bossRow = ed.hp
+    ? '<div class="gl4-boss-row">' +
+      '<button type="button" class="gl4-mini-btn' + (d.locked ? " on" : "") + '" data-act="lock" title="' +
+      (d.locked
+        ? "已锁定：其他玩家只看到 25% 阶梯比例，不显示精确数字与四防（metadata 仍对全桌可读，不是加密）。点击解锁。"
+        : "已解锁：其他玩家也能看到精确数字与四防。点击锁定。") +
+      '">' + (d.locked ? "🔒 玩家端隐藏数字" : "🔓 玩家端可见数字") + "</button>" +
+      '<button type="button" class="gl4-mini-btn' + (bossOn ? " on" : "") + '" data-act="boss" title="' +
+      (bossOn
+        ? "Boss 样式已开启：token 上画环形血条 / 名牌 / 分段线 / 锁。点击关闭。"
+        : "把这枚 token 显示为 Boss（token 附带环形血条 + 名牌 + 锁，玩家端不显示精确数字）。") +
+      '">' + (bossOn ? "Boss 样式：开" : "显示为 Boss") + "</button></div>"
+    : "";
 
   /* v1.2.1：行动点 + 里程碑并成一排；外层 .gl4-tags 可以折行，这一排内部不折。 */
   const milestoneBit = ed.track
@@ -554,8 +595,11 @@ function renderHpBlock(d, ed) {
     '<div class="gl4-hpfill ' + cls + '" style="width:' + pct.toFixed(1) + '%"></div>' +
     (tempPct > 0 ? '<div class="gl4-hptempfill" style="width:' + tempPct.toFixed(1) + '%"></div>' : "") +
     '<div class="gl4-hpmark" style="left:' + bloodPct.toFixed(1) + '%"></div></div>' +
+    defRow +
+    surgeBar +
     surgeLine +
     pad +
+    bossRow +
     '<div class="gl4-tags">' +
     "<span><i>血怒</i><b>" + d.bloodied + "</b></span>" +
     "<span><i>回复值</i><b>" + d.surgeValue + "</b></span>" +

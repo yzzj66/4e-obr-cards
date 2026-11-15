@@ -3,6 +3,11 @@
 > 目标：绑定角色卡后，先攻加值自动取卡里的「先攻」；右键加入先攻；GM 推进任意回合，玩家结束自己的回合。
 > 本版先做「简单列表」：名单 / 加值 / 合计 / 当前回合高亮 / 上下移动 / 删除 / 重掷。
 > 头像条、拖拽排序、隐藏回合的镜头处理留给后续版本。
+>
+> **v1.3.1 起：先攻不再是「面板里的一个 tab」，而是独立窗口 `initiative.html`**
+> （左侧工具栏「先攻」图标打开；拖动 / 位置记忆 / 后台在线检测见
+> [`separate-windows-v131.md`](separate-windows-v131.md)）。本文里出现的「先攻 tab」
+> 等价于现在的先攻窗口；数据结构、权限、渲染逻辑一行都没变。
 
 ## 1. 数据结构
 
@@ -59,7 +64,9 @@
 
 - `panel.html` 现在是单面板三 section：`#tab-glance` / `#tab-init` / `#tab-dice`。
 - 切换只改 `.tab-pane` 的 `on` class 和 `display`，**不重载页面**，导入的卡片、选中的 token、滚动位置都保留。
-- `manifest.action.popover` 指向 `panel.html?tab=init`：左上角 4E 图标打开时直接落在「先攻」；
+- ~~`manifest.action.popover` 指向 `panel.html?tab=init`：左上角 4E 图标打开时直接落在「先攻」~~
+  → **v1.3.1 已改**：先攻是独立窗口 `initiative.html`，`action.popover` 只指向 `panel.html`
+  （角色卡 / 导入面板），不再有 tab；
   工具栏 / 右下角浮动按钮 / 速览弹窗的 ⤢ 仍打开 `panel.html`（默认「速览」）。
 - 「骰子」在 v1.3.0 是占位，写明「即将推出」，v1.5.0 实现。
 
@@ -129,3 +136,108 @@
 - 玩家「结束我的回合」依赖 **GM 客户端在线**（GM 的 background 在跑）；GM 不在线时请求不会生效。
 - 房间数据写权限按 Owlbear 的规则：玩家加入先攻由 GM 代劳；菜单项因此只给 GM。
 - 没有真机验证：所有交互都用假 OBR 跑过，但 popover / modal / 右键菜单的真实表现仍需在房间里确认。
+
+## 9. 修复记录：v1.3.0「后台脚本没有响应」
+
+### 现象
+
+v1.3.0 上传后，房间左上角图标 / 三个 tab 都正常，但**先攻 tab 顶部红字**：
+
+> **后台脚本没有响应**：右键加入先攻、玩家结束回合都会靠它。请把扩展关掉再打开一次。
+
+也就是说：面板页活着、后台页没活着（面板发 `diag-ping`，收不到后台的 `diag-pong`）。
+本地自测同时报三个看似无关的错：
+
+| 命令 | 报错 |
+| --- | --- |
+| `node dev/check.mjs` | FAIL 经典脚本解析失败：`Unexpected token ')'` |
+| `node dev/test-background.mjs` | `SyntaxError: Missing catch or finally after try` |
+| `node dev/test-initiative.mjs` | 同上 |
+| `node --check` 逐个文件 | **全部 OK**（误导性：它只查单个文件，不查拼接结果） |
+
+### 根因
+
+`assets/background.core.js` **被截断了**：文件最后一段「启动保护」只写到
+
+```js
+try {
+  window.addEventListener("error", ...);
+  window.addEventListener("unhandledrejection", ...);
+  });
+```
+
+就没了 —— 少了收尾的 `} catch (e) { ... }`、`OBR` 环境自检和最终的
+`OBR.onReady(boot)`。于是：
+
+1. 核心文件本身语法不完整 → `new Function(core + "return ...")` 报 *Missing catch or finally after try*；
+2. `dev/build-background.mjs` 照样能拼（它只做字符串拼接，不解析）→ 产出的
+   `assets/background.bundle.js` 在同一个位置断掉，末尾还多出半句
+   `if (typeof OBR === "undefined" || !OBR) {` + `})();` → 经典脚本解析失败
+   （`Unexpected token ')'`）；
+3. 浏览器加载 background.html 时脚本**整体解析失败、一行都不执行** →
+   没注册 `OBR.tool.create` / 右键菜单 / 弹窗，也**没订阅 `diag-ping`**
+   → 面板 ping 永远等不到 pong → 红字。
+
+一句话：**不是后台逻辑写错了，是后台文件被截断 + 构建脚本不校验产物，
+导致 bundle 语法错误，后台脚本整个没跑起来。**
+
+### 修法
+
+1. `assets/background.core.js` 补齐结尾（第 8 节之后）：
+   - 关闭第 9 节「启动保护」的 `try`，补 `} catch (e) { /* 忽略 */ }`（注册监听失败也不能让后台停下）；
+   - 第 10 节「OBR 环境自检」：拿不到 SDK 时 `pageLog` + `#diag-state` + `notify(..., "ERROR")`
+     写明原因，**绝不静默 return**；
+   - 最后 `OBR.onReady(boot)`：把 `boot` 直接交给 SDK（已就绪时同步调用、未就绪时回调）。
+     `diag-ping` 的订阅在 `boot` 最后一步，boot 不跑就必然红字，所以这一行是「后台活着」的开关。
+2. 重新 `node dev/build-background.mjs` 生成 bundle（136.7 KB，1432 行，能按经典脚本 `vm.Script` 解析）。
+3. `dev/check.mjs` 新增「后台心跳」检查：
+   - `CH_HELLO` / `CH_PING` / `CH_PONG` 在 `background.core.js` 与 `assets/common.js` 里**逐字一致**；
+   - 后台确实 `broadcast.onMessage(CH_PING, ...)` 且 `sendHello(CH_PONG, ...)`；
+   - core 与 bundle 里都有 `OBR.onReady(boot)` 启动入口（bundle 落后会直接 FAIL）。
+4. `dev/test-background.mjs` 新增**行为**断言：拿 `diag-ping` 的订阅回调手动触发一次，
+   断言后台随即广播 `com.4enext-owlbear/diag-pong`（destination = LOCAL）。
+   这样「频道名写歪」或「忘了回 pong」都会在自测里立刻暴露，而不是等真机红字。
+5. `assets/panel.js` 的 `checkBackground()` 改成最多问 3 次（每次等 1.8s，重试间隔 1.2s，
+   最坏约 7.8s 才下结论）：后台页与面板页可能同时启动，后台要到 boot 末尾才订阅 ping，
+   只问一次容易撞上这个窗口、误报「后台脚本没有响应」。
+   同时把状态拆成三档 **checking / ok / bad**（`bgState`）：
+   - checking（面板刚打开）：先攻 tab 显示「正在确认后台脚本…」，**不闪红字**；
+   - ok：收到 pong / hello，显示「后台已连接」；
+   - bad：三次都没回音，才显示红条。
+   红条出现后，后台真正起来时仍会被 `diag-hello` 广播纠正（面板一直监听 `CH_HELLO`），
+   等待期间若先收到 hello 也不会再被红条覆盖。
+6. 新增 `dev/selftest.mjs`：一条命令跑完全部四条自测。
+
+> 关于频道名：面板问的是 `com.4enext-owlbear/diag-ping`，后台回的是
+> `com.4enext-owlbear/diag-pong`（后台启动完成时还会主动广播
+> `com.4enext-owlbear/diag-hello`）。面板三个都听（`pingBackground()` 监听 pong + hello），
+> 所以**不需要**让后台回 `diag-hello`；要保证的是 ping→pong 这条链路，现在有静态 + 行为两道断言。
+
+### 自测（交付前实跑，全部 exit 0）
+
+```bash
+node dev/selftest.mjs
+# 等价于依次跑：
+node dev/check.mjs && node dev/test-background.mjs && node dev/test-initiative.mjs && node dev/test-track.mjs
+```
+
+修复后输出（PowerShell 不支持 `&&`，所以用 `dev/selftest.mjs`）：
+
+```text
+=== 自测汇总 ===
+  ok   dev/check.mjs（exit 0）
+  ok   dev/test-background.mjs（exit 0）
+  ok   dev/test-initiative.mjs（exit 0）
+  ok   dev/test-track.mjs（exit 0）
+全部通过（4/4，exit 0）
+```
+
+### 给真机的排查顺序
+
+1. 扩展列表 REMOVE 再 Add（Owlbear 会缓存 manifest 与脚本）；
+2. 刷新房间；若行为还像旧版，在 `background.html` 上按 **Ctrl+F5** 强制刷新
+   （`background.html` 引用脚本时带了 `?v=1.3.0` 缓存破坏参数，以后升版本记得一起改）；
+   控制台若还有报错，先看 `background.html` 的页面内日志（每一步都写了 ✓/✗）；
+3. 面板左下角状态条：`后台已连接 v1.3.0` 才是真的通了；红条仍然出现时，
+   打开 `https://yzzj66.github.io/4e-obr-cards/background.html` 直接看自检日志。
+

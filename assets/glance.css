@@ -242,6 +242,36 @@
 }
 .gl4-mini-btn:hover { color: var(--gl4-green); border-color: rgba(86, 211, 100, .45); }
 
+/* ---- v1.6.0：四防一排（盾形与 token 四角盾同一套视觉语言） ---- */
+.gl4-def-row { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px; }
+.gl4-def-chip {
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 1px;
+  padding: 4px 2px 9px; border: 0; border-radius: 0; color: #fff; cursor: pointer;
+  background: linear-gradient(180deg, var(--gl4-blue), #1f6feb);
+  clip-path: polygon(0% 8%, 100% 8%, 100% 60%, 50% 100%, 0% 60%);
+  transition: filter .15s;
+}
+.gl4-def-chip:nth-child(1) { background: linear-gradient(180deg, #3498db, #2471a3); }
+.gl4-def-chip:nth-child(2) { background: linear-gradient(180deg, #e3b341, #b8860b); }
+.gl4-def-chip:nth-child(3) { background: linear-gradient(180deg, #56d364, #2ea043); }
+.gl4-def-chip:nth-child(4) { background: linear-gradient(180deg, #a371f7, #7048c8); }
+.gl4-def-chip-name { font-size: 10px; opacity: .92; }
+.gl4-def-chip b { font-size: 16px; font-weight: 800; line-height: 1.1; }
+.gl4-def-chip.static { cursor: default; }
+.gl4-def-chip:hover { filter: brightness(1.08); }
+
+/* ---- v1.6.0：回复力蓝条（圆点行上方，高 6px） ---- */
+.gl4-surgebar {
+  height: 6px; border-radius: 999px; overflow: hidden;
+  background: #0a0f14; border: 1px solid var(--gl4-line);
+}
+.gl4-surgefill { height: 100%; background: linear-gradient(90deg, #1f6feb, var(--gl4-blue)); transition: width .2s; }
+
+/* ---- v1.6.0：锁 / Boss 开关一排 ---- */
+.gl4-boss-row { display: flex; gap: 6px; flex-wrap: wrap; }
+.gl4-boss-row .gl4-mini-btn { padding: 3px 8px; }
+.gl4-mini-btn.on { color: var(--gl4-green); border-color: rgba(86, 211, 100, .55); background: rgba(46, 160, 67, .16); }
+
 /* ---- 回复力圆点 ---- */
 .gl4-surge-line { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; font-size: 12px; }
 .gl4-surge-line b { color: var(--gl4-text); font-weight: 700; }

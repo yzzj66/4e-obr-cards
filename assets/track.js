@@ -25,6 +25,10 @@ import { NS } from "./common.js";
 
 /** token 上的血量键。 */
 export const KEY_HP = NS + "/hp";
+/** v1.6.0：血条组件开关（独立键；flag === false 才不画，undefined 视为画）。 */
+export const KEY_HPBAR = NS + "/hp-bar/enabled";
+/** v1.6.0：玩家端量化阈值（场景元数据；缺省 25%）。 */
+export const KEY_PLAYER_THRESHOLD = NS + "/settings.playerThreshold";
 /** 房间数据里每张卡一份的追踪状态键前缀。 */
 export const KEY_STATE_PREFIX = NS + "/state/";
 /** 本机兜底键前缀。 */
@@ -149,18 +153,75 @@ export async function commitState(cardId, mutate) {
  * 血量（token 元数据）
  * ------------------------------------------------------------------------- */
 
+/** v1.6.0：四防。只收 ac / fort / reflex / will 四个数字，一个都没有 → null（= 不画盾）。 */
+export function readDefenses(raw) {
+  if (!raw || typeof raw !== "object") return null;
+  const out = {};
+  let any = false;
+  for (const k of ["ac", "fort", "reflex", "will"]) {
+    if (typeof raw[k] === "number" && isFinite(raw[k])) {
+      out[k] = Math.max(0, Math.round(raw[k]));
+      any = true;
+    }
+  }
+  return any ? out : null;
+}
+
+/** v1.6.0：Boss 开关。布尔（boss:true）与对象两种都归一化成对象（规格 §6.1）。 */
+export function readBoss(raw) {
+  const out = { enabled: false, segments: 1, phase: "", exact: false, order: 0 };
+  if (typeof raw === "boolean") { out.enabled = raw; return out; }
+  if (!raw || typeof raw !== "object") return out;
+  out.enabled = raw.enabled === true;
+  out.segments = typeof raw.segments === "number" && isFinite(raw.segments)
+    ? Math.max(1, Math.min(5, Math.round(raw.segments))) : 1;
+  out.phase = typeof raw.phase === "string" ? raw.phase.slice(0, 48) : "";
+  out.exact = raw.exact === true;
+  out.order = typeof raw.order === "number" && isFinite(raw.order) ? raw.order : 0;
+  return out;
+}
+
+/** 卡里的四防（glance.js 的 d.defenses: [{ key, value }]）→ token 字段。
+ *  **ref → reflex 的换算只在这里做一处**（规格 §6.2 / 风险 R11）；渲染层只认 reflex。 */
+export function defensesFromDerived(list) {
+  if (!list) return null;
+  const map = { ac: "ac", fort: "fort", ref: "reflex", reflex: "reflex", will: "will" };
+  const out = {};
+  let any = false;
+  const take = (k, v) => {
+    const key = map[String(k)];
+    if (!key) return;
+    if (typeof v === "number" && isFinite(v)) { out[key] = Math.max(0, Math.round(v)); any = true; }
+  };
+  if (Array.isArray(list)) {
+    for (const row of list) if (row && typeof row === "object") take(row.key, row.value);
+  } else if (typeof list === "object") {
+    for (const k of Object.keys(list)) take(k, list[k]);
+  }
+  return any ? out : null;
+}
+
 export function normalizeHp(raw) {
-  const out = { cur: null, max: null, temp: 0, surges: null, updatedAt: 0 };
+  const out = {
+    cur: null, max: null, temp: 0, surges: null, surgesMax: null,
+    defenses: null, boss: null, locked: true, updatedAt: 0
+  };
   if (!raw || typeof raw !== "object") return out;
   if (typeof raw.cur === "number" && isFinite(raw.cur)) out.cur = Math.round(raw.cur);
   if (typeof raw.max === "number" && isFinite(raw.max) && raw.max > 0) out.max = Math.round(raw.max);
   if (typeof raw.temp === "number" && isFinite(raw.temp)) out.temp = Math.max(0, Math.round(raw.temp));
   if (typeof raw.surges === "number" && isFinite(raw.surges)) out.surges = Math.max(0, Math.round(raw.surges));
+  if (typeof raw.surgesMax === "number" && isFinite(raw.surgesMax) && raw.surgesMax > 0) {
+    out.surgesMax = Math.round(raw.surgesMax);
+  }
+  out.defenses = readDefenses(raw.defenses);
+  out.boss = raw.boss == null ? null : readBoss(raw.boss);
+  out.locked = raw.locked !== false;
   out.updatedAt = int(raw.updatedAt, 0);
   return out;
 }
 
-/** 把「存了的 / 没存的」补成可直接显示的四个数字。 */
+/** 把「存了的 / 没存的」补成可直接显示的数字（v1.6.0 追加 surgesMax / 四防 / boss / locked）。 */
 export function hpView(raw, fallback) {
   const h = normalizeHp(raw);
   const fallbackMax = fallback && fallback.maxHp > 0 ? fallback.maxHp : 1;
@@ -169,7 +230,11 @@ export function hpView(raw, fallback) {
     cur: typeof h.cur === "number" ? h.cur : max,
     max: max,
     temp: h.temp || 0,
-    surges: typeof h.surges === "number" ? h.surges : (fallback && typeof fallback.surges === "number" ? fallback.surges : 0)
+    surges: typeof h.surges === "number" ? h.surges : (fallback && typeof fallback.surges === "number" ? fallback.surges : 0),
+    surgesMax: h.surgesMax,
+    defenses: h.defenses,
+    boss: h.boss,
+    locked: h.locked
   };
 }
 
@@ -203,6 +268,11 @@ export async function writeTokenHp(itemId, mutate) {
       for (const it of items) {
         if (!it.metadata || typeof it.metadata !== "object") it.metadata = {};
         const next = mutate(normalizeHp(it.metadata[KEY_HP]));
+        /* 空值不落盘：boss:null / defenses:null / surgesMax:null 只是读取层的默认，
+         * 写进 metadata 会把每枚 token 都撑大一圈（房间数据 / 场景同步都有预算）。 */
+        if (next.defenses == null) delete next.defenses;
+        if (next.boss == null) delete next.boss;
+        if (next.surgesMax == null) delete next.surgesMax;
         next.updatedAt = Date.now();
         it.metadata[KEY_HP] = next;
         out = next;
@@ -212,6 +282,28 @@ export async function writeTokenHp(itemId, mutate) {
     throw new Error("改不了这枚 token 的血量：只有城主或这枚 token 的创建者能改（" + (e && e.message ? e.message : e) + "）");
   }
   return out;
+}
+
+/** v1.6.0：把卡里算出来的 surgesMax / 四防同步进 token（只在真的不一样时写一次）。
+ *  速览弹窗刷新时调用 —— 老 token 第一次打开速览就会长出蓝色回复力条与四角盾，
+ *  不用城主动手再加一次。没有权限 / 没有值 / 已经一致 → 什么都不做。
+ *  返回 true 表示这次真的写了一次（页面据此重画）。 */
+export async function syncTokenStats(itemId, hp, ctx) {
+  if (!itemId || !hp || !ctx) return false;
+  const wantSurge = ctx.surgesMax > 0 ? Math.round(ctx.surgesMax) : null;
+  const wantDef = defensesFromDerived(ctx.defenses);
+  const curDef = hp.defenses || null;
+  const sameSurge = !wantSurge || hp.surgesMax === wantSurge;
+  const sameDef = !wantDef || !!curDef &&
+    ["ac", "fort", "reflex", "will"].every((k) => curDef[k] === wantDef[k]);
+  if (sameSurge && sameDef) return false;
+  await writeTokenHp(itemId, function (prev) {
+    const out = clone(prev);
+    if (wantSurge) out.surgesMax = wantSurge;
+    if (wantDef) out.defenses = wantDef;
+    return out;
+  });
+  return true;
 }
 
 /* ---------------------------------------------------------------------------
@@ -245,6 +337,33 @@ export async function applyAction(act, el, ctx) {
   const step = parseInt(String(d.n || d.d || "0"), 10) || 0;
   const key = String(d.k || "");
   const cat = String(d.cat || "");
+
+  // ---- v1.6.0：四防 / 锁 / Boss 开关（都写 token 元数据，不碰房间数据） ----
+  if (act === "defense" || act === "lock" || act === "boss") {
+    if (!ctx.itemId) throw new Error("这里没有绑定 token，改不了血量");
+    if (ctx.canHp === false) throw new Error("只有城主或这枚 token 的创建者能改血量");
+    const next = await writeTokenHp(ctx.itemId, function (prev) {
+      const out = clone(prev);
+      if (act === "defense") {
+        const def = defensesFromDerived(ctx.defenses);
+        if (def) out.defenses = def;
+        if (ctx.surgesMax > 0) out.surgesMax = Math.round(ctx.surgesMax);
+      } else if (act === "lock") {
+        out.locked = prev.locked === false; /* 取反：默认 true（玩家端不显示数字） */
+      } else {
+        const b = readBoss(prev.boss);
+        out.boss = {
+          enabled: !b.enabled,
+          segments: b.segments,
+          phase: b.phase,
+          exact: b.exact,
+          order: b.order || Date.now()
+        };
+      }
+      return out;
+    });
+    return hpResult(next);
+  }
 
   // ---- 血量 ----
   if (act === "hurt" || act === "heal" || act === "hurt-amount" || act === "heal-amount" ||
@@ -288,6 +407,10 @@ export async function applyAction(act, el, ctx) {
         out.surges = view.surges - 1;
         out.cur = Math.min(view.max, Math.max(0, view.cur) + (ctx.surgeValue || 0));
       }
+      /* v1.6.0：顺手把「分母 + 四防」同步到 token（老 token 就是在这一步长出蓝条与四角盾的）。 */
+      if (ctx.surgesMax > 0) out.surgesMax = Math.round(ctx.surgesMax);
+      const defNow = defensesFromDerived(ctx.defenses);
+      if (defNow) out.defenses = defNow;
       return out;
     });
     if (act === "hurt-amount" || act === "heal-amount") clearAmount(el);
@@ -310,7 +433,16 @@ export async function applyAction(act, el, ctx) {
     if (ctx.itemId && ctx.canHp !== false) {
       hp = await writeTokenHp(ctx.itemId, function (prev) {
         const view = hpView(prev, ctx);
-        return { cur: view.max, max: view.max, temp: 0, surges: ctx.surgesMax || view.surges, updatedAt: 0 };
+        const out = clone(prev);
+        out.cur = view.max;
+        out.max = view.max;
+        out.temp = 0;
+        out.surges = ctx.surgesMax || view.surges;
+        /* 长休不能把 v1.6.0 的新字段（四防 / boss / locked / surgesMax）洗掉 */
+        if (ctx.surgesMax > 0) out.surgesMax = Math.round(ctx.surgesMax);
+        const defRest = defensesFromDerived(ctx.defenses);
+        if (defRest) out.defenses = defRest;
+        return out;
       });
     }
     return { state: res.state, scope: res.scope, hp: hp, message: res.message || "长休完成：生命、回复力与全部消耗已恢复", tone: res.tone || "SUCCESS" };

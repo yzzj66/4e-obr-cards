@@ -9,7 +9,7 @@
 import OBR from "../vendor/obr-sdk.js";
 import { CH_INFO_DRAG, ID_INFO, ID_PANEL, INFO_DRAG_THROTTLE_MS, URL_PANEL, KEY_BIND, getCards, findCard, esc, onReady, notify } from "./common.js";
 import { renderGlanceHTML, deriveGlance, magicItemDailyUses } from "./glance.js";
-import { KEY_HP, applyAction, hpView, loadState, mayEditItem, readItem, scopeText } from "./track.js";
+import { KEY_HP, applyAction, hpView, loadState, mayEditItem, readItem, scopeText, syncTokenStats } from "./track.js";
 
 const params = new URLSearchParams(location.search);
 let itemId = params.get("item") || "";
@@ -157,7 +157,8 @@ function paintScope() {
 function render() {
   if (!card) return;
   derived = deriveGlance(card.char);
-  const sig = JSON.stringify([card.id, itemId, token ? 1 : 0, hp.cur, hp.max, hp.temp, hp.surges, state, scope, canHp]);
+  const sig = JSON.stringify([card.id, itemId, token ? 1 : 0, hp.cur, hp.max, hp.temp, hp.surges, hp.surgesMax,
+    hp.defenses, hp.locked, hp.boss && hp.boss.enabled, state, scope, canHp]);
   if (sig === lastSig) return;
   lastSig = sig;
   try {
@@ -198,6 +199,19 @@ async function refresh(force) {
     const d0 = deriveGlance(card.char);
     canHp = token ? await mayEditItem(token) : false;
     hp = hpView(token && token.metadata ? token.metadata[KEY_HP] : null, { maxHp: d0.hpMax, surges: d0.surges });
+    /* v1.6.0：老 token 没有 surgesMax / 四防 → 趁打开速览写一次（只在真不一样时写），
+     * 这样蓝色回复力条与四角盾第一次打开速览就能看见，不用城主动手加点。 */
+    if (canHp && token) {
+      try {
+        const wrote = await syncTokenStats(token.id, hp, {
+          maxHp: d0.hpMax, surgesMax: d0.surgesMax, defenses: d0.defenses
+        });
+        if (wrote) {
+          token = await readItem(itemId);
+          hp = hpView(token && token.metadata ? token.metadata[KEY_HP] : null, { maxHp: d0.hpMax, surges: d0.surges });
+        }
+      } catch (e) { /* 写不进去（玩家 / 只读 token）就算了，血条仍按已有字段画 */ }
+    }
     const loaded = await loadState(card.id);
     state = loaded.state;
     scope = loaded.scope;
@@ -232,7 +246,8 @@ async function runAction(act, el) {
       hp: hp,
       state: state,
       maxHp: derived.hpMax,
-      surgesMax: derived.surges,
+      surgesMax: derived.surgesMax || derived.surges,
+      defenses: derived.defenses,
       surgeValue: derived.surgeValue,
       canHp: canHp,
       itemDailyMax: magicItemDailyUses(derived.level, derived.milestones)

@@ -1,0 +1,141 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>4eNEXT to owlbear · 骰子</title>
+<link rel="stylesheet" href="assets/ui.css">
+</head>
+<body class="win-page">
+<!-- v1.5.0：骰子（独立窗口）。两栏：左 = 骰子按钮 / 表达式 / 战斗优势 / 重击 / 4E 预设 / 组合；
+     右 = 本次结果 / 团队共享记录（房间数据 com.4enext-owlbear/rolls，40 条封顶）。
+     用户拍板：**只显示点数**（不做命中 / 豁免判定）、**重击=4E 伤害骰取满**、无优势劣势 / 无暗骰 / 无示例框。
+     规则与掷骰在 assets/dice-core.js（纯函数），4E 预设在 assets/dice-4e.js（动态加载）。 -->
+<div class="win">
+  <div class="win-head" id="head" title="按住这里拖动窗口（位置会记住）">
+    <span class="grip" aria-hidden="true">⠿</span>
+    <div class="t"><b>骰子 · 4eNEXT to owlbear</b><small>表达式 · 战斗优势 +2 · 重击取满 · 团队共享</small></div>
+    <div class="sp">
+      <button class="icon-btn" id="pin" title="回到默认位置（清除本窗口记住的位置）">⌖</button>
+      <button class="icon-btn" id="close" title="关闭窗口">✕</button>
+    </div>
+  </div>
+
+  <div class="bg-strip" id="bg-strip">
+    <span class="bg-text" id="bg-text">正在确认后台脚本…</span>
+    <button class="btn small" id="bg-retry" hidden>后台未连接，点这里重试</button>
+  </div>
+
+  <div class="win-body dice-wrap">
+    <div class="dice-cols">
+      <!-- ================= 左栏：组公式 ================= -->
+      <section class="dice-left">
+        <div class="dice-sec">
+          <div class="sec-head">
+            <h3>骰子</h3>
+            <span class="sec-hint">左键 +1 · 右键 −1</span>
+          </div>
+          <div class="dice-row" id="diceRow">
+            <button class="dice-btn" type="button" data-die="d4" data-count="0" data-bg-soft>
+              <span class="face">d4</span><span class="badge">0</span>
+            </button>
+            <button class="dice-btn" type="button" data-die="d6" data-count="0" data-bg-soft>
+              <span class="face">d6</span><span class="badge">0</span>
+            </button>
+            <button class="dice-btn" type="button" data-die="d8" data-count="0" data-bg-soft>
+              <span class="face">d8</span><span class="badge">0</span>
+            </button>
+            <button class="dice-btn" type="button" data-die="d10" data-count="0" data-bg-soft>
+              <span class="face">d10</span><span class="badge">0</span>
+            </button>
+            <button class="dice-btn" type="button" data-die="d12" data-count="0" data-bg-soft>
+              <span class="face">d12</span><span class="badge">0</span>
+            </button>
+            <button class="dice-btn" type="button" data-die="d20" data-count="0" data-bg-soft>
+              <span class="face">d20</span><span class="badge">0</span>
+            </button>
+            <button class="dice-btn" type="button" data-die="d100" data-count="0" data-bg-soft>
+              <span class="face">d100</span><span class="badge">0</span>
+            </button>
+          </div>
+        </div>
+
+        <div class="dice-sec">
+          <div class="sec-head">
+            <h3>表达式</h3>
+            <span class="sec-hint">2d6+5 / adv(1d20) / max(1d6,4)</span>
+          </div>
+          <div class="expr-row">
+            <button class="btn step" type="button" id="btnModMinus" title="加值 −1">−</button>
+            <input class="expr-input" id="exprInput" autocomplete="off" spellcheck="false" placeholder="1d20 + 5">
+            <button class="btn step" type="button" id="btnModPlus" title="加值 +1">＋</button>
+          </div>
+          <div class="dice-acts">
+            <button class="btn primary" type="button" id="btnRoll" data-bg-soft title="投掷（Enter 也可以）">投掷</button>
+            <button class="btn" type="button" id="btnLast" data-bg-soft title="填回上一次掷过的公式">上一次</button>
+            <button class="btn" type="button" id="btnSave" data-bg-soft title="把当前公式存成本机组合">保存组合</button>
+            <button class="btn ghost" type="button" id="btnClear" data-bg title="清空全桌记录（只有城主能做，要点两次）">清空记录</button>
+          </div>
+          <div class="dice-acts">
+            <button class="btn toggle" type="button" id="btnAdvantage" data-bg-soft title="4E 战斗优势：公式 +2（再点一下撤回）">战斗优势 +2</button>
+            <button class="btn toggle" type="button" id="btnCrit" data-bg-soft title="4E 重击：所有伤害骰取最大值（d6→6），不是骰数翻倍">重击 · 伤害取满</button>
+          </div>
+        </div>
+
+        <div class="dice-sec">
+          <div class="sec-head">
+            <h3>4E 预设</h3>
+            <span class="sec-hint" id="presetMeta">选中已绑定角色卡的 token</span>
+          </div>
+          <div class="preset-box" id="presets">
+            <p class="muted small">选中一枚已绑定角色卡的 token，这里会出现攻击 / 伤害 / 豁免 / 技能 / 先攻预设（只填公式，不判定）。</p>
+          </div>
+          <div class="def-ref" id="defenseRef"></div>
+        </div>
+
+        <div class="dice-sec">
+          <div class="sec-head">
+            <h3>组合</h3>
+            <span class="sec-hint">只存本机</span>
+          </div>
+          <div class="combo-row">
+            <input class="combo-name" id="comboName" autocomplete="off" maxlength="24" placeholder="组合名（可空）">
+          </div>
+          <div class="combo-box" id="combos"></div>
+        </div>
+      </section>
+
+      <!-- ================= 右栏：结果 + 团队历史 ================= -->
+      <aside class="dice-right">
+        <div class="dice-sec">
+          <div class="sec-head">
+            <h3>本次结果</h3>
+            <span class="sec-hint">只显示点数</span>
+          </div>
+          <div class="res-box" id="result">
+            <div class="res-empty">还没掷过。点一颗骰子，再点「投掷」。</div>
+          </div>
+        </div>
+
+        <div class="dice-sec">
+          <div class="sec-head">
+            <h3>记录（团队共享）</h3>
+            <span class="sec-hint" id="histMeta">最多 40 条</span>
+          </div>
+          <div class="share-warn" id="share-warn" hidden>城主不在线：本次结果只在本机。</div>
+          <div class="dice-hist" id="list">
+            <div class="hist-empty">还没有人掷过骰子。</div>
+          </div>
+        </div>
+      </aside>
+    </div>
+  </div>
+
+  <div class="win-foot">
+    <span class="win-flash" id="win-flash"></span>
+    <span class="win-hint">按住标题栏可拖动 · 全桌共享（城主落笔）</span>
+  </div>
+</div>
+<script type="module" src="assets/dice-page.js"></script>
+</body>
+</html>
