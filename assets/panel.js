@@ -13,7 +13,7 @@
 //      只写房间数据与 token 元数据，不靠后台脚本）。
 import OBR from "../vendor/obr-sdk.js";
 import {
-  ID_PANEL, getCards, writeCards, mergeImports, parseExport, loadSample,
+  ID_PANEL, getCardsInfo, writeCards, mergeImports, parseExport, loadSample,
   bindToken, selectedImageToken, esc, fmtTime, onReady
 } from "./common.js";
 import { renderGlanceHTML, cardMeta, deriveGlance, magicItemDailyUses } from "./glance.js";
@@ -35,6 +35,9 @@ const win = createWindow({ name: "panel", head: document.getElementById("head") 
 let cards = [];
 let currentId = "";
 let selectedToken = null;
+/* v1.7.15：卡片这一份数据是存在「房间」（全桌）还是「本机」（房间数据装不下时的兜底）。
+ * 工具栏上会明写「角色卡：本机 / 全桌」，不让用户猜为什么别人看不到这张卡。 */
+let cardsScope = "room";
 // 当前预览这张卡的资源状态（威能 / 专长 / 装备的使用标记、行动点等）
 let liveState = null;
 let liveScope = "room";
@@ -98,6 +101,9 @@ function toolbar(card) {
   return '<div class="card-toolbar">' +
     '<div class="card-toolbar-meta">Lv' + esc(m.level) + (ident ? " · " + esc(ident) : "") +
     (card.updatedAt ? " · 导入于 " + esc(fmtTime(card.updatedAt)) : "") +
+    ' · <span title="' + esc(cardsScope === "local"
+      ? "房间数据装不下这张卡（16KB 上限），卡片列表只记在这台机器上；先攻 / 骰子照旧能写。设置 →「清理房间数据」可以瘦身。"
+      : "角色卡存在房间数据里，全桌共享") + '">角色卡：' + (cardsScope === "local" ? "本机" : "全桌") + "</span>" +
     ' · <span title="' + esc(scopeText(liveScope)) + '">资源：' + (liveScope === "local" ? "本机" : "全桌") + "</span>" +
     ' · <span title="血量写在 token 上，请选中 token 在速览弹窗里改">血量：见 token</span></div>' +
     '<div class="card-toolbar-acts">' +
@@ -209,7 +215,13 @@ async function refreshSelection() {
 // authoritative：刚写完房间数据时直接用本地结果，避免读到还没同步的旧值
 async function refresh(preferId, authoritative) {
   try {
-    cards = authoritative || (await getCards());
+    if (authoritative) {
+      cards = authoritative;
+    } else {
+      const info = await getCardsInfo();
+      cards = info.cards;
+      cardsScope = info.scope;
+    }
   } catch (e) {
     cards = [];
     feedback("读取房间里的角色卡失败：" + (e && e.message ? e.message : e), "ERROR");
@@ -220,15 +232,26 @@ async function refresh(preferId, authoritative) {
   void renderView();
 }
 
+/**
+ * v1.7.15：写卡片列表。返回值 = { scope, saved } 或 null（写不进去且本机也存不下）。
+ * 超预算 / OBR 拒写时 common.js 已经弹过 **ERROR** 通知（ROOM_FULL_MESSAGE 或具体原因），
+ * 这里只把「角色卡：本机」这个状态带回界面。
+ */
 async function saveCards(next) {
+  let res = null;
   try {
-    await writeCards(next);
+    res = await writeCards(next);
   } catch (e) {
     console.error("[4enext] 写入房间数据失败", e);
     feedback("保存失败：房间数据通常只有 GM 能改，请让城主导入（" + (e && e.message ? e.message : e) + "）", "ERROR");
-    return false;
+    return null;
   }
-  return true;
+  cardsScope = res.scope;
+  if (res.scope === "local" && res.saved === false) {
+    feedback("保存失败：房间数据写不进去，本机也存不下这张卡", "ERROR");
+    return null;
+  }
+  return res;
 }
 
 async function importText(text, label) {
@@ -240,7 +263,8 @@ async function importText(text, label) {
     return;
   }
   const res = mergeImports(cards, imports);
-  if (!(await saveCards(res.cards))) return;
+  const saved = await saveCards(res.cards);
+  if (!saved) return;
   const last = imports[imports.length - 1];
   const lastName = String(last && last.char ? last.char.name : "").trim();
   const target = res.cards.filter(function (c) { return String(c.name).trim() === lastName; })[0];
@@ -283,7 +307,8 @@ async function removeCard(id) {
     return; /* v1.7.8：取消不再弹「已取消」（窗口自己就关掉了） */
   }
   const next = cards.filter(function (c) { return c.id !== id; });
-  if (!(await saveCards(next))) return;
+  const saved = await saveCards(next);
+  if (!saved) return;
   await refresh("", next);
   /* v1.7.8：删除成功不再弹通知（这张卡立刻从列表里消失）。 */
 }

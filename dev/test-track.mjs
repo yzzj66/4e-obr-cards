@@ -50,13 +50,20 @@ const OBR = {
 
 const tmp = path.join(os.tmpdir(), "4enext-track-test");
 fs.mkdirSync(tmp, { recursive: true });
-fs.writeFileSync(path.join(tmp, "obr-stub.mjs"), "const OBR = " + JSON.stringify({}) + ";\nexport default globalThis.__OBR__;\n", "utf8");
+fs.writeFileSync(path.join(tmp, "obr-stub.mjs"), "export default globalThis.__OBR__;\n", "utf8");
 globalThis.__OBR__ = OBR;
-fs.writeFileSync(path.join(tmp, "common-stub.mjs"), 'export const NS = "com.4enext-owlbear";\n', "utf8");
+/* v1.7.15：track.js 现在会从 common.js 取「房间数据体积预算」那套函数（writeRoomKey / notify /
+ * ROOM_FULL_MESSAGE），所以这里改成把**真的** common.js + cards-core.js 拷过来（只换 OBR 的 import），
+ * 用一行 NS 常量冒充会把 import 打断。 */
+fs.copyFileSync(path.join(ROOT, "assets", "cards-core.js"), path.join(tmp, "cards-core.mjs"));
+let commonSrc = fs.readFileSync(path.join(ROOT, "assets", "common.js"), "utf8");
+commonSrc = commonSrc.replace('from "../vendor/obr-sdk.js"', "from " + JSON.stringify(pathToFileURL(path.join(tmp, "obr-stub.mjs")).href));
+commonSrc = commonSrc.replace('from "./cards-core.js"', 'from "./cards-core.mjs"');
+fs.writeFileSync(path.join(tmp, "common.mjs"), commonSrc, "utf8");
 
 let src = fs.readFileSync(path.join(ROOT, "assets", "track.js"), "utf8");
 src = src.replace('from "../vendor/obr-sdk.js"', 'from ' + JSON.stringify(pathToFileURL(path.join(tmp, "obr-stub.mjs")).href));
-src = src.replace('from "./common.js"', 'from ' + JSON.stringify(pathToFileURL(path.join(tmp, "common-stub.mjs")).href));
+src = src.replace('from "./common.js"', 'from "./common.mjs"');
 const modPath = path.join(tmp, "track.mjs");
 fs.writeFileSync(modPath, src, "utf8");
 

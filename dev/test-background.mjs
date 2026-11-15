@@ -1034,15 +1034,15 @@ run(OBR, stubBuilder("CURVE"), stubBuilder("SHAPE"), stubBuilder("TEXT"));
     if (!savedMsgs.length) bad("落库后没有广播 CH_ROLL_SAVED");
     else ok("落库后广播 CH_ROLL_SAVED（" + savedMsgs.length + " 次）");
 
-    /* 40 条封顶 */
-    for (let i = 0; i < 45; i++) {
+    /* 20 条封顶（v1.8.0：40 → 20） */
+    for (let i = 0; i < 25; i++) {
       await sendRoll({ rollId: "cap-" + i, ts: 3000 + i, rollerName: "甲", dice: [{ type: "d20", value: 10 }], modifier: 0, total: 10 });
     }
     await sleep(200);
     const capped = roomMeta[KEY_ROLLS];
-    if (!capped || capped.rows.length !== 40) bad("骰子历史没有封顶到 40：" + (capped && capped.rows.length));
-    else if (capped.rows[0].rollId !== "cap-44") bad("封顶后最新的没有排最前：" + capped.rows[0].rollId);
-    else ok("骰子历史封顶 40 条（最新在前）");
+    if (!capped || capped.rows.length !== 20) bad("骰子历史没有封顶到 20：" + (capped && capped.rows.length));
+    else if (capped.rows[0].rollId !== "cap-24") bad("封顶后最新的没有排最前：" + capped.rows[0].rollId);
+    else ok("骰子历史封顶 20 条（最新在前）");
 
     /* 玩家客户端只广播、不写 */
     const beforePlayer = JSON.stringify(roomMeta[KEY_ROLLS]);

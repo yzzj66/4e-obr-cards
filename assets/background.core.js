@@ -1,157 +1,30 @@
-/* 4eNEXT to owlbear · 后台逻辑（单文件「经典脚本」，没有任何 import / export）
+/* 4eNEXT to owlbear · 后台逻辑（单文件「经典脚本」，没有 import / export）
  * ---------------------------------------------------------------------------
- * 这个文件不直接给浏览器加载：dev/build-background.mjs 会把它和
- * vendor/obr-sdk.js（去掉末尾 export{}）拼成 assets/background.bundle.js，
- * background.html 只加载那一个 <script src>（不带 type="module"）。
+ * 本文件不直接被浏览器加载：dev/build-background.mjs 把它和 vendor/obr-sdk.js
+ * （去掉末尾 export{}）拼成 assets/background.bundle.js，background.html 只加载那一个
+ * <script src>。外层作用域已经提供了 OBR（SDK 的 default export）。
  *
- * 约定：外层作用域已经提供了 OBR（@owlbear-rodeo/sdk 的 default export）。
+ * 窗口（各自一个 popover id，可同时打开；尺寸都是常量，见 WINS / *_W / *_H）：
+ *   /info 速览 · /panel 角色卡 · /initiative-window 先攻列表 · /initiative-strip 先攻条
+ *   /dice-window 骰子 · /dice-history-window 记录 · /hp-edit 血条编辑 · /settings-window 设置
+ * 入口：工具栏 ×5（速览 / 角色卡 / 先攻 / 骰子 / 设置）、右下浮动按钮、右键 IMAGE token
+ *   （绑定角色卡 / 加入 · 移出先攻 / 添加 · 移除血条组件 / 编辑血条）。
  *
- * v1.3.1：功能拆成**各自独立的窗口**（不再是一个面板的三个 tab），每个窗口有自己的 popover id：
- *   · 速览       /info        选中绑定的 token 自动弹（页面 info.html，按 token 记位置）
- *   · 角色卡面板 /panel       导入 / 列表 / 预览（页面 panel.html，按窗口名记位置）
- *   · 先攻       /initiative-window  独立窗口（页面 initiative.html）
- *   · 骰子       /dice-window        独立窗口（页面 dice.html，内容 v1.5.0 实现）
- * v1.3.2：把工具栏补齐成「一排入口」，并新增设置窗口：
- *   · 速览也有了工具栏入口（没选中时给出「先选 token」的提示，不再静默）；
- *   · 设置/关于 /settings-window（页面 settings.html，左侧分栏 + 右侧内容，同样可拖动 / 视口夹紧）。
- * v1.4.0：先攻条（按 docs/spec-initiative.md 实现）
- *   · 工具栏「先攻」不再打开 880×640 的大窗口，而是打开**屏幕顶部的先攻条**：
- *     popover id /initiative-strip（v1.7.11 起回退 popover：modal + disablePointerEvents 会让整条点不动）、顶部 45、默认 720×170（展开）、120×40（折叠）；
- *     宽度 **v1.6.2 起固定 720**（只有视口太窄时才缩，下限 410；不再按控制行测量），高度按 phase 三档 170 / 180 / 200（v1.7.10 加高）；
- *     位置只记「相对屏幕中线的偏移」（localStorage["4enext/strip-pos"]），整条可拖动、双击拖动柄回中。
- *   · 原来的列表窗口还留着（?view=list，id 仍是 /initiative-window），先攻条上的「≡」打开它：
- *     重掷全部 / 同步加值 / 上下移 / 删除 / 清空这些管理动作在那里。
- *   · 房间数据新增 phase / surprise / d20 / tb（只加字段、不改键名），条目上限 200 → 60；
- *     normalize 截断不抛错，写失败降级本机 localStorage["4enext/state/initiative"] 并通知。
- *   · 玩家「结束我的回合」仍然是广播请求，GM 侧按规格 §5 做四道校验（含「正在推进中」）。
- * v1.7.14：先攻条背景**真透明** —— 逐行照抄 FullPeople/obr-suite（详见 stripPopoverOptions 的注释）：
- *   popover 参数按他们的 openPanel() 原样排（disableClickAway + hidePaper 在最后），
- *   透明的活儿交给页面：initiative.html 的 html/body **inline** background:transparent!important
- *   + <meta name="darkreader-lock"> + <style data-overlay-canvas> 里的 :root{color-scheme:normal!important}。
- *   前三版（v1.7.3 透明 body / v1.7.6 六层 !important / v1.7.10 换 modal）失败的原因就是**写法层级不够**：
- *   类名 + 样式表 !important 压不住后加载样式表 / 暗色扩展注入的 !important，inline !important 才压得住；
- *   modal + disablePointerEvents 那条路还会把整条的交互打穿，永远不要再走。
- * v1.7.13：速览窗「威能 / 装备全点不动」回归 —— info popover 的 URL 带 **?v=<版本>**：
- *   HTML 与 info.js / glance.js / css 全部换 URL，宿主 / 浏览器不会再拿旧缓存的页面
- *   （旧版威能 chip 是 <span>、装备行不是 button，点起来就是「一点没改」）。页面内事件委托
- *   同时改挂 document 捕获阶段，CSS 对 body.info-body 容器链显式写回 pointer-events:auto。
- * v1.6.0：血条扩展 + Boss（按 docs/spec-hpbar-boss.md 的 P0–P3，选方案 A：token 附带）
- *   · HP 红条 + 临时生命 +N 仍在上（20s），新增**蓝色回复力条**在下（12s，间距 3s，共用 left/w）；
- *   · **四防四角盾**（AC / 强韧 / 反射 / 意志，直径 30s）：SDK 3.1.0 没有 RING / 盾牌图元，
- *     全部用 buildCurve().points() 手绘（盾形多边形 / 环形扇区 / 名牌 / 锁）；
- *   · 右键菜单新增「添加 / 移除血条组件」（独立键 hp-bar/enabled，关闭写 false 不 delete）
- *     与「显示为 Boss / 隐藏 Boss」（hp.boss，布尔或对象都读，写回一律对象；**v1.7.9 已整组删除**）；
- *   · Boss 样式（方案 A，**v1.7.9 已删**，环改成所有 token 的默认血条）：环形血条（48 段）+ 名牌 + 分段线 + 锁，压制 HP 普通条
- *     （回复力条与四防保留）；玩家端 locked 时按 25% 阶梯向上取整、不画数字与四防。
- * v1.6.1：四防从「四角」改「一排」（用户截图对照 Full Suite 图 2，真机 v1.6.0 已跑通）
- *   · 顺序固定 **强韧 → 反射 → 意志 → AC**（AC 永远最右，半透明白色图标：fill 白 @0.18 + 白描边 @0.85），
- *     整排在 HP 红条上方 gap 处，同一行（y 相同）、x 递增；圆心间距 = 盾直径 + DEF_GAP(6s)；
- *   · 窄 token 退化（写死规则）：宽度放不下四枚时**优先保留 AC**，再依次丢意志 / 反射 / 强韧；
- *     一枚都放不下、或这一排会顶出 token 上沿 → 整排不画（四防仍可在速览面板里看）；
- *   · 只动四防的摆位与样式：HP 文本 / 蓝条 / 环 / Boss 环 / 锁的数值与位置一律不变。
- * v1.7.0：骰子记录搬成独立窗口 + 投骰动画（按 docs/spec-dice.md §4 的公式，参考 FullPeople/obr-suite）
- *   · 骰子记录从骰子窗口右栏搬出来，变成**第二个独立 popover** /dice-history-window
- *     （页面 dice-history.html，注册进 WINS.diceHistory，沿用 window.js 的拖动 / 位置记忆 / 视口夹紧）；
- *     骰子窗口随之变窄（760×620 → 520×620，只留骰子 / 表达式 / 本次结果 / 预设 / 组合）；
- *   · 两个窗口独立开关：骰子窗口的「记录窗口」按钮发 CH_DICE_HIST_CMD，本文件开 / 关并回
- *     CH_DICE_HIST_STATE（页面据此显示开 / 关）；
- *   · 投骰动画页 effect.html 由**骰子窗口**在算完结果后用 OBR.modal.open 打开
- *     （全屏 + 透明 + disablePointerEvents，不挡地图）；公式在 assets/dice-core.js（纯函数，node 可测）。
- *   · 落库规则不变：仍然「新的在前 + 超过 40 条删最旧」。
- * v1.7.2：血条组件编辑小窗（参考 FullPeople/obr-suite 的 src/modules/hpBar/）
- *   · 右键「添加血条组件」不再只写开关：写完 hp-bar/enabled = true 后打开 hp-edit.html
- *     （340×150 的可拖动小窗，注册进 WINS.hpEdit，位置按窗口名单独记）；
- *   · 窗里能填 HP（20 / 20/20 / +5 / -3 / 15+5）、四防（AC / 强韧 / 反射 / 意志，留空 = 不画那枚盾）
- *     与回复力（3/3），保存写 token metadata com.4enext-owlbear/hp；
- *   · 没绑定角色卡的怪物 / 杂兵也能单独加血条（绑了卡就先带入卡里的数值）；
- *   · 编辑窗 ↔ 后台三个频道：target（版本租约）/ ready（补发握手）/ saved（立刻重画），
- *     协议是规格 §2.2 的简化版；写盘由**页面**自己 updateItems（后台挂了也存得住）；
- *   · 「移除血条组件」照旧写 false、**不删数据**，下次「添加血条组件」能恢复。
- * v1.7.4：骰子窗口收窄 + 「记录窗口」打不开修复
- *   · WINS.dice：520×620 → **320×620**（用户要「窄而高」的竖条；页面里骰子 4+3 两排、
- *     按钮 2×2 换行、字号小一号、「本次结果」固定在窗口底部 —— 见 dice.html / assets/ui.css）；
- *   · 记录窗口开关链路加固（用户真机：「记录窗口」按钮在，点了没有独立窗口出现）：
- *     ① openDiceHistory 失败会**重试一次**，仍失败就 ERROR 通知（带「先关掉骰子窗口再点一次」提示）；
- *     ② toggle 前先用 OBR.popover.getWidth 确认记录窗口**真的还开着**，状态跟丢时直接重开；
- *     ③ 记录窗口默认**贴着骰子窗口**开（右 → 左 → 下 → 上，见 winDefaultPos），
- *        不再正好叠在骰子窗口里（320×620 会把 380×380 整块盖住 = 看起来像没打开）；
- *     ④ 记录窗口页面加载完发 { op: "ready" } 握手 → 本文件把「开着」补上（下次点才是关闭）；
- *     ⑤ 骰子窗口那侧还有一层兜底（等不到回执就自己 OBR.popover.open 同一个 id）。
- * v1.7.5：四防一排的**样式**微调（只动 token 上这一排，别的什么都不改；基线 v1.7.4）
- *   · 强韧 / 反射 / 意志 从**盾形改成圆形**（buildCurve().points() 手绘的折线圆，直径 30s → **22s**）；
- *     数字跟着缩小（≈ 11s，原来两位数字 ≈ 13s+），底色仍是橙 #e3b341 / 绿 #56d364 / 紫 #a371f7 @0.9；
- *   · **AC 保持半透明白盾 + 直径 30s 不变**（fill 白 @0.18 + 白描边 @0.85 + 白字黑描边）；
- *   · 顺序（强韧 → 反射 → 意志 → AC，AC 永远最右）、整排居中、贴 HP 红条上方 gap 的位置都不变；
- *   · 一排变成**两种直径混排**（3 个 22s 圆 + 1 个 30s 盾）：宽度 = Σ 各枚直径 + (n−1)×DEF_GAP，
- *     圆心 / 盾心仍对齐同一个 rowCY；窄 token 的退化阈值随之按 22s 重算（仍先丢意志 → 反射 → 强韧，AC 最后才丢）。
- * v1.7.6：四防一排按参考图 15 重排（只动这一排的直径 / 间距 / 字号）
- *   · 三防圆 22s → **30s**，与 AC 盾**同直径**；数字统一放大到 **≈15s**（三位 ≈14s）；
- *   · 整排**左右铺满 token**：左缘 = token 左缘 + 4s、右缘 = token 右缘 − 4s，
- *     间距按 `(可用宽 − 枚数×直径) / (枚数−1)` **均分**（四枚时 = (可用宽 − 4d)/3），不再「挤在中间」；
- *   · 退化顺序不变（先丢意志 → 反射 → 强韧，AC 最后）；判据改成「枚数 × 30s ≤ 可用宽」；
- *   · 记录窗口改成**骰子窗口页面直接 popover.open**（后台新增 adopt / force-open 两个 op）。
- * v1.7.7：选中「没绑定卡但有血条」的 token 也弹血条编辑窗（用户：改血量只能右键「添加血条组件」，太绕）
- *   · 「选中即弹」从「只有速览」变成两支（单选才判断，多选一律不弹）：
- *       已绑定角色卡 → 速览 /info（v1.2 起的老行为，没变）；
- *       没绑定卡、但有血条数据（com.4enext-owlbear/hp 里有值）或开关（hp-bar/enabled === true）
- *         → 血条编辑窗 /hp-edit（v1.7.2 那个 340×150 的窗，这回从选中直接进）；
- *       没卡也没血条 → 什么都不弹（老行为）。
- *   · **同一个 token 只自动弹一次**（hpAutoPopped；token 换了 / 取消选中就清空）：
- *     用户把编辑窗关掉 / 缩放地图 / 保存血量引起的 selection / scene 事件都不会把它弹回来，
- *     想再改就右键「编辑血条」（新增的菜单项）或工具栏「添血条」那一套。
- *   · 右键新增「编辑血条」（hp-bar/enabled === true 时出现）：不看选中，直接开这枚 token 的编辑窗。
- *   · Boss 锁（hp.locked）在**玩家端**让编辑窗只读（藏保存 + 提示「已锁定」，见 hp-edit-core.js
- *     的 hpEditReadOnly）；城主不受这条限制 —— locked 的语义是「玩家端隐藏精确数字」，
- *     默认还是 true，若据此把城主的编辑窗也锁死，用户点开就改不了（真机一定会报）。
- * v1.7.9：**血条全部改成环形 + 去掉 Boss 模式 + 去掉回复力蓝条 + 四防回到四角**（用户 2026-11-15 定稿）
- *   · 去掉 Boss 模式：右键「显示为 Boss / 隐藏 Boss 血条」两项、速览窗里的「显示为 Boss」开关、
- *     以及 token 上的**名牌 / 分段线 / 锁**全部删除；hp.boss 字段只为旧数据兼容而保留（不再读 / 不再画）；
- *   · **所有**带血量的 token 都画**环形血条**（原来只有 Boss 画）：Ro = 半短边 − 2s、环厚 10s、48 段，
- *     直接复用 ringSectorPoints；空余部分是暗色底环，血量按 cur/max 从 12 点顺时针填；
- *     **直的 HP 条 / 蓝色回复力条不再画**（回复力仍可在速览 / 编辑窗里看）；
- *   · HP 数字（cur/max，含临时生命 +N）保留，放在**环内正中**（带描边，压得住 token 图）；
- *   · 四防回到**四角**：左上黄=强韧 / 右上绿=反射 / 左下紫=意志 / 右下=AC（半透明白盾，shieldPoints），
- *     直径 30s、字 15s、贴 token 四角内侧 4s；窄 token 退化仍是**AC 优先保留**（先丢意志 → 反射 → 强韧）；
- *   · 环形的像素常数在 barLayout() 顶部常量区（RING_THICK / RING_INSET / RING_SEGMENTS），真机微调只改那里。
- * v1.7.3：先攻条「移除 / 常驻 / 透明」三件事
- *   · 右键菜单**动态互斥**：这个 token 已在先攻里 → 只显示「移出先攻」（点了从 entries 删掉 + 刷新条 +
- *     通知「已移出」）；不在 → 显示「加入先攻」「隐形加入先攻」。
- *     SDK 3.1.0 的 ContextMenuIconFilter 只有 min/max/permissions/roles/every/some（**没有 none**），
- *     也读不到房间数据 → 把「在不在名单里」镜像到 token 元数据 com.4enext-owlbear/in-init 上，
- *     filter 读它（与 v1.6.0 的 hp-bar/enabled 同一套做法；见 syncInitFlags / initMenuFilter）；
- *   · token 被删除（scene.items.onChange 里「见过 → 消失」）→ 自动清掉它的先攻条目 + 游标顺移；
- *     先攻条卡片上也加了 ✕（GM 直接删）；
- *   · 先攻条**常驻**：disableClickAway 本来就开着；进入房间按本机设置 4enext/strip-autostart（默认开）
- *     自动打开，关掉（✕）后本次会话不再自动弹（4enext/strip-closed-this-session），
- *     「—」最小化到折叠药丸仍然常驻；
- *   · 先攻条**外壳透明**（卡片仍不透明，右侧空列表区不再铺深色，见 assets/ui.css）。
- * v1.6.2：两处收尾修复
- *   ① 速览弹窗删掉 HP 绿条下面那条「彩色四防箭头条」（assets/glance.js 的 .gl4-def-row）——
- *      四防数值仍由下面的四张数值卡（.gl4-defs）显示；token 上的四防一排（v1.6.1）一个字没动；
- *   ② 先攻条**宽高改成常量**：折叠 120×40 / 展开 720（仅视口太窄时缩）×(170|180|200)。
- *      v1.6.1 的页面量的是控制行 scrollWidth → 投骰后点数 / 名字一变整条就变窄（用户报的 bug）。
- *      现在页面只算常量，本文件的 snapStripSize() 再把页面报上来的尺寸兜回常量；
- *      卡片区 .strip-items 内部横向滚动，条右侧空列表区域保持深色（不透明）。
- * v1.5.0：骰子（按 docs/spec-dice.md 的 P0–P3，用户拍板覆盖 D1–D3）
- *   · 骰子窗口从 660×560 加宽到 760×620（仍按视口夹紧），两栏：组公式 / 结果 + 团队历史；
- *   · 规则全在 assets/dice-core.js（纯函数），4E 预设在 assets/dice-4e.js；本文件只负责**城主落库**：
- *     收 CH_ROLL → 校验归一化（同 dice-core 的 rollNorm）→ 幂等合并（同 rollId 不重复插）→
- *     写房间数据 com.4enext-owlbear/rolls（rows 上限 40）→ 广播 CH_ROLL_SAVED；
- *   · 不做命中判定 / 豁免判定 / 优势劣势 / 暗骰（用户拍板）：载荷里没有 target / hit。
- * 入口：
- *   1) manifest.action   → 房间左上角的扩展图标（角色卡面板，由 manifest 提供、不依赖本文件）
- *   2) OBR.tool.create×5 → 左侧工具栏：速览 / 角色卡 / 先攻 / 骰子 / 设置（各开各的窗口）
- *   3) OBR.popover.open  → 右下角浮动 4E 按钮（角色卡面板，与参考实现 character-cards 相同写法）
- *   4) 右键 IMAGE token   → 绑定角色卡 / 加入先攻 / 隐形加入先攻 / 移出先攻（仅 GM，菜单随先攻名单动态变）
- *                          + 添加 / 移除血条组件 / 编辑血条（v1.7.7）
- *                            （v1.7.9：「显示为 Boss」「隐藏 Boss 血条」两项已删除）
- * 外加玩家「结束我的回合」请求（只由 GM 客户端落笔）。
- * 参考实现 FullPeople/obr-suite 也是「一个功能一个 popover」：inINIT 与 dice 各自有
- * POPOVER_ID + registerPanelBbox，面板之间靠 id 区分、可同时打开。
+ * 房间数据（键前缀 com.4enext-owlbear/，宿主硬上限 16 KB）：
+ *   · 一律经 roomWriteGuarded() 写：先按预算（14 KB）算体积，超了**不写** + ERROR 通知；
+ *   · 角色卡写不下就降级本机（localStorage["4enext/cards-local"]），写入前同样查单卡 2 KB；
+ *   · 键：cards（精简卡）/ initiative（≤40 条）/ rolls（≤20 条）/ 其余都是小设置。
  *
- * 自诊断：每一步失败都 OBR.notification.show(..., "ERROR")，成功则在启动后汇总一条
- *        INFO 通知（可用 localStorage["4enext/diag"]="0" 关掉）。
- *        另外 background.html 里有一块页面内日志，直接打开 background.html 也能看到。
+ * 几条不能改的约定（改了会破真机）：
+ *   · manifest 不加 action；只改 owlbear-plugin/ 下的文件，不自造构建步骤；
+ *   · 先攻条只用 popover（hidePaper + disableClickAway）；modal + disablePointerEvents
+ *     会把整条交互打穿，永远不要再走那条路；
+ *   · 透明靠页面 inline !important + <meta name="darkreader-lock">（照抄 FullPeople/obr-suite，
+ *     类名 / 样式表 !important 压不住后加载样式表与暗色扩展）；
+ *   · 频道名 / 本机键名 / 数据键名不改（旧存档不丢），与 assets/common.js 逐字一致；
+ *   · 写入失败一律看得见（ERROR / WARNING），成功不弹通知（v1.7.8 起的口径）。
+ *
+ * 版本史见 CHANGELOG.md；常数在哪调、怎么重建 bundle 见 docs/NOTES.md。
  * ------------------------------------------------------------------------- */
 
 var NS = "com.4enext-owlbear";
@@ -161,94 +34,125 @@ var ID_BUTTON = NS + "/button";
 var ID_INFO = NS + "/info";
 var ID_PANEL = NS + "/panel";
 var ID_BIND = NS + "/bind";
-/* v1.3.1：先攻 / 骰子各自独立的 popover id（与 assets/common.js 的 ID_INIT_WIN / ID_DICE_WIN 必须一致）。 */
+
 var ID_INIT_WIN = NS + "/initiative-window";
 var ID_DICE_WIN = NS + "/dice-window";
-/* v1.7.0：骰子记录是**另一个 popover**（与 assets/common.js 的 ID_DICE_HIST 必须一致）。
- * id 与骰子窗口不同 → 记录窗口和骰子窗口可以同时打开、各自关闭。 */
+
 var ID_DICE_HIST = NS + "/dice-history-window";
-/* v1.7.2：血条组件编辑小窗（与 assets/common.js 的 ID_HP_EDIT 必须一致）。
- * 右键「添加血条组件」→ 写开关 + 开这个窗口；id 与其它窗口都不同，可以和速览 / 先攻条同时开着。 */
+
 var ID_HP_EDIT = NS + "/hp-edit";
-/* v1.3.2：设置 / 关于窗口（与 assets/common.js 的 ID_SETTINGS_WIN 必须一致）。 */
+
 var ID_SETTINGS_WIN = NS + "/settings-window";
-/* v1.4.0：先攻条是**另一个 popover**（屏幕顶部居中的条），
- * id 与列表窗口 /initiative-window 不同 → 两个可以同时开着（与 assets/common.js 的 ID_STRIP 一致）。 */
+
 var ID_STRIP = NS + "/initiative-strip";
-var TOOL_ID = NS + "/panel-tool";      /* 旧 id 不变：工具栏里「角色卡」图标的位置不会跳 */
+var TOOL_ID = NS + "/panel-tool";
 var TOOL_INIT_ID = NS + "/initiative-tool";
 var TOOL_DICE_ID = NS + "/dice-tool";
-/* v1.3.2：工具栏补的两个入口（速览 / 设置）。旧 id 一个都没动，老用户看到的图标顺序不会跳。 */
+
 var TOOL_GLANCE_ID = NS + "/glance-tool";
 var TOOL_SETTINGS_ID = NS + "/settings-tool";
-var CH_HELLO = NS + "/diag-hello"; /* background → 各页面：我起来了 */
-var CH_PING = NS + "/diag-ping";   /* 页面 → background：在吗 */
-var CH_PONG = NS + "/diag-pong";   /* background → 页面：在，状态如下 */
-var PLUGIN_VERSION = "1.7.14";
-/* token 上的血量（与 assets/track.js 的 KEY_HP 必须一字不差）。 */
+var CH_HELLO = NS + "/diag-hello";
+var CH_PING = NS + "/diag-ping";
+var CH_PONG = NS + "/diag-pong";
+var PLUGIN_VERSION = "1.7.15";
+
 var KEY_HP = NS + "/hp";
-/* v1.6.0：血条组件开关。**独立键**，不塞进 hp（hp 是数值容器，写开关会误触发判空）；
- * 语义照参考实现 hpBar：flag === false 才不画，undefined 视为画 → 老 token 升级后血条不消失。
- * 与 assets/common.js / assets/track.js 的同名常量必须一字不差。 */
+
 var KEY_HPBAR = NS + "/hp-bar/enabled";
-/* v1.6.0：玩家端量化阈值（场景元数据；全桌同一份，缺省 25%）。 */
+
 var KEY_PLAYER_THRESHOLD = NS + "/settings.playerThreshold";
 
-/* ---------------------------------------------------------------------------
- * 像素常数集中区（s = 1 时的数值；真机微调只改这里 + barLayout()）
- * ---------------------------------------------------------------------------
- * 所有几何都由 s 缩放：s = min(token 渲染宽, 高) / 网格 dpi，并夹在 0.2~6
- * （上界防止 4×4 巨图把环画到屏外）。常数表见 docs/NOTES.md「关键常量在哪」。
- *   · **v1.7.9 起 HP 只有环形血条**（直的 HP 条 / 蓝条已删）：
- *     Ro = 半短边 − 2s、环厚 10s、48 段（复用 ringSectorPoints，见 barLayout 顶部）
- *   · 四防回到**四角**：左上强韧 / 右上反射 / 左下意志 / 右下 AC 盾，
- *     直径 30s、贴 token 四角内侧 4s（v1.6.1~v1.7.8 的「一排」已删）
- *   · v1.6.0 的 Boss 环 / 名牌 / 分段线 / 锁**全部删除**（hp.boss 字段只为旧数据兼容而保留，不再读）
- * zIndex 全部固定并 disableAutoZIndex：环底 9500 / 环填充 9800 / 盾 15000 / 盾数字 16000 / HP 数字 30000。
- * ------------------------------------------------------------------------- */
-/* v1.7.6（用户按参考图 15）：三防圆 22 → **30**，与 AC 盾**同直径**（参考图里四个肉眼一样大）。 */
+var ROOM_MAX_BYTES = 14 * 1024;
+var ROOM_HARD_BYTES = 16 * 1024;
+var ROOM_FULL_MESSAGE = "房间数据已满（16KB）：请减少导入的角色卡，或清理骰子历史";
+
+var LS_CARDS = "4enext/cards-local";
+
+/* ---- 0. 房间数据体积预算（超 14 KB 不写 → 降级本机 + ERROR） ---- */
+function roomBytesOf(meta, patch) {
+  var box = {};
+  if (meta && typeof meta === "object") {
+    for (var k in meta) {
+      if (Object.prototype.hasOwnProperty.call(meta, k) && k.indexOf(NS) === 0) box[k] = meta[k];
+    }
+  }
+  if (patch && typeof patch === "object") {
+    for (var k2 in patch) {
+      if (Object.prototype.hasOwnProperty.call(patch, k2)) box[k2] = patch[k2];
+    }
+  }
+  try {
+    return JSON.stringify(box).length;
+  } catch (e) {
+    return 0;
+  }
+}
+
+async function roomWriteGuarded(key, value) {
+  var meta = {};
+  try { meta = await OBR.room.getMetadata(); } catch (e) { meta = {}; }
+  var patch = {};
+  patch[key] = value;
+  var bytes = roomBytesOf(meta, patch);
+  if (bytes > ROOM_MAX_BYTES) return { ok: false, reason: "full", bytes: bytes };
+  try {
+    await OBR.room.setMetadata(patch);
+    return { ok: true, reason: "", bytes: bytes };
+  } catch (e2) {
+    return { ok: false, reason: "error", bytes: bytes, error: e2 };
+  }
+}
+
+function localCardsFallback() {
+  try {
+    var raw = localStorage.getItem(LS_CARDS);
+    if (!raw) return null;
+    var box = JSON.parse(raw);
+    if (box && Array.isArray(box.cards) && box.cards.length) {
+      return { cards: box.cards, updatedAt: typeof box.updatedAt === "number" ? box.updatedAt : 0 };
+    }
+  } catch (e) {  }
+  return null;
+}
+
 var SHIELD_DIAMETER = 30;
 var DEF_CIRCLE_DIAMETER = 30;
-/* 圆的折线段数：24 段在 token 尺寸下已经看不出多边形角，点数只有盾形（87 点）的 1/4。 */
+
 var DEF_CIRCLE_SEGMENTS = 24;
-/* 四防离 token 内边 4s（v1.7.9：贴四个角内侧）。 */
+
 var SHIELD_INSET = 4;
-/* v1.6.1 的固定间距 6s。v1.7.9 四角摆位不再用间距；常量留作对照（老文档 / 自测里的参照线）。 */
+
 var DEF_GAP = 6;
-/* v1.6.1：AC 用半透明白色图标（强韧 / 反射 / 意志 仍是各自的实色）。 */
+
 var DEF_AC_FILL_OPACITY = 0.18;
 var DEF_AC_STROKE_OPACITY = 0.85;
 var DEF_FILL_OPACITY = 0.9;
 var DEF_STROKE_OPACITY = 0.45;
-/* v1.7.9：环形血条（原来只有 Boss 才画，现在所有带血量的 token 都画）。
- * 常量放在这里、barLayout() 顶部再取一次，真机微调只改这两处。 */
-var HP_RING_THICK = 10;     /* 环厚 10s */
-var HP_RING_INSET = 2;      /* Ro = 半短边 − 2s */
-var HP_RING_SEGMENTS = 48;  /* 48 段（不要 128：脏矩形重绘翻倍） */
+
+var HP_RING_THICK = 10;
+var HP_RING_INSET = 2;
+var HP_RING_SEGMENTS = 48;
 var HP_RING_BG_OPACITY = 0.55;
 var PLAYER_THRESHOLD_DEFAULT = 25;
 
-/* 颜色一律取 assets/ui.css 的 :root（--blue / --green / --red / --orange / --line / --bg），
- * 不引入第二套色板（规格 §6.4 E 的结论）。 */
 var COLOR_HP_FILL = "#a52424";
-/* v1.7.9：环的暗色底（空余部分）——原来 Boss 环用的那个深色，去掉 Boss 后改成通用底色。 */
+
 var COLOR_RING_BG = "#0b0f14";
 var DEF_KEYS = ["ac", "fort", "reflex", "will"];
-/* 读取 / 摆放顺序：左上强韧 → 右上反射 → 左下意志 → 右下 AC。
- * DEF_KEYS 是读取 / 签名顺序，不要混用（签名要稳定，摆位要按四角）。 */
+
 var DEF_ROW = ["fort", "reflex", "will", "ac"];
-/* v1.7.9：四防回到**四角**（用户指定坐标）—— 左上黄=强韧 / 右上绿=反射 / 左下紫=意志 / 右下盾=AC。 */
+
 var DEF_CORNER = {
   fort: "left-top",
   reflex: "right-top",
   will: "left-bottom",
   ac: "right-bottom"
 };
-/* 窄 token 放不下时的**丢弃顺序**（先丢意志 → 再丢反射 → 再丢强韧；AC 不在这张表里 = 最后才丢）。 */
+
 var DEF_DROP = ["will", "reflex", "fort"];
-/* v1.6.1：AC 改成「半透明白」（fill 白 + 白描边），三防沿用 v1.6.0 的橙 / 绿 / 紫。 */
+
 var DEF_COLORS = { ac: "#ffffff", fort: "#e3b341", reflex: "#56d364", will: "#a371f7" };
-/* role → zIndex：环底 9500 / 环填充 9800 / 盾 15000 / 盾数字 16000 / HP 数字 30000。 */
+
 var BAR_Z = {
   "ring-bg": 9500,
   "ring-fill": 9800,
@@ -256,11 +160,9 @@ var BAR_Z = {
   "shield-text": 16000,
   "bar-text": 30000
 };
-/* v1.3.0：token 上的先攻加值 / 房间数据里的先攻状态 / 玩家结束回合请求频道
- * （与 assets/common.js、assets/initiative.js 里的同名常量必须一字不差）。 */
+
 var KEY_INIT = NS + "/init";
-/* v1.7.3：右键菜单的三项 id（「加入先攻」「隐形加入先攻」在名单空着时是常驻的，
- * 「移出先攻」只在名单非空时注册）。每次名单变化都按这三项 remove + create 重注册。 */
+
 var INIT_MENU_ADD = NS + "/init-add";
 var INIT_MENU_ADD_HIDDEN = NS + "/init-add-hidden";
 var INIT_MENU_REMOVE = NS + "/init-remove";
@@ -270,20 +172,11 @@ var CH_INIT_REQUEST = NS + "/init-request";
 var BUTTON_SIZE = 64;
 var RIGHT_OFFSET = 12;
 var BOTTOM_OFFSET = 92;
-/* v1.2.1：速览弹窗整体加宽（400 宽时 HP 行 / 数值行 / 属性三列都挤），并保证小屏不超出视口。 */
+
 var INFO_W = 660;
 var INFO_H = 700;
 var INFO_MIN_W = 360;
 
-/* v1.2.2：速览弹窗「可自由拖动」。手感 / 边界都在这几个常量里（说明：docs/popover-drag.md）。
- *   INFO_TOKEN_GAP     自动定位时，弹窗底边与 token 顶边的间距
- *   INFO_VIEW_MARGIN   拖动 / 夹取时离视口边缘的最小距离（取 16：与 MUI Popover 的默认
- *                      marginThreshold 对齐，避免贴边时 OBR 又替我们挪 8px、拖动跟着跳）
- *   INFO_DRAG_IDLE_MS  拖动中这么久没收到消息就当结束（兜住丢失的 pointerup）
- *   INFO_POS_MAX       最多记住多少枚 token 的弹窗位置
- * INFO_POS_KEY / CH_INFO_DRAG 与 assets/common.js 里的同名常量必须一字不差
- * （后台是经典脚本，不能 import）。
- */
 var INFO_TOKEN_GAP = 8;
 var INFO_VIEW_MARGIN = 16;
 var INFO_DRAG_IDLE_MS = 1500;
@@ -291,98 +184,59 @@ var INFO_POS_MAX = 40;
 var INFO_POS_KEY = "4enext/info-pos";
 var CH_INFO_DRAG = NS + "/info-drag";
 
-/* v1.3.1：先攻 / 骰子 / 角色卡面板三个「独立窗口」的拖动与位置记忆
- * （与 assets/common.js 的 WIN_POS_KEY / CH_WIN_DRAG / WIN_DRAG_THROTTLE_MS 必须一字不差）。
- * 与速览弹窗的区别：速览按 token 记位置，这三个窗口各按**窗口名**记一份。 */
 var WIN_MARGIN = 16;
 var WIN_DRAG_IDLE_MS = 1500;
 var WIN_POS_KEY = "4enext/win-pos";
 var CH_WIN_DRAG = NS + "/win-drag";
-/* v1.7.0：骰子记录窗口的开关命令 / 状态回执（与 assets/common.js 必须一字不差）。
- * CH_DICE_HIST_CMD   骰子窗口 → 后台：{ op: "toggle" | "open" | "close" }
- * CH_DICE_HIST_STATE 后台 → 所有页面：{ open: bool }（骰子窗口的按钮据此显示开 / 关） */
+
 var CH_DICE_HIST_CMD = NS + "/dice-hist-cmd";
 var CH_DICE_HIST_STATE = NS + "/dice-hist-state";
 
-/* v1.7.2：血条组件编辑小窗的三个频道（与 assets/common.js 的同名常量必须一字不差）。
- * CH_HP_EDIT_TARGET 后台 → 页面：{ session, version, itemId, pending }（版本租约）
- * CH_HP_EDIT_READY  页面 → 后台：{ session }（页面加载完要一次补发 target）
- * CH_HP_EDIT_SAVED  页面 → 后台：{ itemId, hp }（保存后立刻重画，不等 scene.items.onChange） */
 var CH_HP_EDIT_TARGET = NS + "/hp-edit-target";
 var CH_HP_EDIT_READY = NS + "/hp-edit-ready";
 var CH_HP_EDIT_SAVED = NS + "/hp-edit-saved";
-/* 编辑窗尺寸：参考实现只有一条 HP 所以是 320×78；我们多一排四防 + 回复力 → 340×150
- * （真机若觉得挤，只改这两个数；页面按 100vh 排版，会自动跟着变）。 */
+
 var HPE_W = 340;
 var HPE_H = 150;
 
-/* v1.4.0：先攻条（规格 §3.1 / §3.2）。
- * 与 assets/initiative.js 里的 STRIP_* 必须一字不差（dev/check.mjs 会对比两边的数字）。
- *   · 折叠 120×40；展开 720×(170 idle / 180 preparing / 200 combat)，最小 410，按视口 −32 夹紧
- *     **v1.7.10：高度加高到 ≥170**（用户截图：卡片 + 掷骰按钮被裁掉下半截）
- *     **v1.6.2：宽高是常量，不按内容测量**（v1.6.1 按 .strip-ctl 的 scrollWidth 算宽度，
- *     投骰后点数 / 名字一变整条就跟着变窄 —— 现在页面报上来的尺寸还会被 snapStripSize() 兜一道，
- *     内容再长由 .strip-items 内部横向滚动）
- *   · 始终贴在视口顶部的 TOP_OFFSET（45），以屏幕中线为锚点左右伸缩（CENTER/TOP）
- *   · 位置记忆只存「相对中线的偏移」{ v:1, dx, dy }，换屏幕 / 缩放后仍然贴顶居中 */
 var STRIP_COLLAPSED_W = 120;
 var STRIP_COLLAPSED_H = 40;
 var STRIP_EXPANDED_W = 720;
 var STRIP_MIN_EXPANDED_W = 410;
-/* v1.7.10：展开高度按内容算 —— 控制行 36 + 卡片 80（当前回合 100）+ 掷骰按钮行 24 + padding 16。
- * 三档都 ≥ 170（idle 170 / preparing 180 / combat 200），卡片与底下的 d20 按钮不再被裁切。 */
+
 var STRIP_H_IDLE = 170;
 var STRIP_H_PREPARING = 180;
 var STRIP_H_COMBAT = 200;
 var STRIP_TOP_OFFSET = 45;
 var STRIP_SIDE_MARGIN = 16;
 var STRIP_POS_KEY = "4enext/strip-pos";
-/* v1.7.3：先攻条常驻（本机设置，与 assets/common.js 的同名常量必须一字不差）。
- *   STRIP_AUTOSTART_KEY  "0" = 进入房间不自动显示；缺省 / "1" = 自动显示（默认开）
- *   STRIP_CLOSED_KEY     会话级标记：用户点了 ✕ 真正关掉后写 "1"，本次会话不再自动弹；
- *                        重新打开（工具栏 / 右键加入）时清掉。背景页重载（= 重新进房间）时也清掉。 */
+
 var STRIP_AUTOSTART_KEY = "4enext/strip-autostart";
 var STRIP_CLOSED_KEY = "4enext/strip-closed-this-session";
-/* 折叠状态（与 assets/initiative.js 的 LS_STRIP_COLLAPSED 一字不差）：
- * 常驻打开时如果用户上次是折叠的，就直接按 120×40 药丸开，避免「先闪一下整条再收起」。 */
+
 var STRIP_COLLAPSED_KEY = "4enext/strip-collapsed";
 var CH_STRIP_DRAG = NS + "/strip-drag";
 var CH_STRIP_CMD = NS + "/strip-cmd";
-/* v1.7.10：窗口 ✕ 的双保险频道。页面先 OBR.popover.close(自己的 id)，再发
- * {op:"close-win", name:"panel|initiative|dice|diceHistory|settings|hpEdit|info"}；
- * 后台按名字再关一次（panel 退化成全屏 modal 时 popover.close 关不掉，这里补 modal.close）。 */
+
 var CH_WIN_CLOSE = NS + "/win-close";
 
-/* v1.5.0：骰子（团队共享）。
- * 与 assets/common.js 的 CH_ROLL / CH_ROLL_CLEAR / CH_ROLL_SAVED / KEY_ROLLS / ROLL_MAX_ROWS
- * 必须一字不差（后台是经典脚本，不能 import；dev/check.mjs 会逐项对比）。
- *   · 投掷由**页面**广播，本文件只做城主侧的校验 / 合并 / 落库；
- *   · 房间数据上限仍按 16 KB 预算：rows 封顶 40（规格 §1.6），label 40 字、expression 200 字、
- *     单条最多 30 颗骰子（超出截断并标 truncated）。 */
 var CH_ROLL = NS + "/roll";
 var CH_ROLL_CLEAR = NS + "/roll-clear";
 var CH_ROLL_SAVED = NS + "/roll-saved";
 var KEY_ROLLS = NS + "/rolls";
-var ROLL_MAX_ROWS = 40;
+var ROLL_MAX_ROWS = 20;
 var ROLL_MAX_DICE = 30;
 var ROLL_LABEL_MAX = 40;
 var ROLL_EXPR_MAX = 200;
 var ROLL_ROOM_BYTES = 12000;
 var ROLL_COLOR_DEFAULT = "#5dade2";
 
-/* ---------------------------------------------------------------------------
- * 0) 站点根地址
- *    参考实现（character-cards/src/background.ts 第 7~11 行）把 panel/info/bind
- *    的网址写成了绝对地址，而不是从 import.meta.url 推算。这里同样不依赖
- *    import.meta.url（它在 OBR 的 iframe 里未必是页面地址），改用背景页自己的
- *    location —— background.html 永远在插件根目录。
- * ------------------------------------------------------------------------- */
 var BASE = (function () {
   try {
     var u = new URL("./", location.href);
     if (/^(https?:|file:)$/.test(u.protocol)) return u.href;
-  } catch (e) { /* 忽略 */ }
-  try { return new URL("./", document.baseURI).href; } catch (e) { /* 忽略 */ }
+  } catch (e) {  }
+  try { return new URL("./", document.baseURI).href; } catch (e) {  }
   return "https://yzzj66.github.io/4e-obr-cards/";
 })();
 
@@ -390,31 +244,27 @@ function pageUrl(name) { return BASE + name; }
 
 var ICON_URL = pageUrl("icon.svg");
 var TOOL_ICON_URL = pageUrl("icon-tool.svg");
-/* 入口图标风格统一（同一套 24×24 线性图标），用文件上的小徽标区分：列表 / 旗 / 骰子 */
+
 var TOOL_INIT_ICON_URL = pageUrl("icon-tool-initiative.svg");
 var TOOL_DICE_ICON_URL = pageUrl("icon-tool-dice.svg");
-/* v1.3.2：速览（眼睛）/ 设置（滑杆）两个图标，仍是同一套 24×24 细线圆角风格。 */
+
 var TOOL_GLANCE_ICON_URL = pageUrl("icon-tool-glance.svg");
 var TOOL_SETTINGS_ICON_URL = pageUrl("icon-tool-settings.svg");
 var URL_PANEL = pageUrl("panel.html");
 var URL_INFO = pageUrl("info.html");
-/* v1.3.1：先攻 / 骰子各自独立的窗口页。 */
+
 var URL_INITIATIVE = pageUrl("initiative.html");
 var URL_DICE = pageUrl("dice.html");
-/* v1.7.0：骰子记录窗口（独立 popover）。
- * 投骰动画页（effect.html）由**骰子窗口**自己 OBR.modal.open，后台不参与 ——
- * 它不是可拖动的窗口，所以不注册进 WINS，也没有 URL 常量（地址在 assets/common.js 的 URL_EFFECT）。 */
+
 var URL_DICE_HIST = pageUrl("dice-history.html");
-/* v1.7.2：血条组件编辑小窗页（可拖动，位置按窗口名 "hpEdit" 记）。 */
+
 var URL_HP_EDIT = pageUrl("hp-edit.html");
-/* v1.3.2：设置 / 关于窗口页。 */
+
 var URL_SETTINGS = pageUrl("settings.html");
 var URL_BIND = pageUrl("bind.html");
 var URL_BUTTON = pageUrl("button.html");
 
-/* ---------------------------------------------------------------------------
- * 1) 自诊断小工具
- * ------------------------------------------------------------------------- */
+/* ---- 1. 日志 / 通知 / 失败上报（成功不打扰，失败必可见） ---- */
 function pageLog(kind, text) {
   var line = "[" + new Date().toISOString().slice(11, 19) + "] " + text;
   try {
@@ -435,23 +285,17 @@ function pageLog(kind, text) {
         state.textContent = "运行中：" + text;
       }
     }
-  } catch (e) { /* 没有诊断 DOM 就算了 */ }
+  } catch (e) {  }
   try {
     if (kind === "err") console.error("[4enext]", line);
     else console.log("[4enext]", line);
-  } catch (e) { /* 忽略 */ }
+  } catch (e) {  }
 }
 
 function diagNotifyEnabled() {
   try { return localStorage.getItem("4enext/diag") !== "0"; } catch (e) { return true; }
 }
 
-/**
- * 通知中心一条（v1.7.8：**只发 ERROR / WARNING**）。
- * 用户嫌提示太多 → 成功 / 普通提示一律不弹（「已加入先攻」「已移出先攻」「已自动移出」
- * 「结束回合 → 第 N 轮」这些调用都已删掉）；断线、写盘失败、开窗失败、权限不足照旧弹。
- * 传别的 variant 只写页面日志（background.html 的自检区仍能看到，方便排查）。
- */
 function notify(msg, variant) {
   if (variant !== "ERROR" && variant !== "WARNING") {
     pageLog("info", msg);
@@ -470,7 +314,6 @@ function errText(e) {
   return e.message || e.reason || String(e);
 }
 
-/** 记录失败：页面日志 + ERROR 通知（不会重复弹同一条）。 */
 var seenErrors = {};
 function stepFail(where, e) {
   var msg = where + " —— " + errText(e);
@@ -482,7 +325,6 @@ function stepFail(where, e) {
 
 function stepOk(text) { pageLog("ok", text); }
 
-/** 包一层 try/catch：同步版。返回 true/false。 */
 function attempt(where, fn) {
   try {
     var r = fn();
@@ -497,50 +339,31 @@ function attempt(where, fn) {
   }
 }
 
-/* ---------------------------------------------------------------------------
- * 2) 独立窗口（v1.3.1：先攻 / 骰子 / 角色卡面板都是各自一个 popover）
- * ---------------------------------------------------------------------------
- * 为什么要重写这一段：
- *   · v1.3.0 用一个大面板装三个 tab，用户明确不要（每个功能应该是独立的块/窗口）；
- *   · 面板常常**超出视口**（底部被切掉）—— 所以打开前必须用
- *     OBR.viewport.getWidth()/getHeight() 夹紧：宽 ≤ 视口宽 − 2×margin，
- *     高 ≤ 视口高 − 2×margin（margin = WIN_MARGIN = 16）；
- *   · 每个窗口各记各的位置（localStorage["4enext/win-pos"]，按窗口名），
- *     拖动沿用 v1.2.2 速览弹窗那一套：页面只发「起点 + 累计位移」，这里换算 / 夹取 / 落盘。
- * 参考实现 FullPeople/obr-suite 的做法一致：每个模块有自己的 POPOVER_ID，
- * 打开时 registerPanelBbox 记几何、BC_PANEL_DRAG_END 记拖动后的位置。
- * ------------------------------------------------------------------------- */
 var WINS = {
-  /* 角色卡 / 导入面板：比速览大一点，但同样按视口夹紧；内部列表与预览各自滚动。 */
+
   panel: { id: ID_PANEL, url: URL_PANEL, width: 960, height: 660 },
-  /* v1.4.0：先攻的大窗口变成「列表窗口」（先攻条上的 ≡ 打开它），地址带 ?view=list。 */
+
   initiative: { id: ID_INIT_WIN, url: URL_INITIATIVE + "?view=list", width: 880, height: 640 },
-  /* v1.7.0：骰子窗口**变窄**（760×620 → 520×620）——记录搬去独立的记录窗口，
-   * 这里只放骰子 / 表达式 / 本次结果 / 4E 预设 / 组合（单列）。
-   * v1.7.4：再收窄到 **320×620**（用户要「和 Players 面板差不多的窄竖条」；
-   * 页面里七颗骰子随之改成 4 + 3 两排、按钮 2×2 换行、「本次结果」固定在底部）。
-   * 仍然走 winSize() 夹紧：小屏（如 1366×768）下实际尺寸 ≤ 视口 − 2×WIN_MARGIN。 */
+
   dice: { id: ID_DICE_WIN, url: URL_DICE, width: 320, height: 620 },
-  /* v1.7.0：独立记录窗口（默认只显示最近 4 条，可展开全部；位置按窗口名单独记住）。 */
-  /* v1.7.10：记录窗口 380×380 → **300×240**（只显示最近 4 条；「展开全部」时页面自己调高）。 */
+
   diceHistory: { id: ID_DICE_HIST, url: URL_DICE_HIST, width: 300, height: 240 },
-  /* v1.3.2：设置 / 关于。左侧分栏 + 右侧内容，860×620 在 1366×768 上也放得下。 */
+
   settings: { id: ID_SETTINGS_WIN, url: URL_SETTINGS, width: 860, height: 620 },
-  /* v1.7.2：血条组件编辑小窗（右键「添加血条组件」→ 填生命 / 四防 / 回复力）。
-   * 地址带 ?item=<tokenId>&session=<uuid> → openWin 的第二个参数（urlOverride）。 */
+
   hpEdit: { id: ID_HP_EDIT, url: URL_HP_EDIT, width: HPE_W, height: HPE_H }
 };
-/* name -> { geom: {left,top,width,height,url,vp}, drag, timer } */
+
 var winOpen = {};
-/* 拖动中待应用的位置（按窗口名合并，上一帧还没 open 完就只留最后一个） */
+
 var winDragWanted = {};
 var winDragBusy = false;
 
+/* ---- 2. 独立窗口：WINS 注册 / 尺寸夹紧 / 位置记忆 / 拖动 ---- */
 function winDef(name) {
   return WINS[name] || null;
 }
 
-/** 窗口尺寸：取「默认值」与「视口 − 2×margin」的较小者，绝不超出视口。 */
 function winSize(def, vp) {
   var availW = (vp && vp.width > 0 ? vp.width : def.width) - WIN_MARGIN * 2;
   var availH = (vp && vp.height > 0 ? vp.height : def.height) - WIN_MARGIN * 2;
@@ -550,10 +373,6 @@ function winSize(def, vp) {
   };
 }
 
-/** 没有记住过位置时的默认点：水平居中、稍微偏上（不挡住 token 区）。
- *  v1.7.4：**记录窗口**优先贴着骰子窗口开（右 → 左 → 下 → 上），不再正好叠在骰子窗口里。
- *  原因：骰子窗口 320×620、记录窗口 300×240，两者都按「水平居中 + 偏上」摆时会**整块重叠**，
- *  看起来就像「点了没反应」（用户 v1.7.4 报的「记录窗口打不开」）。位置仍会被 clampInfoPos 夹进视口。 */
 function winDefaultPos(name, size, vp) {
   var vw = vp && vp.width > 0 ? vp.width : size.width + WIN_MARGIN * 2;
   var vh = vp && vp.height > 0 ? vp.height : size.height + WIN_MARGIN * 2;
@@ -568,10 +387,10 @@ function winDefaultPos(name, size, vp) {
   if (!g) return base;
   var gap = 12;
   var spots = [
-    { left: g.left + g.width + gap, top: g.top },        /* 骰子窗右边 */
-    { left: g.left - size.width - gap, top: g.top },     /* 左边 */
-    { left: g.left, top: g.top + g.height + gap },       /* 下边 */
-    { left: g.left, top: g.top - size.height - gap }     /* 上边 */
+    { left: g.left + g.width + gap, top: g.top },
+    { left: g.left - size.width - gap, top: g.top },
+    { left: g.left, top: g.top + g.height + gap },
+    { left: g.left, top: g.top - size.height - gap }
   ];
   for (var i = 0; i < spots.length; i++) {
     var one = spots[i];
@@ -582,7 +401,6 @@ function winDefaultPos(name, size, vp) {
   return base;
 }
 
-/* ---- 位置记忆：localStorage["4enext/win-pos"] = { v:1, pos: { <name>: {left,top} } } ---- */
 function readWinPosMap() {
   try {
     var raw = localStorage.getItem(WIN_POS_KEY);
@@ -616,7 +434,7 @@ function writeWinPos(name, pos) {
     var map = readWinPosMap();
     map[name] = { left: Math.round(pos.left), top: Math.round(pos.top) };
     localStorage.setItem(WIN_POS_KEY, JSON.stringify({ v: 1, pos: map }));
-  } catch (e) { /* 隐私模式 / 空间满：记不住位置不影响用 */ }
+  } catch (e) {  }
 }
 
 function clearWinPos(name) {
@@ -626,10 +444,9 @@ function clearWinPos(name) {
     delete map[name];
     if (!Object.keys(map).length) localStorage.removeItem(WIN_POS_KEY);
     else localStorage.setItem(WIN_POS_KEY, JSON.stringify({ v: 1, pos: map }));
-  } catch (e) { /* 忽略 */ }
+  } catch (e) {  }
 }
 
-/** popover 参数：一律按「左上角」定位（与速览弹窗同一套字段写法）。 */
 function winPopoverOptions(def, pos, size, url) {
   return {
     id: def.id,
@@ -645,8 +462,6 @@ function winPopoverOptions(def, pos, size, url) {
   };
 }
 
-/** 打开（或按记住的位置重开）一个独立窗口。
- *  urlOverride（v1.7.2）：血条编辑窗要带 ?item=<tokenId>，其余窗口不传、仍用 def.url。 */
 async function openWin(name, urlOverride) {
   var def = winDef(name);
   if (!def) throw new Error("未知窗口：" + name);
@@ -673,16 +488,9 @@ async function closeWin(name) {
   delete winOpen[name];
   var def = winDef(name);
   if (!def) return;
-  try { await OBR.popover.close(def.id); } catch (e) { /* 已经关了 */ }
+  try { await OBR.popover.close(def.id); } catch (e) {  }
 }
 
-/**
- * v1.7.10：页面 ✕ 的**后台兜底**（频道 CH_WIN_CLOSE，payload = {op:"close-win", name}）。
- * 页面自己已经试过 OBR.popover.close(正确的 id)，这里再按名字关一次：
- *   · panel 在 openPanel 里有可能退化成**全屏 modal**（popover 打不开时），popover.close 关不掉，
- *     所以 modal.close 也要试；
- *   · 顺手把 winOpen / infoOpen 的状态清掉，后台不会以为窗口还开着（下一次点击才会真的重开）。
- */
 async function closeWinById(name) {
   var def = name === "info" ? { id: ID_INFO } : winDef(name);
   if (!def) return false;
@@ -695,8 +503,8 @@ async function closeWinById(name) {
     if (st && st.timer) { clearTimeout(st.timer); st.timer = null; }
     delete winOpen[name];
   }
-  try { await OBR.popover.close(def.id); } catch (e) { /* 已经关了 */ }
-  try { if (OBR.modal && typeof OBR.modal.close === "function") await OBR.modal.close(def.id); } catch (e2) { /* 不是 modal */ }
+  try { await OBR.popover.close(def.id); } catch (e) {  }
+  try { if (OBR.modal && typeof OBR.modal.close === "function") await OBR.modal.close(def.id); } catch (e2) {  }
   pageLog("info", "窗口 ✕（后台兜底）：" + name);
   return true;
 }
@@ -707,7 +515,6 @@ function onWinClose(ev) {
   void closeWinById(data.name);
 }
 
-/** 「回到默认位置」：清掉记住的位置，重新居中摆一次。 */
 async function resetWin(name) {
   if (!winOpen[name] || !winOpen[name].geom) return;
   var def = winDef(name);
@@ -728,7 +535,6 @@ async function resetWin(name) {
   }
 }
 
-/* ---- 拖动：页面（assets/window.js）只发「起点 + 累计位移」 ---- */
 function queueWinDrag(name, pos) {
   var st = winOpen[name];
   if (!st || !st.geom) return;
@@ -767,7 +573,6 @@ async function pumpWinDrag() {
   }
 }
 
-/** 拖动中这么久没消息就当结束：兜住指针跑出 iframe、页面被重载导致的丢 pointerup。 */
 function touchWinDrag(name) {
   var st = winOpen[name];
   if (!st) return;
@@ -787,14 +592,12 @@ function endWinDrag(name) {
   st.drag = null;
 }
 
-/** 频道：com.4enext-owlbear/win-drag，payload = { win, phase: start/move/end/reset, dx, dy }。 */
 function onWinDrag(ev) {
   var data = ev && ev.data !== undefined ? ev.data : ev;
   if (!data || typeof data.phase !== "string") return;
   var name = String(data.win == null ? "" : data.win);
   var st = winOpen[name];
-  /* 不是我们自己开的窗口（比如左上角 action 弹窗里的同一个页面）→ 忽略，
-     免得「在 action 弹窗里拖」把另一个 popover 挪走。 */
+
   if (!st || !st.geom) return;
 
   if (data.phase === "reset") {
@@ -809,7 +612,7 @@ function onWinDrag(ev) {
   var dy = typeof data.dy === "number" && isFinite(data.dy) ? data.dy : 0;
 
   if (data.phase === "start" || !st.drag) {
-    /* 起点 = 窗口现在的位置；move 一律按「起点 + 累计位移」算，不会越拖越偏。 */
+
     st.drag = { base: { left: st.geom.left, top: st.geom.top }, moved: false };
     touchWinDrag(name);
     if (data.phase === "start") return;
@@ -832,7 +635,6 @@ function onWinDrag(ev) {
   }
 }
 
-/** 视口变小 / 换屏幕方向后，把开着的窗口重新夹回视口内。 */
 async function reclampWins() {
   var names = Object.keys(winOpen);
   if (!names.length) return;
@@ -852,15 +654,10 @@ async function reclampWins() {
         left: pos.left, top: pos.top, width: size.width, height: size.height,
         url: st.geom.url, vp: { width: vp.width, height: vp.height }
       };
-    } catch (e) { /* 窗口已经关了，忽略 */ }
+    } catch (e) {  }
   }
 }
 
-/**
- * 打开角色卡面板：先按独立窗口开（可拖动 / 记位置 / 夹紧视口），
- * 不行再退回全屏 modal，最后退回 manifest action 弹窗。
- * 三层兜底是因为「打不开」对用户来说就是「点了没反应」。
- */
 async function openPanel(where) {
   try {
     await openWin("panel");
@@ -886,7 +683,6 @@ async function openPanel(where) {
   }
 }
 
-/** 打开先攻 / 骰子窗口：失败就让用户看见（通知里带原因），不静默。 */
 async function openWinOrNotify(name, where) {
   try {
     await openWin(name);
@@ -898,35 +694,19 @@ async function openWinOrNotify(name, where) {
   }
 }
 
-/* ---------------------------------------------------------------------------
- * 2.4) 骰子记录窗口（v1.7.0）：独立 popover，与骰子窗口各自开关
- * ---------------------------------------------------------------------------
- * 为什么不让骰子窗口自己 OBR.popover.open：
- *   · 位置记忆 / 视口夹紧 / 拖动全在 WINS + winOpen 这一套里，页面自己开就对不上；
- *   · 记录窗口要能被「骰子窗口的按钮」和「它自己的 ✕」两边关，开 / 关状态只有后台知道。
- * 页面（assets/dice-page.js）只发 CH_DICE_HIST_CMD { op: "toggle"|"open"|"close" }，
- * 这里执行完广播 CH_DICE_HIST_STATE { open }（骰子窗口的按钮据此显示「记录窗口 · 开 / 关」）。
- * ------------------------------------------------------------------------- */
 function diceHistoryIsOpen() {
   return !!winOpen["diceHistory"];
 }
 
-/** v1.7.4：记录窗口的页面加载完会发 { op: "ready" }（握手）。
- *  作用：如果窗口是**骰子窗口自己**兜底开的（后台没收到命令 → winOpen 里没有这一条），
- *  这里把「开着」补上，下一次点「记录窗口」才是**关闭**，不会又开一遍。
- *  没有几何信息（geom = null）时拖动 / 重新夹紧都会被跳过，不影响关闭。 */
 function markDiceHistoryAlive() {
   if (winOpen["diceHistory"]) return;
   winOpen["diceHistory"] = { geom: null, drag: null, timer: null, external: true };
 }
 
-/** 记录窗口到底还在不在：winOpen 只是我们自己记的，宿主那边可能已经关掉了（ESC / 关窗）。
- *  OBR.popover.getWidth 对已经关掉的 popover 会 reject → 据此把跟丢的状态清掉，
- *  下一次 toggle 就会**真的重新开出来**（否则会「点了没反应」）。 */
 async function diceHistoryAlive() {
   if (!diceHistoryIsOpen()) return false;
   var st = winOpen["diceHistory"];
-  if (st && !st.geom) return true;              /* 外部打开 / 页面握手过：当作开着 */
+  if (st && !st.geom) return true;
   try {
     if (OBR.popover && typeof OBR.popover.getWidth === "function") {
       await OBR.popover.getWidth(ID_DICE_HIST);
@@ -940,14 +720,10 @@ async function diceHistoryAlive() {
   return true;
 }
 
-/** 小延时（重试开窗前等一下：宿主在关窗动画没结束时偶尔会拒绝 open）。 */
 function winWait(ms) {
   return new Promise(function (r) { setTimeout(r, ms); });
 }
 
-/** v1.7.6：记录窗口由**骰子窗口页面自己** popover.open 出来后，把几何补记到 winOpen ——
- *  这样拖动（CH_WIN_DRAG）、「回到默认位置」、「视口变化重新夹紧」仍然走 WINS 那一套，
- *  换下一个窗口时不会因为「后台不知道它开着」而拖不动 / 关不掉。 */
 async function adoptDiceHistory(data) {
   var w = typeof data.width === "number" && data.width > 0 ? data.width : WINS.diceHistory.width;
   var h = typeof data.height === "number" && data.height > 0 ? data.height : WINS.diceHistory.height;
@@ -966,8 +742,6 @@ async function adoptDiceHistory(data) {
   pageLog("ok", "骰子记录窗口：由骰子窗口直接打开（后台已接管拖动 / 位置记忆）");
 }
 
-/** v1.7.6：直开失败后的兜底 —— 先**关掉骰子窗口**（腾出一个 popover 名额），再由后台开记录窗口。
- *  为什么由后台做：OBR.popover.close(骰子窗口) 会把这个页面一起卸载，页面自己没法「关完自己再开」。 */
 async function forceOpenDiceHistory() {
   pageLog("info", "记录窗口未能由骰子窗口打开 → 先关掉骰子窗口，再由后台开一次");
   if (winOpen["dice"]) {
@@ -977,7 +751,7 @@ async function forceOpenDiceHistory() {
       pageLog("err", "关掉骰子窗口失败：" + errText(e));
     }
   }
-  await winWait(160);   /* 宿主在关窗动画没结束时偶尔会拒绝 open */
+  await winWait(160);
   if (diceHistoryIsOpen()) return true;
   return openDiceHistory();
 }
@@ -986,21 +760,16 @@ function broadcastDiceHistState() {
   var payload = { open: diceHistoryIsOpen(), at: Date.now() };
   try {
     var p1 = OBR.broadcast.sendMessage(CH_DICE_HIST_STATE, payload, { destination: "LOCAL" });
-    if (p1 && typeof p1.catch === "function") p1.catch(function () { /* 忽略 */ });
-  } catch (e) { /* 忽略 */ }
+    if (p1 && typeof p1.catch === "function") p1.catch(function () {  });
+  } catch (e) {  }
   try {
     var p2 = OBR.broadcast.sendMessage(CH_DICE_HIST_STATE, payload, { destination: "REMOTE" });
-    if (p2 && typeof p2.catch === "function") p2.catch(function () { /* 忽略 */ });
-  } catch (e2) { /* 忽略 */ }
+    if (p2 && typeof p2.catch === "function") p2.catch(function () {  });
+  } catch (e2) {  }
 }
 
-/** v1.7.4：记录窗口「点了打不开」的修法 ——
- *  ① 失败**重试一次**（宿主偶尔拒绝 open）；
- *  ② 仍失败 → ERROR 通知里带上「先关掉骰子窗口再点一次」的提示（绝不让按钮静默失效）；
- *  ③ 默认位置贴着骰子窗口开（见 winDefaultPos），不再正好压在骰子窗口里；
- *  ④ 骰子窗口页面还有一层兜底（它自己 OBR.popover.open 同一个 id），见 assets/dice-page.js。 */
 async function openDiceHistory() {
-  if (diceHistoryIsOpen()) return true;   /* 已经开着：同一个 id 的 open 是幂等的，不必再开 */
+  if (diceHistoryIsOpen()) return true;
   var lastErr = null;
   for (var tries = 0; tries < 2; tries++) {
     if (tries) await winWait(160);
@@ -1026,8 +795,6 @@ async function closeDiceHistory() {
   }
 }
 
-/** 频道：com.4enext-owlbear/dice-hist-cmd，payload = { op }。
- *  op: "toggle"（默认）| "open" | "close" | "ready"（记录窗口页面加载完的握手，v1.7.4）。 */
 async function onDiceHistCmd(ev) {
   var data = ev && ev.data !== undefined ? ev.data : ev;
   var op = data && typeof data.op === "string" ? data.op : "toggle";
@@ -1040,10 +807,10 @@ async function onDiceHistCmd(ev) {
     } else if (op === "open") {
       await openDiceHistory();
     } else if (op === "adopt") {
-      /* v1.7.6：骰子窗口直接 open 成功后把几何报上来（页面自己开，后台接管拖动 / 位置记忆）。 */
+
       await adoptDiceHistory(data);
     } else if (op === "force-open") {
-      /* v1.7.6：页面直开失败 → 先关掉骰子窗口，再由后台补开一次（失败会 ERROR 通知）。 */
+
       await forceOpenDiceHistory();
     } else if (await diceHistoryAlive()) {
       await closeDiceHistory();
@@ -1057,42 +824,22 @@ async function onDiceHistCmd(ev) {
   broadcastDiceHistState();
 }
 
-/* ---------------------------------------------------------------------------
- * 2.4b) 血条组件编辑小窗（v1.7.2）：右键「添加血条组件」→ 填生命 / 四防 / 回复力
- * ---------------------------------------------------------------------------
- * 要解决的问题（用户真机）：右键「添加血条组件」过去只写 hp-bar/enabled = true，
- * 没绑定角色卡的怪物 / 杂兵**没有任何入口**填血量与四防 → 血条一直是空的（或只有空值）。
- * 参考实现 FullPeople/obr-suite 的 src/modules/hpBar/index.ts：选中 token → 弹一个可拖动的
- * 编辑 popover，并用「target 广播 + 版本租约」把「当前该编辑谁」从后台告诉面板（规格 §2.2）。
- *
- * 这里的分工（比参考实现简单，但几个坑都留着）：
- *   · 后台只负责**开窗** + 告诉页面「当前编辑哪个 token」（CH_HP_EDIT_TARGET，LOCAL），
- *     以及收到 CH_HP_EDIT_SAVED 后**立刻重画**（不等 scene.items.onChange 的时序）；
- *   · **写盘在页面里**（assets/hp-edit-core.js 的 writeHpEdit → OBR.scene.items.updateItems）：
- *     token 元数据本来就不需要后台，后台挂掉时编辑窗照样存得住；权限 / 两次校验也在那里；
- *   · 窗口位置 / 拖动沿用 WINS + winOpen 那一套（name = "hpEdit"，尺寸 340×150）。
- * ------------------------------------------------------------------------- */
-var hpEditSession = "";   /* 每次后台加载一个新 session：页面靠它拒绝上一轮的残包 */
+var hpEditSession = "";
 var hpEditTarget = { session: "", version: 0, itemId: null, pending: false };
-/* v1.7.7：「选中即弹编辑窗」的去重状态（只在本机内存里，不落盘）。
- *   hpAutoSel    上一次判定时的单选 token id（null = 没选中 / 多选）——一变就把 hpAutoPopped 清空；
- *   hpAutoPopped tokenId -> true，记住「已经为这枚 token 弹过编辑窗」。
- * 为什么需要：弹窗一开一关之间，selection / scene.items / room 事件都会走 scheduleRefresh，
- * 没有这层记忆的话用户点 ✕ 关掉之后，下一次事件立刻把它弹回来（真实机器上就是这样「关不掉」）。 */
+
 var hpAutoSel = null;
 var hpAutoPopped = {};
 
-/** 新会话 id：优先 crypto.randomUUID，不可用时退回时间戳 + 随机串。 */
 function newHpEditSession() {
   try {
     if (typeof crypto !== "undefined" && crypto && typeof crypto.randomUUID === "function") {
       return String(crypto.randomUUID());
     }
-  } catch (e) { /* 老环境没有 crypto */ }
+  } catch (e) {  }
   return "hpe-" + Date.now().toString(36) + "-" + Math.random().toString(36).slice(2, 8);
 }
 
-/** 广播「现在该编辑哪个 token」。内容没变就不发（幂等，规格 §2.2 的 publishTarget）。 */
+/* ---- 3. 血条编辑窗：target / ready / saved 三个频道 + 版本租约 ---- */
 function publishHpEditTarget(itemId, pending) {
   var id = typeof itemId === "string" && itemId ? itemId : null;
   var pend = !!pending;
@@ -1107,9 +854,6 @@ function publishHpEditTarget(itemId, pending) {
   return sendHello(CH_HP_EDIT_TARGET, hpEditTarget);
 }
 
-/** 打开血条编辑小窗：写开关由调用方负责（右键菜单先写 true 再开窗）。
- *  v1.7.7：这里顺手记一笔「已经为这枚 token 开过窗」（hpAutoPopped），
- *  这样「选中即弹」不会在窗口已经开过 / 用户刚关掉之后又弹一次。 */
 async function openHpEdit(itemId) {
   if (!itemId) {
     notify("没有读到要编辑的 token，右键请对着一个图片 token 再试", "WARNING");
@@ -1120,27 +864,25 @@ async function openHpEdit(itemId) {
   var url = URL_HP_EDIT + "?item=" + encodeURIComponent(itemId) +
     "&session=" + encodeURIComponent(hpEditSession);
   try {
-    await publishHpEditTarget(itemId, true);   /* pending = 页面还在加载，先别让输入可用 */
+    await publishHpEditTarget(itemId, true);
     await openWin("hpEdit", url);
     await publishHpEditTarget(itemId, false);
     stepOk("血条编辑窗已打开：" + itemId);
     return true;
   } catch (e) {
-    /* 打不开窗口也要让用户看见原因（stepFail 里是 ERROR 通知） */
+
     stepFail("打开血条编辑窗", e);
     return false;
   }
 }
 
-/** 频道：CH_HP_EDIT_READY，页面加载完主动要一次 target（第一条广播可能比 iframe 早）。 */
 function onHpEditReady(ev) {
   var data = ev && ev.data !== undefined ? ev.data : ev;
   var session = data && typeof data.session === "string" ? data.session : "";
-  if (session && session !== hpEditSession) return;   /* 上一轮后台的残包 → 忽略 */
+  if (session && session !== hpEditSession) return;
   void sendHello(CH_HP_EDIT_TARGET, hpEditTarget);
 }
 
-/** 频道：CH_HP_EDIT_SAVED，页面写完 token → 立刻重画血条。 */
 function onHpEditSaved(ev) {
   var data = ev && ev.data !== undefined ? ev.data : ev;
   var itemId = data && typeof data.itemId === "string" ? data.itemId : "";
@@ -1149,42 +891,25 @@ function onHpEditSaved(ev) {
   stepOk("血条编辑窗已保存：" + itemId);
 }
 
-/* ---------------------------------------------------------------------------
- * 2.5) 先攻条（v1.4.0）：贴在屏幕顶部的条
- * ---------------------------------------------------------------------------
- * 为什么不复用 openWin：
- *   · 锚点是 CENTER/TOP：展开宽度会在运行中被面板自己改（720 ↔ 410 ↔ 折叠 120），
- *     用 LEFT 锚点会「左边缘不动、整条向右长」；CENTER 则始终以屏幕中线对称伸缩（规格 §3.2）；
- *   · top 固定 45，不参与「居中偏上」的默认位置计算；
- *   · 位置记忆只存偏移 { dx, dy }（相对屏幕中线 / 相对 TOP_OFFSET），不存绝对 left，
- *     换屏幕宽度 / 缩放后仍然贴顶居中（规格 §P1 第 4 条：localStorage["4enext/strip-pos"]）。
- * 参考：obr-suite src/modules/initiative/index.ts:233-258（popover 参数）、
- *       panel-page.tsx:44-58（三档高度）/ 449-466（宽度自适应）。
- * ------------------------------------------------------------------------- */
 var stripOpen = false;
-/* { left, top, width, height, offset:{dx,dy}, vp:{width,height} } —— left 是「中线 x」，不是左边缘 */
+
 var stripGeom = null;
 var stripDragTimer = null;
 var stripDragWanted = null;
 var stripDragBusy = false;
 
-/** 三档高度：idle 170 / preparing 180 / combat 200（v1.7.10 加高，卡片与 d20 不再被裁切）。 */
+/* ---- 4. 先攻条：三档高度 / 折叠药丸 / 拖动 / 命令频道 ---- */
 function stripHeightFor(phase) {
   if (phase === "combat") return STRIP_H_COMBAT;
   if (phase === "preparing") return STRIP_H_PREPARING;
   return STRIP_H_IDLE;
 }
 
-/** 展开宽度（v1.6.2：常量 720，只有视口太窄时才缩；**不读任何 DOM 尺寸**）。
- *  = max(410, min(720, 视口宽 − 2×16))，规格 §3.3 / §3.6。 */
 function stripWidthFor(vp) {
   var avail = vp && vp.width > 0 ? vp.width - STRIP_SIDE_MARGIN * 2 : STRIP_EXPANDED_W;
   return Math.round(Math.max(STRIP_MIN_EXPANDED_W, Math.min(STRIP_EXPANDED_W, avail)));
 }
 
-/** v1.6.2：页面报上来的尺寸只允许落在「折叠 120×40」或「展开 stripWidthFor(视口) × 三档高」上。
- * 为什么要兜一道：v1.6.1 的页面把控制行的 scrollWidth 当宽度传上来（投骰后点数 / 名字一变就变），
- * 场景就是「先攻条随投骰内容缩短」。这里把任何测量值丢掉，只认常量。 */
 var STRIP_H_ALLOWED = [STRIP_H_IDLE, STRIP_H_PREPARING, STRIP_H_COMBAT];
 function snapStripSize(w, h) {
   if (w === STRIP_COLLAPSED_W && h === STRIP_COLLAPSED_H) {
@@ -1212,14 +937,13 @@ function readStripOffset() {
 function writeStripOffset(dx, dy) {
   try {
     localStorage.setItem(STRIP_POS_KEY, JSON.stringify({ v: 1, dx: Math.round(dx), dy: Math.round(dy) }));
-  } catch (e) { /* 隐私模式 / 空间满：记不住位置不影响用 */ }
+  } catch (e) {  }
 }
 
 function clearStripOffset() {
-  try { localStorage.removeItem(STRIP_POS_KEY); } catch (e) { /* 忽略 */ }
+  try { localStorage.removeItem(STRIP_POS_KEY); } catch (e) {  }
 }
 
-/** 由偏移算出 anchorPosition（CENTER/TOP 锚点：left 是中线 x）。整条必须留在视口内。 */
 function stripPosFor(dx, dy, size, vp) {
   var vw = vp && vp.width > 0 ? vp.width : 0;
   var vh = vp && vp.height > 0 ? vp.height : 0;
@@ -1233,42 +957,6 @@ function stripPosFor(dx, dy, size, vp) {
   return { left: cx, top: top };
 }
 
-/**
- * v1.7.14：**逐行照抄** FullPeople/obr-suite 的先攻条 popover 参数。
- *
- * 参考实现（src/modules/initiative/index.ts 的 openPanel()，仓库里 37 KB 那个文件）原文：
- *
- *     await OBR.popover.open({
- *       id: POPOVER_ID,
- *       url: `${PANEL_URL}?expanded=${expanded ? 1 : 0}`,
- *       width,
- *       height,
- *       anchorReference: "POSITION",
- *       anchorPosition: {
- *         left: Math.round(vw / 2) + userOff.dx,
- *         top: TOP_OFFSET + userOff.dy,
- *       },
- *       anchorOrigin: { horizontal: "CENTER", vertical: "TOP" },
- *       transformOrigin: { horizontal: "CENTER", vertical: "TOP" },
- *       disableClickAway: true,
- *       hidePaper: true,
- *     });
- *
- * 参数名 / 取值 / **书写顺序**都与他一致（TOP_OFFSET 45 与我们相同；width 720 相同；
- * 他们 EXPANDED_HEIGHT 是 154，我们仍是 170|180|200 —— 我们卡片 56×80、当前回合卡高 100，
- * 还有卡片下的 d20，154 会裁掉下半截，这一处**故意不跟**）。
- *
- * 透明的真活儿**不在 popover 参数里**：hidePaper 只是「请宿主别画纸张底」，
- * 真正让它透的是页面本身 —— initiative.html 照抄了 initiative-panel-v131.html 的三件套
- * （html/body 的 inline background:transparent!important + darkreader-lock +
- *  <style data-overlay-canvas> 里的 :root{color-scheme:normal!important;...}）。
- * 下面这段注释保留两次失败的教训，别再走回去：
- *   · v1.7.10 的 modal + disablePointerEvents 让整个 modal 层不接收指针 → 右键「加入先攻」、
- *     加值输入框、卡片下的 d20 全都点不动（modal 不能用于需要交互的浮层）；
- *   · v1.7.3 / v1.7.6 只改样式表里的类名（哪怕写了 !important）→ 压不住后加载样式表 /
- *     暗色扩展注入的 !important，真机看起来「一点没变」；inline !important 才压得住。
- *   · 拖动 = 同一个 id 重新 open，只换 anchorPosition / width / height（iframe 复用，不重载）。
- */
 function stripPopoverOptions(size, pos) {
   return {
     id: ID_STRIP,
@@ -1276,29 +964,24 @@ function stripPopoverOptions(size, pos) {
     width: size.width,
     height: size.height,
     anchorReference: "POSITION",
-    /* anchorPosition.left 是**中线**（宿主按 CENTER 对齐），与 FullPeople 的 Math.round(vw / 2) + dx 一致。 */
+
     anchorPosition: { left: pos.left, top: pos.top },
     anchorOrigin: { horizontal: "CENTER", vertical: "TOP" },
     transformOrigin: { horizontal: "CENTER", vertical: "TOP" },
-    /* 常驻：点地图不关（v1.4.0 起就有，与他们同一个参数）。 */
+
     disableClickAway: true,
-    /* 宿主不画纸张底（v1.7.11 起；与 FullPeople 同一个参数、同一个位置）。 */
+
     hidePaper: true
   };
 }
 
-/** 上次是不是折叠的（本机）。读不到就当展开。 */
 function stripCollapsedPref() {
   try { return localStorage.getItem(STRIP_COLLAPSED_KEY) === "1"; } catch (e) { return false; }
 }
 
-/** 打开先攻条；已经开着就只按记住的偏移重新摆一次（页面不会重载）。 */
 async function openStrip() {
   var vp = await infoViewport();
-  /* v1.7.3：用户上次折叠着，就直接按药丸尺寸开（页面加载后报上来的尺寸本来就一致，
-   * 这样少一次 720 → 120 的闪动）。 */
-  /* v1.7.11：已经开着时沿用页面报上来的当前尺寸（战斗态 200 / 准备态 180），
-   * 否则点一次工具栏「先攻」就会把条缩回 idle 170、把卡片裁掉一截。 */
+
   var size = stripCollapsedPref()
     ? { width: STRIP_COLLAPSED_W, height: STRIP_COLLAPSED_H }
     : (stripOpen && stripGeom
@@ -1306,7 +989,7 @@ async function openStrip() {
       : { width: stripWidthFor(vp), height: STRIP_H_IDLE });
   var offset = readStripOffset();
   var pos = stripPosFor(offset.dx, offset.dy, size, vp);
-  /* 先记账再 open：页面加载后马上会发 {op:"size"}，stripGeom 必须先就位，否则战斗态 200 高会被丢掉。 */
+
   stripGeom = {
     left: pos.left, top: pos.top, width: size.width, height: size.height,
     offset: { dx: pos.left - Math.round((vp.width || 0) / 2), dy: pos.top - STRIP_TOP_OFFSET },
@@ -1319,18 +1002,17 @@ async function openStrip() {
     throw e;
   }
   stripOpen = true;
-  /* 页面可能在 open 的 await 还没落定时就发来 {op:"size"}（战斗态 200）—— 先存着，开完立刻补。 */
+
   var pending = stripGeom && stripGeom.pendingSize ? stripGeom.pendingSize : null;
   if (stripGeom) stripGeom.pendingSize = null;
   if (pending && (pending.width !== size.width || pending.height !== size.height)) {
     void resizeStrip(pending.width, pending.height);
   }
-  /* v1.7.3：重新打开 = 这次会话又要它 → 清掉「本次已关掉」标记（下个房间照样自动开）。 */
+
   markStripClosed(false);
   return true;
 }
 
-/** 打开先攻条：失败要让用户看见（不静默）。 */
 async function openStripOrNotify(where) {
   try {
     await openStrip();
@@ -1347,22 +1029,9 @@ async function closeStrip() {
   stripDragWanted = null;
   stripOpen = false;
   stripGeom = null;
-  /* v1.7.11：条回到 popover → 先 popover.close；再 modal.close 兜一层（v1.7.10 缓存页面 / 旧实例）。 */
-  try { await OBR.popover.close(ID_STRIP); } catch (e) { /* 已经关了 */ }
-  try { await OBR.modal.close(ID_STRIP); } catch (e2) { /* 不是 modal */ }
+  try { await OBR.popover.close(ID_STRIP); } catch (e) {  }
 }
 
-/* ---------------------------------------------------------------------------
- * 2.6) v1.7.3：先攻条常驻（进入房间自动打开 / 关掉后本次会话不再弹）
- * ---------------------------------------------------------------------------
- * 用户原话「先攻条能常驻显示，不要点了才显示」：
- *   · 打开参数里一直带 disableClickAway: true（v1.4.0 起），点地图不会关；
- *   · 进入房间（scene ready / onReadyChange）→ 本机设置 4enext/strip-autostart 不是 "0" → 自动打开；
- *   · 条上的「✕」真正关闭：写 4enext/strip-closed-this-session = "1"，本次会话不再自动弹；
- *     之后从工具栏「先攻」或右键加入先攻重新打开时清掉标记（下个房间 / 下次进房间又会自动开）；
- *   · 「—」只是折叠成 120×40 的药丸，popover 仍开着 → 也是常驻。
- * 两个键只在本机（localStorage），不进房间数据、不广播。
- * ------------------------------------------------------------------------- */
 function stripAutostartOn() {
   try { return localStorage.getItem(STRIP_AUTOSTART_KEY) !== "0"; } catch (e) { return true; }
 }
@@ -1375,10 +1044,9 @@ function markStripClosed(on) {
   try {
     if (on) localStorage.setItem(STRIP_CLOSED_KEY, "1");
     else localStorage.removeItem(STRIP_CLOSED_KEY);
-  } catch (e) { /* 隐私模式：记不住标记不影响用 */ }
+  } catch (e) {  }
 }
 
-/** 按设置自动打开先攻条（已经在开着 / 设置关掉 / 本次已关过 / 场景没就绪 → 什么都不做）。 */
 async function maybeAutoOpenStrip(where) {
   if (stripOpen) return false;
   if (!stripAutostartOn()) return false;
@@ -1387,8 +1055,6 @@ async function maybeAutoOpenStrip(where) {
   return openStripOrNotify(where || "进入房间自动打开先攻条");
 }
 
-/** 「回到顶部中间」：清掉偏移，并按当前尺寸重新贴顶居中。
- *  v1.7.11：条是 popover → 位置由宿主管，必须重新 open 一次（同 id，只换 anchorPosition）。 */
 async function resetStrip() {
   if (!stripOpen || !stripGeom) return;
   clearStripOffset();
@@ -1407,7 +1073,6 @@ async function resetStrip() {
   pageLog("info", "先攻条已回到顶部中间");
 }
 
-/** 拖动：页面只发累计位移；这里换算 / 夹紧 / 落盘（只存偏移）。 */
 function queueStripDrag(want) {
   stripDragWanted = want;
   void pumpStripDrag();
@@ -1424,8 +1089,7 @@ async function pumpStripDrag() {
       var vp = await infoViewport();
       var size = { width: stripGeom.width, height: stripGeom.height };
       var pos = stripPosFor(job.dx, job.dy, size, vp);
-      /* v1.7.11：popover 的位置由宿主控制 —— 同一个 id 重新 open，只换 anchorPosition（iframe 复用）。
-       * 页面只发累计位移，这里换算 / 夹紧 / 落盘；拖动中每一帧都这样跟手。 */
+
       stripGeom.left = pos.left;
       stripGeom.top = pos.top;
       stripGeom.vp = { width: vp.width, height: vp.height };
@@ -1436,7 +1100,7 @@ async function pumpStripDrag() {
       try {
         await OBR.popover.open(stripPopoverOptions(size, pos));
       } catch (e) {
-        /* 拖太快时宿主偶尔会拒绝一次 open：下一帧还会再来，不打断拖动 */
+
       }
     }
   } finally {
@@ -1445,7 +1109,6 @@ async function pumpStripDrag() {
   }
 }
 
-/** 拖动中 1.5 秒没消息就当结束：兜住指针跑出 iframe、页面被重载导致的丢 pointerup。 */
 function touchStripDrag() {
   if (stripDragTimer) clearTimeout(stripDragTimer);
   stripDragTimer = setTimeout(function () {
@@ -1454,7 +1117,6 @@ function touchStripDrag() {
   }, WIN_DRAG_IDLE_MS);
 }
 
-/** 频道：com.4enext-owlbear/strip-drag，payload = { phase: start/move/end/reset, dx, dy }。 */
 function onStripDrag(ev) {
   var data = ev && ev.data !== undefined ? ev.data : ev;
   if (!data || typeof data.phase !== "string") return;
@@ -1476,7 +1138,7 @@ function onStripDrag(ev) {
   queueStripDrag({ dx: base.dx + dx, dy: base.dy + dy });
   touchStripDrag();
   if (data.phase === "end") {
-    /* 等最后一帧落定再写位置（pump 里已经更新过 stripGeom.offset）。 */
+
     setTimeout(function () {
       if (!stripGeom || !stripGeom.offset) return;
       writeStripOffset(stripGeom.offset.dx, stripGeom.offset.dy);
@@ -1486,7 +1148,6 @@ function onStripDrag(ev) {
   }
 }
 
-/** 视口变了（窗口缩放 / 换屏幕）：按当前偏移重新夹紧先攻条。 */
 async function reclampStrip() {
   if (!stripOpen || !stripGeom) return;
   var vp = await infoViewport();
@@ -1494,7 +1155,7 @@ async function reclampStrip() {
   var off = stripGeom.offset || readStripOffset();
   var pos = stripPosFor(off.dx, off.dy, size, vp);
   if (pos.left === stripGeom.left && pos.top === stripGeom.top) return;
-  /* v1.7.11：popover 位置由宿主管 —— 视口变化后同 id 重新 open 一次，把条夹回视口内。 */
+
   stripGeom.left = pos.left;
   stripGeom.top = pos.top;
   stripGeom.vp = { width: vp.width, height: vp.height };
@@ -1505,12 +1166,10 @@ async function reclampStrip() {
   try {
     await OBR.popover.open(stripPopoverOptions(size, pos));
   } catch (e) {
-    /* 视口变化时宿主还没准备好：下一次 onChange / 拖动会补 */
+
   }
 }
 
-/** v1.7.11：高度随 phase 变（170 / 180 / 200）或折叠 → 同 id 重新 open 换尺寸；
- *  popover 的 iframe 复用，页面不重载，位置仍按记住的偏移夹紧。 */
 async function resizeStrip(width, height) {
   if (!stripOpen || !stripGeom) return;
   var vp = await infoViewport();
@@ -1533,7 +1192,6 @@ async function resizeStrip(width, height) {
   }
 }
 
-/** 频道：com.4enext-owlbear/strip-cmd —— list / size / close。 */
 function onStripCmd(ev) {
   var data = ev && ev.data !== undefined ? ev.data : ev;
   if (!data || typeof data.op !== "string") return;
@@ -1541,17 +1199,17 @@ function onStripCmd(ev) {
     void openWinOrNotify("initiative", "先攻列表");
     return;
   }
-  /* v1.7.3：条上的「✕」= 真正关闭；记下「本次会话已关」，之后进房间不再自动弹。 */
+
   if (data.op === "close") { markStripClosed(true); void closeStrip(); return; }
   if (data.op === "size") {
     if (!stripGeom) return;
     var w = typeof data.width === "number" && isFinite(data.width) ? Math.round(data.width) : stripGeom.width;
     var h = typeof data.height === "number" && isFinite(data.height) ? Math.round(data.height) : stripGeom.height;
-    /* v1.6.2：只收常量尺寸（页面若还按内容测量，数字在这里被丢掉）。 */
+
     var snapped = snapStripSize(w, h);
     if (snapped.width === stripGeom.width && snapped.height === stripGeom.height) return;
     if (!stripOpen) {
-      /* 还在 open 的 await 里：先记下，openStrip 成功后补一次 resizeStrip。 */
+
       stripGeom.pendingSize = snapped;
       return;
     }
@@ -1559,9 +1217,6 @@ function onStripCmd(ev) {
   }
 }
 
-/* ---------------------------------------------------------------------------
- * 3) 入口 A：右下角浮动按钮（照抄 character-cards 的 openPopover）
- * ------------------------------------------------------------------------- */
 var buttonOpen = false;
 async function openButton() {
   var w = 0, h = 0;
@@ -1586,25 +1241,15 @@ async function openButton() {
 }
 
 async function closeButton() {
-  try { await OBR.popover.close(ID_BUTTON); } catch (e) { /* 没开就算了 */ }
+  try { await OBR.popover.close(ID_BUTTON); } catch (e) {  }
   buttonOpen = false;
 }
 
-/* ---------------------------------------------------------------------------
- * 4) 入口 B：左侧工具栏（OBR.tool.create ×5）
- * ---------------------------------------------------------------------------
- * v1.3.1：三个功能各有自己的图标，点哪个开哪个窗口 —— 这就是用户要的
- * 「FullPeople 那种分块」：不是一个大面板里的 tab，而是工具栏上并列的入口。
- * v1.3.2：补齐成「一排入口」：速览 / 角色卡 / 先攻 / 骰子 / 设置，
- * 参考实现（obr-suite/src/background.ts）也是把每个模块的入口分开注册，
- * 各自 open 自己的 popover；顺序只影响图标排列。
- * 图标统一用 24×24 线性风格，靠文件上的小徽标区分（列表 / 旗 / 骰子 / 眼睛 / 滑杆）。
- * ------------------------------------------------------------------------- */
 async function registerOneTool(def) {
   try {
     await OBR.tool.create(def);
   } catch (e) {
-    // 后台被重新加载过（同 id 还在）时先删再建，避免把"重复注册"误报成错误
+
     await OBR.tool.remove(def.id);
     await OBR.tool.create(def);
   }
@@ -1614,7 +1259,7 @@ async function registerTools() {
   if (!OBR.tool || typeof OBR.tool.create !== "function") {
     throw new Error("SDK 没有 OBR.tool.create");
   }
-  /* 返回 false = 不切换成激活状态，只执行我们的回调 */
+
   await registerOneTool({
     id: TOOL_ID,
     icons: [{ icon: TOOL_ICON_URL, label: "4eNEXT to owlbear：角色卡 / 导入面板" }],
@@ -1623,8 +1268,7 @@ async function registerTools() {
       return false;
     }
   });
-  /* v1.4.0：工具栏「先攻」打开**先攻条**（屏幕顶部），不再是 880×640 的大窗口。
-     大窗口降级成「列表窗口」，从先攻条上的「≡」打开 —— 两个 popover 可以同时开着。 */
+
   await registerOneTool({
     id: TOOL_INIT_ID,
     icons: [{ icon: TOOL_INIT_ICON_URL, label: "4eNEXT to owlbear：先攻条" }],
@@ -1641,9 +1285,7 @@ async function registerTools() {
       return false;
     }
   });
-  /* v1.3.2：速览也上工具栏。它打开的是 v1.2.2 那个按 token 记位置的 /info 小窗
-     （与「选中即弹」同一个 popover），所以没选中 token 时要明确告诉用户先选一个，
-     而不是点了没反应。 */
+
   await registerOneTool({
     id: TOOL_GLANCE_ID,
     icons: [{ icon: TOOL_GLANCE_ICON_URL, label: "4eNEXT to owlbear：速览（当前选中的 token）" }],
@@ -1652,7 +1294,7 @@ async function registerTools() {
       return false;
     }
   });
-  /* v1.3.2：设置 / 关于。和先攻 / 骰子一样走 openWin（可拖动 / 视口夹紧 / 记位置）。 */
+
   await registerOneTool({
     id: TOOL_SETTINGS_ID,
     icons: [{ icon: TOOL_SETTINGS_ICON_URL, label: "4eNEXT to owlbear：设置 / 关于" }],
@@ -1663,40 +1305,23 @@ async function registerTools() {
   });
 }
 
-/* ---------------------------------------------------------------------------
- * 5) 右键菜单：GM + 单个 IMAGE token（与参考实现 background.ts 第 231~258 行一致）
- * ------------------------------------------------------------------------- */
 async function createContextMenu(def) {
   try {
     await OBR.contextMenu.create(def);
   } catch (e) {
-    // 后台重载后同 id 可能还在，先删再建
+
     await OBR.contextMenu.remove(def.id);
     await OBR.contextMenu.create(def);
   }
 }
 
-/* ---------------------------------------------------------------------------
- * 5.1) v1.7.3：先攻右键菜单的**动态互斥**（已在先攻里 → 只显示「移出先攻」）
- * ---------------------------------------------------------------------------
- * 限制（以 SDK 3.1.0 / 官方 API 文档为准）：
- *   · OBR.contextMenu 只有 create / remove，**没有 update()**；
- *   · ContextMenuIconFilter 只有 min / max / permissions / roles / every / some ——
- *     **没有 none**，所以没法「排除这些 tokenId」；
- *   · filter 只能读被右键的 item 自己的字段，读不到房间数据（先攻名单在房间数据里）。
- * 所以「在不在先攻里」必须镜像到 token 元数据上（与 v1.6.0 的 hp-bar/enabled 完全同一套做法）：
- *     metadata[NS + "/in-init"] === true  → 显示「移出先攻」
- *     metadata 里没有 / false             → 显示「加入先攻」「隐形加入先攻」
- * 镜像由 syncInitFlags() 维护（加入 / 移出 / 自动清理 / 别人改了名单 / 进房间时对齐一次），
- * 菜单项本身只注册一次（不需要重建，也不可能靠重建做到「按 token 区分」）。
- * ------------------------------------------------------------------------- */
 var KEY_IN_INIT = NS + "/in-init";
 
 var initFlagBusy = false;
 var initFlagAgain = false;
 var initFlagTimer = null;
 
-/** entries → tokenId 数组（保持房间数据里的顺序）。 */
+/* ---- 5. 先攻菜单互斥：in-init 镜像 + token 删除自动清理 ---- */
 function initEntryIdsOf(state) {
   var out = [];
   var list = state && Array.isArray(state.entries) ? state.entries : [];
@@ -1706,8 +1331,6 @@ function initEntryIdsOf(state) {
   return out;
 }
 
-/** 菜单 filter：in = 只在「已在先攻里」的 token 上出现；out = 只在「不在先攻里」的出现。
- *  operator "!=" 同时覆盖 undefined 与 false（与血条组件开关同一个写法）。 */
 function initMenuFilter(mode) {
   var filter = { roles: ["GM"], every: [{ key: "type", value: "IMAGE" }], max: 1 };
   if (mode === "in") filter.every.push({ key: ["metadata", KEY_IN_INIT], value: true });
@@ -1715,7 +1338,6 @@ function initMenuFilter(mode) {
   return filter;
 }
 
-/** 注册先攻三项（只注册一次；显示 / 隐藏由 initMenuFilter 的 metadata 条件决定）。 */
 async function registerInitMenus() {
   await createContextMenu({
     id: INIT_MENU_ADD,
@@ -1734,7 +1356,6 @@ async function registerInitMenus() {
   });
 }
 
-/** 名单 → 「应该在先攻里」的 tokenId map（ids 不传就读房间数据）。 */
 async function initWantIds(ids) {
   var want = {};
   var list = null;
@@ -1748,11 +1369,6 @@ async function initWantIds(ids) {
   return want;
 }
 
-/**
- * 把「在不在先攻里」镜像到 token 元数据（右键菜单 filter 只能读 item 字段）。
- * 只写**需要改**的 IMAGE token；写 false 不 delete（与 hp-bar 的约定一致，filter 用 "!=" true 判断）。
- * 只有城主能写场景数据 → 非 GM 直接返回 0（菜单本来也只给 GM）。
- */
 async function syncInitFlags(ids) {
   if (initFlagBusy) { initFlagAgain = true; return 0; }
   initFlagBusy = true;
@@ -1790,7 +1406,6 @@ async function syncInitFlags(ids) {
   }
 }
 
-/** 名单变化（本机 / 别人 / token 删了）→ 300ms 内合并成一次对齐。 */
 function scheduleInitFlagSync() {
   if (initFlagTimer) return;
   initFlagTimer = setTimeout(function () {
@@ -1799,8 +1414,6 @@ function scheduleInitFlagSync() {
   }, 300);
 }
 
-/* 房间数据每次变化都会回调（骰子记录 / 角色卡都会动它）——只有先攻名单的 updatedAt 变了才对齐镜像，
- * 免得每投一次骰子就去 getItems() 扫一遍场景。拿不到 metadata 参数时退化成「每次都对齐」（宁可慢一点）。 */
 var initSeenUpdatedAt = -1;
 function onRoomMetaChanged(meta) {
   if (!meta || typeof meta !== "object") { scheduleInitFlagSync(); return; }
@@ -1811,9 +1424,6 @@ function onRoomMetaChanged(meta) {
   scheduleInitFlagSync();
 }
 
-/** v1.6.0：写血条组件开关。**关掉写 false，绝不 delete** ——
- *  自动开启 / 兼容逻辑用 undefined 判断「老 token」，delete 会让血条下次刷新又冒出来。
- *  v1.7.2：返回写成功的 token id 数组（「添加」写完要拿它去开编辑窗）；失败返回空数组。 */
 async function writeHpBarFlag(context, on) {
   var src = context && context.items ? context.items : [];
   var ids = [];
@@ -1843,23 +1453,16 @@ async function writeHpBarFlag(context, on) {
   }
 }
 
-/** v1.7.2：右键「添加血条组件」的完整动作 —— 先写开关，再**打开编辑小窗**。
- *  只写开关不填数值 = 血条永远画不出来（用户真机反馈的就是这个）；所以两步必须绑在一起。
- *  窗口打不开时不要连着报两次错：writeHpBarFlag 已经 notify 过失败，
- *  openHpEdit 只在「开关写成功但窗口打不开」时才报（stepFail → ERROR）。 */
 async function onHpBarAdd(context) {
   var ids = await writeHpBarFlag(context, true);
   if (!ids.length) return;
   if (ids.length > 1) {
-    /* 菜单 filter 是 max:1，正常到不了这里；万一到了就只开第一枚，别默默什么都不做 */
+
     notify("一次只能编辑一枚 token，已为第一枚打开编辑窗", "WARNING");
   }
   await openHpEdit(ids[0]);
 }
 
-/** v1.7.7：右键「编辑血条」—— 不看当前选中，直接开这枚 token 的编辑窗。
- *  用途：「选中即弹」只在第一次选中时弹（关掉后不再弹），要再改就走这一项；
- *  与「添加血条组件」的区别：**不改开关**（已经开着的就照旧），只开窗。 */
 async function onHpBarEdit(context) {
   var item = context && context.items && context.items[0] ? context.items[0] : null;
   if (!item || !item.id) {
@@ -1878,7 +1481,6 @@ async function registerContextMenu() {
     throw new Error("SDK 没有 OBR.contextMenu.create");
   }
 
-  /* 1) 绑定角色卡（v1.1.0 起就有，id 不变） */
   await createContextMenu({
     id: NS + "/bind-menu",
     icons: [{
@@ -1910,16 +1512,8 @@ async function registerContextMenu() {
     }
   });
 
-  /* 2) 先攻三项（v1.3.0 加入两项；v1.7.3 加「移出先攻」并改成**动态互斥**）
-   * 「已在先攻里 → 只显示移出先攻」靠 token 元数据 in-init 的镜像 + filter 的 metadata 条件实现
-   * （ContextMenuIconFilter 没有 none，也没法读房间数据 —— 详见 5.1 的说明）。菜单只注册这一次。 */
   await registerInitMenus();
 
-  /* 3) v1.6.0：血条组件（Full Suite 同款两项）；v1.7.7 再加「编辑血条」一项。
-   *    v1.7.9：**Boss 两项（显示为 Boss / 隐藏 Boss）已删除**（用户明确不要 Boss 模式）。
-   *    每一项单独 create（现有风格）：filter 不同、回调不用猜 elementId。
-   *    「添加」用 operator:"!=" 同时覆盖 undefined 与 false；「移除」写 false 抑制自动重开；
-   *    「编辑血条」只要开关是 true（= 这枚 token 上确实有一条血条）就出现。 */
   await createContextMenu({
     id: NS + "/hpbar-add",
     icons: [{
@@ -1932,7 +1526,7 @@ async function registerContextMenu() {
         some: [{ key: ["metadata", KEY_HPBAR], operator: "!=", value: true }]
       }
     }],
-    /* v1.7.2：写开关 + 打开血条编辑小窗（HP / 四防 / 回复力都在那个窗里填） */
+
     onClick: function (context) { return onHpBarAdd(context); }
   });
   await createContextMenu({
@@ -1949,9 +1543,7 @@ async function registerContextMenu() {
     }],
     onClick: function (context) { return writeHpBarFlag(context, false); }
   });
-  /* v1.7.7：「编辑血条」—— 只在血条**开着**（hp-bar/enabled === true）的 token 上出现，
-   * 与「移除血条组件」同一套 filter。它不改开关，只把 340×150 的编辑窗开出来
-   * （用户把「选中即弹」的窗口关掉之后，要再改就点这里）。 */
+
   await createContextMenu({
     id: NS + "/hpbar-edit",
     icons: [{
@@ -1968,37 +1560,33 @@ async function registerContextMenu() {
   });
 }
 
-/* ---------------------------------------------------------------------------
- * 6) 速览弹窗（选中绑定的 token 就弹）
- * ---------------------------------------------------------------------------
- * v1.2.2：弹窗可自由拖动
- *   · OBR 的 popover 没有拖动能力，但可以在同一个 id 上重新 open —— 只改
- *     anchorPosition，弹窗页面不会重载（与 v1.1.0 浮动按钮同一套字段写法）。
- *   · 拖动时统一按「左上角」定位：anchorOrigin / transformOrigin 都是 LEFT/TOP，
- *     anchorPosition 就是弹窗左上角在 Owlbear 视口里的坐标。这样后台只记一个点：
- *     拖动 = 起点 + 指针位移，不用反推 OBR 的锚点 / 变换规则。
- *   · 指针事件在 info.js（弹窗页）里收，经 broadcast 发到这里；这里负责节流合并、
- *     视口边界夹取、localStorage 位置记忆（按 token id 各记一份）。
- * ------------------------------------------------------------------------- */
 var infoOpen = false;
 var infoItemId = null;
 var infoCardId = null;
-/* 弹窗当前几何：{ left, top, width, height, url, vp: { width, height } } */
+
 var infoGeom = null;
-/* 拖动状态：infoDrag = { base:{left,top}, itemId, moved }；dragWanted 是待应用的最后位置。 */
+
 var infoDrag = null;
 var infoDragTimer = null;
 var dragWanted = null;
 var dragBusy = false;
 
 async function getCards() {
+  var box = null;
   try {
     var meta = await OBR.room.getMetadata();
-    var box = meta[KEY_CARDS];
-    if (box && Array.isArray(box.cards)) return box.cards;
+    box = meta[KEY_CARDS];
   } catch (e) {
     pageLog("err", "读取房间数据失败：" + errText(e));
   }
+
+  var local = localCardsFallback();
+  var roomAt = box && typeof box.updatedAt === "number" ? box.updatedAt : 0;
+  if (box && Array.isArray(box.cards)) {
+    if (local && local.updatedAt > roomAt) return local.cards;
+    return box.cards;
+  }
+  if (local) return local.cards;
   return [];
 }
 
@@ -2008,7 +1596,6 @@ function findCard(cards, id) {
   return null;
 }
 
-/** 选中 token 在屏幕上的「上边中点」（Owlbear 视口坐标）。 */
 async function anchorOf(itemId) {
   try {
     var bounds = await OBR.scene.items.getItemBounds([itemId]);
@@ -2027,7 +1614,7 @@ async function infoViewport() {
   return vp;
 }
 
-/* 小屏（13 寸笔记本 1920×1080 / 缩窄的窗口）不能超出视口：宽高都按视口留边再夹一次。 */
+/* ---- 6. 速览弹窗 /info：尺寸 / 位置记忆 / 拖动 ---- */
 function infoSize(vp) {
   return {
     width: Math.max(INFO_MIN_W, Math.min(INFO_W, (vp.width || INFO_W + 40) - 32)),
@@ -2035,7 +1622,6 @@ function infoSize(vp) {
   };
 }
 
-/** 把弹窗左上角夹进视口（视口未知时不夹）。 */
 function clampInfoPos(left, top, size, vp) {
   var m = INFO_VIEW_MARGIN;
   var out = { left: Math.round(left), top: Math.round(top) };
@@ -2044,11 +1630,6 @@ function clampInfoPos(left, top, size, vp) {
   return out;
 }
 
-/* ---- 位置记忆 ------------------------------------------------------------
- * localStorage["4enext/info-pos"] = { v: 1, pos: { "<tokenId>": { left, top } } }
- * 按 token 记：同一枚 token 下次打开回到原处，换一枚 token 不会串位置。
- * 读的时候容忍旧格式 / 脏数据：坏了就整份忽略，退回「token 上方」。
- * ------------------------------------------------------------------------- */
 function readInfoPosMap() {
   try {
     var raw = localStorage.getItem(INFO_POS_KEY);
@@ -2080,15 +1661,14 @@ function writeInfoPos(itemId, pos) {
   if (!itemId || !pos) return;
   try {
     var map = readInfoPosMap();
-    delete map[itemId]; /* 先删再插 → 这枚 token 变成「最近使用」，裁剪时最后才轮到它 */
+    delete map[itemId];
     map[itemId] = { left: Math.round(pos.left), top: Math.round(pos.top) };
     var keys = Object.keys(map);
     for (var i = 0; i < keys.length - INFO_POS_MAX; i++) delete map[keys[i]];
     localStorage.setItem(INFO_POS_KEY, JSON.stringify({ v: 1, pos: map }));
-  } catch (e) { /* 隐私模式 / 空间满：记不住位置不影响用 */ }
+  } catch (e) {  }
 }
 
-/** 只清这一枚 token 的位置（不会误清别人的）。 */
 function clearInfoPos(itemId) {
   if (!itemId) return;
   try {
@@ -2096,10 +1676,9 @@ function clearInfoPos(itemId) {
     delete map[itemId];
     if (!Object.keys(map).length) localStorage.removeItem(INFO_POS_KEY);
     else localStorage.setItem(INFO_POS_KEY, JSON.stringify({ v: 1, pos: map }));
-  } catch (e) { /* 忽略 */ }
+  } catch (e) {  }
 }
 
-/** 弹窗参数：位置一律按「左上角」解释，拖动时只换 anchorPosition。 */
 function infoPopoverOptions(pos, size, url) {
   return {
     id: ID_INFO,
@@ -2115,7 +1694,6 @@ function infoPopoverOptions(pos, size, url) {
   };
 }
 
-/** 打开 / 移动速览弹窗。url 不变时 OBR 只更新位置，不会重载弹窗页面。 */
 async function showInfoAt(pos, size, url, itemId, cardId, vp) {
   await OBR.popover.open(infoPopoverOptions(pos, size, url));
   infoOpen = true;
@@ -2131,7 +1709,6 @@ async function showInfoAt(pos, size, url, itemId, cardId, vp) {
   };
 }
 
-/** 自动定位点：优先用这枚 token 记住的位置，否则摆在 token 正上方。 */
 async function infoAutoPos(itemId, size, vp) {
   var saved = readInfoPos(itemId);
   if (saved) return clampInfoPos(saved.left, saved.top, size, vp);
@@ -2139,7 +1716,7 @@ async function infoAutoPos(itemId, size, vp) {
   if (anchor) {
     return clampInfoPos(anchor.left - size.width / 2, anchor.top - INFO_TOKEN_GAP - size.height, size, vp);
   }
-  /* 拿不到 token 包围盒（极少见）：落在视口左上角，至少还能拖走 */
+
   return clampInfoPos((vp.width || 0) / 2 - size.width / 2, INFO_VIEW_MARGIN, size, vp);
 }
 
@@ -2147,7 +1724,7 @@ async function openInfo(itemId, cardId) {
   var vp = await infoViewport();
   var size = infoSize(vp);
   var pos = await infoAutoPos(itemId, size, vp);
-  /* v1.7.13：入口 URL 也带版本（?v=），否则旧缓存的 info.html 会继续引用旧脚本。 */
+
   var url = URL_INFO + "?v=" + encodeURIComponent(PLUGIN_VERSION) +
     "&item=" + encodeURIComponent(itemId) + "&card=" + encodeURIComponent(cardId);
   await showInfoAt(pos, size, url, itemId, cardId, vp);
@@ -2158,15 +1735,12 @@ async function closeInfo() {
   infoDrag = null;
   infoGeom = null;
   if (!infoOpen) return;
-  try { await OBR.popover.close(ID_INFO); } catch (e) { /* 已关闭 */ }
+  try { await OBR.popover.close(ID_INFO); } catch (e) {  }
   infoOpen = false;
   infoItemId = null;
   infoCardId = null;
 }
 
-/* ---- 拖动：info.js 只发「起点 + 累计位移」，位置换算 / 夹取 / 记忆都在这里 ---- */
-
-/** 把最新目标位置排进队列；上一帧还没 open 完就只留最后一个（节流合并）。 */
 function queueInfoDrag(pos) {
   if (!infoGeom) return;
   dragWanted = {
@@ -2197,12 +1771,11 @@ async function pumpInfoDrag() {
     }
   } finally {
     dragBusy = false;
-    /* 上一次 open 失败时可能刚好又排进一个新位置：补跑一次，别把最后一帧丢了。 */
+
     if (dragWanted) void pumpInfoDrag();
   }
 }
 
-/** 拖动中 1.5 秒没消息就当结束：兜住指针跑出 iframe、页面被重载导致的丢 pointerup。 */
 function touchInfoDragTimer() {
   if (infoDragTimer) clearTimeout(infoDragTimer);
   infoDragTimer = setTimeout(function () {
@@ -2214,7 +1787,6 @@ function touchInfoDragTimer() {
   }, INFO_DRAG_IDLE_MS);
 }
 
-/** 频道：com.4enext-owlbear/info-drag，phase = start / move / end / reset。 */
 function onInfoDrag(ev) {
   var data = ev && ev.data !== undefined ? ev.data : ev;
   if (!data || typeof data.phase !== "string") return;
@@ -2232,7 +1804,7 @@ function onInfoDrag(ev) {
   var dy = typeof data.dy === "number" && isFinite(data.dy) ? data.dy : 0;
 
   if (data.phase === "start" || !infoDrag) {
-    /* 起点 = 弹窗现在的位置；move 一律按「起点 + 累计位移」算，不会越拖越偏。 */
+
     infoDrag = { base: { left: infoGeom.left, top: infoGeom.top }, itemId: infoItemId, moved: false };
     touchInfoDragTimer();
     if (data.phase === "start") return;
@@ -2240,7 +1812,6 @@ function onInfoDrag(ev) {
 
   if (Math.abs(dx) > 1 || Math.abs(dy) > 1) infoDrag.moved = true;
 
-  /* 只是点了一下标题栏（没真的移动）就什么也不做：避免多余的重开。 */
   if (!infoDrag.moved) {
     if (data.phase === "end") {
       if (infoDragTimer) { clearTimeout(infoDragTimer); infoDragTimer = null; }
@@ -2260,7 +1831,6 @@ function onInfoDrag(ev) {
   }
 }
 
-/** 「回到 token」：清掉这枚 token 记住的位置，重新按 token 正上方摆。 */
 async function resetInfoToToken() {
   if (!infoOpen || !infoItemId) return;
   var itemId = infoItemId;
@@ -2270,7 +1840,7 @@ async function resetInfoToToken() {
   var pos = await infoAutoPos(itemId, size, vp);
   var url = infoGeom ? infoGeom.url : URL_INFO + "?v=" + encodeURIComponent(PLUGIN_VERSION) +
     "&item=" + encodeURIComponent(itemId) + "&card=" + encodeURIComponent(cardId || "");
-  /* 算位置期间可能已经换了选中 token / 关了弹窗：别把过期的弹窗又开回来。 */
+
   if (!infoOpen || infoItemId !== itemId) return;
   try {
     await showInfoAt(pos, size, url, itemId, cardId, vp);
@@ -2280,11 +1850,6 @@ async function resetInfoToToken() {
   }
 }
 
-/**
- * 当前选中的**唯一** token（多选 / 没选中 / 读不到 → null）。
- * v1.7.7：「选中即弹」现在要看两支（速览 / 血条编辑窗），所以先只取 token 本身，
- * 「算不算绑定」交给下面的 boundCardId —— 两边不会再各读一遍 selection。
- */
 async function selectedItem() {
   var sel = null;
   try { sel = await OBR.player.getSelection(); } catch (e) { return null; }
@@ -2297,7 +1862,6 @@ async function selectedItem() {
   }
 }
 
-/** token 上记的卡 id（只在卡真的还在房间里时才算数）。 */
 async function boundCardId(item) {
   if (!item || !item.metadata) return null;
   var cardId = item.metadata[KEY_BIND];
@@ -2315,12 +1879,6 @@ async function selectedBinding() {
   return { itemId: item.id, cardId: cardId };
 }
 
-/**
- * 工具栏「速览」：给**当前选中**的 token 打开速览弹窗。
- * 它复用 v1.2.2 的 /info 小窗（内层是 infoOpen / infoGeom 那一套，位置按 token 记），
- * 所以**不**注册进 WINS —— 两套状态混在一起会互相打架（选中变化会把窗口关掉再重开）。
- * 与「选中即弹」的唯一区别是这里**一定有反馈**：没选中 / 没绑定都明确告诉用户。
- */
 async function openGlance(where) {
   var label = where || "工具栏「速览」";
   var bind = await selectedBinding();
@@ -2341,18 +1899,12 @@ async function openGlance(where) {
 }
 
 var infoErrorShown = false;
-/**
- * v1.7.7：「选中即弹」分两支（单选才判断；多选 / 没选中一律什么都不弹）。
- *   ① 已绑定角色卡 → 速览 /info（v1.2 起的老行为，一个字没改）；
- *   ② 没绑定卡、但有血条数据或开关 → 血条编辑窗 /hp-edit（用户要的：点一下就能改 HP / 四防）；
- *   ③ 没卡也没血条 → 什么都不弹（老行为）。
- * ②的「只弹一次」靠 hpAutoPopped / hpAutoSel（见上面 hpEditTarget 附近的说明）。
- */
+
 async function refreshInfo() {
   var item = await selectedItem();
   var selId = item && item.id ? item.id : null;
   if (selId !== hpAutoSel) {
-    hpAutoSel = selId;   /* token 换了 / 取消选中 / 变多选 → 忘掉上一枚弹过没 */
+    hpAutoSel = selId;
     hpAutoPopped = {};
   }
   if (!item) return closeInfo();
@@ -2372,7 +1924,6 @@ async function refreshInfo() {
     return;
   }
 
-  /* 没绑定卡：速览照旧收起来（老行为），但只要这枚 token 有血条，就把编辑窗弹出来。 */
   await closeInfo();
   if (!hasHpBarData(item)) return;
   if (hpAutoPopped[item.id]) return;
@@ -2383,7 +1934,6 @@ async function refreshInfo() {
   }
 }
 
-/* 拖 token / 改选择会连续触发事件，合并成一次刷新。 */
 var pendingRefresh = null;
 function scheduleRefresh() {
   if (pendingRefresh) return;
@@ -2397,33 +1947,9 @@ async function sceneReady() {
   try { return await OBR.scene.isReady(); } catch (e) { return false; }
 }
 
-/* ---------------------------------------------------------------------------
- * 7) token 血条（画在 token 上的图形层）
- * ---------------------------------------------------------------------------
- * 做法照抄参考实现 FullPeople/obr-suite 的 src/modules/bubbles/index.ts：
- *   · 不是「改 token 让 OBR 原生长血条」（OBR 没有这个能力），而是给 token 挂
- *     **本地图形子 item**。v1.5.0 是三件（Curve 底条 + Curve 填充 + Text 数字）；
- *     v1.6.0 扩成 role 表：HP 两行条 + 四防盾 + Boss 环 / 名牌 / 分段 / 锁（最多 23 件），
- *     v1.6.1 把四防从四角改成**一排**（盾的 role / zIndex / 件数都没变，只改摆位与 AC 样式），
- *     attachedTo = token id、layer = "ATTACHMENT"、disableHit、locked、固定 zIndex。
- *   · 用 OBR.scene.local.* 而不是 OBR.scene.items.* ：本地图形只在自己这台机器上画，
- *     不需要场景写权限 —— 玩家也能看到血条（场景写权限只有 GM 有）。
- *   · 尺寸/坐标全部按「已渲染」尺寸烘焙成世界坐标（参考实现 2026-05-10 的回退方案），
- *     并 disableAttachmentBehavior(["SCALE","ROTATION","LOCKED","COPY"])，
- *     避免 token 缩放时被二次放大；位移仍然跟着 token 走。
- *   · token 被删除时 OBR 会自动删掉挂在它上面的子 item；血条数据没了（解绑 / 手删）
- *     我们就主动清理自己的本地 item；本地 item 被外部删掉时会自动重建。
- * 数值来源：token 元数据 com.4enext-owlbear/hp = { cur, max, temp, surges, surgesMax,
- * defenses, boss, locked, updatedAt }，与速览弹窗是同一份数据，所以弹窗里加减血 → 血条立刻跟着变。
- * 显式开关是独立键 com.4enext-owlbear/hp-bar/enabled（false 不画，undefined 照旧画）。
- * v1.6.0 的 role 表 / 几何公式 / 像素常数集中表见 docs/hpbar-boss-v16.md。
- * ------------------------------------------------------------------------- */
-/* 本地图形 item 的元数据：{ owner: tokenId, role: "<见 v1.6 role 表>", key?, index? }
- * v1.6.0 的 role 从 3 种扩到 16 种（环 / 条 / 牌 / 盾 / 分段 / 锁 / 数值），全部打同一个 tag，
- * sweepStaleBars 与自愈逻辑不用改（它们只认 owner/role 是否存在）。 */
 var BAR_TAG = NS + "/bar";
 
-var barEntries = {};     /* tokenId -> { ids: [], sig: "", rolesKey: "", force?: true } */
+var barEntries = {};
 var barTimer = null;
 var barBusy = false;
 var barAgain = false;
@@ -2431,14 +1957,11 @@ var barUnsupported = false;
 var barSwept = false;
 var cachedDpi = 0;
 
-/* v1.6.0：本机视角（角色 / 玩家 id / 玩家端量化阈值）。
- * 只用于「这台机器画什么」——绝不写进 metadata、绝不广播（规格 §4.7 的同一条纪律）。
- * 角色 / id 每次 syncBars 现读（切角色 / 换玩家要立刻生效）；阈值放场景元数据，缓存一次。 */
 var barThreshold = -1;
 async function sceneViewer() {
   var out = { role: "", id: "", threshold: PLAYER_THRESHOLD_DEFAULT };
-  try { out.role = await OBR.player.getRole(); } catch (e1) { /* 忽略 */ }
-  try { out.id = await OBR.player.getId(); } catch (e2) { /* 忽略 */ }
+  try { out.role = await OBR.player.getRole(); } catch (e1) {  }
+  try { out.id = await OBR.player.getId(); } catch (e2) {  }
   if (barThreshold >= 0) { out.threshold = barThreshold; return out; }
   try {
     if (OBR.scene && typeof OBR.scene.getMetadata === "function") {
@@ -2446,12 +1969,11 @@ async function sceneViewer() {
       var raw = meta ? meta[KEY_PLAYER_THRESHOLD] : null;
       if (typeof raw === "number" && isFinite(raw) && raw >= 0 && raw <= 100) out.threshold = Math.round(raw);
     }
-  } catch (e3) { /* 读不到就用 25 */ }
+  } catch (e3) {  }
   barThreshold = out.threshold;
   return out;
 }
 
-/* 这些构建器由 dev/build-background.mjs 从 SDK 的具名导出接到本作用域（buildCurve 等）。 */
 function barBuildersOk() {
   return typeof buildCurve === "function" && typeof buildText === "function";
 }
@@ -2460,9 +1982,6 @@ function readIntOrNull(v) {
   return typeof v === "number" && isFinite(v) ? Math.round(v) : null;
 }
 
-/** 四防：只收 ac / fort / reflex / will 四个数字；一个都没有就返回 null（= 不画盾）。
- *  ⚠ 卡里的键叫 ref，token 上一律叫 reflex —— 换算只在写盘 helper（track.js）里做一处，
- *  渲染层只认 reflex（规格 §6.2 / 风险 R11）。 */
 function readDefenses(raw) {
   if (!raw || typeof raw !== "object") return null;
   var out = null;
@@ -2476,18 +1995,11 @@ function readDefenses(raw) {
   return out;
 }
 
-/** 血条组件开关：只有显式 false 才不画（undefined / true 都画）。 */
 function hpBarEnabled(item) {
   var flag = item && item.metadata ? item.metadata[KEY_HPBAR] : undefined;
   return flag !== false;
 }
 
-/** v1.7.7：这枚 token「有血条」吗 —— 选中即弹编辑窗的判据（与 hpBarEnabled 不是一回事：
- *  hpBarEnabled 说的是「画不画」，这里说的是「有没有值得编辑的东西」）。
- *  有 hp 数据（生命 / 回复力 / 四防 / 临时生命 / 旧数据里的 boss 里任意一项）**或**开关被显式打开 → true。
- *  只看「有字段」不看数值大小：cur=0（倒地）也是要能改的。
- *  ⚠ v1.7.9：boss 字段只为旧数据兼容（老 token 上可能还留着），**不再读取 / 绘制**；
- *  这里仍把它当「有数据」，是因为有 hp 对象就值得让用户点开编辑窗看一眼。 */
 function hasHpBarData(item) {
   if (!item || !item.metadata) return false;
   if (item.metadata[KEY_HPBAR] === true) return true;
@@ -2498,12 +2010,9 @@ function hasHpBarData(item) {
   if (readIntOrNull(m.temp) !== null) return true;
   if (readIntOrNull(m.surges) !== null) return true;
   if (m.defenses && typeof m.defenses === "object" && Object.keys(m.defenses).length) return true;
-  if (m.boss) return true;
   return false;
 }
 
-/** 玩家端比例量化：锁定时按 25% 阶梯**向上**取整（与参考实现 display-policy 同一套）。
- *  注意：token metadata 对全桌可读，这里只是「本地不画精确数字」，不是加密（风险 R12）。 */
 function quantiseRatio(ratio, thresholdPercent) {
   if (!(thresholdPercent > 0)) return ratio;
   var step = thresholdPercent / 100;
@@ -2525,7 +2034,7 @@ function readHpMeta(item) {
     cur: cur, max: max, temp: temp,
     surges: surges, surgesMax: surgesMax,
     defenses: readDefenses(m.defenses),
-    /* v1.7.9：hp.boss 只为旧数据兼容而保留，这里**不再读**（不再画 Boss 环 / 名牌 / 锁）。 */
+
     locked: m.locked !== false,
     name: item && typeof item.name === "string" ? item.name.trim().slice(0, 120) : ""
   };
@@ -2542,12 +2051,6 @@ async function sceneDpi() {
   return cachedDpi;
 }
 
-/** 环形扇区多边形（v1.6.0 Boss 环；v1.7.9 起是**所有 token 的 HP 环**，直接复用）。
- *  SDK 3.1.0 的 ShapeType 只有 RECTANGLE / CIRCLE / TRIANGLE / HEXAGON —— **没有 RING**，
- *  所以环必须用 Curve 的 points() 手绘：外弧 t=0→1 + 内弧 t=1→0，closed=true、tension=0。
- *  坐标以 token 中心为原点（item.position 放中心），这样 token 移动时位置平移、形状不变。
- *  a0 = -90°（12 点方向），sweep = ratio × 360°，N = 48 段（不要 128：脏矩形重绘翻倍）。
- *  ratio = 1 画满整圈（暗色底环），ratio = cur/max 画血量的那一圈。 */
 function ringSectorPoints(radiusOuter, radiusInner, ratio, segments) {
   var n = Math.max(8, Math.round(segments || HP_RING_SEGMENTS));
   var sweep = Math.max(0.0001, Math.min(1, ratio)) * Math.PI * 2;
@@ -2565,26 +2068,24 @@ function ringSectorPoints(radiusOuter, radiusInner, ratio, segments) {
   return pts;
 }
 
-/** 盾形多边形（照抄参考实现 bubbles/index.ts 的 shieldPoints，完整公式在规格 §5.4）。
- *  左上 / 右上圆角 → 右侧直边 → 右半下摆二次贝塞尔到 (W/2,H) → 左半镜像回 (0,sb)。 */
 function shieldPoints(W, H, segments) {
   var seg = segments || 14;
   var pts = [];
   var cornerR = Math.min(W, H) * 0.18;
   var sideStraightBottom = H * 0.42;
   var i, t, a;
-  /* 左上圆角：角度 -π → -π/2 */
+
   for (i = 0; i <= seg; i++) {
     t = i / seg; a = -Math.PI + (Math.PI / 2) * t;
     pts.push({ x: cornerR + Math.cos(a) * cornerR, y: cornerR + Math.sin(a) * cornerR });
   }
-  /* 右上圆角：角度 -π/2 → 0 */
+
   for (i = 0; i <= seg; i++) {
     t = i / seg; a = -Math.PI / 2 + (Math.PI / 2) * t;
     pts.push({ x: W - cornerR + Math.cos(a) * cornerR, y: cornerR + Math.sin(a) * cornerR });
   }
   pts.push({ x: W, y: sideStraightBottom });
-  /* 右半下摆：(W, sb) → (0.85W, 0.92H) → (W/2, H) */
+
   var segs2 = seg * 2;
   for (i = 1; i <= segs2; i++) {
     t = i / segs2;
@@ -2594,7 +2095,7 @@ function shieldPoints(W, H, segments) {
       y: u * u * sideStraightBottom + 2 * u * t * (H * 0.92) + t * t * H
     });
   }
-  /* 左半下摆镜像：(W/2, H) → (0.15W, 0.92H) → (0, sb) */
+
   for (i = 1; i <= segs2; i++) {
     t = i / segs2;
     var v = 1 - t;
@@ -2606,36 +2107,27 @@ function shieldPoints(W, H, segments) {
   return pts;
 }
 
-/** 圆形折线（v1.7.5：强韧 / 反射 / 意志 从盾形改成圆）。
- *  SDK 3.1.0 确实有 ShapeType.CIRCLE，但本文件的盾 / 环全走 buildCurve().points()
- *  （同一套「锚点在左上角、y 向下」的坐标），圆也照这个来：closed=true、tension=0，
- *  一个直径 D 的圆用 N 段折线，外接盒就是 [0,D]×[0,D]，position 放左上角即可。
- *  参数与 shieldPoints 同形（D, segments），调用处一眼能看出哪个是盾、哪个是圆。 */
 function circlePoints(D, segments) {
   var n = Math.max(8, Math.round(segments || DEF_CIRCLE_SEGMENTS));
   var r = D / 2;
   var out = [];
   for (var i = 0; i < n; i++) {
-    var a = -Math.PI / 2 + (Math.PI * 2) * (i / n);   /* 从 12 点开始，与环的 a0 一致 */
+    var a = -Math.PI / 2 + (Math.PI * 2) * (i / n);
     out.push({ x: r + Math.cos(a) * r, y: r + Math.sin(a) * r });
   }
   return out;
 }
 
-/** v1.7.5：一枚四防的外形 —— AC 是盾（shieldPoints），三防是圆（circlePoints）。
- *  构建（buildBarItems）与增量刷新（patchBar）共用这一处，换形状只改这里。 */
 function defShapePoints(sh) {
   return sh.circle ? circlePoints(sh.d, DEF_CIRCLE_SEGMENTS) : shieldPoints(sh.d, sh.d);
 }
 
-/** 由 token 的世界包围盒推出「一组几何」：**环形血条** + HP 数字 + **四角四防**。
- *  v1.7.9：所有 token 都画环形血条（原来只有 Boss 画），直的 HP 条 / 蓝条 / 名牌 / 锁全部删除。
- *  viewer = { exact, threshold }：exact=false 时（其他玩家 + locked）比例按阶梯量化、不画数字与四防。 */
+/* ---- 7. token 血条：环形 48 段 + 环内数字 + 四角四防 ---- */
 function barLayout(bounds, dpi, hp, viewer) {
-  /* ---- v1.7.9 环形血条的像素常数（真机微调只改这几行 / 上面的 HP_RING_*） ---- */
-  var RING_THICK = HP_RING_THICK;        /* 环厚 10s */
-  var RING_INSET = HP_RING_INSET;        /* Ro = 半短边 − 2s */
-  var RING_SEGMENTS = HP_RING_SEGMENTS;  /* 48 段 */
+  /* ---- v1.7.9 环形血条的像素常数（真机微调只改这里；s = min(宽,高)/dpi）---- */
+  var RING_THICK = HP_RING_THICK;
+  var RING_INSET = HP_RING_INSET;
+  var RING_SEGMENTS = HP_RING_SEGMENTS;
 
   var max = hp.max > 0 ? hp.max : (hp.cur !== null ? Math.max(1, hp.cur) : 1);
   var cur = hp.cur === null ? max : hp.cur;
@@ -2648,10 +2140,6 @@ function barLayout(bounds, dpi, hp, viewer) {
   var threshold = viewer && typeof viewer.threshold === "number" ? viewer.threshold : PLAYER_THRESHOLD_DEFAULT;
   var shownRatio = exact ? ratio : quantiseRatio(ratio, threshold);
 
-  /* A. 环形血条（v1.7.9：把原来 Boss 专属的环套到所有 token 上）
-   *    · 圆心 = token 中心；Ro = 半短边 − 2s；环厚 10s；48 段（ringSectorPoints 复用）；
-   *    · 底环画满一整圈（暗色），血量那圈按 cur/max 从 12 点方向顺时针填；
-   *    · 不再画直的 HP 条 / 蓝色回复力条（用户：「所有血条改成环形」「token 上不画蓝条」）。 */
   var halfShort = Math.min(bounds.width, bounds.height) / 2;
   var ringRo = Math.max(3 * s, halfShort - RING_INSET * s);
   var ringT = Math.max(1 * s, Math.min(RING_THICK * s, ringRo * 0.8));
@@ -2662,9 +2150,6 @@ function barLayout(bounds, dpi, hp, viewer) {
     ratio: shownRatio, segments: RING_SEGMENTS
   };
 
-  /* HP 数字（`cur/max`，临时生命仍是 ` +N`）：放在**环内底部** —— 不压 token 脸，
-   * 位置和以前的底部条接近；带描边，窄 token 上字号跟着环内径缩。
-   *   纵向中心 = 环心 + Ri×0.52（环内偏下），宽度按 Ri 收一点，保证整串字都在环内。 */
   var hpText = exact ? (String(cur) + "/" + max + (hp.temp > 0 ? " +" + hp.temp : "")) : "";
   var hpTextW = Math.max(14 * s, ringRi * 1.4);
   var hpFont = Math.max(6 * s, Math.min(ringRi * 0.62, (hpTextW / Math.max(4, hpText.length || 4)) * 1.4));
@@ -2672,18 +2157,11 @@ function barLayout(bounds, dpi, hp, viewer) {
   var hpTextX = bounds.center.x - hpTextW / 2;
   var hpTextY = bounds.center.y + ringRi * 0.52 - hpTextH / 2;
 
-  /* B. 四防回到**四角**（v1.7.9，用户明确坐标）：
-   *      左上 = 强韧（黄 #e3b341）/ 右上 = 反射（绿 #56d364）/
-   *      左下 = 意志（紫 #a371f7）/ 右下 = AC（半透明白**盾**，shieldPoints）。
-   *    直径 30s、贴 token 四角内侧 4s（按 token bounds 算，不再看 HP 条的位置）。
-   *    退化（写死规则）：两枚并排 / 两行叠放放不下时**AC 优先保留**，
-   *    其余按 DEF_DROP 丢（先丢意志 → 再丢反射 → 再丢强韧）；连 AC 都放不下就整组不画
-   *    （四防仍能在速览面板 / 编辑窗里看）。 */
   var dAc = SHIELD_DIAMETER * s;
   var dDef = DEF_CIRCLE_DIAMETER * s;
-  var dRow = Math.max(dAc, dDef);        /* v1.7.6 起两枚一样大（都是 30s） */
+  var dRow = Math.max(dAc, dDef);
   var inset = SHIELD_INSET * s;
-  var needTwo = 2 * dRow + inset * 2;    /* 两枚并排（左上 / 右上）所需的宽（= 两行所需的高） */
+  var needTwo = 2 * dRow + inset * 2;
   var rowKeys = [];
   var i;
   if (hp.defenses) {
@@ -2700,20 +2178,20 @@ function barLayout(bounds, dpi, hp, viewer) {
       dropped = true;
       break;
     }
-    if (!dropped) break;   /* 只剩 AC 了：连它都放不下时下面整组不画 */
+    if (!dropped) break;
   }
   var needOne = dRow + inset * 2;
   var showDefenses = !!hp.defenses && exact && rowKeys.length > 0 &&
     needOne <= bounds.width && needOne <= bounds.height;
   var shields = [];
   if (showDefenses) {
-    /* 按 DEF_ROW（左上 → 右上 → 左下 → 右下）出，顺序与四角一致，肉眼也好对。 */
+
     for (i = 0; i < DEF_ROW.length; i++) {
       var k = DEF_ROW[i];
       if (rowKeys.indexOf(k) < 0) continue;
       var val = hp.defenses[k];
       var txt = String(val);
-      /* AC = 半透明白色**盾**（fill 白 @0.18 + 白描边 @0.85）；三防 = 30s 的实色**圆**。 */
+
       var ghost = k === "ac";
       var dk = ghost ? dAc : dDef;
       var corner = DEF_CORNER[k] || "left-top";
@@ -2727,7 +2205,7 @@ function barLayout(bounds, dpi, hp, viewer) {
         color: DEF_COLORS[k], ghost: ghost,
         fillOpacity: ghost ? DEF_AC_FILL_OPACITY : DEF_FILL_OPACITY,
         strokeOpacity: ghost ? DEF_AC_STROKE_OPACITY : DEF_STROKE_OPACITY,
-        /* 四枚同直径 → 同一个字号公式（两位 ≈15s、三位 ≈14s），四个数字肉眼一样大。 */
+
         fontSize: Math.max(8 * s, dk * (txt.length > 2 ? 0.46 : 0.5))
       });
     }
@@ -2744,18 +2222,13 @@ function barLayout(bounds, dpi, hp, viewer) {
   };
 }
 
-/** 角色集合指纹：一变就整体重建（画了哪几枚盾 / 是否画数字）。
- *  环永远画（固定 2 件），所以不进 key；盾要带上 **key 列表**而不只是数量 ——
- *  窄 token 退化会改数量，换一组四防也可能「数量不变、key 变了」，只比数量会让 patchBar 找不到对应的盾。 */
 function barRolesKey(L) {
   return [
     L.shields.length ? "D" + L.shields.map(function (x) { return x.key; }).join("") : "",
     L.textVisible ? "T" : ""
   ].join("");
 }
-/** 状态签名：只在真正影响画面时写盘。**不放 bounds 的全部字段**
- *  （旋转 / 位移每帧都变，放进来会导致每条血条每帧重写）；几何只取几个整数。
- *  v1.7.9：环的 Ro / 环厚 / s 变了才重画；token 位移不算（item 挂在 token 上会跟着走）。 */
+
 function barSig(hp, L) {
   var d = hp.defenses;
   return [
@@ -2775,7 +2248,6 @@ function barMeta(tokenId, role, extra) {
   return box;
 }
 
-/** 一个 Curve item 的公共尾巴：位置 + 样式（fill / stroke 都是可选项）。 */
 function barCurveItem(tokenId, role, points, x, y, opt) {
   opt = opt || {};
   var b = barCommon(buildCurve(), tokenId, role, BAR_Z[role] || 10000)
@@ -2807,7 +2279,7 @@ function barTextItem(tokenId, role, text, font, color, x, y, w, h, opt) {
     .lineHeight(0.95).width(w).height(h)
     .position({ x: x, y: y })
     .visible(opt.visible !== false);
-  /* 盾牌数字要带 key（patchBar 靠它找对应盾）；没有 extra 的 text 保持只有 owner/role */
+
   if (opt.extra) b.metadata(barMeta(tokenId, role, opt.extra));
   return b.build();
 }
@@ -2831,15 +2303,11 @@ function barCommon(builder, tokenId, role, z) {
     .metadata(barMeta(tokenId, role));
 }
 
-/** 构建一个 token 的全部本地图形 item（v1.7.9 的 role 表只剩 5 种）。
- *  环永远 2 件、HP 数字 1 件、四防按**四角**各 1 盾 + 1 数字。
- *  角色集合一变（窄 token 退化掉盾 / 精确度变化）由 syncBars 整体重建；只是数值变化走 patchBar。 */
 function buildBarItems(tokenId, L) {
   var items = [];
   var R = L.ring;
   var i;
 
-  /* 1) 环形血条（zIndex 9500 / 9800）：暗色底环画满一整圈，血量那一圈按 cur/max 从 12 点填 */
   items.push(barCurveItem(tokenId, "ring-bg",
     ringSectorPoints(R.Ro, R.Ri, 1, R.segments), R.cx, R.cy,
     { fill: COLOR_RING_BG, fillOpacity: HP_RING_BG_OPACITY }));
@@ -2847,12 +2315,10 @@ function buildBarItems(tokenId, L) {
     ringSectorPoints(R.Ro, R.Ri, R.ratio, R.segments), R.cx, R.cy,
     { fill: COLOR_HP_FILL, fillOpacity: 0.9, visible: R.ratio > 0 }));
 
-  /* 2) HP 数字（环内正中，zIndex 30000）：`12/20`，有临时生命时 `12/20 +3` */
   items.push(barTextItem(tokenId, "bar-text", L.hpText, L.hpFont, "#ffffff",
     L.hpTextX, L.hpTextY, L.hpTextW, L.hpTextH,
     { strokeWidth: Math.max(0.4, L.hpFont * 0.09), visible: L.textVisible }));
 
-  /* 3) 四防四角（zIndex 15000 / 16000）：左上强韧 / 右上反射 / 左下意志 / 右下 AC（盾） */
   for (i = 0; i < L.shields.length; i++) {
     var sh = L.shields[i];
     items.push(barCurveItem(tokenId, "shield", defShapePoints(sh), sh.x - sh.d / 2, sh.y - sh.d / 2,
@@ -2875,8 +2341,6 @@ async function addBar(tokenId, L) {
   return ids;
 }
 
-/** 就地刷新：按 role 分发（switch，不写一条长 if 链；未知 role 直接跳过 → 老 item 兼容）。
- *  v1.7.9 的 role 表只有 5 种：环底 / 环填充 / HP 数字 / 四防盾 / 四防数字（Boss 的牌 / 分段 / 锁已删）。 */
 async function patchBar(entry, L) {
   var R = L.ring;
   await OBR.scene.local.updateItems(entry.ids, function (drafts) {
@@ -2935,7 +2399,7 @@ async function removeBar(tokenId) {
   delete barEntries[tokenId];
   try {
     await OBR.scene.local.deleteItems(entry.ids);
-  } catch (e) { /* 已经没了就算了 */ }
+  } catch (e) {  }
 }
 
 async function clearBars() {
@@ -2951,12 +2415,6 @@ function scheduleBars() {
   }, 90);
 }
 
-/**
- * 启动时清扫上一次后台实例留下的血条 item。
- * 本地图形 item 会一直留到整页刷新，而扩展关掉再打开只会重载 iframe ——
- * 不清的话会出现「两层一模一样的血条」（视觉上看不出来，但会一直叠着）。
- * 只做一次，且在建立任何 barEntries 之前，所以不会误删自己刚画的。
- */
 async function sweepStaleBars() {
   if (barSwept) return;
   barSwept = true;
@@ -2972,10 +2430,9 @@ async function sweepStaleBars() {
       await OBR.scene.local.deleteItems(stale);
       pageLog("info", "清理了 " + stale.length + " 个上一次会话残留的血条 item");
     }
-  } catch (e) { /* 拿不到本地 item 就算了 */ }
+  } catch (e) {  }
 }
 
-/** 把「场景里所有带 hp 元数据的 token」与本地血条 item 对齐。 */
 async function syncBars() {
   if (barUnsupported) return;
   if (barBusy) { barAgain = true; return; }
@@ -2996,7 +2453,7 @@ async function syncBars() {
     for (var i = 0; i < items.length; i++) {
       var it = items[i];
       if (it.type !== "IMAGE") continue;
-      /* v1.6.0：显式关掉血条组件（flag === false）就不画；undefined 仍画 → 老 token 不消失。 */
+
       if (!hpBarEnabled(it)) continue;
       var hp = readHpMeta(it);
       if (!hp) continue;
@@ -3017,8 +2474,7 @@ async function syncBars() {
         continue;
       }
       if (!bounds || !bounds.center) continue;
-      /* 玩家端可见性（规格 §6.8）：城主 / token 创建者 / 未锁 → 精确数字与四防；
-       * 其他玩家 + locked（默认）→ 只画阶梯比例，不写文字、不画盾（metadata 仍对全桌可读）。 */
+
       var exact = viewer.role === "GM" || !!(viewer.id && rec.item.createdUserId === viewer.id) || !rec.hp.locked;
       var L = barLayout(bounds, dpi, rec.hp, { exact: exact, threshold: viewer.threshold });
       var sig = barSig(rec.hp, L);
@@ -3034,7 +2490,7 @@ async function syncBars() {
           await removeBar(id);
         }
       } else if (entry) {
-        /* 角色集合变了，或本地图形被外部删掉了：删掉残留记录，下面按新几何重画 */
+
         await removeBar(id);
       }
       try {
@@ -3051,7 +2507,6 @@ async function syncBars() {
   }
 }
 
-/** 本地血条被别的插件 / 手滑删掉时自动补回来。 */
 async function watchLocalBars() {
   if (!OBR.scene.local || typeof OBR.scene.local.onChange !== "function") return;
   await attempt("订阅 scene.local.onChange（血条自愈）", function () {
@@ -3074,23 +2529,7 @@ async function watchLocalBars() {
   });
 }
 
-/* ---------------------------------------------------------------------------
- * 7.5) 先攻（v1.3.0；v1.4.0 扩数据层）
- * ---------------------------------------------------------------------------
- * 右键「加入先攻 / 隐形加入先攻」直接写房间数据：
- *   room.metadata["com.4enext-owlbear/initiative"] =
- *     { v:1, updatedAt, phase, round, surprise, activeId,
- *       entries:[{tokenId,name,bonus,d20,init,tb,hidden,ownerId,updatedAt}] }
- * v1.4.0 只**新增**字段（phase / surprise / d20 / tb），键名一个都没改 → 旧数据照旧能读。
- * 先攻加值取 token 上的 com.4enext-owlbear/init（绑定角色卡时由 common.js 写入），
- * 后台是经典脚本，不能 import glance.js 的推导函数 —— 所以这里只读元数据，不重算。
- *
- * 条目上限 60（规格 §9.3）：normalize 里截断、不抛错；写失败降级本机 + 通知，绝不静默。
- * 先攻条 / 列表窗口里的 GM 操作由页面自己写房间数据（同一套 initiative.js 逻辑）。
- * 玩家点「结束我的回合」时不能写房间数据，改成 broadcast 请求；只有 GM 客户端
- * 收到后按规格 §5 做四道校验才推进。
- * ------------------------------------------------------------------------- */
-var INIT_MAX_ENTRIES = 60;
+var INIT_MAX_ENTRIES = 40;
 var INIT_LS_FALLBACK = "4enext/state/initiative";
 
 function initInt(v, d) {
@@ -3109,6 +2548,7 @@ function initPhase(v) {
 function initTbOf(e) {
   return e && typeof e.tb === "number" && isFinite(e.tb) ? e.tb : 0.5;
 }
+/* ---- 8. 先攻数据层：normalize / 上限 40 / 写失败降级本机 ---- */
 function initNorm(raw) {
   var out = { v: 1, updatedAt: 0, phase: "idle", round: 1, surprise: false, activeId: "", entries: [] };
   if (!raw || typeof raw !== "object") return out;
@@ -3130,7 +2570,7 @@ function initNorm(raw) {
     out.entries.push({
       tokenId: tokenId,
       name: name,
-      /* init 允许小数：拖拽排序写的是两卡中点，显示时才 Math.round（规格 §4） */
+
       init: initClamp(initNum(e.init, 0), -99, 999),
       bonus: initClamp(initInt(e.bonus, 0), -99, 999),
       d20: d20raw === null ? null : initClamp(Math.round(d20raw), 1, 20),
@@ -3147,7 +2587,7 @@ function initNorm(raw) {
   if (!out.entries.length) out.round = 1;
   return out;
 }
-/** 排序（规格 §7.2，只有两级）：合计 DESC → tiebreak ASC。与 initiative.js 的 sortEntries 一致。 */
+
 function initSortEntries(list) {
   return list.slice().sort(function (a, b) {
     var d = initNum(b.init, 0) - initNum(a.init, 0);
@@ -3157,14 +2597,13 @@ function initSortEntries(list) {
     return String(a.name).localeCompare(String(b.name), "zh-CN") || (initInt(a.updatedAt, 0) - initInt(b.updatedAt, 0));
   });
 }
-/** tiebreak（规格 §7.1）：0.5 − bonus×0.01 + 抖动(<0.01)，夹在 (0.001, 0.999)。 */
+
 function initTiebreak(bonus) {
   var m = typeof bonus === "number" && isFinite(bonus) ? bonus : 0;
   var base = 0.5 - m * 0.01 + Math.random() * 0.008;
   return Math.round(Math.max(0.001, Math.min(0.999, base)) * 1e6) / 1e6;
 }
 
-/** 本机降级副本（上次写失败留下的）。 */
 function initLocalFallback() {
   try {
     var raw = localStorage.getItem(INIT_LS_FALLBACK);
@@ -3196,29 +2635,30 @@ async function initRead() {
   }
 }
 
-/** 写房间数据；失败 → 本机暂存 + WARNING（不抛错，界面上不会「点了没反应」）。 */
 async function initWrite(state) {
   var next = initNorm(state);
   next.entries = initSortEntries(next.entries);
   next.updatedAt = Date.now();
-  try {
-    await OBR.room.setMetadata({ [KEY_INITIATIVE]: next });
-    try { localStorage.removeItem(INIT_LS_FALLBACK); } catch (e2) { /* 忽略 */ }
-    return next;
-  } catch (e) {
-    var msg = errText(e);
-    try {
-      localStorage.setItem(INIT_LS_FALLBACK, JSON.stringify({ v: 1, updatedAt: Date.now(), state: next }));
-    } catch (e3) { /* 本机也存不下 */ }
-    notify("先攻没能写进房间数据（" + msg + "）：已暂存在本机。先攻最多 " + INIT_MAX_ENTRIES + " 条。", "WARNING");
-    next.local = true;
+  var res = await roomWriteGuarded(KEY_INITIATIVE, next);
+  if (res.ok) {
+    try { localStorage.removeItem(INIT_LS_FALLBACK); } catch (e2) {  }
     return next;
   }
+  var msg = res.reason === "full" ? "房间数据已满（16KB）" : errText(res.error);
+  try {
+    localStorage.setItem(INIT_LS_FALLBACK, JSON.stringify({ v: 1, updatedAt: Date.now(), state: next }));
+  } catch (e3) {  }
+  notify(res.reason === "full"
+    ? ROOM_FULL_MESSAGE
+    : "先攻没能写进房间数据（" + msg + "）：已暂存在本机。先攻最多 " + INIT_MAX_ENTRIES + " 条。", "ERROR");
+  pageLog("err", "先攻写入失败（" + (res.reason || "error") + "，" + res.bytes + " 字符）：已暂存到本机");
+  next.local = true;
+  return next;
 }
 function initRollD20() {
   return Math.floor(Math.random() * 20) + 1;
 }
-/** 只读 token 元数据里的加值；缺失时 +0（面板打开先攻 tab 会补写）。 */
+
 function initBonusOf(item) {
   var m = item && item.metadata ? item.metadata[KEY_INIT] : null;
   if (m && typeof m === "object" && typeof m.bonus === "number" && isFinite(m.bonus)) {
@@ -3226,7 +2666,7 @@ function initBonusOf(item) {
   }
   return 0;
 }
-/** 加进先攻（已在列表里就只更新名字 / 加值 / 隐形标记，不重掷）。 */
+
 async function initAdd(item, hidden) {
   if (!item || !item.id) return null;
   var state = await initRead();
@@ -3260,7 +2700,7 @@ async function initAdd(item, hidden) {
       notify("先攻已经有 " + INIT_MAX_ENTRIES + " 条了（房间数据上限）：先清掉几个再加", "WARNING");
       return null;
     }
-    /* 加入时一次算好 d20 + 加值，并给一个 tiebreak（规格 §8：存的是合计，不显示时才加）。 */
+
     var d20 = initRollD20();
     entry = {
       tokenId: item.id,
@@ -3281,11 +2721,6 @@ async function initAdd(item, hidden) {
   return { state: next, entry: entry };
 }
 
-/**
- * v1.7.3：从名单里删掉一条（与 assets/initiative.js 的 removeEntry 同一行为）。
- * 游标（activeId）**顺移**：删掉当前回合那张 → 指向原位置的下一条（没有下一条就指最后一条）；
- * 删空 → activeId = ""、round 回到 1。init 值不动（数组顺序不是权威，重排由排序决定）。
- */
 function initRemove(state, tokenId) {
   var out = initNorm(JSON.parse(JSON.stringify(state || {})));
   var id = String(tokenId == null ? "" : tokenId);
@@ -3306,7 +2741,6 @@ function initRemove(state, tokenId) {
   return out;
 }
 
-/** 名单里 tokenId 已经不在 alive 里的那些（alive 是数组或 map）。 */
 function initMissingIds(state, alive) {
   var has = {};
   if (Array.isArray(alive)) {
@@ -3322,7 +2756,6 @@ function initMissingIds(state, alive) {
   return out;
 }
 
-/** 把「token 已经没了」的条目一次性清掉（逐条走 initRemove，游标自然顺移）。 */
 function initPrune(state, alive) {
   var out = initNorm(JSON.parse(JSON.stringify(state || {})));
   var missing = initMissingIds(out, alive);
@@ -3331,16 +2764,6 @@ function initPrune(state, alive) {
   return out;
 }
 
-/* ---------------------------------------------------------------------------
- * 5.x) v1.7.3：token 被删除 → 先攻条自动清理
- * ---------------------------------------------------------------------------
- * 只有「这台机器见过这枚 token，现在它不见了」才清（initKnownTokens 记的是当前场景见过的 id）：
- * 切场景时 OBR 的 getItems() 只会返回新场景的 item，如果直接按「不在 items 里」删，
- * 换个场景就会把整条先攻清空。所以：
- *   · 场景 ready / 换场景时只**刷新**见过集合，不清理；
- *   · 之后的 items.onChange 里，「见过 → 消失」才算删除，才写房间数据；
- *   · 清理只由城主写（房间数据只有城主能写），写失败照旧降级本机 + WARNING。
- * ------------------------------------------------------------------------- */
 var initKnownTokens = {};
 var initPruneBusy = false;
 var initPruneTimer = null;
@@ -3355,13 +2778,12 @@ function initRememberItems(items) {
   return next;
 }
 
-/** 场景刚就绪 / 换场景：只记「现在有哪些 token」，绝不当成删除。 */
 async function refreshInitKnownTokens() {
   initPruneMuteUntil = Date.now() + 1200;
   try {
     var items = await OBR.scene.items.getItems();
     initRememberItems(items || []);
-  } catch (e) { /* 拿不到就保持原样 */ }
+  } catch (e) {  }
 }
 
 function scheduleInitPrune() {
@@ -3372,11 +2794,10 @@ function scheduleInitPrune() {
   }, 400);
 }
 
-/** 清理「token 已被删除」的先攻条目。返回清理掉的条数（0 = 什么都没做）。 */
 async function pruneMissingInitEntries() {
   if (initPruneBusy) return 0;
   if (Date.now() < initPruneMuteUntil) return 0;
-  /* 正在推进回合（onInitRequest 的写）时不清理：两次读改写交叉会把「推进」这一步覆盖掉。 */
+
   if (initBusy) return 0;
   initPruneBusy = true;
   try {
@@ -3402,7 +2823,7 @@ async function pruneMissingInitEntries() {
     for (var k = 0; k < missing.length; k++) next = initRemove(next, missing[k]);
     await initWrite(next);
     stepOk("先攻自动清理：" + missing.join(" / "));
-    /* v1.7.8：自动清理不再弹通知（条上少了一张卡，玩家自己看得见；只写页面日志）。 */
+
     await syncInitFlags(initEntryIdsOf(next));
     return missing.length;
   } finally {
@@ -3410,7 +2831,6 @@ async function pruneMissingInitEntries() {
   }
 }
 
-/** v1.7.3：右键「移出先攻」——从 entries 删掉这枚 token + 刷新条 + 通知「已移出」。 */
 async function onInitRemoveClick(context) {
   try {
     var role = await OBR.player.getRole();
@@ -3429,7 +2849,7 @@ async function onInitRemoveClick(context) {
       if (state.entries[i].tokenId === picked.id) { entry = state.entries[i]; break; }
     }
     if (!entry) {
-      /* 名单已经被别人改过（token 上的 in-init 镜像过期）→ 说清楚并立刻把镜像改回来，不静默。 */
+
       notify("「" + (picked.name || picked.id) + "」已经不在先攻里了", "WARNING");
       await syncInitFlags();
       return;
@@ -3437,7 +2857,7 @@ async function onInitRemoveClick(context) {
     var next = initRemove(state, picked.id);
     await initWrite(next);
     stepOk("移出先攻：" + entry.name);
-    /* v1.7.8：「已移出先攻」不再弹（卡片立刻从条上消失，就是反馈）。 */
+
     await syncInitFlags(initEntryIdsOf(next));
   } catch (e) {
     stepFail("移出先攻", e);
@@ -3456,29 +2876,23 @@ async function onInitMenuClick(context, hidden) {
       notify("没有读到选中的 token，右键请对着一个图片 token 再试", "WARNING");
       return;
     }
-    /* context 里的 item 可能是右键那一刻的快照：重新取一次，保证 init 元数据是最新的。 */
+
     var fresh = null;
     try { fresh = (await OBR.scene.items.getItems([picked.id]))[0] || null; } catch (e) { fresh = null; }
     var res = await initAdd(fresh || picked, hidden);
     if (!res) return;
     stepOk("加入先攻：" + res.entry.name + (hidden ? "（隐形）" : "") +
       "（先攻 " + Math.round(res.entry.init) + "）");
-    /* v1.7.8：「已加入先攻」不再弹（条上会立刻出现这张卡）。 */
-    /* v1.7.3：这枚 token 现在「在先攻里」了 → 写 in-init 镜像，右键菜单随之换成「移出先攻」。 */
+
     initKnownTokens[String(picked.id)] = true;
     await syncInitFlags(initEntryIdsOf(res.state));
-    /* v1.4.0：先攻条没开着就顺手打开 —— 右键加入后立刻能看到条（规格 §P2）。 */
+
     if (!stripOpen) void openStripOrNotify("右键加入先攻");
   } catch (e) {
     stepFail("加入先攻", e);
   }
 }
 
-/**
- * 推进 / 后退一回合（规格 §6，与 initiative.js 的 advanceInitiative 同一套公式）：
- * nextIndex = (cur + 1 + len) % len；绕回第一张 → 轮数 +1（突袭轮绕回则进入正常第 1 轮）；
- * 从第一张往回 → 轮数 −1，最小 1。
- */
 function initAdvance(state, dir) {
   var out = initNorm(JSON.parse(JSON.stringify(state || {})));
   if (!out.entries.length) {
@@ -3506,15 +2920,6 @@ function initAdvance(state, dir) {
   return out;
 }
 
-/**
- * 玩家「结束我的回合」：广播到所有客户端，只有 GM 客户端会真正写入。
- * 规格 §5 的四道校验（缺一不可）：
- *   1) 请求里必须带 activeId，且与当前一致（缺失 / 过期都拒绝 —— 老版本写反过，会连推两格）；
- *   2) 当前条目必须是这个玩家的 token（优先 token.createdUserId 这个活值，其次存下来的 ownerId）；
- *   3) 只有 GM 客户端处理（非 GM 直接返回，不写数据）；
- *   4) 正在推进中（上一个请求还没写完）时忽略重复请求。
- * 另外：不在 combat 阶段时不推进（准备阶段点「结束」没有意义）。
- */
 var initBusy = false;
 
 async function onInitRequest(ev) {
@@ -3538,51 +2943,34 @@ async function onInitRequest(ev) {
       if (state.entries[i].tokenId === state.activeId) { active = state.entries[i]; break; }
     }
     if (!active) return;
-    /* 第 1 道：缺失 / 过期都拒绝。 */
+
     if (!data.activeId || data.activeId !== state.activeId) {
       notify("回合已经变了，结束回合请求已忽略", "WARNING");
       return;
     }
-    /* 第 2 道：owner 以 token 上的活值为准（GM 用「Give Ownership」改过归属时，旧 ownerId 会失效）。 */
+
     var owner = active.ownerId;
     try {
       var items = await OBR.scene.items.getItems([active.tokenId]);
       var live = items && items[0] ? String(items[0].createdUserId || "") : "";
       if (live) owner = live;
-    } catch (e2) { /* 拿不到就退回存下来的 ownerId */ }
+    } catch (e2) {  }
     if (!data.playerId || owner !== data.playerId) {
       notify("只能结束自己的回合", "WARNING");
       return;
     }
     var next = initAdvance(state, 1);
     await initWrite(next);
-    /* v1.7.8：「结束回合 → 第 N 轮」不再弹（条上的当前回合卡已经换人 + 轮数就在条上）。 */
+
   } catch (e) {
     pageLog("err", "处理结束回合请求失败：" + errText(e));
   } finally {
-    /* 第 4 道：等写入落定再解锁（避免广播里的重复请求再推一格）。 */
+
     initBusy = false;
   }
 }
 
-/* ---------------------------------------------------------------------------
- * 7.5) 骰子落库（v1.5.0）
- * ---------------------------------------------------------------------------
- * 数据流（规格 §4/§5）：
- *   任何人的骰子窗口 → CH_ROLL（LOCAL + REMOTE）
- *     → **只有城主客户端**的这里处理：校验 + 归一化 + 幂等合并
- *     → OBR.room.setMetadata({ [KEY_ROLLS]: { v, updatedAt, seq, rows } })
- *     → 广播 CH_ROLL_SAVED { seq, rollId }（页面据此清掉「未落库」计时器）
- *   玩家永远不写房间数据（Owlbear 也不允许）；城主不在线时页面自己暂存本机 + 黄条提示。
- *
- * 校验边界（规格 §5 的安全边界）：假设同桌可信，**不校验骰值真伪**，只校验形状与范围：
- *   type 必须是 ^d\d+$、value 夹在 1..sides（用 sidesOf 的同一规则，d600 不会被夹成 20）、
- *   total 用同一公式重算（三端一致）、label / expression 截断、rollId 必填。
- *   不合法的单条**丢弃并记日志**，绝不整批失败。
- *
- * 这一段的 rollNorm / rollMerge 是 assets/dice-core.js 里 normalizeRoll / mergeRollRows 的
- * **同位实现**（经典脚本不能 import）；两边的上限与公式由 dev/check.mjs + dev/test-dice.mjs 钉住。
- * ------------------------------------------------------------------------- */
+/* ---- 9. 骰子落库：归一化 / 幂等合并 / 上限 20 条 / 落到本机 ---- */
 function rollSides(type) {
   var m = /^d(\d+)$/i.exec(String(type == null ? "" : type).trim());
   if (!m) return 0;
@@ -3616,7 +3004,7 @@ function rollDieNorm(raw) {
   if (typeof raw.burstParent === "number" && isFinite(raw.burstParent)) out.burstParent = Math.max(0, Math.round(raw.burstParent));
   return out;
 }
-/** 归一化一条投掷（与 dice-core.js 的 normalizeRoll 同结果）。没有 rollId 就直接丢弃。 */
+
 function rollNorm(raw) {
   if (!raw || typeof raw !== "object") return null;
   var rollId = rollText(raw.rollId == null ? "" : String(raw.rollId).trim(), 80);
@@ -3648,14 +3036,14 @@ function rollNorm(raw) {
       if (typeof n === "number" && isFinite(n) && n >= 0) rowStarts.push(Math.round(n));
     }
   }
-  /* 加值只取整、不夹上下限：与 dice-core.js 的 normalizeRoll 必须算出一模一样的 total */
+
   var modifier = typeof raw.modifier === "number" && isFinite(raw.modifier) ? Math.round(raw.modifier) : 0;
   var base = 0;
   for (var q = 0; q < dice.length; q++) {
     if (dice[q].loser) continue;
     base += dice[q].subtract ? -Math.abs(dice[q].value) : dice[q].value;
   }
-  /* 总和公式与 dice-core.js 的 computeTotal 一致：kept 求和 + modifier × 行数（repeat 每行各算一次） */
+
   var rows = rowStarts.length > 1 ? rowStarts.length : 1;
   var out = {
     v: 1,
@@ -3678,9 +3066,7 @@ function rollNorm(raw) {
   if (raw.itemId) out.itemId = rollText(raw.itemId, 80);
   return out;
 }
-/** 幂等合并：同 rollId 不重复插 → 按 ts 倒序 → 封顶 40。
- *  **超过 40 条时删掉最旧的那条**：倒序后 slice(0, 40) 砍掉的正是 ts 最小的尾巴，
- *  与 dice-core.js 的 mergeRollRows 是同一行为（dev/test-dice.mjs 第 13 条钉死）。 */
+
 function rollMerge(rows, incoming) {
   var list = Array.isArray(rows) ? rows.slice() : [];
   var row = rollNorm(incoming);
@@ -3713,7 +3099,7 @@ function rollRowsOf(box) {
   out.sort(function (a, b) { return (b.ts || 0) - (a.ts || 0); });
   return out.slice(0, ROLL_MAX_ROWS);
 }
-/** 写房间数据；超 12 KB 就先砍一半旧行（16 KB 的 75%，规格 §9.2 的风险对策）。 */
+
 async function rollWrite(rows, seq) {
   var box = {
     v: 1,
@@ -3724,25 +3110,25 @@ async function rollWrite(rows, seq) {
   while (JSON.stringify(box).length > ROLL_ROOM_BYTES && box.rows.length > 1) {
     box.rows = box.rows.slice(0, Math.ceil(box.rows.length / 2));
   }
-  try {
-    await OBR.room.setMetadata({ [KEY_ROLLS]: box });
-    return true;
-  } catch (e) {
-    notify("骰子记录没能写进房间数据（" + errText(e) + "）：最多保留 " + ROLL_MAX_ROWS + " 条，旧行会自动裁掉。", "WARNING");
-    return false;
-  }
+  var res = await roomWriteGuarded(KEY_ROLLS, box);
+  if (res.ok) return true;
+  notify(res.reason === "full"
+    ? ROOM_FULL_MESSAGE
+    : "骰子记录没能写进房间数据（" + errText(res.error) + "）：最多保留 " + ROLL_MAX_ROWS + " 条，旧行会自动裁掉。", "ERROR");
+  pageLog("err", "骰子落库失败（" + (res.reason || "error") + "，" + res.bytes + " 字符）");
+  return false;
 }
 function rollBroadcastSaved(payload) {
   try {
     var p1 = OBR.broadcast.sendMessage(CH_ROLL_SAVED, payload, { destination: "LOCAL" });
-    if (p1 && typeof p1.catch === "function") p1.catch(function () { /* 忽略 */ });
-  } catch (e) { /* 忽略 */ }
+    if (p1 && typeof p1.catch === "function") p1.catch(function () {  });
+  } catch (e) {  }
   try {
     var p2 = OBR.broadcast.sendMessage(CH_ROLL_SAVED, payload, { destination: "REMOTE" });
-    if (p2 && typeof p2.catch === "function") p2.catch(function () { /* 忽略 */ });
-  } catch (e2) { /* 忽略 */ }
+    if (p2 && typeof p2.catch === "function") p2.catch(function () {  });
+  } catch (e2) {  }
 }
-/* 收到投掷就排队：**串行**写入，避免两次 setMetadata 互相覆盖（丢一条历史比慢 10ms 糟得多）。 */
+
 var rollQueue = [];
 var rollBusy = false;
 
@@ -3768,7 +3154,7 @@ async function rollApply(job) {
   var box = await rollReadBox();
   var seq = box && typeof box.seq === "number" && isFinite(box.seq) ? Math.round(box.seq) : 0;
   var existing = rollRowsOf(box);
-  /* 幂等：同一个 rollId 已经落过库（LOCAL + REMOTE 各来一次、或页面重连重发）就只回一条 saved，不重复写 */
+
   for (var i = 0; i < existing.length; i++) {
     if (existing[i].rollId === incoming.rollId) {
       rollBroadcastSaved({ seq: seq, rollId: incoming.rollId, duplicate: true, at: Date.now() });
@@ -3796,7 +3182,6 @@ async function pumpRolls() {
   }
 }
 
-/** 收到一次投掷：只有城主客户端会真的写；写入后广播 CH_ROLL_SAVED。 */
 async function onRoll(ev) {
   var data = ev && ev.data !== undefined ? ev.data : ev;
   if (!data || typeof data !== "object") return;
@@ -3806,7 +3191,6 @@ async function onRoll(ev) {
   void pumpRolls();
 }
 
-/** 清空全桌记录（只有城主能做）。 */
 async function onRollClear(ev) {
   var data = ev && ev.data !== undefined ? ev.data : ev;
   var role = await rollRole();
@@ -3815,9 +3199,6 @@ async function onRollClear(ev) {
   void pumpRolls();
 }
 
-/* ---------------------------------------------------------------------------
- * 8) 启动
- * ------------------------------------------------------------------------- */
 var booted = false;
 var bootStatus = { tool: false, menu: false, button: false, scene: false };
 
@@ -3846,6 +3227,7 @@ async function sendHello(channel, payload) {
   }
 }
 
+/* ---- 10. 启动：工具栏 ×5 / 右键 / 浮动按钮 / 各频道订阅 ---- */
 async function boot() {
   if (booted) return;
   booted = true;
@@ -3854,32 +3236,25 @@ async function boot() {
   pageLog("info", "OBR.onReady 触发；插件 v" + PLUGIN_VERSION + "；BASE=" + BASE);
   pageLog("info", "OBR.isAvailable=" + String(OBR.isAvailable) + "；isReady=" + String(OBR.isReady));
 
-  /* 7.1 入口 B：工具栏（v1.3.2：速览 / 角色卡 / 先攻 / 骰子 / 设置 五个并列入口） */
   bootStatus.tool = await attempt("注册工具栏按钮 (OBR.tool.create ×5)", registerTools);
 
-  /* 7.2 右键菜单 */
   bootStatus.menu = await attempt("注册右键菜单 (OBR.contextMenu.create)", registerContextMenu);
 
-  /* 7.3 右下角浮动按钮（要等场景就绪） */
   bootStatus.scene = await sceneReady();
   bootStatus.button = await syncSceneButton();
   if (bootStatus.button) stepOk("打开右下角浮动按钮 ✓");
   else if (!bootStatus.scene) stepOk("场景还没就绪，浮动按钮等进入地图后再开");
-  /* v1.7.3：背景页重载 = 重新进房间 → 清掉「本次已关掉先攻条」的会话标记，
-   * 并记下「现在场景里有哪些 token」（先攻自动清理的基线）。 */
+
   markStripClosed(false);
   await refreshInitKnownTokens();
-  /* v1.7.3：把「在不在先攻里」对齐到 token 元数据（老房间没有 in-init 标记，这一遍会补上）。 */
+
   await syncInitFlags();
 
-  /* 7.4 事件订阅 */
   await attempt("订阅 scene.onReadyChange", function () {
     OBR.scene.onReadyChange(function (ready) {
       void syncSceneButton();
       scheduleBars();
-      /* v1.7.3：进房间 / 换场景 —— 只刷新「这台机器见过哪些 token」（绝不当成删除，
-       * 否则换个场景就会把整条先攻清空）；再把 in-init 镜像对齐（场景刚就绪时 token 才读得到），
-       * 最后按设置把先攻条自动开出来。 */
+
       void refreshInitKnownTokens();
       if (ready !== false) {
         void syncInitFlags();
@@ -3894,7 +3269,7 @@ async function boot() {
     OBR.scene.items.onChange(function () {
       scheduleRefresh();
       scheduleBars();
-      /* v1.7.3：token 被删掉 → 先攻条里的条目自动清理（400ms 合并） */
+
       scheduleInitPrune();
     });
   });
@@ -3908,8 +3283,7 @@ async function boot() {
   await attempt("订阅 room.onMetadataChange", function () {
     OBR.room.onMetadataChange(function (meta) {
       scheduleRefresh();
-      /* v1.7.3：先攻名单被别处改过（列表窗口 / 另一台机器）→ 对齐 token 上的 in-init 镜像
-       * （只在名单的 updatedAt 变了才做，骰子记录 / 角色卡的写入不会触发） */
+
       onRoomMetaChanged(meta);
     });
   });
@@ -3928,7 +3302,7 @@ async function boot() {
   await attempt("订阅 " + CH_STRIP_CMD + "（先攻条命令：列表 / 尺寸）", function () {
     OBR.broadcast.onMessage(CH_STRIP_CMD, onStripCmd);
   });
-  /* v1.7.10：窗口 ✕ 的后台兜底（页面先 popover.close，再发 {op:"close-win", name} 到这里）。 */
+
   await attempt("订阅 " + CH_WIN_CLOSE + "（窗口 ✕ 兜底）", function () {
     OBR.broadcast.onMessage(CH_WIN_CLOSE, onWinClose);
   });
@@ -3948,42 +3322,37 @@ async function boot() {
     OBR.broadcast.onMessage(CH_HP_EDIT_SAVED, onHpEditSaved);
   });
   await attempt("订阅 viewport.onChange", function () {
-    if (!OBR.viewport || typeof OBR.viewport.onChange !== "function") return; /* 旧版 SDK 没有 */
+    if (!OBR.viewport || typeof OBR.viewport.onChange !== "function") return;
     var timer = null;
     OBR.viewport.onChange(function () {
       if (timer) clearTimeout(timer);
       timer = setTimeout(function () {
         timer = null;
         void syncSceneButton();
-        /* 视口变小（笔记本合盖 / 横向转纵向）后，开着的窗口重新夹回视口内 */
+
         void reclampWins();
-        /* 先攻条贴顶居中，视口一变就按记住的偏移重新夹紧 */
+
         void reclampStrip();
       }, 250);
     });
   });
 
-  /* 7.4.1 v1.7.3：先攻条常驻 —— 进入房间按本机设置自动显示（默认开；
-   * 设置里关掉 / 本次会话手动关掉则不弹，工具栏「先攻」仍可随时打开）。 */
   void maybeAutoOpenStrip();
 
   await refreshInfo().catch(function (e) { stepFail("初始化速览", e); });
 
-  /* 7.5 token 血条：先挂自愈监听，再把现有 token 画一遍 */
   await watchLocalBars();
   scheduleBars();
 
-  /* 7.6 汇总一条通知：一眼看出哪个入口没注册上 */
   var mark = function (v) { return v ? "✓" : "✗"; };
   var okLine = "4eNEXT to owlbear v" + PLUGIN_VERSION + " 已加载：工具栏×5 " + mark(bootStatus.tool) +
     " · 右键" + mark(bootStatus.menu) +
     " · 浮动按钮" + (bootStatus.scene ? mark(bootStatus.button) : "（等进地图）");
   var allOk = bootStatus.tool && bootStatus.menu;
   pageLog(allOk ? "ok" : "err", okLine + "；耗时 " + (Date.now() - t0) + "ms");
-  /* v1.7.8：启动成功不再弹「已加载 …」（用户嫌提示太多）；只有**某个入口没注册上**才 WARNING。 */
+
   if (diagNotifyEnabled() && !allOk) notify(okLine, "WARNING");
 
-  /* 7.7 心跳：告诉面板「后台活着」，面板也会 ping 回来 */
   await sendHello(CH_HELLO, { version: PLUGIN_VERSION, status: bootStatus, at: Date.now(), href: location.href });
   try {
     OBR.broadcast.onMessage(CH_PING, function () {
@@ -3994,9 +3363,6 @@ async function boot() {
   }
 }
 
-/* ---------------------------------------------------------------------------
- * 9) 启动保护：任何未捕获错误都变成可见通知（而不是静默死掉）
- * ------------------------------------------------------------------------- */
 try {
   window.addEventListener("error", function (ev) {
     var msg = ev && ev.message ? ev.message : "脚本错误";
@@ -4008,25 +3374,18 @@ try {
     pageLog("err", "未处理的 Promise 拒绝：" + msg);
     if (booted) notify("4E插件出错（异步异常）：" + msg, "ERROR");
   });
-} catch (e) { /* 忽略：注册失败也不能让后台在这里停下来 */ }
+} catch (e) {  }
 
-/* ---------------------------------------------------------------------------
- * 10) OBR 环境自检 + 启动
- * ------------------------------------------------------------------------- */
 if (typeof OBR === "undefined" || !OBR || typeof OBR.onReady !== "function") {
-  /* 没有拿到 SDK：把原因写出来。后台页是隐藏的，但绝不能静默退出 ——
-   * 一旦这里悄悄 return，面板的 diag-ping 就永远等不到 pong，只会看到「后台脚本没有响应」。 */
+
   pageLog("err", "没有拿到 OBR 对象：vendor/obr-sdk.js 没拼进 bundle，或 SDK 加载失败");
   try {
     var stEl = document.getElementById("diag-state");
     if (stEl) { stEl.className = "bad"; stEl.textContent = "没有拿到 OBR 对象：右键菜单 / 先攻都不会工作"; }
-  } catch (e2) { /* 忽略 */ }
+  } catch (e2) {  }
   if (diagNotifyEnabled()) notify("4E 后台：没有拿到 OBR 对象，右键菜单 / 先攻都不会工作", "ERROR");
 } else {
-  /* 启动：直接把 boot 交给 onReady（不要包一层丢弃返回值）。
-   *   · 已就绪 → SDK 会立刻同步调用；
-   *   · 未就绪 → 等 SDK 回调。
-   * 面板的 ping/pong 订阅在 boot 的最后一步，只有 boot 真的跑起来，面板才会显示「后台已连接」。 */
+
   try {
     OBR.onReady(boot);
   } catch (e3) {

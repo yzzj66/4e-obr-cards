@@ -21,8 +21,8 @@ export const DIE_SIDES = { d4: 4, d6: 6, d8: 8, d10: 10, d12: 12, d20: 20, d100:
 /** 规格 §4.2 的尺寸系数（P4 动画才用得上，这里先留着，免得以后返工）。 */
 export const DIE_SIZE_FACTOR = { d4: 0.78, d6: 0.85, d8: 0.9, d10: 0.93, d12: 0.96, d20: 1, d100: 1.06 };
 
-/** 房间数据 com.4enext-owlbear/rolls 的 rows 上限（≈8~9 KB，给角色卡留一半空间）。 */
-export const ROLL_MAX_ROWS = 40;
+/** 房间数据 com.4enext-owlbear/rolls 的 rows 上限（v1.8.0：40 → 20，≈4 KB；Full Suite 同类策略 slice(0,LIMIT)）。 */
+export const ROLL_MAX_ROWS = 20;
 /** 单条记录里最多保留多少颗骰子（超出截断并标记 truncated）。 */
 export const ROLL_MAX_DICE = 30;
 /** 备注 / 公式在房间数据里的截断长度（规格 §1.6）。 */

@@ -9,7 +9,7 @@
 </head>
 <body>
 <article class="doc">
-  <h1>4eNEXT to owlbear <span class="tag">Owlbear Rodeo 插件</span> <span class="tag">v1.7.14</span></h1>
+  <h1>4eNEXT to owlbear <span class="tag">Owlbear Rodeo 插件</span> <span class="tag">v1.7.15</span></h1>
   <p class="muted">在枭熊里看 4E NEXT 的「速览」页：右键 token 绑定角色卡，之后选中这枚 token 就会弹出速览。
     v1.2.0 起还能在弹窗里直接加减血量（token 上会画出血条），并把威能 / 装备点掉记成「已用」；
     v1.2.1 把速览弹窗加宽到 660×700；v1.2.2 弹窗可以按住标题栏拖动、位置按 token 记住。
@@ -97,7 +97,7 @@
     <code>pointer-events:auto</code>（即使宿主或旧样式给祖先留了 <code>none</code>，后代仍可命中）；
     ③ <b>入口与资源全带 <code>?v=1.7.13</code></b>（info.html / info.js / glance.js / css），不再被旧缓存拖住 ——
     旧版威能 chip 根本不是 button，正是「一点没改」的来源；新增假 DOM 点击冒烟（<code>dev/test-info-click.mjs</code>）。
-    <b>v1.7.14</b> <b>先攻条背景真透明（照抄 FullPeople）</b>：前三版（透明 body / 六层
+    <b>v1.7.15</b> <b>房间数据超限真修复（角色卡精简 + 超限报错 + 本机降级）</b>：前三版（透明 body / 六层
     <code>transparent !important</code> / 换 modal）全失败 —— 用户指出 FullPeople 的现成实现本来就是透明的。
     本版<b>逐行照抄</b>它的 <code>initiative-panel-v131.html</code> 三件套：① html / body 的
     <b><code>style</code> 属性</b>里写 <code>background:transparent!important</code>（inline <code>!important</code>

@@ -19,7 +19,7 @@ const NOTES_PATH = path.join(ROOT, "docs", "NOTES.md");
 const NOTES = exists(NOTES_PATH) ? fs.readFileSync(NOTES_PATH, "utf8") : "";
 const notesHas = (s) => NOTES.indexOf(s) >= 0;
 /* 当前版本号：所有「版本全链路」断言都读它，升版本只改这一处（+ 各文件里的真实版本号）。 */
-const VER = "1.7.14";
+const VER = "1.7.15";
 
 function walk(dir, out = []) {
   for (const name of fs.readdirSync(dir)) {
@@ -499,8 +499,9 @@ else bad("结束回合请求频道不一致：core=" + coreReq + " common=" + co
 if (/function onInitRequest\(/.test(coreSrcV131) && /broadcast\.onMessage\(CH_INIT_REQUEST/.test(coreSrcV131))
   ok("后台订阅并处理玩家「结束我的回合」请求");
 else bad("后台没有处理玩家结束回合请求");
-if (/function onInitMenuClick\(/.test(coreSrcV131) && /room\.setMetadata\(\{ \[KEY_INITIATIVE\]: next \}\)/.test(coreSrcV131))
-  ok("右键加入先攻会写房间数据");
+/* v1.7.15：写入统一走带预算的 roomWriteGuarded（超 14 KB 不写 + ERROR），不再裸 setMetadata。 */
+if (/function onInitMenuClick\(/.test(coreSrcV131) && /roomWriteGuarded\(KEY_INITIATIVE, next\)/.test(coreSrcV131))
+  ok("右键加入先攻会写房间数据（走 roomWriteGuarded 预算）");
 else bad("右键加入先攻没有写房间数据");
 if (/function bindToken\(/.test(commonSrc) && /metadata\[KEY_INIT\]/.test(commonSrc) && /initiativeBonus\(/.test(commonSrc))
   ok("绑定角色卡时写入 init 元数据（先攻加值取卡里的先攻）");
@@ -647,12 +648,12 @@ const pageSrcV14 = fs.readFileSync(path.join(ROOT, "assets", "initiative-page.js
 const initHtmlV14 = fs.readFileSync(path.join(ROOT, "initiative.html"), "utf8");
 const uiCssV14 = fs.readFileSync(path.join(ROOT, "assets", "ui.css"), "utf8");
 
-/* ---- 1) P0 数据层：上限 60 / d20 / tb / phase / 写失败降级 ---- */
+/* ---- 1) P0 数据层：上限 40（v1.8.0：60 → 40，给角色卡 + 骰子记录留余量）/ d20 / tb / phase / 写失败降级 ---- */
 const maxEntries = (src) => (/(?:export const |var )INIT_MAX_ENTRIES = (\d+);/.exec(src) || [])[1] || "";
 const maxA = maxEntries(initSrcV14);
 const maxB = maxEntries(coreSrcV14);
-if (maxA === "60" && maxB === "60") ok("先攻条目上限两边都是 60（房间数据约 16 KB 的预算，规格 §9.3）");
-else bad("先攻条目上限不是 60：initiative.js=" + maxA + " background.core.js=" + maxB);
+if (maxA === "40" && maxB === "40") ok("先攻条目上限两边都是 40（v1.8.0 瘦身：房间数据 16 KB 预算，规格 §9.3）");
+else bad("先攻条目上限不是 40：initiative.js=" + maxA + " background.core.js=" + maxB);
 
 for (const name of ["genTiebreak", "startPreparation", "startCombat", "startSurprise", "endCombat", "reorderEntry", "stripSizeFor", "stripHeightFor", "renderStripHTML", "phaseLabel", "tokenInfoMap", "normalizePhase"]) {
   if (new RegExp("export function " + name + "\\(").test(initSrcV14)) ok("initiative.js 导出 " + name);
@@ -825,8 +826,8 @@ if (diceCoreSrc.indexOf("maximize") >= 0 && diceCoreSrc.indexOf("critDegraded") 
   diceCoreSrc.indexOf("ROLL_CRIT_NOTE") >= 0)
   ok("重击 = 4E 版：所有伤害骰取满（maximize），包裹表达式退化并提示（critDegraded）");
 else bad("重击没有实现「伤害骰取满 / 包裹退化提示」");
-if (diceCoreSrc.indexOf("export const ROLL_MAX_ROWS = 40;") >= 0) ok("dice-core.js 的 ROLL_MAX_ROWS = 40");
-else bad("dice-core.js 的 ROLL_MAX_ROWS 不是 40");
+if (diceCoreSrc.indexOf("export const ROLL_MAX_ROWS = 20;") >= 0) ok("dice-core.js 的 ROLL_MAX_ROWS = 20（v1.8.0：40 → 20）");
+else bad("dice-core.js 的 ROLL_MAX_ROWS 不是 20");
 if (!/\btarget\s*:/.test(diceCoreSrc) && !/\bhit\s*:/.test(diceCoreSrc))
   ok("载荷里没有 target / hit（用户拍板：不做命中判定）");
 else bad("dice-core.js 里还有 target / hit 判定字段");
@@ -894,15 +895,15 @@ for (const name of ["CH_ROLL", "CH_ROLL_CLEAR", "CH_ROLL_SAVED", "KEY_ROLLS"]) {
 }
 const coreRows = (/(?:var|export const) ROLL_MAX_ROWS = (\d+);/.exec(coreSrcV14) || [])[1] || "";
 const commonRows = (/(?:var|export const) ROLL_MAX_ROWS = (\d+);/.exec(commonSrc) || [])[1] || "";
-if (coreRows === "40" && commonRows === "40") ok("房间数据 rows 上限两边都是 40（容量预算，规格 §1.6）");
-else bad("ROLL_MAX_ROWS 不是 40：core=" + coreRows + " common=" + commonRows);
+if (coreRows === "20" && commonRows === "20") ok("房间数据 rows 上限两边都是 20（v1.8.0 瘦身；容量预算规格 §1.6）");
+else bad("ROLL_MAX_ROWS 不是 20：core=" + coreRows + " common=" + commonRows);
 if (coreSrcV14.indexOf("function rollNorm(") >= 0 && coreSrcV14.indexOf("function rollMerge(") >= 0 &&
-  coreSrcV14.indexOf("function rollWrite(") >= 0 && coreSrcV14.indexOf("room.setMetadata({ [KEY_ROLLS]: box })") >= 0 &&
+  coreSrcV14.indexOf("function rollWrite(") >= 0 && coreSrcV14.indexOf("roomWriteGuarded(KEY_ROLLS, box)") >= 0 &&
   coreSrcV14.indexOf("broadcast.onMessage(CH_ROLL,") >= 0 && coreSrcV14.indexOf("broadcast.onMessage(CH_ROLL_CLEAR,") >= 0 &&
   coreSrcV14.indexOf('if (role !== "GM") return;') >= 0)
-  ok("城主落库：归一化 → 幂等合并 → 写 rolls（40 封顶）→ 广播 saved；非城主直接返回");
+  ok("城主落库：归一化 → 幂等合并 → 写 rolls（20 封顶）→ 广播 saved；非城主直接返回");
 else bad("后台缺少骰子落库链路（rollNorm / rollMerge / rollWrite / 订阅 / GM 校验）");
-if (bundleSrc2.indexOf("function rollNorm(") >= 0 && bundleSrc2.indexOf("var ROLL_MAX_ROWS = 40;") >= 0 &&
+if (bundleSrc2.indexOf("function rollNorm(") >= 0 && bundleSrc2.indexOf("var ROLL_MAX_ROWS = 20;") >= 0 &&
   bundleSrc2.indexOf("broadcast.onMessage(CH_ROLL,") >= 0)
   ok("background.bundle.js 已带上骰子落库（与 core 同步）");
 else bad("bundle 里没有骰子落库代码（跑 node dev/build-background.mjs）");
@@ -981,10 +982,15 @@ console.log("== v1.6.0 血条扩展（临时生命 / 四防 / 蓝条）+ Boss �
   const trackTh = (/export const KEY_PLAYER_THRESHOLD = NS \+ "([^"]+)";/.exec(trackSrcV16) || [])[1] || "";
   if (coreTh === "/settings.playerThreshold" && trackTh === coreTh) ok("玩家端量化阈值键一致：" + coreTh + "（缺省 25）");
   else bad("量化阈值键不一致：core=" + coreTh + " track=" + trackTh);
-  for (const field of ["surgesMax", "defenses", "boss", "locked"]) {
+  for (const field of ["surgesMax", "defenses", "locked"]) {
     if (trackSrcV16.indexOf(field) >= 0 && coreSrc2.indexOf(field) >= 0) ok("hp 新字段两端都有：" + field);
     else bad("hp 新字段缺失：" + field);
   }
+  /* [v1.8.0 删除] Boss 模式整组删除：hp.boss 只在 track.js 里**原样带过**（旧数据不丢），
+   *   core 不再出现 boss（不读 / 不画 / 不参与任何分支）。 */
+  if (trackSrcV16.indexOf("out.boss = raw.boss == null ? null : raw.boss;") >= 0 && coreSrc2.indexOf("boss") < 0) {
+    ok("hp.boss：track.js 原样带过（旧数据不丢）、core 里已无 boss 分支");
+  } else bad("hp.boss 处理不对（track 应原样带过、core 不应再出现 boss）");
   if (/out\.locked = raw\.locked !== false/.test(trackSrcV16) && /locked: m\.locked !== false/.test(coreSrc2)) {
     ok("locked 默认 true（玩家端锁定时隐藏数字）");
   } else bad("locked 默认值不是 true");
@@ -1103,11 +1109,11 @@ console.log("== v1.6.0 血条扩展（临时生命 / 四防 / 蓝条）+ Boss �
     cssSrc.indexOf(".gl4-share") >= 0 && cssSrc.indexOf(".gl4-lock-row") < 0 && cssSrc.indexOf(".gl4-boss-row") < 0) {
     ok("glance.css：回复力蓝条 6px + 四防数值卡（.gl4-defs）+ 共享数据 chip（.gl4-share；锁 / Boss 那排已删）");
   } else bad("glance.css 缺少速览的蓝条 / 四防数值卡 / 共享数据样式");
-  if (trackSrcV16.indexOf('act === "defense" || act === "lock" || act === "boss"') >= 0 &&
+  if (trackSrcV16.indexOf('act === "defense" || act === "lock"') >= 0 &&
     trackSrcV16.indexOf("export async function syncTokenStats(") >= 0 &&
     infoSrcV16.indexOf("syncTokenStats(") >= 0) {
-    ok("track.js 新增 defense / lock / boss 三个 act + syncTokenStats（速览刷新时补写四防 / 分母）");
-  } else bad("track.js 缺少 defense / lock / boss 或 syncTokenStats");
+    ok("track.js 的 defense / lock 两个 act + syncTokenStats（速览刷新时补写四防 / 分母；boss 分支 v1.8.0 已删）");
+  } else bad("track.js 缺少 defense / lock 或 syncTokenStats");
   if (/surgesMax: derived\.surgesMax \|\| derived\.surges/.test(infoSrcV16) && /defenses: derived\.defenses/.test(infoSrcV16)) {
     ok("info.js 把 surgesMax / defenses 传进 applyAction");
   } else bad("info.js 没有把新字段传进 applyAction");
@@ -1686,10 +1692,9 @@ console.log("== v1.7.3 先攻：移出 / token 删除自动清理 / 外壳透明
     has(coreV173, "function scheduleInitFlagSync(") && has(coreV173, "scheduleInitFlagSync();"))
     ok("token 元数据 in-init 由 syncInitFlags 维护（加入 / 移出 / 清理 / 别人改名单 / 进房间各对齐一次，写 false 不 delete）");
   else bad("没有维护 in-init 镜像（右键菜单不会随名单变）");
-  if (has(coreV173, "function initRemove(") && has(coreV173, "已移出先攻") &&
-    has(coreV173, "out.entries.splice(idx, 1);"))
-    ok("「移出先攻」= 从 entries 删掉该 tokenId + 通知「已移出先攻」（列表窗口 / 卡片 ✕ 用同一套）");
-  else bad("「移出先攻」没有删 entries / 没有通知");
+  if (has(coreV173, "function initRemove(") && has(coreV173, "out.entries.splice(idx, 1);"))
+    ok("「移出先攻」= 从 entries 删掉该 tokenId（列表窗口 / 卡片 ✕ 用同一套；v1.7.8 起成功不弹通知）");
+  else bad("「移出先攻」没有删 entries");
 
   /* ---- 2) token 被删除 → 自动清理 + 游标顺移 ---- */
   if (has(coreV173, "async function pruneMissingInitEntries(") && has(coreV173, "scheduleInitPrune()") &&
@@ -3031,6 +3036,141 @@ console.log("== docs 合并（docs/NOTES.md；不再按版本 / 规格拆文件�
   else bad("docs/ 下又出现了拆分文档：" + stillThere.join(" / "));
 }
 
+/* =======================================================================
+ * v1.7.15：房间数据超限（16 kB）真修复
+ * =======================================================================
+ * 真机：Uncaught (in promise) Error: Unable to update metadata: over size limit of 16 kB
+ *   → 之后所有 room.setMetadata（加入先攻 / 改加值 / 回合推进 / 骰子历史 / 资源）全被拒，且静默。
+ * 这一版四层：卡片精简 / 写前预算 / 本机降级 / 设置里的清理入口。
+ * 行为断言在 dev/test-cards.mjs（下面 spawn），这里只查静态接线与常量一致性。 */
+console.log("== v1.7.15 房间数据超限（16 kB）真修复：卡片精简 / 写前预算 / 本机降级 / 清理入口");
+{
+  const has = (src, sub) => String(src).indexOf(sub) >= 0;
+  const cardsCoreV1715 = fs.readFileSync(path.join(ROOT, "assets", "cards-core.js"), "utf8");
+  const commonV1715 = fs.readFileSync(path.join(ROOT, "assets", "common.js"), "utf8");
+  const trackV1715 = fs.readFileSync(path.join(ROOT, "assets", "track.js"), "utf8");
+  const initV1715 = fs.readFileSync(path.join(ROOT, "assets", "initiative.js"), "utf8");
+  const panelV1715 = fs.readFileSync(path.join(ROOT, "assets", "panel.js"), "utf8");
+  const coreV1715 = fs.readFileSync(corePath, "utf8");
+  const setHtmlV1715 = fs.readFileSync(path.join(ROOT, "settings.html"), "utf8");
+  const setJsV1715 = fs.readFileSync(path.join(ROOT, "assets", "settings-page.js"), "utf8");
+  const readmeV1715 = fs.readFileSync(path.join(ROOT, "README.md"), "utf8");
+  const changelogV1715 = fs.readFileSync(path.join(ROOT, "CHANGELOG.md"), "utf8");
+  const testCardsV1715 = fs.readFileSync(path.join(ROOT, "dev", "test-cards.mjs"), "utf8");
+  const bundleV1715 = fs.readFileSync(path.join(ROOT, "assets", "background.bundle.js"), "utf8");
+  const MSG1715 = "房间数据已满（16KB）：请减少导入的角色卡，或清理骰子历史";
+
+  /* ---- ① 卡片精简（assets/cards-core.js） ---- */
+  for (const name of ["packCard", "unpackCard", "cardBytes", "cardsBytes", "roomBytes", "mergeRoom", "roomBudget"]) {
+    if (new RegExp("export function " + name + "\\(").test(cardsCoreV1715)) ok("① cards-core.js 导出 " + name);
+    else bad("cards-core.js 没有导出 " + name);
+  }
+  if (/export const ROOM_MAX_BYTES = 14 \* 1024;/.test(cardsCoreV1715) &&
+    /export const ROOM_HARD_BYTES = 16 \* 1024;/.test(cardsCoreV1715) &&
+    /export const CARD_MAX_BYTES = 2048;/.test(cardsCoreV1715)) {
+    ok("① 预算常量：房间 14 KB（" + 14 * 1024 + "）/ 硬上限 16 KB / 单卡 2 KB");
+  } else bad("cards-core.js 的预算常量不对（要 14*1024 / 16*1024 / 2048）");
+  if (has(cardsCoreV1715, 'ROOM_FULL_MESSAGE = "' + MSG1715 + '";')) ok("① 超限文案逐字：" + MSG1715);
+  else bad("cards-core.js 的超限文案不是约定的那句");
+  if (has(cardsCoreV1715, 'LS_CARDS = "4enext/cards-local";')) ok("① 本机兜底键 4enext/cards-local");
+  else bad("cards-core.js 没有 LS_CARDS");
+  const coreForbidden = ["spellbook", "backpack", "portraitCropped", "portraitOriginal", "creation"];
+  const coreLeak = coreForbidden.filter((k) => new RegExp('out\\.' + k + '\\s*=').test(cardsCoreV1715));
+  if (!coreLeak.length) ok("① 精简格式里没有立绘 / spellbook / backpack / creation 这些非渲染字段");
+  else bad("cards-core.js 还在存非渲染字段：" + coreLeak.join(" / "));
+  if (has(cardsCoreV1715, "pz: 1") && has(cardsCoreV1715, "unpackCard") && has(cardsCoreV1715, "backList")) {
+    ok("① 精简格式带 pz 标记（旧数据原样返回）+ unpackCard 还原 Character 形状");
+  } else bad("cards-core.js 缺少 pz 标记 / 还原逻辑");
+
+  /* ---- ② 写前预算（页面：common.js 的 writeRoomKey） ---- */
+  if (/export async function writeRoomKey\(key, value\)/.test(commonV1715) &&
+    /const budget = roomBudget\(meta, patch\);/.test(commonV1715) &&
+    /if \(!budget\.ok\) return \{ ok: false, reason: "full"/.test(commonV1715)) {
+    ok("② common.js 的 writeRoomKey：写之前算体积，超预算返回 reason=full（不写）");
+  } else bad("common.js 没有「写前预算」的 writeRoomKey");
+  if (/writeRoomKey\(KEY_CARDS, payload\)/.test(commonV1715) && /char: packCard\(c && c\.char\)/.test(commonV1715)) {
+    ok("② writeCards 先把卡片 packCard 精简、再过 writeRoomKey");
+  } else bad("writeCards 没有精简 / 没有走预算");
+  if (/notify\(ROOM_FULL_MESSAGE, "ERROR"\)/.test(commonV1715) &&
+    /notify\("角色卡没能写进房间数据/.test(commonV1715)) {
+    ok("② 角色卡超限 / 拒写都弹 ERROR 通知（不静默）");
+  } else bad("common.js 的超限 / 拒写没有 ERROR 通知");
+  if (/export async function getCardsInfo\(\)/.test(commonV1715) &&
+    /local\.updatedAt > roomAt/.test(commonV1715) &&
+    /scope: "local"/.test(commonV1715)) {
+    ok("② getCardsInfo：房间 / 本机「谁更新用谁」，带 scope = room|local");
+  } else bad("common.js 的 getCardsInfo 没有本机降级");
+  if (/export async function getRoomUsage\(\)/.test(commonV1715) &&
+    /export async function clearRoomRolls\(\)/.test(commonV1715) &&
+    /export async function clearRoomCards\(\)/.test(commonV1715)) {
+    ok("② 清理入口在 common.js：getRoomUsage / clearRoomRolls / clearRoomCards");
+  } else bad("common.js 缺少清理房间数据的三个函数");
+  if (/export \{\s*ROOM_NS, ROOM_MAX_BYTES/.test(commonV1715)) ok("② common.js 把预算常量 / 纯函数透出给页面");
+  else bad("common.js 没有透出预算常量");
+
+  /* ---- ③ 四条写路径都接上预算 ---- */
+  if (/writeRoomKey\(KEY_INITIATIVE, next\)/.test(initV1715) &&
+    /res\.reason === "full"[\s\S]{0,80}?ROOM_FULL_MESSAGE/.test(initV1715)) {
+    ok("③ 先攻（页面 initiative.js）：writeInitiative 走 writeRoomKey，超限弹 ROOM_FULL_MESSAGE");
+  } else bad("initiative.js 的 writeInitiative 没有接预算");
+  if (/writeRoomKey\(key, next\)/.test(trackV1715) &&
+    /res\.reason === "full"[\s\S]{0,40}ROOM_FULL_MESSAGE, "ERROR"/.test(trackV1715)) {
+    ok("③ 资源（track.js）：commitState 走 writeRoomKey，超限弹 ERROR");
+  } else bad("track.js 的 commitState 没有接预算");
+  if (/roomWriteGuarded\(KEY_INITIATIVE, next\)/.test(coreV1715) &&
+    /roomWriteGuarded\(KEY_ROLLS, box\)/.test(coreV1715)) {
+    ok("③ 后台（background.core.js）：先攻 / 骰子落库都走 roomWriteGuarded");
+  } else bad("background.core.js 的先攻 / 骰子写入没有接预算");
+  if (/var ROOM_MAX_BYTES = 14 \* 1024;/.test(coreV1715) && /var ROOM_HARD_BYTES = 16 \* 1024;/.test(coreV1715) &&
+    has(coreV1715, 'var ROOM_FULL_MESSAGE = "' + MSG1715 + '";') && /var LS_CARDS = "4enext\/cards-local";/.test(coreV1715)) {
+    ok("③ 后台的常量 / 文案 / 本机键与 cards-core.js 一字不差（经典脚本不能 import）");
+  } else bad("background.core.js 的常量 / 文案 / 本机键与 cards-core.js 不一致");
+  if (!/await OBR\.room\.setMetadata\(\{ \[(KEY_INITIATIVE|KEY_ROLLS)\]/.test(coreV1715)) {
+    ok("③ 后台没有绕过预算的裸 setMetadata（先攻 / 骰子都改走 guard）");
+  } else bad("background.core.js 里还有裸 setMetadata 写先攻 / 骰子");
+  if (/localCardsFallback\(\)/.test(coreV1715) && /local\.updatedAt > roomAt/.test(coreV1715)) {
+    ok("③ 后台 getCards 也读本机副本（绑定关系不会因为降级而失效）");
+  } else bad("background.core.js 的 getCards 没读本机副本");
+  if (has(bundleV1715, "function roomWriteGuarded(") && has(bundleV1715, "var ROOM_MAX_BYTES = 14 * 1024;")) {
+    ok("③ bundle 已重建（roomWriteGuarded / 预算常量都在产物里）");
+  } else bad("bundle 没重建：roomWriteGuarded 不在 background.bundle.js 里");
+
+  /* ---- ④ UI：面板标「角色卡：本机」+ 设置里的清理入口 ---- */
+  if (/角色卡：' \+ \(cardsScope === "local" \? "本机" : "全桌"\)/.test(panelV1715)) {
+    ok("④ 角色卡面板工具栏明写「角色卡：本机 / 全桌」");
+  } else bad("panel.js 没有「角色卡：本机 / 全桌」的状态标记");
+  if (/cardsScope = info\.scope/.test(panelV1715) && /cardsScope = res\.scope/.test(panelV1715)) {
+    ok("④ 面板读 / 写都把 scope 带回界面");
+  } else bad("panel.js 没有把 scope 带回界面");
+  for (const idn of ["room-usage", "room-refresh", "room-clean-rolls", "room-clean-cards", "room-clean-out"]) {
+    if (has(setHtmlV1715, 'id="' + idn + '"')) ok("④ settings.html 有 #" + idn);
+    else bad("settings.html 缺少 #" + idn);
+  }
+  if (has(setHtmlV1715, "清理骰子历史") && has(setHtmlV1715, "清空角色卡") && has(setHtmlV1715, "清理房间数据")) {
+    ok("④ 设置窗口「清理房间数据」：清理骰子历史 / 清空角色卡 两个按钮都在");
+  } else bad("settings.html 的清理房间数据按钮不全");
+  if (/getRoomUsage/.test(setJsV1715) && /clearRoomRolls/.test(setJsV1715) && /clearRoomCards/.test(setJsV1715)) {
+    ok("④ settings-page.js 调 common.js 的用量 / 清理函数（自己不碰房间数据）");
+  } else bad("settings-page.js 没有接上清理入口");
+
+  /* ---- ⑤ 自测文件 + 文档 ---- */
+  for (const needle of ["导入大卡之后房间数据仍然 ≤ 14 KB", "超限时**不写**房间数据", "降级到本机", "清理房间数据"]) {
+    if (has(testCardsV1715, needle)) ok("⑤ dev/test-cards.mjs 断言：" + needle);
+    else bad("dev/test-cards.mjs 缺少断言：" + needle);
+  }
+  if (has(readmeV1715, "v1.7.15") && has(readmeV1715, "房间数据超限真修复") &&
+    has(readmeV1715, "1906") && has(readmeV1715, "14 KB")) {
+    ok("⑤ README 补了 v1.7.15（含精简前后实测数字与 14 KB 预算）");
+  } else bad("README 没有补 v1.7.15 的说明 / 实测数字");
+  if (has(changelogV1715, "v1.7.15") && has(changelogV1715, "over size limit of 16 kB") &&
+    has(changelogV1715, "cards-core.js") && has(changelogV1715, "14 * 1024")) {
+    ok("⑤ CHANGELOG 补了 v1.7.15（根因 + 四层修复 + 预算常量）");
+  } else bad("CHANGELOG 没有补 v1.7.15");
+  if (notesHas("房间数据为什么必须精简（v1.7.15") && notesHas("packCard") && notesHas("writeRoomKey")) {
+    ok("⑤ docs/NOTES.md 补了「房间数据为什么必须精简」的维护口径");
+  } else bad("docs/NOTES.md 缺少 v1.7.15 的维护口径");
+}
+
 /* v1.7.13：假 DOM 点击冒烟（独立进程，stdio 直接继承 —— 不走管道）。
  * 证明「渲染出的 [data-act] → 一次真的 dispatchEvent → track.js applyAction 写房间数据」这条链路没断。 */
 console.log("== v1.7.13 速览点击冒烟（dev/test-info-click.mjs）");
@@ -3039,6 +3179,17 @@ console.log("== v1.7.13 速览点击冒烟（dev/test-info-click.mjs）");
   const code = typeof r.status === "number" ? r.status : 1;
   if (code === 0) ok("速览点击冒烟通过（dispatchEvent(MouseEvent) → track.js applyAction 写入 powerUsed / equipmentUsed）");
   else bad("速览点击冒烟失败（exit " + code + "）：手动跑 node dev/test-info-click.mjs 看细节");
+}
+
+/* v1.7.15：房间数据超限的**行为**自测（独立进程，同样 stdio 直接继承）。
+ * 断言「单卡 ≤ 2 KB」「导入大卡后房间数据仍 ≤ 14 KB」「超限不写 + ERROR」「降级本机读得回来」
+ * 「OBR 拒写也降级 + ERROR」「设置里的清理按钮真的能腾出空间」。 */
+console.log("== v1.7.15 房间数据超限行为自测（dev/test-cards.mjs）");
+{
+  const r = spawnSync(process.execPath, [path.join(ROOT, "dev", "test-cards.mjs")], { cwd: ROOT, stdio: "inherit" });
+  const code = typeof r.status === "number" ? r.status : 1;
+  if (code === 0) ok("房间数据超限自测通过（精简 / 预算 / 降级 / 清理）");
+  else bad("房间数据超限自测失败（exit " + code + "）：手动跑 node dev/test-cards.mjs 看细节");
 }
 
 console.log(fail ? "\n" + fail + " 个问题" : "\n全部通过");

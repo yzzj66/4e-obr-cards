@@ -1,7 +1,19 @@
 // 各页面共用的小工具：命名空间、房间数据读写、导入解析。
 import OBR from "../vendor/obr-sdk.js";
+/* v1.7.15：房间数据体积预算 + 角色卡精简（打包）格式。
+ * 这两个模块的分工：cards-core.js 是**纯函数**（无 import，Node 里可直接测），
+ * 这里只负责「读最新房间数据 → 算体积 → 该写就写、超了就不写并通知」。 */
+import {
+  ROOM_NS, ROOM_MAX_BYTES, ROOM_HARD_BYTES, ROOM_FULL_MESSAGE, CARD_MAX_BYTES, LS_CARDS,
+  packCard, unpackCard, cardBytes, cardsBytes, roomBytes, mergeRoom, roomBudget
+} from "./cards-core.js";
 
-export const NS = "com.4enext-owlbear";
+export const NS = ROOM_NS;
+/* 透出给页面 / 自测用（settings-page.js 只从 common.js 取，不自己碰 OBR 房间数据）。 */
+export {
+  ROOM_NS, ROOM_MAX_BYTES, ROOM_HARD_BYTES, ROOM_FULL_MESSAGE, CARD_MAX_BYTES, LS_CARDS,
+  packCard, unpackCard, cardBytes, cardsBytes, roomBytes, mergeRoom, roomBudget
+};
 /** 房间数据键：全房间共享的角色卡列表（无需自建服务器）。 */
 export const KEY_CARDS = NS + "/cards";
 /** Token（item）身上的绑定键：值为卡片 id。 */
@@ -31,7 +43,7 @@ export const ID_SETTINGS_WIN = NS + "/settings-window";
  * id 与其它窗口都不同 → 可以和速览 / 先攻条同时开着；位置按窗口名 "hpEdit" 单独记。 */
 export const ID_HP_EDIT = NS + "/hp-edit";
 
-export const PLUGIN_VERSION = "1.7.14";
+export const PLUGIN_VERSION = "1.7.15";
 
 /**
  * 站点根地址。
@@ -71,7 +83,7 @@ export const CH_INIT_REQUEST = NS + "/init-request";
  * CH_ROLL        任何人 → 全桌：一次投掷（LOCAL + REMOTE；投掷者自己也听 LOCAL）
  * CH_ROLL_CLEAR  城主清空全桌历史（玩家点了只会收到 WARNING）
  * CH_ROLL_SAVED  城主客户端写完房间数据后广播 { seq, rollId }，页面据此清掉「未落库」计时器
- * KEY_ROLLS      房间数据：{ v, updatedAt, seq, rows } —— rows 上限 40（≈8~9 KB，给角色卡留空间）
+ * KEY_ROLLS      房间数据：{ v, updatedAt, seq, rows } —— rows 上限 20（v1.8.0；≈4 KB，给角色卡留空间）
  * 前三个频道与 KEY_ROLLS / ROLL_MAX_ROWS 与 background.core.js 里的同名常量必须一字不差
  * （后台是经典脚本，不能 import，dev/check.mjs 会逐项对比）。
  * 本机键：组合 / 上次公式 / 城主离线时的暂存。 */
@@ -79,8 +91,8 @@ export const CH_ROLL = NS + "/roll";
 export const CH_ROLL_CLEAR = NS + "/roll-clear";
 export const CH_ROLL_SAVED = NS + "/roll-saved";
 export const KEY_ROLLS = NS + "/rolls";
-/** 与 dice-core.js 的 ROLL_MAX_ROWS 相同（房间数据容量预算，规格 §1.6）。 */
-export const ROLL_MAX_ROWS = 40;
+/** 与 dice-core.js 的 ROLL_MAX_ROWS 相同（房间数据容量预算，规格 §1.6；v1.8.0：40 → 20）。 */
+export const ROLL_MAX_ROWS = 20;
 export const LS_DICE_COMBOS = "4enext/dice/combos";
 export const LS_DICE_LAST = "4enext/dice/last";
 export const LS_DICE_LOCAL = "4enext/dice/local";
@@ -260,22 +272,185 @@ export function hashId(text) {
   return (h >>> 0).toString(36);
 }
 
-/** 读房间里的全部角色卡（按导入顺序）。 */
-export async function getCards() {
-  try {
-    const meta = await OBR.room.getMetadata();
-    const box = meta[KEY_CARDS];
-    if (box && Array.isArray(box.cards)) return box.cards;
-  } catch (e) {
-    console.error("[4enext] 读取房间数据失败", e);
-  }
-  return [];
+/* ---------------------------------------------------------------------------
+ * v1.7.15：房间数据预算（room metadata 上限 16 kB）
+ * ---------------------------------------------------------------------------
+ * 真机报错：Unable to update metadata: over size limit of 16 kB。
+ * 根因是角色卡整份 JSON 塞进房间数据。现在：
+ *   · 写任何房间键之前都先 getMetadata → 把「这份键」合进去 → 算 JSON 体积；
+ *   · 超过 ROOM_MAX_BYTES（14 KB，留 2 KB 余量）就**不写**，由调用方决定怎么降级；
+ *   · 角色卡超限时改存本机 localStorage（LS_CARDS），并弹 **ERROR**（不静默）。
+ * ------------------------------------------------------------------------- */
+
+function msgOf(e) {
+  return e && e.message ? e.message : String(e);
 }
 
+async function readRoomMeta() {
+  try {
+    const meta = await OBR.room.getMetadata();
+    return meta && typeof meta === "object" ? meta : {};
+  } catch (e) {
+    console.error("[4enext] 读取房间数据失败", e);
+    return {};
+  }
+}
+
+/**
+ * 受预算保护的房间数据写入。
+ * 返回 { ok, reason, bytes, error }：reason = "full"（超预算，**没写**）/ "error"（OBR 拒写）。
+ * 调用方拿到 !ok 必须做降级 + 通知，不允许静默。
+ */
+export async function writeRoomKey(key, value) {
+  const meta = await readRoomMeta();
+  const patch = {};
+  patch[key] = value;
+  const budget = roomBudget(meta, patch);
+  if (!budget.ok) return { ok: false, reason: "full", bytes: budget.bytes, max: budget.max };
+  try {
+    await OBR.room.setMetadata(patch);
+    return { ok: true, reason: "", bytes: budget.bytes, max: budget.max };
+  } catch (e) {
+    return { ok: false, reason: "error", bytes: budget.bytes, max: budget.max, error: e };
+  }
+}
+
+/** 本机兜底的角色卡列表（房间数据装不下时的那一份）：{ cards, updatedAt } | null。 */
+function readLocalCards() {
+  try {
+    const raw = localStorage.getItem(LS_CARDS);
+    if (!raw) return null;
+    const box = JSON.parse(raw);
+    if (box && Array.isArray(box.cards)) {
+      return { cards: box.cards, updatedAt: typeof box.updatedAt === "number" ? box.updatedAt : 0 };
+    }
+  } catch (e) {
+    console.error("[4enext] 读取本机角色卡失败", e);
+  }
+  return null;
+}
+
+function saveLocalCards(cards) {
+  try {
+    localStorage.setItem(LS_CARDS, JSON.stringify({ v: 1, updatedAt: Date.now(), cards: cards }));
+    return true;
+  } catch (e) {
+    console.error("[4enext] 本机角色卡也存不下", e);
+    return false;
+  }
+}
+
+/** 清掉本机兜底副本（房间数据写得进去之后调）。 */
+export function clearLocalCards() {
+  try { localStorage.removeItem(LS_CARDS); } catch (e) { /* 忽略 */ }
+}
+
+function hydrateCard(card) {
+  if (!card || typeof card !== "object") return card;
+  /* 房间 / 本机里存的是精简格式；读出来还原成 4E NEXT 的 Character 形状，
+   * 这样 glance.js / track.js / initiative.js 一行都不用改。 */
+  return Object.assign({}, card, { char: unpackCard(card.char) });
+}
+
+/**
+ * 读角色卡：**谁更新用谁**。
+ *   · 房间数据里有卡片列表，且不比本机副本旧 → 用房间（全桌共享，正常情况）；
+ *   · 本机副本更新（= 上一次导入因为房间数据超限而降级了）→ 用本机，UI 标「角色卡：本机」；
+ *   · 房间数据里根本没有这个键 → 有本机副本就用本机。
+ * 返回 { cards, scope: "room"|"local", bytes }。
+ */
+export async function getCardsInfo() {
+  const meta = await readRoomMeta();
+  const box = meta[KEY_CARDS];
+  const local = readLocalCards();
+  const roomAt = box && typeof box.updatedAt === "number" ? box.updatedAt : 0;
+  if (box && Array.isArray(box.cards)) {
+    if (local && local.updatedAt > roomAt) {
+      return { cards: local.cards.map(hydrateCard), scope: "local", bytes: roomBytes(meta) };
+    }
+    return { cards: box.cards.map(hydrateCard), scope: "room", bytes: roomBytes(meta) };
+  }
+  if (local) return { cards: local.cards.map(hydrateCard), scope: "local", bytes: roomBytes(meta) };
+  return { cards: [], scope: "room", bytes: roomBytes(meta) };
+}
+
+/** 读房间里的全部角色卡（按导入顺序）。 */
+export async function getCards() {
+  return (await getCardsInfo()).cards;
+}
+
+/**
+ * 写角色卡列表（导入 / 删除卡都走这里）。
+ * 成功 → 房间数据（顺手清掉本机副本）；超预算 / 写失败 → 本机副本 + **ERROR** 通知。
+ * 返回 { payload, scope: "room"|"local", bytes, saved?, error? }。
+ */
 export async function writeCards(cards) {
-  const payload = { v: 1, updatedAt: Date.now(), cards: cards };
-  await OBR.room.setMetadata({ [KEY_CARDS]: payload });
-  return payload;
+  const wire = (cards || []).map(function (c) {
+    return Object.assign({}, c, { char: packCard(c && c.char) });
+  });
+  const payload = { v: 1, updatedAt: Date.now(), cards: wire };
+  const res = await writeRoomKey(KEY_CARDS, payload);
+  if (res.ok) {
+    clearLocalCards();
+    return { payload: payload, scope: "room", bytes: res.bytes };
+  }
+  const saved = saveLocalCards(wire);
+  if (res.reason === "full") {
+    notify(ROOM_FULL_MESSAGE, "ERROR");
+  } else {
+    notify("角色卡没能写进房间数据（" + msgOf(res.error) + "）：" +
+      (saved ? "已改为只记在这台机器上（房间数据通常只有城主能写）" : "本机也存不下，这次导入没有保存"), "ERROR");
+  }
+  return { payload: payload, scope: "local", bytes: res.bytes, saved: saved, error: res.error || null };
+}
+
+/** 设置窗口用：看一眼房间数据现在多满 / 有几张卡 / 几条骰子记录 / 几条先攻。 */
+export async function getRoomUsage() {
+  const meta = await readRoomMeta();
+  const cardsBox = meta[KEY_CARDS];
+  const rollsBox = meta[KEY_ROLLS];
+  const initBox = meta[KEY_INITIATIVE];
+  const local = readLocalCards();
+  const roomAt = cardsBox && typeof cardsBox.updatedAt === "number" ? cardsBox.updatedAt : 0;
+  const useLocal = !!local && (!(cardsBox && Array.isArray(cardsBox.cards)) || local.updatedAt > roomAt);
+  return {
+    bytes: roomBytes(meta),
+    max: ROOM_MAX_BYTES,
+    hard: ROOM_HARD_BYTES,
+    cards: useLocal ? (local ? local.cards.length : 0) : (cardsBox && Array.isArray(cardsBox.cards) ? cardsBox.cards.length : 0),
+    roomCards: cardsBox && Array.isArray(cardsBox.cards) ? cardsBox.cards.length : 0,
+    localCards: local ? local.cards.length : 0,
+    cardScope: useLocal ? "local" : "room",
+    rows: rollsBox && Array.isArray(rollsBox.rows) ? rollsBox.rows.length : 0,
+    entries: initBox && Array.isArray(initBox.entries) ? initBox.entries.length : 0
+  };
+}
+
+/** 清空房间里的骰子历史（设置窗口的「清理房间数据」按钮；通常只有城主能成功）。
+ *  只减不增，所以**不需要**体积预算检查（超限时清空反而正是唯一的出路）。 */
+export async function clearRoomRolls() {
+  const meta = await readRoomMeta();
+  const box = meta[KEY_ROLLS];
+  const seq = box && typeof box.seq === "number" && isFinite(box.seq) ? Math.round(box.seq) : 0;
+  try {
+    await OBR.room.setMetadata({ [KEY_ROLLS]: { v: 1, updatedAt: Date.now(), seq: seq + 1, rows: [] } });
+    return { ok: true };
+  } catch (e) {
+    notify("清空骰子历史失败：" + msgOf(e) + "（房间数据通常只有城主能改）", "ERROR");
+    return { ok: false, error: e };
+  }
+}
+
+/** 清空房间里的角色卡（连带清掉本机兜底副本）。同理只减不增，不做预算检查。 */
+export async function clearRoomCards() {
+  try {
+    await OBR.room.setMetadata({ [KEY_CARDS]: { v: 1, updatedAt: Date.now(), cards: [] } });
+    clearLocalCards();
+    return { ok: true };
+  } catch (e) {
+    notify("清空角色卡失败：" + msgOf(e) + "（房间数据通常只有城主能改）", "ERROR");
+    return { ok: false, error: e };
+  }
 }
 
 export function findCard(cards, id) {

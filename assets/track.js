@@ -21,7 +21,8 @@
 // 写操作一律走「读最新 → 改 → 写」，避免拿页面里过期的一份覆盖别人刚改的。
 
 import OBR from "../vendor/obr-sdk.js";
-import { NS } from "./common.js";
+/* v1.7.15：写房间数据前先过体积预算（超了就**不写** + ERROR 通知，再降级本机）。 */
+import { NS, ROOM_FULL_MESSAGE, notify, writeRoomKey } from "./common.js";
 
 /** token 上的血量键。 */
 export const KEY_HP = NS + "/hp";
@@ -122,7 +123,9 @@ export async function loadState(cardId) {
   return { state: defaultState(), scope: "room" };
 }
 
-/** 读最新 → mutate → 写回。返回 { state, scope, message?, tone? }。 */
+/** 读最新 → mutate → 写回。返回 { state, scope, message?, tone? }。
+ *  v1.7.15：写之前先算房间数据体积 —— 超预算时**不写**、弹 ERROR（ROOM_FULL_MESSAGE），
+ *  再降级到本机（tone 仍是 WARNING，面板里那一行小字照旧）。 */
 export async function commitState(cardId, mutate) {
   const key = KEY_STATE_PREFIX + cardId;
   const scope = scopeOverride[cardId] || "room";
@@ -131,22 +134,30 @@ export async function commitState(cardId, mutate) {
   if (!base) base = readLocal(cardId);
   const next = normalizeState(mutate(clone(base || defaultState())));
   next.updatedAt = Date.now();
-  try {
-    await OBR.room.setMetadata({ [key]: next });
+  const res = await writeRoomKey(key, next);
+  if (res.ok) {
     scopeOverride[cardId] = "room";
     return { state: next, scope: "room" };
-  } catch (e) {
-    const ok = writeLocal(cardId, next);
-    scopeOverride[cardId] = "local";
-    return {
-      state: next,
-      scope: "local",
-      message: ok
+  }
+  if (res.reason === "full") {
+    notify(ROOM_FULL_MESSAGE, "ERROR");
+  } else {
+    /* v1.7.15：写失败一律 ERROR 通知（以前只有面板里一行小字，用户以为「点了没反应」）。 */
+    notify("资源标记没能写进房间数据（" + (res.error && res.error.message ? res.error.message : String(res.error)) +
+      "）：已改为只记在这台机器上", "ERROR");
+  }
+  const ok = writeLocal(cardId, next);
+  scopeOverride[cardId] = "local";
+  return {
+    state: next,
+    scope: "local",
+    message: res.reason === "full"
+      ? "房间数据已满（16KB），这次只记在这台机器上（设置 →「清理房间数据」可以瘦身）"
+      : ok
         ? "房间数据写不进去（通常只有城主能写），已改为只记在这台机器上"
         : "房间数据和本机存储都写不进去，这次改动只在当前画面有效",
-      tone: "WARNING"
-    };
-  }
+    tone: "WARNING"
+  };
 }
 
 /* ---------------------------------------------------------------------------
@@ -165,20 +176,6 @@ export function readDefenses(raw) {
     }
   }
   return any ? out : null;
-}
-
-/** v1.6.0：Boss 开关。布尔（boss:true）与对象两种都归一化成对象（规格 §6.1）。 */
-export function readBoss(raw) {
-  const out = { enabled: false, segments: 1, phase: "", exact: false, order: 0 };
-  if (typeof raw === "boolean") { out.enabled = raw; return out; }
-  if (!raw || typeof raw !== "object") return out;
-  out.enabled = raw.enabled === true;
-  out.segments = typeof raw.segments === "number" && isFinite(raw.segments)
-    ? Math.max(1, Math.min(5, Math.round(raw.segments))) : 1;
-  out.phase = typeof raw.phase === "string" ? raw.phase.slice(0, 48) : "";
-  out.exact = raw.exact === true;
-  out.order = typeof raw.order === "number" && isFinite(raw.order) ? raw.order : 0;
-  return out;
 }
 
 /** 卡里的四防（glance.js 的 d.defenses: [{ key, value }]）→ token 字段。
@@ -215,7 +212,8 @@ export function normalizeHp(raw) {
     out.surgesMax = Math.round(raw.surgesMax);
   }
   out.defenses = readDefenses(raw.defenses);
-  out.boss = raw.boss == null ? null : readBoss(raw.boss);
+  /* v1.8.0：hp.boss 只为旧数据兼容原样带过（不解释、不参与任何分支）。 */
+  out.boss = raw.boss == null ? null : raw.boss;
   out.locked = raw.locked !== false;
   out.updatedAt = int(raw.updatedAt, 0);
   return out;
@@ -338,8 +336,8 @@ export async function applyAction(act, el, ctx) {
   const key = String(d.k || "");
   const cat = String(d.cat || "");
 
-  // ---- v1.6.0：四防 / 锁 / Boss 开关（都写 token 元数据，不碰房间数据） ----
-  if (act === "defense" || act === "lock" || act === "boss") {
+  // ---- v1.6.0：四防 / 共享数据开关（都写 token 元数据，不碰房间数据） ----
+  if (act === "defense" || act === "lock") {
     if (!ctx.itemId) throw new Error("这里没有绑定 token，改不了血量");
     if (ctx.canHp === false) throw new Error("只有城主或这枚 token 的创建者能改血量");
     const next = await writeTokenHp(ctx.itemId, function (prev) {
@@ -348,17 +346,8 @@ export async function applyAction(act, el, ctx) {
         const def = defensesFromDerived(ctx.defenses);
         if (def) out.defenses = def;
         if (ctx.surgesMax > 0) out.surgesMax = Math.round(ctx.surgesMax);
-      } else if (act === "lock") {
-        out.locked = prev.locked === false; /* 取反：默认 true（玩家端不显示数字） */
       } else {
-        const b = readBoss(prev.boss);
-        out.boss = {
-          enabled: !b.enabled,
-          segments: b.segments,
-          phase: b.phase,
-          exact: b.exact,
-          order: b.order || Date.now()
-        };
+        out.locked = prev.locked === false; /* 取反：默认 true（玩家端不显示数字） */
       }
       return out;
     });

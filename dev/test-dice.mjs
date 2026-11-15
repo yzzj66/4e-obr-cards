@@ -46,7 +46,8 @@ fs.mkdirSync(path.join(tmp, "assets"), { recursive: true });
 fs.mkdirSync(path.join(tmp, "data"), { recursive: true });
 fs.writeFileSync(path.join(tmp, "package.json"), JSON.stringify({ type: "module" }), "utf8");
 fs.copyFileSync(path.join(ROOT, "data", "rules.js"), path.join(tmp, "data", "rules.js"));
-for (const f of ["dice-core.js", "dice-4e.js", "glance.js"]) {
+/* v1.7.15：页面模块都 import common.js，而 common.js 现在还要 cards-core.js（房间数据预算）。 */
+for (const f of ["cards-core.js", "dice-core.js", "dice-4e.js", "glance.js"]) {
   fs.copyFileSync(path.join(ROOT, "assets", f), path.join(tmp, "assets", f));
 }
 
@@ -228,7 +229,7 @@ for (let i = 0; i < 60; i++) {
   many.push({ rollId: "m" + i, ts: 1000 + i, rollerName: "甲", expression: "1d20", dice: [{ type: "d20", value: 10 }], modifier: 0, total: 10 });
 }
 const capped = D.mergeRollRows(many, { rollId: "new", ts: 9999, dice: [{ type: "d20", value: 1 }] });
-if (capped.length === 40 && capped[0].rollId === "new") ok("合并后封顶 40 条，且最新的排最前");
+if (capped.length === 20 && capped[0].rollId === "new") ok("合并后封顶 20 条（v1.8.0：40 → 20），且最新的排最前");
 else bad("封顶 / 排序不对：" + capped.length + " 首条 " + capped[0].rollId);
 const unsorted = D.mergeRollRows([{ rollId: "a", ts: 10 }, { rollId: "b", ts: 30 }], { rollId: "c", ts: 20 });
 if (unsorted.map((r) => r.rollId).join(",") === "b,c,a") ok("按 ts 倒序排列");
@@ -236,7 +237,7 @@ else bad("没有按 ts 倒序：" + unsorted.map((r) => r.rollId).join(","));
 
 /* 14. 容量 */
 const sampleRows = [];
-for (let i = 0; i < 40; i++) {
+for (let i = 0; i < 20; i++) {
   const one = D.rollToPayload({
     parsed: D.parseExpr("2d6+1d8+9"), rand: () => 0.5,
     rollId: "size-" + i, ts: Date.now() + i, rollerName: "申比软软",
@@ -245,8 +246,8 @@ for (let i = 0; i < 40; i++) {
   sampleRows.push(one);
 }
 const bytes = JSON.stringify(sampleRows).length;
-if (bytes < 12000) ok("40 条最坏样例 " + bytes + " 字符 < 12000（16 KB 的 75%）");
-else bad("40 条样例太大：" + bytes + " 字符");
+if (bytes < 6000) ok("20 条最坏样例 " + bytes + " 字符 < 6000（16 KB 的 37%，给角色卡 + 先攻留余量）");
+else bad("20 条样例太大：" + bytes + " 字符");
 
 /* ---------------------------------------------------------------------------
  * 7. 4E 预设
@@ -309,8 +310,8 @@ for (const name of ["CH_ROLL", "CH_ROLL_CLEAR", "CH_ROLL_SAVED", "KEY_ROLLS"]) {
 if (!chanBad) ok("CH_ROLL / CH_ROLL_CLEAR / CH_ROLL_SAVED / KEY_ROLLS 两端逐字一致");
 const rowsCore = (/(?:var|export const) ROLL_MAX_ROWS = (\d+);/.exec(coreSrc) || [])[1] || "";
 const rowsCommon = (/(?:var|export const) ROLL_MAX_ROWS = (\d+);/.exec(commonSrc) || [])[1] || "";
-if (rowsCore === "40" && rowsCommon === "40" && D.ROLL_MAX_ROWS === 40)
-  ok("ROLL_MAX_ROWS 三处都是 40（dice-core / common / background.core）");
+if (rowsCore === "20" && rowsCommon === "20" && D.ROLL_MAX_ROWS === 20)
+  ok("ROLL_MAX_ROWS 三处都是 20（dice-core / common / background.core；v1.8.0：40 → 20）");
 else bad("ROLL_MAX_ROWS 不一致：" + D.ROLL_MAX_ROWS + " / " + rowsCommon + " / " + rowsCore);
 if (coreSrc.indexOf("function rollNorm(") >= 0 && coreSrc.indexOf("function rollMerge(") >= 0 &&
   coreSrc.indexOf("broadcast.onMessage(CH_ROLL,") >= 0)
@@ -377,18 +378,18 @@ if (sp.get("dtypes") === "d20" && sp.get("dvalues") === "14" && sp.get("total") 
   ok("fxQuery：dtypes / dvalues / total / modifier / wx / wy 都能原样解析回来（动画页参数协议）");
 else bad("fxQuery 参数不对：" + q);
 
-/* 13b. 41 条 → 40 条，被删的是最旧的一条 */
-const forty = [];
-for (let i = 1; i <= 40; i++) {
-  forty.push({ rollId: "cap" + i, ts: 1000 + i, rollerName: "甲", expression: "1d20", dice: [{ type: "d20", value: 10 }], total: 10 });
+/* 13b. 21 条 → 20 条（v1.8.0），被删的是最旧的一条 */
+const twentyPlus = [];
+for (let i = 1; i <= 20; i++) {
+  twentyPlus.push({ rollId: "cap" + i, ts: 1000 + i, rollerName: "甲", expression: "1d20", dice: [{ type: "d20", value: 10 }], total: 10 });
 }
-const fortyOne = D.mergeRollRows(forty, {
-  rollId: "cap41", ts: 1041, rollerName: "甲", expression: "1d20", dice: [{ type: "d20", value: 11 }], total: 11
+const twentyOne = D.mergeRollRows(twentyPlus, {
+  rollId: "cap21", ts: 1021, rollerName: "甲", expression: "1d20", dice: [{ type: "d20", value: 11 }], total: 11
 });
-const capIds = fortyOne.map((r) => r.rollId);
-if (fortyOne.length === 40 && capIds[0] === "cap41" && capIds.indexOf("cap1") < 0 && capIds.indexOf("cap2") >= 0)
-  ok("41 条 → 只剩 40 条，最旧的一条（ts 最小）被删掉、最新的排最前（不是只截断显示）");
-else bad("40 条封顶不是「删最旧」：" + fortyOne.length + " 条，首条 " + capIds[0] + "，还含 cap1=" + (capIds.indexOf("cap1") >= 0));
+const capIds = twentyOne.map((r) => r.rollId);
+if (twentyOne.length === 20 && capIds[0] === "cap21" && capIds.indexOf("cap1") < 0 && capIds.indexOf("cap2") >= 0)
+  ok("21 条 → 只剩 20 条，最旧的一条（ts 最小）被删掉、最新的排最前（不是只截断显示）");
+else bad("20 条封顶不是「删最旧」：" + twentyOne.length + " 条，首条 " + capIds[0] + "，还含 cap1=" + (capIds.indexOf("cap1") >= 0));
 /* ---------------------------------------------------------------------------
  * 9. 假 OBR 冒烟：dice.html 的脚本能初始化、能掷一次并广播（不启动浏览器）
  * ------------------------------------------------------------------------- */
@@ -920,7 +921,7 @@ if (listEl.innerHTML.indexOf("hist-row") >= 0 && listEl.innerHTML.indexOf("甲6"
 else bad("记录窗口没有画出历史行：" + listEl.innerHTML.slice(0, 160));
 if (listEl.classList.contains("compact")) ok("默认是 compact（只显示最近 4 条）");
 else bad("记录窗口默认不是 compact");
-if (histDom["dh-meta"].textContent.indexOf("6") >= 0) ok("顶部计数：共 6 / 40 条");
+if (histDom["dh-meta"].textContent.indexOf("6") >= 0) ok("顶部计数：共 6 / 20 条");
 else bad("计数不对：" + histDom["dh-meta"].textContent);
 const toggleFn = (histDom["dh-toggle"].listeners.click || [])[0];
 if (!toggleFn) bad("展开按钮没有绑定 click");

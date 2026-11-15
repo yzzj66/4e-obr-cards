@@ -35,11 +35,13 @@
 // 常量与排序 / 回合推进公式由 dev/check.mjs 与 dev/test-initiative.mjs 对齐。
 
 import OBR from "../vendor/obr-sdk.js";
-import { KEY_BIND, KEY_INIT, KEY_INITIATIVE, NS, esc, getCards, findCard, notify } from "./common.js";
+import {
+  KEY_BIND, KEY_INIT, KEY_INITIATIVE, NS, ROOM_FULL_MESSAGE, esc, getCards, findCard, notify, writeRoomKey
+} from "./common.js";
 import { initiativeBonus } from "./glance.js";
 
-/** 条目上限：房间数据约 16 KB，60 条是 v1.3.x 的 200 条按规格收紧后的值（规格 §9.3）。 */
-export const INIT_MAX_ENTRIES = 60;
+/** 条目上限：房间数据约 16 KB；v1.8.0：60 → 40（给角色卡 + 骰子记录留出余量）。 */
+export const INIT_MAX_ENTRIES = 40;
 export const INIT_NAME_MAX = 80;
 const INIT_MIN = -99;
 const INIT_MAX = 999;
@@ -671,27 +673,30 @@ export async function readInitiative() {
 
 /**
  * 写房间数据（通常只有 GM 能成功）。
- * 成功 → 清掉本机降级副本；失败 → 暂存本机 + WARNING 通知，返回的状态带 .local = true
+ * 成功 → 清掉本机降级副本；失败 → 暂存本机 + **ERROR** 通知，返回的状态带 .local = true
  * （调用方据此在窗口里提示「只记在本机」）。**不抛错**，免得按钮变成点了没反应。
+ * v1.7.15：写之前先过体积预算 —— 房间数据超 14 KB 时**根本不写**，直接弹 ROOM_FULL_MESSAGE
+ * 并降级本机（这正是「加入先攻点不动」的根因：以前 setMetadata 被 16 kB 上限拒掉）。
  */
 export async function writeInitiative(state) {
   const next = sortState(state);
   next.updatedAt = Date.now();
-  try {
-    await OBR.room.setMetadata({ [KEY_INITIATIVE]: next });
+  const res = await writeRoomKey(KEY_INITIATIVE, next);
+  if (res.ok) {
     clearLocalFallback();
     return next;
-  } catch (e) {
-    const err = e && e.message ? e.message : String(e);
-    console.error("[4enext] 写先攻失败，已降级到本机", e);
-    const ok = stashInitiative(next);
-    try {
-      notify("先攻没能写进房间数据（" + err + "）：" + (ok ? "已暂存在本机，只影响你这台机器" : "本机也存不下") +
-        "。先攻最多 " + INIT_MAX_ENTRIES + " 条。", "WARNING");
-    } catch (e2) { /* 忽略 */ }
-    next.local = true;
-    return next;
   }
+  const err = res.reason === "full" ? "房间数据已满（16KB）" : (res.error && res.error.message ? res.error.message : String(res.error));
+  console.error("[4enext] 写先攻失败，已降级到本机", res.reason, res.error);
+  const ok = stashInitiative(next);
+  try {
+    notify(res.reason === "full"
+      ? ROOM_FULL_MESSAGE
+      : "先攻没能写进房间数据（" + err + "）：" + (ok ? "已暂存在本机，只影响你这台机器" : "本机也存不下") +
+        "。先攻最多 " + INIT_MAX_ENTRIES + " 条。", "ERROR");
+  } catch (e2) { /* 忽略 */ }
+  next.local = true;
+  return next;
 }
 
 /**

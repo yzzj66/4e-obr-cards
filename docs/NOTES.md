@@ -18,6 +18,8 @@ dev/      开发自测脚本（不上传也能跑，node dev/selftest.mjs）
 
 1. **改了 `assets/background.core.js` 必须重建 bundle**：`node dev/build-background.mjs`，否则后台不生效。
 2. 改完跑 `node dev/selftest.mjs`（5 条自测：check / test-background / test-initiative / test-track / test-dice）。
+   `dev/check.mjs` 会额外 spawn `dev/test-info-click.mjs`（v1.7.13）与 `dev/test-cards.mjs`（v1.7.15），
+   所以「5 条命令」仍然覆盖点击链路与房间数据体积预算。
 3. **manifest.json 的 `description` ≤ 128 字符**（Owlbear 会校验，超了直接拒绝加载）。
 4. **manifest 不要加 `action` 字段**（真机验证过：加了反而加载失败）。
 5. GitHub Pages 必须在仓库根放 **`.nojekyll`**，否则 `{{...}}` 模板语法会让构建失败、线上一直是旧版本。
@@ -32,6 +34,33 @@ dev/      开发自测脚本（不上传也能跑，node dev/selftest.mjs）
 | 先攻条尺寸 / 外壳 | `assets/background.core.js` 的 `STRIP_H_ALLOWED` / `stripSizeFor`（折叠 120×40，展开 720×**170/180/200**）；v1.7.11 起先攻条**回退 popover**（`stripPopoverOptions`：POSITION + CENTER/TOP、`hidePaper:true`、`disableClickAway:true`），尺寸 / 位置由后台重新 `popover.open` 决定（页面只发 `{op:"size"}` 与指针位移） |
 | 窗口默认尺寸 | `assets/background.core.js` 的 `WINS` |
 
+
+## 房间数据为什么必须精简（v1.7.15，16 kB 上限）
+
+真机控制台报 `Unable to update metadata: over size limit of 16 kB`。Owlbear 的 **room metadata 有 16 kB 上限**，
+而 `setMetadata` 是**合并写**：合并之后整份文档超限，这一次写入就被拒（不是只拒这一个键）。
+v1.7.14 及以前把导入的 4E NEXT 角色卡**整份 JSON** 存进 `com.4enext-owlbear/cards`，单张卡 4~50 KB，
+于是整包（cards + initiative + rolls + state）一早超限 → **之后所有**写入（加入先攻 / 改加值 / 回合推进 /
+骰子历史 / 资源标记）全部失败，而且只有后台日志，界面上「点了没反应」。
+
+**现在的规矩（改之前先读这几条）：**
+
+1. 卡片**只存渲染必需字段**，格式由 `assets/cards-core.js` 的 `packCard` 决定：
+   速览 `deriveGlance / renderGlanceHTML / cardMeta / initiativeBonus` 真正读到的才留；
+   立绘、`spellbook`、`backpack`、`creation`、xp / 性别 / 年龄 / 信仰这类不存。
+   新增渲染字段时**必须同时改 packCard + unpackCard**，否则读出来是空值（`dev/test-cards.mjs` 会拿
+   `deriveGlance` 与 `renderGlanceHTML` 做逐字节对比，漏了会红）。
+2. **写房间数据一定要走预算**：页面用 `common.js` 的 `writeRoomKey(key, value)`，
+   后台用 `background.core.js` 的 `roomWriteGuarded(key, value)`（经典脚本不能 import，两边同算法）。
+   超过 `ROOM_MAX_BYTES = 14 * 1024` 就**不写**，并弹 `ROOM_FULL_MESSAGE`
+   （`房间数据已满（16KB）：请减少导入的角色卡，或清理骰子历史`）—— 三处常量必须一字不差。
+3. 角色卡超限 → 写 `localStorage["4enext/cards-local"]`（`LS_CARDS`），房间里的先攻 / 骰子照旧能写；
+   读卡片时按 `updatedAt` **谁新用谁**；后台也读这份本机副本（同源 iframe 共用 localStorage）。
+4. 用户侧的瘦身入口在设置窗口「数据与权限 → 清理房间数据」：`getRoomUsage / clearRoomRolls / clearRoomCards`
+   都在 `common.js` 里；**设置页本身不许直接写房间数据 / token 元数据**（v1.3.2 的断言还在）。
+
+**体积自测**：`node dev/test-cards.mjs` 会打印示例卡「完整 vs 精简」的字符 / 字节数，
+并断言单卡 ≤ 2 KB、导入大卡后房间数据仍 ≤ 14 KB、超限时不写 + ERROR、降级本机读得回来、清理能腾出空间。
 
 ## 先攻条透明 / 交互怎么验证（v1.7.11）
 

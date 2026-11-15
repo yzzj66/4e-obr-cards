@@ -230,3 +230,37 @@ anchorOrigin:{horizontal:"CENTER",vertical:"TOP"} / transformOrigin:{...同} / d
 各层 `transparent !important` / popover 参数与 FullPeople 同序同值 / 无 modal）；
 `dev/test-initiative.mjs` 的交互断言（右键加入先攻、卡片加值输入、d20、✕、拖动重开）**全部保留**；
 `node dev/selftest.mjs` 5/5，保留 v1.7.8「成功类通知 = 0」与 v1.7.11 先攻条 popover 回退；manifest 仍无 action。
+
+**v1.7.15：房间数据超限（16 kB）真修复 —— 角色卡精简 + 写前预算 + 本机降级 + 清理入口**——
+真机控制台报 `Uncaught (in promise) Error: Unable to update metadata: over size limit of 16 kB`：
+导入的角色卡 JSON 被**整份**塞进 `room.metadata`（单张 4E 卡 4~50 KB），整包 cards + initiative + rolls + state
+远超 16 kB 之后，**之后所有** `OBR.room.setMetadata`（加入先攻 / 改加值 / 回合推进 / 骰子历史 / 资源标记）
+全部被拒，而且失败是**静默**的 —— 这就是「加入先攻点不动、先攻条不更新」的真正根因（不是菜单、不是缓存）。
+这一版四层修复：
+① **角色卡精简（只存渲染必需字段）**：新增 `assets/cards-core.js`（纯函数，Node 里可直接测）的
+`packCard / unpackCard`。房间数据里只留速览渲染真正读到的字段 —— 名字 / 等级 / 六属性 / 种族·职业 / 速览用的
+HP·四防·技能 / 威能列表 / 专长 / 装备与增强 / 先攻与被动·移动；**不存**立绘、`spellbook`、`backpack`、
+`creation` 正文、xp / 性别 / 年龄 / 信仰这类纯资料字段，也不存 `pages.reserve / overview / background`。
+结构上再压一层短键 + 数值数组（`{label,value}` 只留 value，因为速览只求和），读出来（`unpackCard`）还原成
+4E NEXT 的 Character 形状 → `glance.js / track.js / initiative.js` **一行都不用改**。
+用 `samples/sample-card.json` 实测：**完整 `pages.character` 4945 字符 / 5721 字节 → 精简后 1906 字符 / 2436 字节**
+（**-57%**，单卡 ≤ 2 KB）；`dev/test-cards.mjs` 还断言 pack → unpack 之后 `deriveGlance` / `renderGlanceHTML` /
+`cardMeta` / `initiativeBonus` **逐字节一致**（修体积不能改数值）。
+② **写前预算检查**：`ROOM_MAX_BYTES = 14 * 1024`（16 kB 硬上限留 2 KB 余量）。
+页面的 `writeRoomKey()` 与后台的 `roomWriteGuarded()` 都是「先 `getMetadata` → 把这次要写的键合进去 →
+算 `JSON.stringify(...).length` → 超了**根本不写**」。角色卡 / 先攻 / 骰子 / 资源四条写路径全部接上；
+超限模板只有一条、三处一字不差：`房间数据已满（16KB）：请减少导入的角色卡，或清理骰子历史`，
+一律 `ERROR` 通知（**不再静默**）。
+③ **降级到本机**：角色卡超限（或 OBR 直接拒写）时写 `localStorage["4enext/cards-local"]`，
+房间数据里那些键一个字节都不动 → **先攻 / 骰子 / 资源照旧能写**；token 绑定仍在 item metadata 上，
+后台也读得到这份本机副本（同源 iframe 共用 localStorage），所以右键菜单 / 选中即弹不会失效。
+读卡片时「**谁更新用谁**」（比较 `updatedAt`），面板工具栏明写 **「角色卡：本机 / 全桌」**。
+④ **清理入口**：设置窗口「数据与权限」新增 **「清理房间数据」** 一栏 —— 显示 `当前用量 / 14 KB`、角色卡张数、
+骰子历史条数、先攻条目数，两个按钮 **清理骰子历史** / **清空角色卡**（各自二次确认，5 秒自动取消）；
+读写全部走 `common.js` 的 `getRoomUsage / clearRoomRolls / clearRoomCards`，**设置页本身仍然不直接写房间数据
+或 token 元数据**（v1.3.2 的白名单断言保留）。
+自测：新增 `dev/test-cards.mjs`（由 `dev/check.mjs` spawn，selftest 仍是 5 条命令），断言
+「单卡 ≤ 2 KB」「导入大卡后房间数据仍 ≤ 14 KB」「超限时不写 + ERROR」「降级本机且读得回来」
+「OBR 拒写也降级 + ERROR」「设置里有清理按钮且清理真的腾出空间」；
+`node dev/selftest.mjs` 5/5 绿。保留 v1.7.13 / v1.7.14 的点击与透明改动（未回滚）；manifest 仍无 action。
+

@@ -173,6 +173,28 @@
             <span><code>com.4enext-owlbear/rolls</code></span><span>骰子历史（团队共享，最多 40 条；只有城主客户端能写）</span>
           </div>
         </div>
+        <!-- v1.7.15：清理房间数据（房间数据上限 16 KB；超了先攻 / 骰子都会写不进去） -->
+        <div class="set-sec">
+          <h4>清理房间数据（房间数据上限 16 KB）</h4>
+          <p class="set-muted">房间数据装不下时，<b>加入先攻 / 改先攻加值 / 回合推进 / 骰子历史落库</b>都会写不进去
+            （真机报错：<code>Unable to update metadata: over size limit of 16 kB</code>）。
+            这里能看到当前用量，一键清掉骰子历史或角色卡就能腾出空间。</p>
+          <div class="set-kv">
+            <span class="k">当前用量</span><span><b id="room-usage">正在读取…</b></span>
+            <span class="k">角色卡</span><span id="room-cards">—</span>
+            <span class="k">骰子历史</span><span id="room-rolls">—</span>
+            <span class="k">先攻条目</span><span id="room-init">—</span>
+          </div>
+          <p class="set-muted">
+            <button class="btn" id="room-refresh" type="button" data-bg-soft>刷新用量</button>
+            <button class="btn danger" id="room-clean-rolls" type="button" data-bg-soft>清理骰子历史</button>
+            <button class="btn danger" id="room-clean-cards" type="button" data-bg-soft>清空角色卡</button>
+          </p>
+          <p class="set-out" id="room-clean-out"></p>
+          <p class="set-hint">两个清理按钮都要点<b>两次</b>才真的清（第一次只是「预备」，5 秒内不点第二次就自动取消）。
+            只有城主能改房间数据；角色卡装不下时会自动改存<b>本机</b>（面板上写「角色卡：本机」），
+            清掉骰子历史之后重新导入一次就能搬回房间。</p>
+        </div>
         <div class="set-sec">
           <h4>Token 元数据（写在自己那枚 token 上）</h4>
           <div class="set-table">
@@ -190,6 +212,7 @@
             <span><code>4enext/win-pos</code></span><span>各独立窗口的位置（按窗口名）</span>
             <span><code>4enext/info-pos</code></span><span>速览小窗的位置（按 token id，最多 40 枚）</span>
             <span><code>4enext/state/&lt;cardId&gt;</code></span><span>房间数据写不进去时的追踪降级副本</span>
+            <span><code>4enext/cards-local</code></span><span>房间数据装不下角色卡时的本机副本（v1.7.15；面板上写「角色卡：本机」）</span>
             <span><code>4enext/dice/combos</code></span><span>骰子组合（最多 30 条）</span>
             <span><code>4enext/dice/last</code></span><span>上一次掷过的骰子公式</span>
             <span><code>4enext/dice/local</code></span><span>城主离线时的骰子暂存（最多 20 条）</span>
@@ -223,8 +246,11 @@
             防御 / 攻击等可能与 4E NEXT 差 1~2 点甚至更多，<b>以 4E NEXT 为准</b>。</li>
           <li><b>血量是快照</b>：<code>hp</code> 存在 token 元数据上，是插件记的一份「本场战斗」数据，
             不会写回 4E NEXT 的角色卡；重新导入同名卡也不会清掉它。</li>
-          <li><b>房间数据有上限</b>：卡片存在房间数据里，所以导入的卡越多越占体积；立绘（原图 / 裁切图）会被丢弃。
-            多了建议删掉不用的卡。骰子历史也在这块预算里，固定封顶 40 条。</li>
+          <li><b>房间数据有上限（16 KB）</b>：卡片存在房间数据里。v1.7.15 起只存<b>速览要用的字段</b>
+            （实测一张满级卡从 4.9 KB 压到 1.9 KB，立绘 / spellbook / 背包 / 详情正文都不存），写之前还会算总长度，
+            超过 14 KB 就**不写**并弹 ERROR —— 所以不会再把整份房间数据写死、让先攻和骰子一起失效。
+            卡装不下时会自动改存<b>本机</b>（面板上写「角色卡：本机」），骰子历史也在这块预算里（40 条封顶）。
+            要腾地方：设置 → 数据与权限 →「清理房间数据」（清骰子历史 / 清空角色卡）。</li>
           <li><b>骰子不做判定</b>：只显示每颗骰子的点数与总点数，没有 TN 输入、不显示命中 / 豁免成败；
             重击是 4E 口径（所有伤害骰取最大值），公式里带 adv / max 等包裹时会退化为普通投掷并提示。</li>
           <li><b>右键菜单只对单个 IMAGE token 出现</b>：多选不显示，玩家（非 GM）看不到这几项。</li>

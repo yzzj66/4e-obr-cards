@@ -19,7 +19,8 @@
 //      所以「重置」不可能误删全桌共享的东西。
 // 窗口壳（拖动 / 位置记忆 / 后台在线检测 / 统一 feedback）与先攻、骰子共用 window.js。
 import {
-  ID_SETTINGS_WIN, PLUGIN_VERSION, onReady, readDiceAnim, readStripAutostart, writeDiceAnim, writeStripAutostart
+  ID_SETTINGS_WIN, PLUGIN_VERSION, onReady, readDiceAnim, readStripAutostart, writeDiceAnim, writeStripAutostart,
+  getRoomUsage, clearRoomRolls, clearRoomCards
 } from "./common.js";
 import { createWindow, feedback, closeSelf } from "./window.js";
 
@@ -150,6 +151,95 @@ if (stripToggle) {
   });
 }
 
+/* ---------------- v1.7.15：清理房间数据 ----------------
+ * 房间数据（room metadata）有 16 KB 上限，超了之后**所有**写入都会被拒（加入先攻 / 改加值 /
+ * 回合推进 / 骰子历史 / 资源追踪），而且真机上以前是静默失败。这一栏给用户两个「一键瘦身」按钮：
+ *   ① 清理骰子历史（40 条 8 KB 左右，清掉最划算）
+ *   ② 清空角色卡（导入的卡，装不下时本来就会降级到本机）
+ * 这一页仍然**不直接**写房间数据 / token 元数据：读写全部走 common.js 的
+ * getRoomUsage / clearRoomRolls / clearRoomCards（dev/check.mjs 断言这一点没变）。 */
+const roomUsageEl = document.getElementById("room-usage");
+const roomCardsEl = document.getElementById("room-cards");
+const roomRollsEl = document.getElementById("room-rolls");
+const roomInitEl = document.getElementById("room-init");
+const roomRefreshBtn = document.getElementById("room-refresh");
+const roomCleanRollsBtn = document.getElementById("room-clean-rolls");
+const roomCleanCardsBtn = document.getElementById("room-clean-cards");
+const roomOutEl = document.getElementById("room-clean-out");
+
+const kb = function (n) {
+  return (n / 1024).toFixed(1) + " KB";
+};
+
+async function renderRoom() {
+  if (!roomUsageEl) return;
+  let info = null;
+  try {
+    info = await getRoomUsage();
+  } catch (e) {
+    roomUsageEl.textContent = "读不到房间数据：" + msgOf(e);
+    return;
+  }
+  const pct = info.max > 0 ? Math.round((info.bytes / info.max) * 100) : 0;
+  roomUsageEl.textContent = kb(info.bytes) + " / " + kb(info.max) + "（" + pct + "%）" +
+    (info.bytes > info.max ? " · 已超预算，先攻 / 骰子会被拒绝写入" : "");
+  if (roomCardsEl) {
+    roomCardsEl.textContent = info.cards + " 张（" + (info.cardScope === "local" ? "本机" : "房间") + "）";
+  }
+  if (roomRollsEl) roomRollsEl.textContent = info.rows + " 条";
+  if (roomInitEl) roomInitEl.textContent = info.entries + " 条";
+}
+
+/* 两个清理按钮各自独立二次确认（与「重置本机设置」同一套：第一次只预备，5 秒后自动取消）。 */
+function makeCleaner(btn, label, run) {
+  if (!btn) return;
+  let armed = false;
+  let timer = 0;
+  const reset = function () {
+    armed = false;
+    if (timer) { clearTimeout(timer); timer = 0; }
+    btn.textContent = label;
+    btn.classList.remove("armed");
+  };
+  btn.addEventListener("click", async function () {
+    if (!armed) {
+      armed = true;
+      btn.textContent = "再点一次确认" + label;
+      btn.classList.add("armed");
+      if (roomOutEl) roomOutEl.textContent = "";
+      if (timer) clearTimeout(timer);
+      timer = setTimeout(reset, CONFIRM_MS);
+      feedback(label + "：再点一次按钮确认", "WARNING");
+      return;
+    }
+    reset();
+    let res = null;
+    try {
+      res = await run();
+    } catch (e) {
+      if (roomOutEl) roomOutEl.textContent = label + "失败：" + msgOf(e);
+      feedback(label + "失败：" + msgOf(e), "ERROR");
+      return;
+    }
+    if (!res || !res.ok) {
+      /* clearRoom* 自己已经弹了 ERROR；这里只补窗口内那一行。 */
+      if (roomOutEl) roomOutEl.textContent = label + "失败：房间数据只有城主能改（详见通知）";
+      return;
+    }
+    if (roomOutEl) roomOutEl.textContent = label + "完成。";
+    await renderRoom();
+  });
+}
+
+makeCleaner(roomCleanRollsBtn, "清理骰子历史", clearRoomRolls);
+makeCleaner(roomCleanCardsBtn, "清空角色卡", clearRoomCards);
+if (roomRefreshBtn) {
+  roomRefreshBtn.addEventListener("click", function () {
+    if (roomOutEl) roomOutEl.textContent = "";
+    void renderRoom();
+  });
+}
+
 /* ---------------- 重置本机设置 ---------------- */
 const stateEl = document.getElementById("set-local-state");
 const resetBtn = document.getElementById("reset-btn");
@@ -272,6 +362,7 @@ onReady(function () {
   renderLocal();
   paintAnim();
   paintStripAuto();
+  void renderRoom();
   /* 后台很慢时先把窗口状态画一次（状态条本身由 window.js 画） */
   win.onStatus(function () { /* 这里只留挂点 */ });
 });

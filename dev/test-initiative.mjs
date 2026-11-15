@@ -166,7 +166,7 @@ fs.mkdirSync(path.join(tmp, "vendor"), { recursive: true });
 fs.writeFileSync(path.join(tmp, "package.json"), JSON.stringify({ type: "module" }), "utf8");
 fs.writeFileSync(path.join(tmp, "vendor", "obr-stub.mjs"), "export default globalThis.__OBR__;\n", "utf8");
 fs.copyFileSync(path.join(ROOT, "data", "rules.js"), path.join(tmp, "data", "rules.js"));
-for (const f of ["common.js", "glance.js", "initiative.js"]) {
+for (const f of ["cards-core.js", "common.js", "glance.js", "initiative.js"]) {
   let src = fs.readFileSync(path.join(ROOT, "assets", f), "utf8");
   src = src.replace('from "../vendor/obr-sdk.js"', 'from "../vendor/obr-stub.mjs"');
   fs.writeFileSync(path.join(tmp, "assets", f), src, "utf8");
@@ -437,17 +437,17 @@ else bad("syncInitBonuses 没补写：" + JSON.stringify({ synced, init: oldInit
  * ------------------------------------------------------------------------- */
 console.log("== v1.4.0 先攻条：数据层");
 
-if (I.INIT_MAX_ENTRIES === 60) ok("条目上限 INIT_MAX_ENTRIES = 60");
-else bad("条目上限不是 60：" + I.INIT_MAX_ENTRIES);
+if (I.INIT_MAX_ENTRIES === 40) ok("条目上限 INIT_MAX_ENTRIES = 40（v1.8.0：60 → 40）");
+else bad("条目上限不是 40：" + I.INIT_MAX_ENTRIES);
 
 const manyRaw = { round: 1, entries: [] };
 for (let i = 0; i < 80; i++) manyRaw.entries.push({ tokenId: "t" + i, name: "单位" + i, init: 20 - i, bonus: 2 });
 const capped = I.normalizeInitiative(manyRaw);
-if (capped.entries.length === 60) ok("normalizeInitiative 把 80 条截成 60 条（不抛错）");
+if (capped.entries.length === 40) ok("normalizeInitiative 把 80 条截成 40 条（不抛错）");
 else bad("截断没生效：仍然 " + capped.entries.length + " 条");
 const cappedSize = JSON.stringify(capped).length;
-if (cappedSize < 16 * 1024) ok("60 条的 JSON " + cappedSize + " 字符 < 16 KB（房间数据预算）");
-else bad("60 条的 JSON 超了 16 KB：" + cappedSize);
+if (cappedSize < 8 * 1024) ok("40 条的 JSON " + cappedSize + " 字符 < 8 KB（房间数据预算：留一半给角色卡）");
+else bad("40 条的 JSON 超了 8 KB：" + cappedSize);
 
 const legacyState = I.normalizeInitiative({
   round: 2, activeId: "a",
@@ -688,7 +688,7 @@ globalThis.localStorage.removeItem("4enext/state/initiative");
 console.log("== v1.4.0 后台：数据层 / 先攻条");
 if (api && typeof api.initNorm === "function") {
   const bgCapped = api.initNorm(manyRaw);
-  if (bgCapped.entries.length === 60 && bgCapped.phase === "idle") ok("后台 initNorm 同样把 80 条截成 60 条");
+  if (bgCapped.entries.length === 40 && bgCapped.phase === "idle") ok("后台 initNorm 同样把 80 条截成 40 条");
   else bad("后台 initNorm 截断不对：" + bgCapped.entries.length);
   const bgCombat = api.initNorm({ phase: "combat", surprise: true, round: 2, entries: [{ tokenId: "a", name: "甲", init: 12.5, d20: 7, tb: 0.3 }] });
   if (bgCombat.phase === "combat" && bgCombat.surprise === true && bgCombat.round === 2 &&
@@ -1215,7 +1215,7 @@ console.log("== v1.7.10 先攻加值可编辑 + 无卡 token 加入先攻");
 
 console.log("== 静态检查");
 const man = JSON.parse(fs.readFileSync(path.join(ROOT, "manifest.json"), "utf8"));
-if (man.name === "4eNEXT to owlbear" && man.version === "1.7.14") ok("manifest 名称 / 版本 = 4eNEXT to owlbear 1.7.14");
+if (man.name === "4eNEXT to owlbear" && man.version === "1.7.15") ok("manifest 名称 / 版本 = 4eNEXT to owlbear 1.7.15");
 else bad("manifest 名称 / 版本不对：" + man.name + " " + man.version);
 if (!man.action) ok("manifest 仍然没有 action 字段（真机验证过无 action 能加载）");
 else bad("manifest 又加回了 action 字段");
