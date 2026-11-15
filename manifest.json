@@ -3,14 +3,7 @@
   "version": "1.6.0",
   "manifest_version": 1,
   "author": "4E NEXT 玩家自制",
-  "description": "4eNEXT to owlbear：在枭熊房间查看 4E NEXT 角色卡。骰子（表达式 / 战斗优势+2 / 重击=伤害骰取满 / 团队共享历史）+ 屏幕顶部先攻条（战斗准备 / 突袭 / 回合推进 / 拖拽排序）+ 速览 / 角色卡导入 / 设置与关于各自独立窗口，工具栏一排入口；右键 token 绑定角色卡、加入先攻。",
+  "description": "基于4eNEXT的4e跑团适配mod",
   "icon": "https://yzzj66.github.io/4e-obr-cards/icon.svg",
-  "action": {
-    "title": "4eNEXT to owlbear",
-    "icon": "https://yzzj66.github.io/4e-obr-cards/icon.svg",
-    "popover": "https://yzzj66.github.io/4e-obr-cards/panel.html",
-    "width": 960,
-    "height": 660
-  },
   "background_url": "https://yzzj66.github.io/4e-obr-cards/background.html"
 }
