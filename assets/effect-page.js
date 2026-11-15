@@ -12,9 +12,19 @@
 // 屏幕投影（§4.3）：sx = worldX * scale + vp.x，sy = worldY * scale + vp.y；
 //   每 4 帧重读一次 OBR.viewport（丢帧时也不会堆请求），拖动镜头骰子跟着 token 走。
 // 降级：任何异常都只影响这一层 —— 隐藏舞台并关闭 modal，绝不挡住 / 影响已经完成的那次投掷。
+// v1.7.1（修「投骰后地图被全屏黑盖住」）：
+//   · 透明由 effect.html 的内联样式 + ui.css 的 html:has(body.fx-page) 负责（连 html 一起透明）；
+//   · 关闭有三级：动画播完 b.total（2600 ms）→ 兜底 FX_CLOSE_FALLBACK_MS（3000 ms）→ ESC / 点击任意处立即关。
+//     finish() 幂等，先到的那个赢；关了之后清掉所有定时器与 rAF。
 import OBR from "../vendor/obr-sdk.js";
 import { NS, onReady } from "./common.js";
 import { FX_MAX_DICE, fxBeat, fxLayout, sidesOf } from "./dice-core.js";
+
+/** v1.7.1：兜底关闭时长（ms）。动画总时长是 2600 ms（fxBeat().total），这里再留 400 ms 余量：
+ *  到点不管动画播到哪一步都强制 OBR.modal.close —— 页面被挂起 / rAF 挂掉 / 动画被打断时，
+ *  屏幕上也不会留下这一层（它的背景已经透明，但绝不能挡住地图）。
+ *  finish() 是幂等的：2600 与 3000 谁先到谁关，另一个到点只会空跑。 */
+var FX_CLOSE_FALLBACK_MS = 3000;
 
 /** 参数解析：全部走 URLSearchParams，坏值一律当空。 */
 function readParams() {
@@ -310,12 +320,31 @@ function play() {
   later(punch, b.flight + b.hold);
   later(exitStage, b.flight + b.hold + b.punch + b.hold2);
   later(function () { void finish(); }, b.total);
+  /* v1.7.1：兜底关闭 —— 正常 2600 ms 就关了；万一动画被打断 / 定时器没跑到，3000 ms 一定收场 */
+  later(function () { void finish(); }, FX_CLOSE_FALLBACK_MS);
+}
+
+/** v1.7.1：ESC 立即关（不用等动画播完）。 */
+function onKeyDown(e) {
+  if (!e) return;
+  if (e.key === "Escape" || e.key === "Esc" || e.keyCode === 27) void finish();
+}
+
+/** v1.7.1：点击任意处立即关。整层是 pointer-events:none（点击本来会穿透给地图），
+ *  但万一某个 OBR 版本没吃 disablePointerEvents，这一层收到点击也立刻收场。 */
+function onClick() {
+  void finish();
 }
 
 onReady(function () {
+  /* v1.7.1：ESC / 点击任意处立即关（关不掉也有 2600 / 3000 ms 的定时器兜底） */
+  try {
+    window.addEventListener("keydown", onKeyDown, true);
+    window.addEventListener("click", onClick, true);
+  } catch (e) { /* 忽略 */ }
   try {
     play();
-  } catch (e) {
+  } catch (e2) {
     /* 降级：动画画不出来就安静地不挡路（骰子窗口里已经有结果） */
     void finish();
   }

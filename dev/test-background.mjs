@@ -2,8 +2,9 @@
 // 检查「工具栏 / 右键菜单 / 浮动按钮 / 自诊断通知 / 心跳 / token 血条」这几步真的被调用了。
 // 用法：node dev/test-background.mjs
 import fs from "node:fs";
+import os from "node:os";
 import path from "node:path";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const CORE = fs.readFileSync(path.join(ROOT, "assets", "background.core.js"), "utf8");
@@ -377,34 +378,65 @@ run(OBR, stubBuilder("CURVE"), stubBuilder("SHAPE"), stubBuilder("TEXT"));
   } else {
     ok("文本：HP「12/20 +3」（临时生命在右侧）+ 回复力「5/6」");
   }
-  /* ---- v1.6.1：四防从「四角」改「一排」（强韧 / 反射 / 意志 从左到右 + AC 最右半透明白） ---- */
+  /* ---- v1.6.1：四防从「四角」改「一排」（强韧 / 反射 / 意志 从左到右 + AC 最右半透明白）
+   *      v1.7.5：**三防改成直径 22 的圆**、AC 仍是直径 30 的**半透明白盾**（只改样式，位置与顺序不变） ---- */
   const shieldKeyOf = (it) => (it.metadata && it.metadata[BAR_KEY] ? it.metadata[BAR_KEY].key : "");
   const shieldByKey = (key) => t2role("shield").filter((it) => shieldKeyOf(it) === key)[0] || null;
+  /* 一枚四防的外接盒高度 = 折线里最大的 y（圆和盾都从 0 画到直径 D）→ 圆心 / 盾心 y = position.y + D/2。
+   * v1.7.5 起两枚直径不同（22 / 30），「同一行」必须比**中心**，不能直接比 position.y。 */
+  const shapeH = (it) => Math.max.apply(null, (it.points || [{ y: 0 }]).map((pt) => pt.y));
+  const centerYOf = (it) => it.position.y + shapeH(it) / 2;
+  const shieldTextByKey = (key, list) => list.filter((it) => shieldKeyOf(it) === key)[0] || null;
   {
     const shields = t2role("shield");
     const ordered = shields.slice().sort((a, b) => a.position.x - b.position.x);
     const keys = ordered.map(shieldKeyOf).join(",");
-    const ys = ordered.map((it) => it.position.y);
+    const ys = ordered.map(centerYOf);
     const sameY = ys.every((y) => Math.abs(y - ys[0]) < 0.01);
     const incX = ordered.every((it, i) => i === 0 || it.position.x > ordered[i - 1].position.x);
     const ac = shieldByKey("ac");
     const COLORS_3 = { fort: "#e3b341", reflex: "#56d364", will: "#a371f7" };
-    const acText = t2role("shield-text").filter((it) => shieldKeyOf(it) === "ac")[0] || null;
+    const CIRCLE_SEG = 24;
+    /* 圆：外接盒 22、24 段折线、每个点都在半径 11 上（到中心 (11,11) 的距离） */
+    const circleOk = (it) => {
+      if (!it || Math.abs(shapeH(it) - 22) > 0.01) return false;
+      if (!Array.isArray(it.points) || it.points.length !== CIRCLE_SEG) return false;
+      const r = shapeH(it) / 2;
+      return it.points.every((pt) => Math.abs(Math.hypot(pt.x - r, pt.y - r) - r) < 0.01);
+    };
+    /* 盾：外接盒 30、点数远多于圆、底部中间有盾尖 (W/2, H) */
+    const shieldShapeOk = (it) => {
+      if (!it || Math.abs(shapeH(it) - 30) > 0.01) return false;
+      if (!Array.isArray(it.points) || it.points.length <= CIRCLE_SEG) return false;
+      return it.points.some((pt) => Math.abs(pt.x - 15) < 0.01 && Math.abs(pt.y - 30) < 0.01);
+    };
+    const acText = shieldTextByKey("ac", t2role("shield-text"));
+    const fortText = shieldTextByKey("fort", t2role("shield-text"));
     if (shields.length !== 4) bad("四防盾不是 4 枚：" + shields.length + "（" + shields.map(shieldKeyOf).join(",") + "）");
     else if (keys !== "fort,reflex,will,ac") bad("四防顺序不对（应 强韧→反射→意志→AC，AC 最右）：" + keys);
-    else if (!sameY) bad("四防不在同一行（y 不一致）：" + ys.map((y) => Math.round(y * 100) / 100).join("/"));
+    else if (!sameY) bad("四防不在同一行（圆心 / 盾心 y 不一致）：" + ys.map((y) => Math.round(y * 100) / 100).join("/"));
     else if (!incX) bad("四防的 x 不是从左到右递增：" + ordered.map((it) => Math.round(it.position.x * 100) / 100).join("/"));
     else if (!ac) bad("AC 那枚盾没画出来");
-    else if (ac.fillColor !== "#ffffff" || !(ac.fillOpacity > 0 && ac.fillOpacity <= 0.3) ||
+    else if (["fort", "reflex", "will"].some((k) => !circleOk(shieldByKey(k)))) {
+      bad("三防不是直径 22 的圆（24 段折线、点在半径 11 上）：" +
+        ["fort", "reflex", "will"].map((k) => k + "=" + (shieldByKey(k) ? shieldKeyOf(shieldByKey(k)) + "/d" + shapeH(shieldByKey(k)) + "/" + (shieldByKey(k).points || []).length + "点" : "无")).join(" "));
+    } else if (!shieldShapeOk(ac)) {
+      bad("AC 不是直径 30 的盾形（外接盒 " + shapeH(ac) + "、" + (ac.points || []).length + " 点）");
+    } else if (ac.fillColor !== "#ffffff" || !(ac.fillOpacity > 0 && ac.fillOpacity <= 0.3) ||
       ac.strokeColor !== "#ffffff" || !(ac.strokeOpacity >= 0.8)) {
       bad("AC 不是半透明白色图标：fill=" + ac.fillColor + "@" + ac.fillOpacity + " stroke=" + ac.strokeColor + "@" + ac.strokeOpacity);
     } else if (Object.keys(COLORS_3).some((k) => !shieldByKey(k) || shieldByKey(k).fillColor !== COLORS_3[k])) {
       bad("三防不是橙 / 绿 / 紫：" + Object.keys(COLORS_3).map((k) => k + "=" + (shieldByKey(k) ? shieldByKey(k).fillColor : "无")).join(" "));
     } else if (!acText || !acText.text || acText.text.plainText !== "28") {
       bad("AC 的数字不是 28：" + JSON.stringify(acText && acText.text));
+    } else if (!acText.text.style || Math.abs(acText.text.style.fontSize - 22) > 0.01) {
+      bad("AC 的字号不是原来的 22（d−8s）：" + JSON.stringify(acText.text && acText.text.style));
+    } else if (!fortText || !fortText.text || !fortText.text.style || Math.abs(fortText.text.style.fontSize - 11) > 0.01) {
+      bad("圆的字号没有缩到 ≈11s：" + JSON.stringify(fortText && fortText.text && fortText.text.style));
     } else {
-      ok("四防一排（v1.6.1）：fort/reflex/will/ac 同一行（y=" + (Math.round(ys[0] * 100) / 100) +
-        "）、x 从左到右递增、AC 最右且半透明白色（fill #ffffff@" + ac.fillOpacity + " + 白描边@" + ac.strokeOpacity + "）");
+      ok("四防一排（v1.7.5）：3 个圆（直径 22、24 段、字号 11）+ 1 个盾（AC，直径 30、字号 22）；" +
+        "圆心 / 盾心同一 y=" + (Math.round(ys[0] * 100) / 100) + "、x 从左到右递增、AC 最右且半透明白色（fill #ffffff@" +
+        ac.fillOpacity + " + 白描边@" + ac.strokeOpacity + "）");
     }
   }
   /* 这一排必须在 HP 红条上方（同一份几何：盾的下缘 < 条的上缘） */
@@ -437,15 +469,18 @@ run(OBR, stubBuilder("CURVE"), stubBuilder("SHAPE"), stubBuilder("TEXT"));
   } else if (t2one("surge-bg").visible !== true) bad("Boss 模式把回复力条也压掉了（应保留）");
   else ok("Boss 模式（boss:true）：环形血条 + 名牌「Boss 巨魔」+ 锁，普通 HP 条被压制、蓝条保留");
 
-  /* v1.6.1：Boss 环形态下四防也要是一排（同 y、AC 最右） */
+  /* v1.6.1：Boss 环形态下四防也要是一排（同 y、AC 最右）；v1.7.5：3 圆 + 1 盾 */
   {
     const shields = t2role("shield");
-    const ys = shields.map((it) => it.position.y);
+    const ys = shields.map(centerYOf);
     const keys = shields.slice().sort((a, b) => a.position.x - b.position.x).map(shieldKeyOf).join(",");
+    const ds = shields.map((it) => Math.round(shapeH(it) * 100) / 100).sort((a, b) => a - b);
     if (shields.length !== 4) bad("Boss 形态四防不齐：" + shields.length + "（" + keys + "）");
     else if (!ys.every((y) => Math.abs(y - ys[0]) < 0.01)) bad("Boss 形态四防不在同一行：" + ys.join("/"));
     else if (keys !== "fort,reflex,will,ac") bad("Boss 形态四防顺序不对：" + keys);
-    else ok("Boss 环形态下四防仍是一排（4 枚、同一 y=" + (Math.round(ys[0] * 100) / 100) + "、AC 最右）");
+    else if (ds.join(",") !== "22,22,22,30") bad("Boss 形态四防的直径不对（应 22/22/22/30）：" + ds.join(","));
+    else ok("Boss 环形态下四防仍是一排（4 枚、圆心 / 盾心同一 y=" + (Math.round(ys[0] * 100) / 100) +
+      "、3 圆 22 + 1 盾 30、AC 最右）");
   }
 
   token2.metadata[HP_KEY].boss = { enabled: true, segments: 3, phase: "阶段二" };
@@ -456,7 +491,9 @@ run(OBR, stubBuilder("CURVE"), stubBuilder("SHAPE"), stubBuilder("TEXT"));
   else if (!t2one("plate-phase") || t2one("plate-phase").text.plainText !== "阶段二") bad("Boss 阶段文案没显示");
   else ok("Boss 分段（3 段 → 2 条线）+ 阶段文案「阶段二」");
 
-  /* ---- v1.6.1：窄 token 退化——四枚放不下时优先保留 AC（最右那枚） ---- */
+  /* ---- v1.6.1：窄 token 退化——四枚放不下时优先保留 AC（最右那枚）
+   *      v1.7.5：三防改成 22s 的圆之后，同一枚窄 token 能多放下一枚 ——
+   *      退化**顺序**没变（先丢意志 → 反射 → 强韧，AC 最后才丢），只是**阈值**按新直径重算。 ---- */
   {
     const TOKEN3 = "tok-3";
     const token3 = {
@@ -478,21 +515,22 @@ run(OBR, stubBuilder("CURVE"), stubBuilder("SHAPE"), stubBuilder("TEXT"));
     sceneItems.push(token3);
     const t3keysNow = () => liveOf(TOKEN3).filter((it) => barRoleOf(it) === "shield").map(shieldKeyOf).join(",");
 
-    /* ① 20×20：s 夹到 0.2，一排只放得下 2 枚 → 按 DEF_DROP 先丢意志、再丢反射 → 剩「强韧 + AC」 */
+    /* ① 20×20：s 夹到 0.2 → 4 枚要 4.4×3 + 6 + 1.2×3 = 22.8，可用只有 17.6
+     *    → 按 DEF_DROP **先丢意志**（22s 的圆之后只丢一枚就够）→ 剩「强韧 + 反射 + AC」 */
     boundsFor[TOKEN3] = { min: { x: 0, y: 0 }, max: { x: 20, y: 20 }, center: { x: 10, y: 10 }, width: 20, height: 20 };
     for (const cb of itemsChangeCbs) cb(sceneItems);
     await sleep(340);
-    if (t3keysNow() !== "fort,ac") bad("窄 token 退化顺序不对（应剩 fort,ac：先丢意志再丢反射）：" + t3keysNow());
-    else ok("窄 token 退化（20×20）：放得下 2 枚 → 先丢意志、再丢反射，剩「强韧 + AC」");
+    if (t3keysNow() !== "fort,reflex,ac") bad("窄 token 退化顺序不对（应先丢意志，剩 fort,reflex,ac）：" + t3keysNow());
+    else ok("窄 token 退化（20×20，s=0.2）：按 DEF_DROP 先丢意志 → 剩「强韧 + 反射 + AC」");
 
-    /* ② 14×40：只放得下一枚 → AC 优先保留（最后才丢） */
-    boundsFor[TOKEN3] = { min: { x: 0, y: 0 }, max: { x: 14, y: 40 }, center: { x: 7, y: 20 }, width: 14, height: 40 };
+    /* ② 13×40：只放得下一枚 → AC 优先保留（最后才丢），数字跟着在 */
+    boundsFor[TOKEN3] = { min: { x: 0, y: 0 }, max: { x: 13, y: 40 }, center: { x: 6.5, y: 20 }, width: 13, height: 40 };
     for (const cb of itemsChangeCbs) cb(sceneItems);
     await sleep(340);
     const t3keys = t3keysNow();
     if (t3keys !== "ac") bad("窄 token 退化到 1 枚时应只剩 AC，实际：" + t3keys);
     else if (liveOf(TOKEN3).filter((it) => barRoleOf(it) === "shield-text").length !== 1) bad("窄 token 退化后 AC 的数字也没了");
-    else ok("窄 token 退化（14×40）：只放得下 1 枚时 AC 优先保留（半透明白），数字仍在");
+    else ok("窄 token 退化（13×40）：只放得下 1 枚时 AC 优先保留（半透明白），数字仍在");
     /* 收尾：把这枚临时 token 移出场景（后面的断言只看 tok-2） */
     sceneItems = sceneItems.filter((it) => it.id !== TOKEN3);
     delete boundsFor[TOKEN3];
@@ -552,10 +590,10 @@ run(OBR, stubBuilder("CURVE"), stubBuilder("SHAPE"), stubBuilder("TEXT"));
   } else if (!addMenu.icons[0].filter.some || addMenu.icons[0].filter.some[0].operator !== "!=" ||
     !removeMenu.icons[0].filter.some || removeMenu.icons[0].filter.some[0].value !== true) {
     bad("血条菜单的 filter 不对（添加要 != true、移除要 == true）");
-  } else if (menusV16.length !== 7) {
-    bad("右键菜单总数不是 7（3 个旧的 + 4 个新的）：" + menusV16.length);
+  } else if (menusV16.length !== 8) {
+    bad("右键菜单总数不是 8（绑定 + 加入 / 隐形加入 + v1.7.3 移出先攻 + 4 项血条 / Boss）：" + menusV16.length);
   } else {
-    ok("右键 4 项独立注册：添加 / 移除血条组件、显示为 Boss / 隐藏 Boss（filter 用 !=，旧 3 项没动）");
+    ok("右键 4 项独立注册：添加 / 移除血条组件、显示为 Boss / 隐藏 Boss（filter 用 !=；v1.7.3 只多了「移出先攻」一项）");
   }
 
   if (addMenu) {
@@ -988,6 +1026,386 @@ run(OBR, stubBuilder("CURVE"), stubBuilder("SHAPE"), stubBuilder("TEXT"));
     const cleared = roomMeta[KEY_ROLLS];
     if (!cleared || !Array.isArray(cleared.rows) || cleared.rows.length !== 0) bad("城主清空没有写空 rows：" + JSON.stringify(cleared && cleared.rows.length));
     else ok("城主清空 → rows = []（并再次广播 CH_ROLL_SAVED）");
+  }
+
+  /* =======================================================================
+   * v1.7.2：血条组件编辑小窗（hp-edit）—— 语法 / 夹取 / 权限 / 租约 / 开窗 / 空四防不画盾
+   * ===================================================================== */
+  const HP_E_KEY = "com.4enext-owlbear/hp";
+  const hpeTmp = path.join(os.tmpdir(), "4enext-hpedit-test");
+  fs.mkdirSync(hpeTmp, { recursive: true });
+  const hpeModPath = path.join(hpeTmp, "hp-edit-core.mjs");
+  fs.copyFileSync(path.join(ROOT, "assets", "hp-edit-core.js"), hpeModPath);
+  const HPE = await import(pathToFileURL(hpeModPath).href);
+
+  /* ---- 1) 语法：20 / 20/20 / +5 / -3 / 15+5 / 乱填保留原值 ---- */
+  {
+    const a = HPE.parseHpInput("20", { cur: null, max: null });
+    const b = HPE.parseHpInput("20/20", { cur: null, max: null });
+    const c = HPE.parseHpInput("+5", { cur: 12, max: 20 });
+    const d = HPE.parseHpInput("-3", { cur: 12, max: 20 });
+    const noMax = HPE.parseHpInput("+5", { cur: null, max: null });
+    const calc = HPE.parseHpInput("15+5", { cur: null, max: null });
+    const raise = HPE.parseHpInput("30", { cur: 12, max: 20 });
+    const junk = HPE.parseHpInput("二十", { cur: 12, max: 20 });
+    if (!a.ok || a.patch.max !== 20 || a.patch.cur !== 20) bad("「20」不是设上限 20（20/20）：" + JSON.stringify(a));
+    else if (!b.ok || b.patch.cur !== 20 || b.patch.max !== 20) bad("「20/20」没有同时设当前/上限：" + JSON.stringify(b));
+    else if (!c.ok || c.patch.cur !== 17) bad("「+5」没有在当前 12 上加到 17：" + JSON.stringify(c));
+    else if (!d.ok || d.patch.cur !== 9) bad("「-3」没有在当前 12 上减到 9：" + JSON.stringify(d));
+    else if (noMax.ok) bad("没有上限时「+5」应该拒绝（先给上限），实际：" + JSON.stringify(noMax));
+    else if (!calc.ok || calc.patch.cur !== 20) bad("「15+5」算式结果不是 20：" + JSON.stringify(calc));
+    else if (!raise.ok || raise.patch.max !== 30 || raise.patch.cur !== 12) bad("「30」应把上限改到 30、当前 12 保留：" + JSON.stringify(raise));
+    else if (junk.ok) bad("看不懂的输入应该 ok:false（保留原值），实际：" + JSON.stringify(junk));
+    else ok("HP 语法：20（上限）/ 20/20 / +5 / -3 / 15+5 都对；没上限时 +5 拒绝、乱填保留原值");
+  }
+  {
+    const pair = HPE.parseSurgeInput("3/3", { surges: null, surgesMax: null });
+    const one = HPE.parseSurgeInput("2", { surges: 3, surgesMax: 3 });
+    const plus = HPE.parseSurgeInput("+1", { surges: 2, surgesMax: 3 });
+    const empty = HPE.parseDefenseInput("");
+    const num = HPE.parseDefenseInput("18");
+    const badDef = HPE.parseDefenseInput("十八");
+    if (!pair.ok || pair.patch.surges !== 3 || pair.patch.surgesMax !== 3) bad("回复力 3/3 解析不对：" + JSON.stringify(pair));
+    else if (!one.ok || one.patch.surges !== 2) bad("回复力「2」解析不对：" + JSON.stringify(one));
+    else if (!plus.ok || plus.patch.surges !== 3) bad("回复力「+1」解析不对：" + JSON.stringify(plus));
+    else if (!empty.ok || empty.value !== null) bad("四防留空不是 null（应该「不画那枚盾」）：" + JSON.stringify(empty));
+    else if (!num.ok || num.value !== 18) bad("四防「18」解析不对：" + JSON.stringify(num));
+    else if (badDef.ok) bad("四防填非数字应该拒绝：" + JSON.stringify(badDef));
+    else ok("回复力 3/3、2、+1 与四防「留空 = null / 18 / 非数字拒绝」都对");
+  }
+  {
+    const built = HPE.buildHpEditPatch({ hp: "20/20", surge: "3/3", defs: { ac: "18", fort: "", reflex: "", will: "" } }, { cur: null, max: null });
+    const none = HPE.buildHpEditPatch({ hp: "", surge: "", defs: { ac: "", fort: "", reflex: "", will: "" } }, { cur: null, max: null });
+    const emptyDefs = HPE.buildHpEditPatch({ hp: "20/20", surge: "", defs: { ac: "", fort: "", reflex: "", will: "" } }, { cur: 20, max: 20 });
+    if (!built.ok || !built.patch.defenses || built.patch.defenses.ac !== 18 || "fort" in built.patch.defenses) {
+      bad("buildHpEditPatch 没有只写填了的那枚盾：" + JSON.stringify(built));
+    } else if (none.ok) bad("表单全空时应该拒绝保存（提示先填生命）：" + JSON.stringify(none));
+    else if (!emptyDefs.ok || emptyDefs.patch.defenses !== null) bad("四防全空应给 defenses = null（删键）：" + JSON.stringify(emptyDefs));
+    else {
+      const next = HPE.applyHpEdit({ cur: 20, max: 20, defenses: { ac: 18 }, boss: { enabled: true }, locked: false }, emptyDefs.patch, 999);
+      if ("defenses" in next) bad("空四防写盘后 metadata 里还留着 defenses：" + JSON.stringify(next));
+      else if (!next.boss || next.boss.enabled !== true || next.locked !== false) bad("写盘把 boss / locked 洗掉了：" + JSON.stringify(next));
+      else if (next.updatedAt !== 999) bad("写盘没有更新 updatedAt：" + JSON.stringify(next));
+      else ok("空四防 → 删掉 defenses 键；boss / locked 原样保留、updatedAt 更新");
+    }
+    const clamped = HPE.applyHpEdit({ cur: 12, max: 20, surges: 3, surgesMax: 3 }, { cur: 99, surges: 9 }, 1);
+    if (clamped.cur > clamped.max || clamped.surges > clamped.surgesMax) bad("写盘没有跨字段夹取：" + JSON.stringify(clamped));
+    else ok("写盘夹取：cur 99 → 20、surges 9 → 3");
+  }
+
+  /* ---- 2) 权限 / 两次校验 / 租约 ---- */
+  {
+    const gm = HPE.mayEditToken({ id: "t", createdUserId: "u-owner" }, "GM", "u-other");
+    const owner = HPE.mayEditToken({ id: "t", createdUserId: "u-owner" }, "PLAYER", "u-owner");
+    const other = HPE.mayEditToken({ id: "t", createdUserId: "u-owner" }, "PLAYER", "u-other");
+    if (!gm || !owner || other) bad("权限判定不对（城主 true / 创建者 true / 其他玩家 false）");
+    else ok("权限：城主 ✓ / token 创建者 ✓ / 其他玩家 ✗");
+  }
+  {
+    const target = { id: "tok-hpe", type: "IMAGE", createdUserId: "u-gm", metadata: {} };
+    const deps = (opt) => ({
+      getItems: async (ids) => (ids.includes(target.id) ? [JSON.parse(JSON.stringify(target))] : []),
+      updateItems: async (ids, fn) => {
+        const drafts = ids.includes(target.id) ? [JSON.parse(JSON.stringify(target))] : [];
+        fn(drafts); /* 抛错就不落盘（OBR 整次写入失败的行为） */
+        for (const d of drafts) if (d.id === target.id) target.metadata = d.metadata;
+      },
+      getRole: async () => opt.role,
+      getId: async () => opt.pid,
+      now: () => 4242
+    });
+    const writeOk = await HPE.writeHpEdit(deps({ role: "GM", pid: "u-gm" }), "tok-hpe",
+      { cur: 20, max: 20, surges: 2, surgesMax: 3, defenses: { ac: 18, fort: 15, reflex: 17, will: 16 } });
+    const hp = target.metadata[HP_E_KEY];
+    if (!writeOk.ok) bad("GM 保存失败：" + JSON.stringify(writeOk));
+    else if (!hp || hp.cur !== 20 || hp.max !== 20 || !hp.defenses || hp.defenses.ac !== 18) bad("保存没有写进 hp：" + JSON.stringify(hp));
+    else if (hp.updatedAt !== 4242) bad("保存没有用 deps.now() 的时间戳：" + hp.updatedAt);
+    else if (target.metadata["com.4enext-owlbear/hp-bar/enabled"] !== true) bad("保存没有顺手把血条组件打开");
+    else ok("保存写 token metadata：20/20 + 回复力 2/3 + 四防 4 项 + 开关 true（updatedAt 来自 now()）");
+
+    const before = JSON.stringify(target.metadata);
+    const denied = await HPE.writeHpEdit(deps({ role: "PLAYER", pid: "u-other" }), "tok-hpe", { cur: 1, max: 1 });
+    if (denied.ok) bad("其他玩家居然能改别人的 token");
+    else if (!/只有城主或这枚 token 的创建者/.test(denied.message)) bad("拒绝文案不对：" + denied.message);
+    else if (JSON.stringify(target.metadata) !== before) bad("被拒绝时仍然写了盘（数据被改了）");
+    else ok("权限分支：其他玩家改别人的 token → 拒绝 + 一个字节都没写（文案给原因）");
+  }
+  {
+    /* draft 回调里创建者变了 → 第二次校验必须拦住（参考实现 edit.ts 的核心） */
+    const swapped = { id: "tok-hpe2", type: "IMAGE", createdUserId: "u-owner", metadata: {} };
+    const swapDeps = {
+      getItems: async () => [JSON.parse(JSON.stringify(swapped))],
+      updateItems: async (ids, fn) => {
+        const draft = Object.assign(JSON.parse(JSON.stringify(swapped)), { createdUserId: "u-other" });
+        fn([draft]);
+        swapped.metadata = draft.metadata;
+      },
+      getRole: async () => "PLAYER",
+      getId: async () => "u-owner",
+      now: () => 1
+    };
+    const res = await HPE.writeHpEdit(swapDeps, "tok-hpe2", { cur: 5, max: 5 });
+    if (res.ok) bad("draft 换了创建者仍然写进去了（缺第二次校验）");
+    else if (!swapped.metadata[HP_E_KEY]) ok("两次校验：updateItems 的 draft 里创建者变了 → 拒绝，且没落盘");
+    else bad("第二次校验没有拦住（metadata 已被写）");
+  }
+  {
+    const lease = HPE.createHpEditLease("s-1");
+    const a = lease.accept({ session: "s-1", version: 2, itemId: "tok-a", pending: false });
+    const capA = lease.capture();
+    const capAtFirst = !!(capA && capA.current());   /* 后面的 accept 会推进 epoch，这里先取一次 */
+    const stale = lease.accept({ session: "s-1", version: 2, itemId: "tok-b", pending: false });
+    const wrongSession = lease.accept({ session: "s-2", version: 3, itemId: "tok-c", pending: false });
+    const b = lease.accept({ session: "s-1", version: 3, itemId: "tok-b", pending: false });
+    const back = lease.accept({ session: "s-1", version: 4, itemId: "tok-a", pending: false });
+    if (!a || !capA || capA.itemId !== "tok-a" || !capAtFirst) bad("租约没有接受第一个合法 target");
+    else if (stale) bad("旧 version 被接受了（乱序包会刷错 token）");
+    else if (wrongSession) bad("换 session 的包被接受了（上一轮后台的残包）");
+    else if (!b || !back) bad("递增 version 没有接受（A→B→A 拒不了）");
+    else if (capA.current()) bad("A→B→A 之后旧 capture 还认为自己是当前的");
+    else if (!lease.accept({ session: "s-1", version: 5, itemId: "tok-a", pending: true }) ||
+      lease.capture() !== null) bad("pending=true 时不该能 capture（面板正在读）");
+    else ok("版本租约：旧 version / 换 session 拒绝、A→B→A 让旧 capture 失效、pending 时不能 capture");
+  }
+
+  /* ---- 3) 右键「添加血条组件」→ 写开关 + 打开编辑窗 ---- */
+  const HPE_MONSTER = "tok-hpe-monster";
+  const hpeMonster = {
+    id: HPE_MONSTER, type: "IMAGE", name: "杂兵", layer: "CHARACTER",
+    createdUserId: "user-gm", position: { x: 0, y: 0 }, scale: { x: 1, y: 1 }, metadata: {}
+  };
+  sceneItems.push(hpeMonster);
+  boundsFor[HPE_MONSTER] = { min: { x: 0, y: 0 }, max: { x: 150, y: 150 }, center: { x: 75, y: 75 }, width: 150, height: 150 };
+  {
+    const hpeMenu = all("contextMenu.create").map((c) => c[1]).filter((m) => m.id === "com.4enext-owlbear/hpbar-add")[0];
+    if (!hpeMenu) bad("找不到「添加血条组件」菜单");
+    else {
+      const before = all("popover.open").length;
+      await hpeMenu.onClick({ items: [hpeMonster] });
+      await sleep(160);
+      const win = all("popover.open").map((c) => c[1]).slice(before).filter((c) => /hp-edit\.html/.test(String(c.url))).pop();
+      if (hpeMonster.metadata["com.4enext-owlbear/hp-bar/enabled"] !== true) {
+        bad("「添加血条组件」没有写 hp-bar/enabled = true");
+      } else if (!win) {
+        bad("「添加血条组件」没有打开血条编辑窗（用户要的就是这个入口）");
+      } else if (win.id !== "com.4enext-owlbear/hp-edit") {
+        bad("编辑窗的 popover id 不对：" + win.id);
+      } else if (win.width !== 340 || win.height !== 150) {
+        bad("编辑窗尺寸不是 340×150：" + win.width + "×" + win.height);
+      } else if (!new RegExp("hp-edit\\.html\\?item=" + HPE_MONSTER + "&session=").test(win.url)) {
+        bad("编辑窗 url 没带 item / session：" + win.url);
+      } else if (win.hidePaper !== true || win.disableClickAway !== true) {
+        bad("编辑窗 popover 参数不对（hidePaper / disableClickAway）");
+      } else {
+        ok("右键「添加血条组件」→ 写 true + 打开 /hp-edit（340×150，url 带 item + session）");
+      }
+    }
+    const targets = all("broadcast.sendMessage").map((c) => c[1]).filter((m) => /\/hp-edit-target$/.test(m.channel));
+    const lastTarget = targets[targets.length - 1];
+    if (!lastTarget) bad("开窗时没有广播 hp-edit-target（窗里不知道编辑谁）");
+    else if (lastTarget.opts && lastTarget.opts.destination !== "LOCAL") bad("hp-edit-target 不是 LOCAL：" + JSON.stringify(lastTarget.opts));
+    else if (!lastTarget.data || typeof lastTarget.data.session !== "string" || !lastTarget.data.session) bad("hp-edit-target 没有 session：" + JSON.stringify(lastTarget.data));
+    else if (!(lastTarget.data.version > 0) || lastTarget.data.itemId !== HPE_MONSTER || lastTarget.data.pending !== false) {
+      bad("hp-edit-target 内容不对：" + JSON.stringify(lastTarget.data));
+    } else {
+      ok("广播 hp-edit-target { session, version:" + lastTarget.data.version + ", itemId, pending:false }（LOCAL）");
+    }
+
+    /* ready 握手：同 session → 补发；换 session → 不补发 */
+    const readyCbs = broadcastCbs["com.4enext-owlbear/hp-edit-ready"] || [];
+    if (!readyCbs.length) bad("没有订阅 hp-edit-ready（页面加载完要一次 target）");
+    else {
+      const n0 = all("broadcast.sendMessage").filter((c) => /\/hp-edit-target$/.test(c[1].channel)).length;
+      readyCbs[0]({ data: { session: lastTarget.data.session } });
+      await sleep(50);
+      const n1 = all("broadcast.sendMessage").filter((c) => /\/hp-edit-target$/.test(c[1].channel)).length;
+      readyCbs[0]({ data: { session: "上一轮的旧 session" } });
+      await sleep(50);
+      const n2 = all("broadcast.sendMessage").filter((c) => /\/hp-edit-target$/.test(c[1].channel)).length;
+      if (n1 <= n0) bad("ready 握手没有补发 target（页面会拿不到「当前编辑谁」）");
+      else if (n2 !== n1) bad("session 不对的 ready 也补发了 target（残包会打到新窗口）");
+      else ok("ready 握手：同 session 补发 target、换 session 不补发");
+    }
+  }
+
+  /* ---- 4) 页面保存（用同一份 hp-edit-core 写盘）→ 血条立刻重画 ---- */
+  const sceneDeps = {
+    getItems: async (ids) => sceneItems.filter((it) => ids.includes(it.id)).map((it) => JSON.parse(JSON.stringify(it))),
+    updateItems: async (ids, fn) => { await OBR.scene.items.updateItems(ids, fn); },
+    getRole: async () => "GM",
+    getId: async () => "user-gm",
+    now: () => 5555
+  };
+  {
+    const saved = await HPE.writeHpEdit(sceneDeps, HPE_MONSTER,
+      { cur: 20, max: 20, surges: 3, surgesMax: 3, defenses: { ac: 18, fort: 15, reflex: 17, will: 16 } });
+    if (!saved.ok) bad("GM 给杂兵保存失败：" + JSON.stringify(saved));
+    const savedCbs = broadcastCbs["com.4enext-owlbear/hp-edit-saved"] || [];
+    if (!savedCbs.length) bad("没有订阅 hp-edit-saved（保存后不会立刻重画）");
+    else {
+      for (const cb of savedCbs) cb({ data: { itemId: HPE_MONSTER, hp: saved.hp } });
+      await sleep(260);
+      const items = liveOf(HPE_MONSTER);
+      const roles = items.map(barRoleOf);
+      if (!items.length) bad("保存后血条没有画出来（hp-edit-saved 没触发重画）");
+      else if (items.length !== 14) bad("杂兵保存后应画 14 件（HP 3 + 蓝条 3 + 四盾 + 4 数字），实际 " + items.length + "：" + roles.join(","));
+      else if (!items.some((it) => barRoleOf(it) === "shield" && it.metadata["com.4enext-owlbear/bar"].key === "ac")) {
+        bad("四防盾没有按 key=ac 画出来");
+      } else ok("没绑角色卡的杂兵：保存 20/20 + 回复力 3/3 + 四防 → 血条立刻画出 14 件（含 AC 盾）");
+    }
+  }
+  {
+    /* 四防四个框全空 → 删键 → 一枚盾都不画（HP 条照旧） */
+    const cleared = await HPE.writeHpEdit(sceneDeps, HPE_MONSTER, { defenses: null });
+    const meta = hpeMonster.metadata[HP_E_KEY];
+    for (const cb of itemsChangeCbs) cb(sceneItems);
+    await sleep(300);
+    const items = liveOf(HPE_MONSTER);
+    const shields = items.filter((it) => barRoleOf(it) === "shield");
+    const shieldTexts = items.filter((it) => barRoleOf(it) === "shield-text");
+    if (!cleared.ok) bad("清空四防保存失败：" + JSON.stringify(cleared));
+    else if (meta && "defenses" in meta) bad("清空四防后 metadata 里还留着 defenses 键：" + JSON.stringify(meta));
+    else if (shields.length || shieldTexts.length) bad("空四防仍然画了 " + shields.length + " 枚盾（应该一枚都不画）");
+    else if (!items.some((it) => barRoleOf(it) === "bar-text")) bad("清空四防把 HP 条也弄没了（只该不画盾）");
+    else ok("空四防：metadata 删掉 defenses、一枚盾都不画，HP 条照旧");
+  }
+  {
+    /* 拖动编辑窗：位置跟手、尺寸不变、url 里的 ?item= 不能丢（丢了就编错 token） */
+    const cfgBefore = all("popover.open").map((c) => c[1]).filter((c) => /hp-edit\.html/.test(String(c.url))).pop();
+    if (!winDragCb || !cfgBefore) bad("没有可拖动的血条编辑窗（WINS.hpEdit 没注册？）");
+    else {
+      const basePos = cfgBefore.anchorPosition;
+      winDragCb({ win: "hpEdit", phase: "start", dx: 0, dy: 0 });
+      winDragCb({ win: "hpEdit", phase: "move", dx: 60, dy: 40 });
+      winDragCb({ win: "hpEdit", phase: "end", dx: 60, dy: 40 });
+      await sleep(140);
+      const moved = all("popover.open").map((c) => c[1]).filter((c) => /hp-edit\.html/.test(String(c.url))).pop();
+      if (!moved || moved.anchorPosition.left !== basePos.left + 60 || moved.anchorPosition.top !== basePos.top + 40) {
+        bad("拖动血条编辑窗没有跟手：" + JSON.stringify(moved && moved.anchorPosition));
+      } else if (!new RegExp("\\?item=" + HPE_MONSTER + "&session=").test(moved.url)) {
+        bad("拖动重开编辑窗时把 ?item= 丢了：" + moved.url);
+      } else if (moved.width !== 340 || moved.height !== 150) {
+        bad("拖动时编辑窗尺寸变了：" + moved.width + "×" + moved.height);
+      } else {
+        ok("拖动血条编辑窗：位置跟手、尺寸不变、url 里的 ?item= 没丢");
+      }
+      const savedPos = JSON.parse(lsStore["4enext/win-pos"] || "{}");
+      const one = savedPos && savedPos.pos ? savedPos.pos.hpEdit : null;
+      if (!one) bad("拖动结束后没有记住编辑窗位置（下次开窗会跳回默认点）");
+      else ok("编辑窗位置按窗口名 hpEdit 记在 localStorage（" + one.left + "," + one.top + "）");
+    }
+  }
+  {
+    /* 「移除血条组件」：只写 false、hp 数据保留、血条消失 */
+    const hpeRemove = all("contextMenu.create").map((c) => c[1]).filter((m) => m.id === "com.4enext-owlbear/hpbar-remove")[0];
+    await hpeRemove.onClick({ items: [hpeMonster] });
+    await sleep(200);
+    const meta = hpeMonster.metadata[HP_E_KEY];
+    if (hpeMonster.metadata["com.4enext-owlbear/hp-bar/enabled"] !== false) bad("「移除血条组件」没有写 false");
+    else if (!meta || meta.max !== 20) bad("「移除血条组件」把 hp 数据删了（下次「添加」恢复不了）");
+    else if (liveOf(HPE_MONSTER).length) bad("移除后血条还在：" + liveOf(HPE_MONSTER).length + " 件");
+    else ok("「移除血条组件」→ 写 false、hp 数据保留（20/20）、血条消失");
+  }
+
+  /* =======================================================================
+   * v1.7.4：骰子窗口 320×620 + 「记录窗口」开关链路（用户：点了打不开）
+   * 频道：CH_DICE_HIST_CMD（骰子窗口 → 后台）/ CH_DICE_HIST_STATE（后台 → 所有页面）
+   * ===================================================================== */
+  {
+    const HIST_ID = "com.4enext-owlbear/dice-history-window";
+    const HIST_CMD = "com.4enext-owlbear/dice-hist-cmd";
+    const HIST_STATE = "com.4enext-owlbear/dice-hist-state";
+    const histCmdCb = (broadcastCbs[HIST_CMD] || [])[0];
+    const stateOf = () => {
+      const msg = all("broadcast.sendMessage").map((c) => c[1]).filter((m) => m.channel === HIST_STATE).pop();
+      return msg ? msg.data : null;
+    };
+    const lastHistOpen = () => all("popover.open").map((c) => c[1]).filter((c) => String(c.url).indexOf("dice-history.html") >= 0).pop();
+    const lastHistClose = () => all("popover.close").map((c) => c[1]).filter((x) => x === HIST_ID).pop();
+
+    /* 先把骰子窗口按 v1.7.4 的尺寸开一遍（320×620），记录窗口要贴着它摆 */
+    const diceNow = await openByTool(toolDice, /\/dice\.html$/, "骰子（v1.7.4 尺寸）");
+    if (!diceNow) bad("v1.7.4：骰子窗口打不开");
+    else if (diceNow.width !== 320 || diceNow.height !== 620)
+      bad("v1.7.4：骰子窗口不是 320×620：" + diceNow.width + "×" + diceNow.height);
+    else ok("v1.7.4：点工具栏「骰子」→ 320×620 的窄竖条窗口");
+
+    if (!histCmdCb) bad("没有订阅 " + HIST_CMD + "（记录窗口永远开不出来）");
+    else if (!diceNow) bad("骰子窗口没开，记录窗口的位置断言跳过");
+    else {
+      ok("订阅了记录窗口开关频道 " + HIST_CMD);
+
+      /* ① toggle → popover.open(dice-history.html)，而且**贴着骰子窗口**摆（不叠在它里面） */
+      const opensBefore = all("popover.open").length;
+      histCmdCb({ data: { op: "toggle" } });
+      await sleep(160);
+      const first = lastHistOpen();
+      if (!first) bad("点「记录窗口」（toggle）没有 OBR.popover.open 出 dice-history.html");
+      else if (first.id !== HIST_ID) bad("记录窗口的 popover id 不对：" + first.id);
+      else if (first.width !== 380 || first.height !== 380) bad("记录窗口尺寸不是 380×380：" + first.width + "×" + first.height);
+      else if (first.anchorReference !== "POSITION" || first.hidePaper !== true || first.disableClickAway !== true)
+        bad("记录窗口没有 POSITION / hidePaper / disableClickAway：" + JSON.stringify([first.anchorReference, first.hidePaper, first.disableClickAway]));
+      else if (!first.url.endsWith("/dice-history.html")) bad("记录窗口的 url 不对：" + first.url);
+      else {
+        const dx = first.anchorPosition.left - diceNow.anchorPosition.left;
+        const dy = first.anchorPosition.top - diceNow.anchorPosition.top;
+        const overlapX = dx < diceNow.width && dx + first.width > 0;
+        const overlapY = dy < diceNow.height && dy + first.height > 0;
+        if (overlapX && overlapY) bad("记录窗口叠在骰子窗口里（看起来就像没打开）：" + JSON.stringify(first.anchorPosition));
+        else if (dx !== diceNow.width + 12 || dy !== 0)
+          bad("记录窗口没有贴在骰子窗口右边（期望 +" + (diceNow.width + 12) + ",0）：" + JSON.stringify([dx, dy]));
+        else ok("记录窗口开在骰子窗口**右边**（" + JSON.stringify(first.anchorPosition) + "，不重叠）");
+      }
+      if (all("popover.open").length !== opensBefore + 1) bad("一次 toggle 开了 " + (all("popover.open").length - opensBefore) + " 个窗口");
+      const st1 = stateOf();
+      if (!st1 || st1.open !== true) bad("打开后没有广播 CH_DICE_HIST_STATE { open:true }：" + JSON.stringify(st1));
+      else ok("打开后广播 CH_DICE_HIST_STATE { open:true }（骰子窗口的按钮据此显示「记录窗口 · 开」）");
+
+      /* ② 再 toggle 一次 → 关掉（同一个 id）+ 广播 open:false */
+      const closedBefore = lastHistClose();
+      histCmdCb({ data: { op: "toggle" } });
+      await sleep(160);
+      if (lastHistClose() === closedBefore) bad("第二次 toggle 没有 OBR.popover.close 记录窗口");
+      else if (lastHistClose() !== HIST_ID) bad("关掉的 popover id 不对：" + lastHistClose());
+      else {
+        const st2 = stateOf();
+        if (!st2 || st2.open !== false) bad("关闭后没有广播 open:false：" + JSON.stringify(st2));
+        else ok("再 toggle → OBR.popover.close(" + HIST_ID + ") + 广播 { open:false }");
+      }
+
+      /* ③ 记录窗口页面加载完的握手（op: "ready"）：后台把「开着」补上（下次点才是关闭） */
+      histCmdCb({ data: { op: "ready" } });
+      await sleep(80);
+      const st3 = stateOf();
+      if (!st3 || st3.open !== true) bad("ready 握手没有把「记录窗口开着」补上：" + JSON.stringify(st3));
+      else ok('ready 握手（窗口是骰子页自己兜底开的）→ 状态补成 open:true');
+      histCmdCb({ data: { op: "close" } });
+      await sleep(120);
+
+      /* ④ 开窗失败：重试一次，仍失败就 ERROR 通知（绝不静默） */
+      const realOpen = OBR.popover.open;
+      let attempts = 0;
+      OBR.popover.open = async (cfg) => {
+        if (String(cfg.url).indexOf("dice-history.html") >= 0) {
+          attempts++;
+          throw new Error("宿主拒绝了 popover.open（测试）");
+        }
+        return realOpen(cfg);
+      };
+      const notesBefore = calls.filter((c) => c[0] === "notification.show").length;
+      histCmdCb({ data: { op: "open" } });
+      await sleep(420);
+      OBR.popover.open = realOpen;
+      const errNotes = calls.filter((c) => c[0] === "notification.show").slice(notesBefore).map((c) => c[1]);
+      if (attempts !== 2) bad("开窗失败没有重试一次（实际尝试 " + attempts + " 次）");
+      else ok("开窗失败会重试一次（共 2 次 popover.open）");
+      const histErr = errNotes.filter((n) => n.variant === "ERROR" && /记录窗口/.test(String(n.msg)));
+      if (!histErr.length) bad("开窗失败没有 ERROR 通知：" + JSON.stringify(errNotes));
+      else ok("重试仍失败 → ERROR 通知：" + String(histErr[0].msg).slice(0, 46) + "…");
+      const st4 = stateOf();
+      if (!st4 || st4.open !== false) bad("开窗失败后没有把状态广播成 open:false：" + JSON.stringify(st4));
+      else ok("开窗失败后状态回到 open:false（按钮不会假装开着）");
+    }
   }
 
   finish();

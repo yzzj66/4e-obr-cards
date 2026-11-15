@@ -25,6 +25,11 @@
 //     （GM 的 background.core.js 校验 ownerId 后代写，见规格 §5 的四道校验）；
 //   · 隐形的条目对非 GM 完全不渲染，连名字都不发到 DOM（当前回合只显示「？？？」）。
 //
+// v1.7.3：① 卡片右上角加「✕」（GM 直接把人从先攻里移出，见 stripCard / 页面 onStripAct("remove")）；
+//   ② 新增 missingEntryIds / pruneMissingEntries：token 被删掉后由后台按「见过 → 消失」清理名单，
+//      删掉当前回合那张时游标顺移（与 removeEntry 同一套规则）；
+//   ③ 先攻条外壳透明 / 常驻是 CSS 与 background.core.js 的事，数据层不变。
+//
 // 本模块是 ESM，只在窗口页加载；background.core.js 是经典脚本，不能 import，
 // 它有一份只服务于「右键加入先攻 / 响应玩家结束回合 / 打开先攻条」的精简实现，
 // 常量与排序 / 回合推进公式由 dev/check.mjs 与 dev/test-initiative.mjs 对齐。
@@ -414,6 +419,33 @@ export function moveEntry(state, tokenId, dir) {
   return reorderEntry(out, tokenId, k);
 }
 
+/**
+ * v1.7.3：名单里 tokenId 已经不在 alive 里的那些（alive 是 id 数组或 { id: true } 这样的 map）。
+ * 用法：token 被删掉后先算出缺哪些，再交给 pruneMissingEntries 一次清掉。
+ */
+export function missingEntryIds(state, alive) {
+  const has = Object.create(null);
+  if (Array.isArray(alive)) {
+    for (const id of alive) has[String(id)] = true;
+  } else if (alive && typeof alive === "object") {
+    for (const k of Object.keys(alive)) if (alive[k]) has[String(k)] = true;
+  }
+  const st = normalizeInitiative(state);
+  return st.entries.filter((e) => !has[e.tokenId]).map((e) => e.tokenId);
+}
+
+/**
+ * v1.7.3：把「token 已经没了」的条目一次清掉（逐条走 removeEntry，游标自然顺移）：
+ * 删掉当前回合那张 → 指向原位置的下一条（没有下一条就指最后一条），
+ * 删空 → activeId = ""、round 回到 1。token 还在的条目一个字都不动。
+ */
+export function pruneMissingEntries(state, alive) {
+  let out = normalizeInitiative(state);
+  const missing = missingEntryIds(out, alive);
+  for (const id of missing) out = removeEntry(out, id);
+  return out;
+}
+
 export function removeEntry(state, tokenId) {
   const out = normalizeInitiative(clone(state));
   const idx = out.entries.findIndex((e) => e.tokenId === tokenId);
@@ -747,6 +779,10 @@ function stripCard(e, st, opts) {
     hpTrack +
     '<div class="item-count"><b>' + total + '</b><small class="count-formula">' + formula + "</small></div>" +
     stripRollButtons(e, isGM, st.phase) +
+    /* v1.7.3：GM 的卡片上放一个 ✕ —— 不用开列表窗口，点一下就把这枚 token 移出先攻。
+       玩家没有（房间数据只有城主能写）。 */
+    (isGM ? '<button class="item-del" data-strip-act="remove" data-token="' + esc(e.tokenId) +
+      '" title="把「' + esc(e.name) + '」移出先攻">✕</button>' : "") +
     endBtn +
     "</div>";
 }
@@ -783,7 +819,9 @@ function stripControls(st, opts) {
     esc(st.entries.length + " 个条目 · 上限 " + INIT_MAX_ENTRIES) + '">' + status +
     (who ? ' · <b>' + esc(who) + "</b>" : "") + "</span>" +
     '<button class="strip-btn icon" data-strip-act="list" title="打开列表窗口（管理 / 重掷 / 同步加值）">≡</button>' +
-    '<button class="strip-btn icon" data-strip-act="collapse" title="折叠成小药丸">−</button>' +
+    /* v1.7.3：「—」只最小化（折叠成 120×40 药丸，popover 仍开着 → 依旧常驻）；「✕」才是真关掉。 */
+    '<button class="strip-btn icon" data-strip-act="collapse" title="最小化（折叠成 120×40 小药丸，仍然常驻）">−</button>' +
+    '<button class="strip-btn icon strip-close" data-strip-act="close" title="关闭先攻条（本次会话不再自动显示，工具栏「先攻」可再打开）">✕</button>' +
     '<span class="strip-grip" data-strip-drag title="按住拖走先攻条">⠿</span>';
   return '<div class="strip-ctl">' +
     '<div class="sc-left">' + left + clearBtn + "</div>" +

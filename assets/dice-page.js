@@ -1,4 +1,9 @@
 // v1.7.0：骰子窗口的页面脚本（dice.html，**单列**）。
+// v1.7.4（用户：窗口窄成 ≈320×620、字号小一号、本次结果固定底部）：布局与字号全在 assets/ui.css
+//   （骰子 4+3 两排 / 按钮 2×2 换行 / .dice-result 是 flex:none 的固定底栏），本文件只改了一件事：
+//   **「记录窗口」按钮点了必须真的开出一个窗口** —— 发 CH_DICE_HIST_CMD 之后开一个
+//   HIST_ACK_MS 的回执计时器；后台没回 CH_DICE_HIST_STATE 就由本页直接 OBR.popover.open
+//   同一个 id / 页面兜底（后台只负责位置与拖动），再失败就 ERROR 通知，绝不让点击变成「没反应」。
 // ---------------------------------------------------------------------------
 // 分工：
 //   · 规则 / 解析 / 掷骰 / 归一化全在 assets/dice-core.js（纯函数，node 可测）；
@@ -21,8 +26,8 @@
 import OBR from "../vendor/obr-sdk.js";
 import {
   CH_DICE_HIST_CMD, CH_DICE_HIST_STATE, CH_ROLL, CH_ROLL_CLEAR, CH_ROLL_SAVED,
-  ID_DICE_WIN, KEY_BIND, KEY_ROLLS, LS_DICE_COMBOS, LS_DICE_LAST, LS_DICE_LOCAL,
-  NS, URL_EFFECT,
+  ID_DICE_HIST, ID_DICE_WIN, KEY_BIND, KEY_ROLLS, LS_DICE_COMBOS, LS_DICE_LAST, LS_DICE_LOCAL,
+  NS, URL_DICE_HIST, URL_EFFECT,
   esc, findCard, getCards, onReady, readDiceAnim
 } from "./common.js";
 import { closeSelf, createWindow, feedback } from "./window.js";
@@ -449,8 +454,29 @@ async function clearHistory() {
 }
 
 /* ---------------------------------------------------------------------------
- * 3.5) 记录窗口（独立 popover，本窗口只管发开关命令 + 显示开 / 关）
+ * 3.5) 记录窗口（独立 popover；本窗口发开关命令 + 显示开 / 关 + **打不开时兜底**）
+ * ---------------------------------------------------------------------------
+ * v1.7.4（用户真机：「记录窗口」按钮在，但点了没有独立记录窗口出现）：
+ *   链路本来是对的（本页发 CH_DICE_HIST_CMD → 后台 openDiceHistory → CH_DICE_HIST_STATE），
+ *   但**只要后台那一步没走通（没订阅上 / popover.open 被拒 / 后台页没起来），用户看到的就是
+ *   「点了没反应」**。所以这里不再「发完就不管」：
+ *     ① 发命令 → 按钮变「记录窗口 · 打开中…」+ 开一个 HIST_ACK_MS 的回执计时器；
+ *     ② 收到 CH_DICE_HIST_STATE → 按 open 显示「记录窗口 · 开 / 记录窗口」，清计时器；
+ *     ③ 计时器到点还是**没回执**（后台没接这条命令）→ 本页直接 OBR.popover.open 同一个
+ *        popover id / 同一个页面（位置放视口右上），窗口照样出来，再给一条 WARNING 说明
+ *        「拖动 / 记位置会失效」；
+ *     ④ 连本页也开不出来 → ERROR 通知（不静默）。
+ * 后台那边（assets/background.core.js 的 openDiceHistory）也加了「失败重试一次 + ERROR 通知」。
  * ------------------------------------------------------------------------- */
+/** 等后台回执的上限：超过就由本页自己开（900 ms 比一次广播往返宽裕得多，又不会让人等太久）。 */
+var HIST_ACK_MS = 900;
+/** 已经发了命令、正在等后台回执（这期间再点无效，避免连点开 / 关打架）。 */
+var histPending = false;
+/** 这次命令想要的结果：true = 开，false = 关。 */
+var histWant = false;
+/** 回执计时器。 */
+var histTimer = 0;
+
 function setHistButton(open) {
   histOpen = !!open;
   if (!els.btnHist) return;
@@ -459,13 +485,95 @@ function setHistButton(open) {
   els.btnHist.title = (histOpen ? "收起" : "打开") + "独立的骰子记录窗口（最近 4 条，可展开全部）";
 }
 
-function toggleHistory() {
+/** 发一条记录窗口命令；连广播都发不出去时返回 false（调用方直接走兜底）。 */
+function sendHistCmd(op) {
   try {
-    var p = OBR.broadcast.sendMessage(CH_DICE_HIST_CMD, { op: "toggle", at: Date.now() }, { destination: "LOCAL" });
-    if (p && typeof p.catch === "function") p.catch(function () { /* 后台没起来 */ });
+    var p = OBR.broadcast.sendMessage(CH_DICE_HIST_CMD, { op: op, at: Date.now() }, { destination: "LOCAL" });
+    if (p && typeof p.catch === "function") p.catch(function () { /* 后台没起来：交给回执计时器兜底 */ });
+    return true;
   } catch (e) {
-    feedback("记录窗口打不开：后台未连接（记录本身仍会写进房间数据）", "WARNING");
+    return false;
   }
+}
+
+/** 收尾「等回执」：清计时器 + 去掉按钮的 pending 外观。 */
+function endHistPending() {
+  histPending = false;
+  if (histTimer) { clearTimeout(histTimer); histTimer = 0; }
+  if (els.btnHist) els.btnHist.classList.remove("pending");
+}
+
+/** 本页直接开记录窗口（后台没回执时的兜底）：同一个 popover id / 页面，位置放视口右上。 */
+async function openHistoryDirect() {
+  try {
+    var vw = 0;
+    var vh = 0;
+    try { vw = await OBR.viewport.getWidth(); } catch (e1) { vw = 0; }
+    try { vh = await OBR.viewport.getHeight(); } catch (e2) { vh = 0; }
+    var w = Math.round(Math.min(380, Math.max(240, (vw > 0 ? vw : 420) - 32)));
+    var h = Math.round(Math.min(380, Math.max(220, (vh > 0 ? vh : 420) - 32)));
+    var left = vw > 0 ? Math.max(16, vw - w - 24) : 16;
+    var top = 96;
+    if (vh > 0) top = Math.round(Math.max(16, Math.min(96, vh - h - 16)));
+    await OBR.popover.open({
+      id: ID_DICE_HIST,
+      url: URL_DICE_HIST,
+      width: w,
+      height: h,
+      anchorReference: "POSITION",
+      anchorPosition: { left: left, top: top },
+      anchorOrigin: { horizontal: "LEFT", vertical: "TOP" },
+      transformOrigin: { horizontal: "LEFT", vertical: "TOP" },
+      hidePaper: true,
+      disableClickAway: true
+    });
+    setHistButton(true);
+    feedback("记录窗口由骰子窗口直接打开（后台没有回应：拖动 / 记住位置会失效）", "WARNING");
+    return true;
+  } catch (e) {
+    setHistButton(false);
+    feedback("记录窗口打不开：" + (e && e.message ? e.message : e) +
+      "（记录本身仍在房间数据里；可以先关掉骰子窗口再点一次）", "ERROR");
+    return false;
+  }
+}
+
+/** 回执超时：后台没接这条命令 → 开就走本页兜底，关就如实说明。 */
+function onHistTimeout() {
+  histTimer = 0;
+  if (!histPending) return;
+  var want = histWant;
+  histPending = false;
+  if (els.btnHist) els.btnHist.classList.remove("pending");
+  if (!want) {
+    setHistButton(false);
+    flash("已发送关闭命令，但后台没有回执（窗口如果还在，点它自己的 ✕ 也能关）", "WARNING");
+    return;
+  }
+  if (els.btnHist) els.btnHist.textContent = "记录窗口 · 打开中…";
+  void openHistoryDirect();
+}
+
+function toggleHistory() {
+  if (histPending) {
+    flash("正在等记录窗口的回执…", "INFO");
+    return;
+  }
+  histWant = !histOpen;
+  histPending = true;
+  if (els.btnHist) {
+    els.btnHist.classList.add("pending");
+    els.btnHist.textContent = histWant ? "记录窗口 · 打开中…" : "记录窗口 · 关闭中…";
+  }
+  var sent = sendHistCmd("toggle");
+  if (!sent) {
+    /* 连广播都发不出去（不在枭熊里 / 后台没起来）：不等了，直接兜底 */
+    endHistPending();
+    if (histWant) void openHistoryDirect();
+    else feedback("记录窗口关不掉：后台未连接", "WARNING");
+    return;
+  }
+  histTimer = setTimeout(onHistTimeout, HIST_ACK_MS);
 }
 
 /* ---------------------------------------------------------------------------
@@ -749,10 +857,12 @@ onReady(function () {
     });
   } catch (e2) { /* 忽略 */ }
 
-  /* 记录窗口的开 / 关状态（后台执行完命令后广播回来） */
+  /* 记录窗口的开 / 关状态（后台执行完命令后广播回来）—— v1.7.4：回执一到就收掉计时器，
+   * 不会再多此一举地「本页兜底开一次」。 */
   try {
     OBR.broadcast.onMessage(CH_DICE_HIST_STATE, function (ev) {
       var data = ev && ev.data !== undefined ? ev.data : ev;
+      endHistPending();
       setHistButton(!!(data && data.open));
     });
   } catch (e4) { /* 忽略 */ }

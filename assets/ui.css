@@ -363,139 +363,174 @@ body.dragging .pop-head { background: #17212b; }
 }
 
 /* ---------- v1.5.0：骰子窗口（dice.html）----------
- * v1.7.0：**单列**（记录搬去独立的 dice-history.html）——
- *   骰子按钮 / 表达式 / 战斗优势 +2 / 重击取满 / 本次结果 / 4E 预设（攻击·伤害·技能）/ 组合。
- * 窗口默认 520×620（background.core.js 的 WINS.dice）；v1.5.0 是 760×620 的两栏。
- * 容器自身不滚，列内滚动（.win 高度 100vh，打开前由后台按视口夹紧）。 */
-.win-body.dice-wrap { overflow: hidden; padding: 10px 12px 12px; }
+ * v1.7.0：**单列**（记录搬去独立的 dice-history.html）。
+ * v1.7.4（用户：要「窄而高」的竖条 + 字号小一号 + 结果固定底部）：
+ *   · 窗口 520×620 → **320×620**（background.core.js 的 WINS.dice，仍按视口夹紧）；
+ *   · 七颗骰子 **4 + 3 两排**（.dice-row 是四列栅格，第 7 颗自动落到第 2 行）；
+ *   · 按钮 **2×2 换行**（.dice-acts 两列），清空记录 .wide 独占一行；
+ *   · 上部 .dice-left 自己滚动，底部 .dice-result 是 **flex:none 的固定底栏**（上边框，
+ *     不参与滚动 → 「本次结果」不会随上面滚上去）；
+ *   · 字号整体小一号：表达式输入 15→13px、说明 10.5→10px、按钮 13→12px、点数 34→26px。
+ * 容器自身不滚（.win 高度 100vh，打开前由后台按视口夹紧）。 */
+.win-body.dice-wrap { overflow: hidden; padding: 8px 10px 10px; }
 .dice-cols {
-  display: grid; grid-template-columns: minmax(0, 1fr); gap: 12px;
+  display: flex; flex-direction: column; gap: 8px;
   height: 100%; min-height: 0;
 }
 .dice-left {
-  min-height: 0; overflow-y: auto; overflow-x: hidden; padding-right: 2px;
-  display: flex; flex-direction: column; gap: 10px;
+  flex: 1 1 auto; min-height: 0; overflow-y: auto; overflow-x: hidden; padding-right: 2px;
+  display: flex; flex-direction: column; gap: 8px;
 }
-.dice-sec { background: #0e141b; border: 1px solid var(--line); border-radius: 11px; padding: 9px 10px 10px; }
-.sec-head { display: flex; align-items: baseline; gap: 8px; margin-bottom: 7px; }
-.sec-head h3 { margin: 0; font-size: 12.5px; font-weight: 700; color: var(--text); }
+.dice-sec { background: #0e141b; border: 1px solid var(--line); border-radius: 10px; padding: 7px 8px 8px; }
+.sec-head { display: flex; align-items: baseline; gap: 6px; margin-bottom: 6px; }
+.sec-head h3 { margin: 0; font-size: 11.5px; font-weight: 700; color: var(--text); }
 .sec-hint {
-  margin-left: auto; font-size: 10.5px; color: #5f6d7c;
-  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 62%;
+  margin-left: auto; font-size: 10px; color: #5f6d7c;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 64%;
 }
 
-/* 七颗骰子一排：等宽格子 + 角标（只有 count≠0 才显示，与参考实现的 [data-count] 同义） */
-.dice-row { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 6px; }
+/* v1.7.4：320 宽放不下七颗一排 → **4 + 3 两排**（四列栅格，每颗约 64×42）；
+ * 角标只有 count≠0 才显示（与参考实现的 [data-count] 同义）。 */
+.dice-row { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 5px; }
 .dice-btn {
   position: relative; display: flex; flex-direction: column; align-items: center;
-  justify-content: center; gap: 3px; padding: 7px 0 5px;
-  background: var(--bg3); border: 1px solid var(--line); border-radius: 9px;
+  justify-content: center; gap: 2px; padding: 5px 0 4px;
+  background: var(--bg3); border: 1px solid var(--line); border-radius: 8px;
   cursor: pointer; color: var(--text); line-height: 1;
 }
 .dice-btn:hover { background: #22303f; border-color: #3b4a5a; }
 .dice-btn:active { transform: translateY(1px); }
 .dice-btn.on { border-color: rgba(86, 211, 100, .5); background: #17251b; }
 .dice-btn .face {
-  width: 28px; height: 28px; border-radius: 8px;
+  width: 26px; height: 26px; border-radius: 7px;
   display: flex; align-items: center; justify-content: center;
-  font: 800 11.5px/1 ui-monospace, "Cascadia Code", Consolas, monospace;
+  font: 800 10.5px/1 ui-monospace, "Cascadia Code", Consolas, monospace;
   color: var(--text); background: #0b0f14; border: 1px solid var(--line);
 }
 .dice-btn .badge {
-  position: absolute; top: 2px; right: 2px; min-width: 15px; height: 15px;
-  padding: 0 3px; border-radius: 8px; background: var(--red); color: #fff;
-  font-size: 10px; font-weight: 800; line-height: 15px; text-align: center;
+  position: absolute; top: 1px; right: 1px; min-width: 14px; height: 14px;
+  padding: 0 3px; border-radius: 7px; background: var(--red); color: #fff;
+  font-size: 9px; font-weight: 800; line-height: 14px; text-align: center;
   display: none;
 }
 .dice-btn[data-count="0"] .badge, .dice-btn:not([data-count]) .badge { display: none; }
 .dice-btn[data-count]:not([data-count="0"]) .badge { display: block; }
 
-/* 表达式行：输入框 + 两个 36px 的加减按钮 */
-.expr-row { display: flex; gap: 6px; align-items: stretch; }
+/* 表达式行：输入框 + 两个 28px 的加减按钮（v1.7.4：高度 40→34、字号 15→13px） */
+.expr-row { display: flex; gap: 5px; align-items: stretch; }
 .expr-input {
-  flex: 1 1 auto; min-width: 0; height: 40px; padding: 0 10px;
-  font: 700 15px/1 ui-monospace, "Cascadia Code", Consolas, monospace;
-  background: var(--bg3); border: 1px solid var(--line); border-radius: 9px;
+  flex: 1 1 auto; min-width: 0; height: 34px; padding: 0 8px;
+  font: 700 13px/1 ui-monospace, "Cascadia Code", Consolas, monospace;
+  background: var(--bg3); border: 1px solid var(--line); border-radius: 8px;
   color: var(--text);
 }
 .expr-input:focus { outline: none; border-color: rgba(86, 211, 100, .55); }
-.expr-row .step { width: 36px; height: 40px; padding: 0; font-size: 16px; font-weight: 800; }
-.dice-acts { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 8px; }
+.expr-row .step { width: 28px; height: 34px; padding: 0; font-size: 14px; font-weight: 800; }
+/* v1.7.4：按钮 **2×2 换行**（320 宽放不下「投掷 / 上一次 / 保存组合 / 记录窗口」一排）；
+ * .wide = 独占一整行（清空记录）。 */
+.dice-acts { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 5px; margin-top: 6px; }
+.dice-acts .btn {
+  font-size: 12px; padding: 6px 4px; min-width: 0;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.dice-acts .btn.wide { grid-column: 1 / -1; }
+/* 「记录窗口」等回执时的样子（v1.7.4）：按钮淡淡发绿，让人知道点到了、正在等后台 */
+.dice-acts .btn.pending { border-color: rgba(86, 211, 100, .45); color: var(--green); }
 .btn.toggle.on { border-color: rgba(86, 211, 100, .55); background: #17251b; color: var(--green); font-weight: 700; }
 
-/* 4E 预设：每行一个类别 + 可点按钮；技能多，限制高度内部滚 */
-.preset-box { max-height: 152px; overflow-y: auto; overflow-x: hidden; display: flex; flex-direction: column; gap: 6px; }
-.preset-line { display: flex; gap: 6px; align-items: flex-start; }
-.preset-lab { flex: 0 0 30px; font-size: 11px; color: var(--muted); line-height: 22px; }
+/* 4E 预设：每行一个类别 + 可点按钮；技能多，限制高度内部滚（v1.7.4：字号 / 高度各小一号） */
+.preset-box { max-height: 118px; overflow-y: auto; overflow-x: hidden; display: flex; flex-direction: column; gap: 5px; }
+.preset-line { display: flex; gap: 5px; align-items: flex-start; }
+.preset-lab { flex: 0 0 26px; font-size: 10.5px; color: var(--muted); line-height: 20px; }
 .preset-items { display: flex; flex-wrap: wrap; gap: 4px; min-width: 0; }
 .preset-btn {
   border: 1px solid var(--line); background: var(--bg3); color: #cfd9e3;
-  border-radius: 7px; padding: 3px 7px; font-size: 11px; line-height: 1.4;
+  border-radius: 6px; padding: 2px 6px; font-size: 10.5px; line-height: 1.4;
   cursor: pointer; white-space: nowrap;
 }
 .preset-btn:hover { background: #22303f; color: var(--text); border-color: #3b4a5a; }
-.def-ref { display: flex; flex-wrap: wrap; gap: 4px; align-items: center; margin-top: 8px; }
-.def-lab { font-size: 10.5px; color: #5f6d7c; }
+.def-ref { display: flex; flex-wrap: wrap; gap: 4px; align-items: center; margin-top: 6px; }
+.def-lab { font-size: 10px; color: #5f6d7c; }
 .def-chip {
-  font-size: 10.5px; color: var(--muted); border: 1px solid var(--line);
-  border-radius: 999px; padding: 1px 7px; font-variant-numeric: tabular-nums;
+  font-size: 10px; color: var(--muted); border: 1px solid var(--line);
+  border-radius: 999px; padding: 1px 6px; font-variant-numeric: tabular-nums;
 }
 
 /* 组合：本机保存的公式 */
-.combo-row { margin-bottom: 6px; }
+.combo-row { margin-bottom: 5px; }
 .combo-name {
-  width: 100%; height: 28px; padding: 0 8px; font-size: 11.5px;
+  width: 100%; height: 26px; padding: 0 7px; font-size: 10.5px;
   background: var(--bg3); border: 1px solid var(--line); border-radius: 7px; color: var(--text);
 }
-.combo-box { display: flex; flex-wrap: wrap; gap: 4px; max-height: 96px; overflow-y: auto; }
+.combo-box { display: flex; flex-wrap: wrap; gap: 4px; max-height: 84px; overflow-y: auto; }
 .combo-chip { display: inline-flex; align-items: center; border: 1px solid var(--line); border-radius: 7px; background: var(--bg3); overflow: hidden; }
 .combo-use {
-  border: 0; background: transparent; color: #cfd9e3; font-size: 11px; padding: 3px 6px;
-  cursor: pointer; max-width: 188px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  border: 0; background: transparent; color: #cfd9e3; font-size: 10.5px; padding: 2px 5px;
+  cursor: pointer; max-width: 150px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
 .combo-use:hover { color: var(--green); }
 .combo-del { border: 0; border-left: 1px solid var(--line); background: transparent; color: #5f6d7c; font-size: 10px; padding: 3px 5px; cursor: pointer; }
 .combo-del:hover { color: var(--red); }
 
 /* 结果面板 */
-.res-box { min-height: 92px; }
-.res-empty { color: var(--muted); font-size: 12px; line-height: 1.7; padding: 8px 2px; }
-.res-main { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; }
+/* v1.7.4：「本次结果」= 窗口**底部固定条**（.dice-result 在 .dice-cols 里 flex:none + 上边框），
+ * 上面的骰子 / 表达式 / 预设 / 组合在 .dice-left 里自己滚 —— 结果不随滚动消失。
+ * .res-box 自己再限高滚动：掷 20 颗骰子时 chip 再多也不会把窗口撑开。 */
+.dice-result {
+  flex: 0 0 auto; min-height: 0;
+  display: flex; flex-direction: column; gap: 4px;
+  padding-top: 6px; border-top: 1px solid var(--line); background: #0b0f14;
+}
+.dice-result .res-head { display: flex; align-items: baseline; gap: 6px; }
+.dice-result .res-head h3 { margin: 0; font-size: 11.5px; font-weight: 700; color: var(--text); }
+.dice-result .sec-hint { font-size: 9.5px; }
+/* v1.7.4：320 宽的竖条窗口 —— 标题 / 副标题 / 底部状态行都不许把内容顶出去（截断成省略号）。 */
+body.dice-page .win-head .t { min-width: 0; overflow: hidden; }
+body.dice-page .win-head .t b,
+body.dice-page .win-head .t small {
+  display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+body.dice-page .win-foot { flex-wrap: wrap; gap: 4px; }
+body.dice-page .win-flash { white-space: normal; word-break: break-word; }
+body.dice-page .win-hint { white-space: normal; }
+.res-box { min-height: 0; max-height: 146px; overflow-y: auto; overflow-x: hidden; }
+.res-empty { color: var(--muted); font-size: 11px; line-height: 1.6; padding: 4px 2px; }
+.res-main { display: flex; align-items: center; gap: 7px; flex-wrap: wrap; }
 .res-total {
-  font: 800 34px/1 ui-monospace, "Cascadia Code", Consolas, monospace;
+  font: 800 26px/1 ui-monospace, "Cascadia Code", Consolas, monospace;
   color: var(--green); font-variant-numeric: tabular-nums;
 }
 .res-chips { display: flex; flex-wrap: wrap; gap: 3px; min-width: 0; }
-.res-tags { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 7px; }
+.res-tags { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 5px; }
 .res-tag {
-  font-size: 10.5px; color: var(--muted); border: 1px solid var(--line);
-  border-radius: 999px; padding: 1px 7px;
+  font-size: 10px; color: var(--muted); border: 1px solid var(--line);
+  border-radius: 999px; padding: 0 6px;
 }
 .res-tag.crit { color: #ffd75e; border-color: rgba(227, 179, 65, .5); background: rgba(227, 179, 65, .1); }
-.res-formula { margin-top: 6px; font-size: 11.5px; color: var(--muted); word-break: break-all; }
-.res-rows { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 4px; font-size: 11.5px; color: var(--muted); }
+.res-formula { margin-top: 4px; font-size: 10.5px; color: var(--muted); word-break: break-all; }
+.res-rows { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 3px; font-size: 10.5px; color: var(--muted); }
 .res-row b { color: var(--text); font-variant-numeric: tabular-nums; }
 .res-note {
-  margin: 8px 0 0; font-size: 11px; line-height: 1.6; color: #ffd0cd;
+  margin: 5px 0 0; font-size: 10px; line-height: 1.55; color: #ffd0cd;
   border: 1px solid rgba(248, 81, 73, .35); background: rgba(248, 81, 73, .08);
-  border-radius: 7px; padding: 5px 7px;
+  border-radius: 7px; padding: 4px 6px;
 }
 
 /* 骰子 chip（结果 / 历史共用）：crit 金色、fail 红色、loser 半透明、subtract 前缀 − */
 .die-chip {
   display: inline-flex; align-items: center; gap: 2px;
   border: 1px solid var(--line); border-radius: 6px; background: #0b0f14;
-  padding: 1px 5px; font-family: ui-monospace, "Cascadia Code", Consolas, monospace;
-  font-size: 11.5px; font-variant-numeric: tabular-nums; color: var(--text);
+  padding: 1px 4px; font-family: ui-monospace, "Cascadia Code", Consolas, monospace;
+  font-size: 10.5px; font-variant-numeric: tabular-nums; color: var(--text);
 }
-.die-chip b { font-size: 9px; font-weight: 700; color: #5f6d7c; margin-right: 2px; }
+.die-chip b { font-size: 8.5px; font-weight: 700; color: #5f6d7c; margin-right: 2px; }
 .die-chip.crit { border-color: rgba(227, 179, 65, .55); color: #ffd75e; }
 .die-chip.fail { border-color: rgba(248, 81, 73, .5); color: #ffb4b1; }
 .die-chip.loser { opacity: .35; text-decoration: line-through; }
 .die-chip.subtract { opacity: .75; border-style: dashed; }
 .mod-chip {
   display: inline-flex; align-items: center; border: 1px dashed rgba(86, 211, 100, .45);
-  border-radius: 6px; padding: 1px 5px; font-size: 11.5px; color: #9fd4a8;
+  border-radius: 6px; padding: 1px 4px; font-size: 10.5px; color: #9fd4a8;
   font-family: ui-monospace, "Cascadia Code", Consolas, monospace;
 }
 
@@ -523,9 +558,6 @@ body.dragging .pop-head { background: #17212b; }
 }
 .shake { animation: dice-shake .22s ease-in-out 2; }
 
-@media (max-width: 720px) {
-  .dice-left { max-height: 78vh; }
-}
 
 /* ---------- v1.3.1：独立窗口外壳（先攻 / 骰子 / 角色卡面板共用） ----------
  * 尺寸与视口的关系：窗口由后台用 OBR.viewport.getWidth()/getHeight() 夹紧后打开
@@ -677,17 +709,24 @@ body.bg-off .init-act, body.bg-off .btn:disabled { cursor: not-allowed; }
  *   折叠 120×40 / 展开 720×129|139|159；卡片 56×80，当前回合 100 高（向下凸出）；
  *   头像占 80%，底部合计占 24%，血条 4px 贴在合计上面，掷骰按钮上移 8px 藏在卡下面。 */
 body.strip-page { background: transparent; padding: 0; overflow: hidden; height: 100vh; }
+/* v1.7.3：先攻条外壳**透明**（用户：「先攻条背景设置成透明的」，挡住地图了）。
+ * 本文件顶部那条 html{background:var(--bg)} 会整块盖住地图（与 v1.7.1 动画页同一个坑），
+ * 所以 html 也要透明；initiative-page.js 会给 strip 视图的 html 挂 .strip-html（列表窗口不挂）。 */
+html.strip-html, html:has(body.strip-page) { background: transparent !important; }
 .strip-root { height: 100vh; }
+/* 外壳全透明：只有卡片自己是不透明的深色底（下面的 .initiative-item / .item-count）。 */
 .strip {
   position: relative; height: 100%;
   display: flex; flex-direction: column; gap: 2px;
   padding: 4px 8px 4px; overflow: hidden;
-  background: #10161d; border: 1px solid #2b3746; border-radius: 12px;
-  box-shadow: 0 8px 24px rgba(0, 0, 0, .5);
+  background: transparent; border: 0; border-radius: 12px;
+  box-shadow: none;
 }
 .strip.collapsed {
   flex-direction: row; align-items: center; gap: 4px;
   padding: 4px 6px; border-radius: 999px;
+  /* 折叠态药丸也透明：只剩图标 + 轮数徽标，给一层轻微阴影让人看得出它浮在地图上 */
+  background: transparent; box-shadow: 0 2px 10px rgba(0, 0, 0, .45);
 }
 .strip-open {
   flex: 0 0 auto; width: 26px; height: 26px; padding: 0;
@@ -699,11 +738,16 @@ body.strip-page { background: transparent; padding: 0; overflow: hidden; height:
   font-family: ui-monospace, "Cascadia Code", Consolas, monospace;
   font-size: 11px; color: #9fd4a8; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
-.strip.offline { border-color: rgba(248, 81, 73, .45); }
+/* 外壳没有边框了：离线提示挪到控制行（那一排本来就有一层半透明底，字看得清）。 */
+.strip.offline .strip-ctl { border-color: rgba(248, 81, 73, .55); }
 
+/* v1.7.3：控制行保留一层**半透明**底（rgba(11,15,20,.72)），否则透明外壳上的按钮 / 状态字压在地图上看不清。
+ * 只加 1px 边框 + 左右内边距，高度仍由 min-height 30 决定（先攻条三档高度不受影响）。 */
 .strip-ctl {
   flex: 0 0 auto; min-height: 30px;
-  display: flex; align-items: center; gap: 6px; padding: 0 2px; overflow: hidden;
+  display: flex; align-items: center; gap: 6px; padding: 0 6px; overflow: hidden;
+  background: rgba(11, 15, 20, .72); border: 1px solid rgba(43, 55, 70, .75);
+  border-radius: 10px;
 }
 .sc-left { display: flex; align-items: center; gap: 6px; flex: 0 0 auto; }
 .sc-right { margin-left: auto; display: flex; align-items: center; gap: 6px; min-width: 0; }
@@ -721,6 +765,7 @@ body.strip-page { background: transparent; padding: 0; overflow: hidden; height:
 .strip-status {
   font-size: 11px; color: #93a1b0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
   max-width: 240px; min-width: 0;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, .9);
 }
 .strip-status b { color: #e6edf3; }
 .strip-grip {
@@ -732,18 +777,22 @@ body.strip-page { background: transparent; padding: 0; overflow: hidden; height:
 body.dragging, body.dragging .strip-grip { cursor: grabbing; }
 body.sorting, body.sorting .initiative-item { cursor: grabbing; }
 
-/* v1.6.2：卡片区**内部横向滚动**（条宽固定 720，卡片再多也不会挤压整条）；
- * 卡片右侧的空列表区域保持**深色不透明**（与 .strip 同一个底色，不要透明 → 露出发白的画布）。 */
+/* v1.6.2：卡片区**内部横向滚动**（条宽固定 720，卡片再多也不会挤压整条）。
+ * v1.7.3：卡片区**不再铺深色**（取消 v1.6.2 的 #10161d）—— 右侧空列表区域直接透出地图，
+ * 只有卡片自己（.initiative-item / .item-count）是不透明深色。 */
 .strip-items {
   position: relative;
   flex: 1 1 auto; min-height: 80px;
   display: flex; align-items: flex-start; gap: 6px;
   overflow-x: auto; overflow-y: hidden; padding: 0 4px;
   scrollbar-width: none;
-  background: #10161d;
+  background: transparent;
 }
 .strip-items::-webkit-scrollbar { display: none; }
-.strip-empty { flex: 0 0 auto; padding: 10px 6px; font-size: 11.5px; color: #93a1b0; white-space: nowrap; }
+.strip-empty {
+  flex: 0 0 auto; padding: 10px 6px; font-size: 11.5px; color: #c3ccd6; white-space: nowrap;
+  text-shadow: 0 1px 3px rgba(0, 0, 0, .95);
+}
 .strip-error { padding: 10px; font-size: 12px; color: #ffb4b1; }
 
 /* 卡片：56×80；当前回合 100 高并向下凸出（规格 §3.5） */
@@ -819,6 +868,18 @@ body.sorting, body.sorting .initiative-item { cursor: grabbing; }
 }
 .end-turn-btn:hover { background: #1f3527; color: #d7ffe3; }
 
+/* v1.7.3：卡片右上角的 ✕（GM 点一下就把这枚 token 移出先攻）。
+ * 拖动排序（页面 onSortDown）会跳过 button，所以点 ✕ 不会变成拖拽。 */
+.item-del {
+  position: absolute; top: 2px; right: 2px; z-index: 6;
+  width: 16px; height: 16px; padding: 0; line-height: 1; font-size: 9px;
+  border-radius: 4px; border: 1px solid rgba(248, 81, 73, .55);
+  background: rgba(20, 27, 35, .88); color: #ffb4b1; cursor: pointer;
+}
+.item-del:hover { background: #5b1f1f; color: #fff; }
+/* 右上角「✕」真正关闭先攻条：别和「一键清空」混在一起（那个是 danger 红底）。 */
+.strip-btn.strip-close:hover { background: rgba(91, 31, 31, .9); color: #ffd0cd; }
+
 /* 拖拽排序的落位指示线（绝对定位，不占布局） */
 .drop-mark {
   position: absolute; top: 0; bottom: 0; width: 3px; z-index: 5;
@@ -841,9 +902,17 @@ body.sorting, body.sorting .initiative-item { cursor: grabbing; }
  * 整层 pointer-events:none：骰子不挡鼠标，动画期间照样能平移 / 选中地图
  * （与参考实现 dice-effect.html 顶部那段注释同一做法）。 */
 
+/* v1.7.1：**整页**透明 —— html 也必须是 transparent。
+ * v1.7.0 只把 body.fx-page 设成 transparent，可本文件顶部还有一条
+ * `html, body { background: var(--bg) }`：html 仍然是不透明的深色 #0b0f14，
+ * body 透明之后它就整块露出来 → 全屏 modal 变成一整片不透明黑，把地图盖死
+ * （用户真机截图「投掷怎么黑屏了」）。所以 html 也要 transparent；
+ * effect.html 里另有一份同样的内联规则（双保险，不依赖 :has 支持）。
+ * color-scheme 退回 normal：深色 color-scheme 会让浏览器给透明 iframe 垫一层深色 canvas。 */
+html:has(body.fx-page) { background: transparent !important; }
 body.fx-page {
   margin: 0; padding: 0; height: 100vh;
-  background: transparent !important; overflow: hidden; color-scheme: dark;
+  background: transparent !important; overflow: hidden; color-scheme: normal;
 }
 .fx-stage { position: fixed; inset: 0; overflow: hidden; pointer-events: none; }
 .fx-stage * { pointer-events: none !important; user-select: none; }
@@ -1031,3 +1100,83 @@ body.fx-page {
 }
 .dh-list.compact .dh-row:nth-child(n + 5) { display: none; }
 .dh-row { flex: 0 0 auto; }
+
+/* =====================================================================
+ * v1.7.2：血条组件编辑小窗（hp-edit.html，独立 popover 340×150）
+ * =====================================================================
+ * 为什么要它：右键「添加血条组件」过去只写 hp-bar/enabled，没绑定角色卡的怪物
+ * 没有任何入口填血量与四防。参考 FullPeople/obr-suite 的 hpBar 面板（320×78，
+ * 只有一条 HP）—— 我们多一排四防 + 回复力，所以高到 150。
+ *
+ * 版面三行：① 生命（20 / 20/20 / +5 / -3）+ 回复力（3/3）
+ *          ② 四防四个小框（AC / 强韧 / 反射 / 意志，留空 = 不画那枚盾）
+ *          ③ 状态行（提示 / 错误 / 已保存，右端是 window.js 的 win-flash）
+ * 颜色全部取 :root（--bg2 / --line / --green / --orange / --red），不引入第二套色板。
+ * 高度按「100vh 装下、内部不滚」写死：窗口本身由后台用 winSize() 夹进视口。 */
+body.hpe-page { padding: 6px; overflow: hidden; height: 100vh; }
+.hpe { height: calc(100vh - 12px); max-height: calc(100vh - 12px); }
+.hpe-head { padding: 2px 8px; gap: 6px; }
+.hpe-head .t {
+  min-width: 0; font-size: 12.5px; font-weight: 700; line-height: 1.4;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.hpe-head .t b { color: var(--text); }
+.hpe-head .sp { margin-left: auto; }
+.hpe-off {
+  flex: 0 0 auto; font-size: 10px; line-height: 1.5; color: var(--orange);
+  border: 1px solid rgba(227, 179, 65, .45); border-radius: 6px; padding: 0 5px;
+  white-space: nowrap;
+}
+.hpe-body {
+  flex: 1 1 auto; min-height: 0; overflow: hidden;
+  padding: 5px 8px 2px; display: flex; flex-direction: column; gap: 3px;
+}
+.hpe-row { flex: 0 0 auto; display: flex; align-items: center; gap: 5px; min-height: 24px; }
+.hpe-lab { flex: 0 0 auto; font-size: 11px; color: var(--muted); white-space: nowrap; }
+.hpe-in {
+  min-width: 0; height: 23px; padding: 0 6px;
+  border: 1px solid var(--line); border-radius: 7px;
+  background: #0e141b; color: var(--text);
+  font: 600 12.5px/1 ui-monospace, "Cascadia Code", Consolas, monospace;
+  font-variant-numeric: tabular-nums;
+  transition: border-color .15s, box-shadow .15s;
+}
+.hpe-in::placeholder { color: #56636f; font-weight: 400; letter-spacing: 0; }
+.hpe-in:hover { border-color: #34465a; }
+.hpe-in:focus {
+  outline: none; border-color: rgba(86, 211, 100, .65);
+  box-shadow: 0 0 0 2px rgba(86, 211, 100, .16);
+}
+.hpe-in[readonly] { opacity: .55; cursor: not-allowed; }
+.hpe-hp { flex: 1 1 auto; }
+.hpe-surge { flex: 0 0 64px; }
+.hpe-defs { gap: 4px; }
+.hpe-def { flex: 1 1 0; display: flex; align-items: center; gap: 3px; min-width: 0; }
+.hpe-def span { flex: 0 0 auto; font-size: 10.5px; color: var(--muted); white-space: nowrap; }
+.hpe-def .hpe-in { flex: 1 1 auto; width: 0; padding: 0 4px; text-align: center; }
+.hpe-status {
+  position: relative; flex: 1 1 auto; min-height: 14px;
+  display: flex; align-items: center;
+}
+.hpe-note {
+  flex: 1 1 auto; min-width: 0; font-size: 10.5px; line-height: 1.35; color: var(--muted);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.hpe-note.ok { color: #a8e6b0; }
+.hpe-note.warn { color: var(--orange); }
+.hpe-note.error { color: #ffb4b1; }
+/* window.js 的 feedback() 往 #win-flash 写一行；它压在提示行右侧（自己带底色盖住提示） */
+.hpe-status .win-flash {
+  position: absolute; right: 0; top: 0; bottom: 0; max-width: 62%;
+  display: flex; align-items: center; padding-left: 8px;
+  background: #10161d; font-size: 10.5px;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.hpe-status .win-flash:empty { display: none; }
+.hpe-foot { min-height: 26px; padding: 3px 8px; gap: 6px; justify-content: flex-end; }
+.hpe-foot .win-hint {
+  margin: 0 auto 0 0; font-size: 9.5px; color: #56636f;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.hpe-btn { padding: 3px 10px; font-size: 12px; border-radius: 7px; }
+

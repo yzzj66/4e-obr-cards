@@ -1,0 +1,65 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>4eNEXT to owlbear · 血条组件</title>
+<link rel="stylesheet" href="assets/ui.css">
+</head>
+<body class="win-page hpe-page">
+<!-- v1.7.2：血条组件编辑小窗（**独立 popover**，id = com.4enext-owlbear/hp-edit）。
+     为什么要有它：右键「添加血条组件」过去只写开关，没绑定角色卡的怪物 / 杂兵没有任何
+     入口填血量与四防（用户真机反馈）。参考 FullPeople/obr-suite 的 src/modules/hpBar/：
+     选中 token → 弹一个可拖动的小面板，里面就是「生命 / 四防 / 回复力」三个输入。
+     尺寸 340×150（参考实现只有一条 HP，所以它是 320×78；我们多一排四防 + 回复力）。
+     窗口壳（拖动 / 位置记忆 / 后台在线检测 / 统一反馈）与其它窗口共用 assets/window.js；
+     语法解析 / 夹取 / 权限 / 写盘在 assets/hp-edit-core.js（纯函数，Node 可测）。 -->
+<div class="win hpe">
+  <div class="win-head hpe-head" id="head" title="按住这里拖动窗口（位置会记住）">
+    <span class="grip" aria-hidden="true">⠿</span>
+    <div class="t"><b id="hpe-name">未命名</b></div>
+    <span class="hpe-off" id="hpe-off" hidden title="后台脚本没有响应：保存仍会写进 token，但血条要等后台恢复才会重画">后台未连接</span>
+    <div class="sp">
+      <button class="icon-btn" id="pin" title="回到默认位置（清除本窗口记住的位置）">⌖</button>
+      <button class="icon-btn" id="close" title="关闭编辑窗（血条组件保持开启）">✕</button>
+    </div>
+  </div>
+
+  <div class="hpe-body">
+    <div class="hpe-row">
+      <label class="hpe-lab" for="hpe-hp">生命</label>
+      <input class="hpe-in hpe-hp" id="hpe-hp" type="text" inputmode="numeric" autocomplete="off" spellcheck="false" data-bg-soft
+             placeholder="20 / 20/20 / +5 / -3"
+             title="20 = 设上限；20/20 = 当前/上限；+5 / -3 = 在当前值上加减；15+5 / 15-3 = 算式">
+      <label class="hpe-lab" for="hpe-surge">回复力</label>
+      <input class="hpe-in hpe-surge" id="hpe-surge" type="text" inputmode="numeric" autocomplete="off" spellcheck="false" data-bg-soft
+             placeholder="3/3" title="当前/上限；留空 = 不画蓝色回复力条">
+    </div>
+
+    <div class="hpe-row hpe-defs">
+      <span class="hpe-lab">四防</span>
+      <label class="hpe-def" title="AC（护甲等级）"><span>AC</span>
+        <input class="hpe-in" id="hpe-def-ac" data-bg-soft type="text" inputmode="numeric" autocomplete="off" placeholder="—"></label>
+      <label class="hpe-def" title="强韧（Fortitude）"><span>强韧</span>
+        <input class="hpe-in" id="hpe-def-fort" data-bg-soft type="text" inputmode="numeric" autocomplete="off" placeholder="—"></label>
+      <label class="hpe-def" title="反射（Reflex）"><span>反射</span>
+        <input class="hpe-in" id="hpe-def-reflex" data-bg-soft type="text" inputmode="numeric" autocomplete="off" placeholder="—"></label>
+      <label class="hpe-def" title="意志（Will）"><span>意志</span>
+        <input class="hpe-in" id="hpe-def-will" data-bg-soft type="text" inputmode="numeric" autocomplete="off" placeholder="—"></label>
+    </div>
+
+    <div class="hpe-status">
+      <span class="hpe-note" id="hpe-note">填生命上限（比如 20）就能画出第一根血条</span>
+      <span class="win-flash" id="win-flash"></span>
+    </div>
+  </div>
+
+  <div class="win-foot hpe-foot">
+    <span class="win-hint">留空四防 = 不画那枚盾 · Enter 保存 · Esc 关闭</span>
+    <button class="btn small ghost hpe-btn" id="hpe-cancel" type="button" data-bg-soft>取消</button>
+    <button class="btn small primary hpe-btn" id="hpe-save" type="button" data-bg-soft>保存</button>
+  </div>
+</div>
+<script type="module" src="assets/hp-edit-page.js"></script>
+</body>
+</html>

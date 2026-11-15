@@ -3,7 +3,8 @@
 > 实现说明。规格见 [`spec-hpbar-boss.md`](spec-hpbar-boss.md)（**本任务不改规格文件**）。
 > 代码落点：`assets/background.core.js` 第 7 节（画布层）、`assets/track.js`（读写与动作语义）、
 > `assets/glance.js` + `assets/glance.css`（速览面板）、`assets/info.js`（速览刷新时补写）。
-> 版本 `1.6.1`（v1.6.0 的真机已验证血条能画；v1.6.1 **只**把四防从四角改成一排）；
+> 版本 `1.7.5`（v1.6.0 的真机已验证血条能画；v1.6.1 把四防从四角改成一排；
+> v1.7.5 **只**把那一排的三防改成圆、缩小，AC 与全部位置公式不变）；
 > `node dev/selftest.mjs` 全绿（check / test-background / test-initiative / test-track / test-dice）。
 >
 > **v1.6.1 一句话**：四防从「token 四角」改成「**一排**」——强韧 / 反射 / 意志 从左到右 + **AC 最右（半透明白色图标）**，
@@ -18,7 +19,8 @@ v1.5.0 只有「HP 胶囊条 + cur/max +temp」。v1.6.0 在同一枚 token 上�
 
 - **HP 红条**（20s）+ 临时生命 `+N`（红字在右侧，`144/144 +7` 那样）；
 - **蓝色回复力条**（12s）在 HP 条下方，间距 3s，共用 left / w（`13/13`）；
-- **四防一排**（强韧 / 反射 / 意志 从左到右 + AC 最右，直径 30s 的盾 + 数字；v1.6.1 从四角改成一排）；
+- **四防一排**（强韧 / 反射 / 意志 从左到右 + AC 最右；v1.6.1 从四角改成一排，
+  v1.7.5 起三防是 22s 的圆、AC 仍是 30s 的盾）；
 - 右键 **「添加血条组件 / 移除血条组件」**、**「显示为 Boss / 隐藏 Boss 血条」**；
 - **Boss 样式（方案 A：token 附带）**：48 段环形血条 + 名牌 + 分段线 + 锁，并压制普通 HP 条。
 
@@ -42,6 +44,27 @@ v1.5.0 只有「HP 胶囊条 + cur/max +temp」。v1.6.0 在同一枚 token 上�
 **没动的**：HP 条（`BAR_HP_H` / `BAR_SURGE_H` / `BAR_GAP` / `BAR_PAD` 与 `hpTop` / `surgeTop` 公式）、
 HP 文本内容与位置、蓝色回复力条、Boss 环 / 名牌 / 分段 / 锁的全部数值与位置、zIndex 表、玩家端 `locked` 口径。
 Boss 环形态下这一排照旧在 HP 条（此时被压制隐藏）的上方、按 zIndex 15000 画在环（9800）之上。
+
+---
+
+## 0.6 v1.7.5：四防一排改样式（3 个圆 + 1 个 AC 盾）
+
+用户对照图 1 / 图 2（2026-11-15）：「强韧 / 反射 / 意志 要做成**圆**，圆形和字都小一号；**AC 保持半透明白盾、别动**」。
+本版**只**动这一排的外形与字号，位置 / 顺序 / 数值 / 退化顺序一个字没改。
+
+| 项目 | v1.6.1 ~ v1.7.4 | v1.7.5 |
+| --- | --- | --- |
+| 强韧 / 反射 / 意志 外形 | 盾形多边形（`shieldPoints`，直径 30s） | **圆形**（`circlePoints`，24 段折线，直径 **22s**） |
+| AC 外形 | 盾形多边形（30s）+ 半透明白 | **不变**（同一函数、同一 30s、白 @0.18 + 白描边 @0.85） |
+| 数字字号 | 一律 `d−8s`（两位）/ `d−15s`（三位） | AC **不变**（22 / 15）；圆按直径取一半 → **11（两位）/ 10 左右（三位）** |
+| 一排宽度 | `n×d + (n−1)×6s`（等距） | **Σ 各枚直径 + (n−1)×6s**（两种直径混排；四枚 = 22×3 + 30 + 18 = **114s**） |
+| 圆心 / 盾心 | 同一 y（`rowCY = hpTop − gap − d/2`） | **同一 y**（`rowCY = hpTop − gap − max(22s,30s)/2`）→ AC 的**上下位置**与 v1.6.x 完全一致（整排变窄后仍居中，x 会跟着重排） |
+| 顺序 / 居中 | 强韧 → 反射 → 意志 → AC，整排按 token 中线居中 | **不变**（AC 仍最右；整排仍居中，只是因为变小了整体窄了 24s） |
+| 窄 token 退化 | `fit = floor((availW + 6s)/(30s + 6s))` 枚 | **顺序不变**（先丢意志 → 反射 → 强韧，AC 最后），**阈值**按 22s 重算（见 §3） |
+
+> 为什么不用 SDK 的 `ShapeType.CIRCLE`：本文件的盾 / 环 / 锁 / 名牌全走 `buildCurve().points()`
+> （同一套「锚点在左上角、y 向下」的坐标与 `closed(true)/tension(0)` 尾巴），圆也用同一种画法，
+> 构建（`buildBarItems`）与增量刷新（`patchBar`）才能共用一个 `defShapePoints()`。
 
 ---
 
@@ -115,7 +138,7 @@ interface HpMetaV2 {
 | `plate` | 12000 | Boss 名牌底 | Boss |
 | `plate-text` | 12400 | Boss 名字（14s） | Boss |
 | `plate-phase` | 12450 | 阶段（10s，#e3b341；牌太窄时省略） | Boss 且 phase 非空 |
-| `shield` | 15000 | 四防盾（最多 4 枚，**v1.6.1 起是一排**：fort/reflex/will 实色 + AC 半透明白） | 有 defenses 且这一排放得下 |
+| `shield` | 15000 | 四防（最多 4 枚，**v1.6.1 起是一排**：fort/reflex/will 是**圆**（v1.7.5，直径 22s）+ AC 是**半透明白盾**（30s）） | 有 defenses 且这一排放得下 |
 | `shield-text` | 16000 | 四防数字（最多 4 个，与盾一一对应，`key` 同上） | 同上 |
 | `bar-fill` | 20000 | HP 填充（#a52424 @0.85） | 有 hp |
 | `surge-fill` | 20500 | 回复力填充（#58a6ff @0.9） | 有 surges |
@@ -155,11 +178,12 @@ sig = [cur, max, temp, surges, surgesMax, defenses.join(","),
 | 左右内缩 | `BAR_PAD` | 2 | 宽 `max(2×hHp, token 宽 − 2×pad)` |
 | HP 底 / 填充 | — | — | `#A4A4A4 @0.6` / `#a52424 @0.85` |
 | 回复力底 / 填充 | — | — | `#1a222c @0.85` / `#58a6ff @0.9` |
-| 四防盾直径 | `SHIELD_DIAMETER` | 30 | fort `#e3b341` / reflex `#56d364` / will `#a371f7`（fill @0.9）；**AC `#ffffff` 半透明（fill @0.18 + 白描边 @0.85）** |
-| 四防盾间距 | `DEF_GAP` | 6 | v1.6.1：一排四枚，圆心间距 = `d + 6s`（四枚连排 = 4d + 3×6s = 138s） |
-| 四防一排位置 | `rowCY = hpTop − gap − d/2` | — | 整排在 **HP 红条上方** gap（3s）处；从左到右 **强韧 / 反射 / 意志 / AC**，同一行 y 相同、x 递增 |
+| 四防直径 | `SHIELD_DIAMETER`（AC 盾）/ `DEF_CIRCLE_DIAMETER`（三防圆） | 30（盾）/ **22**（圆） | v1.7.5：fort `#e3b341` / reflex `#56d364` / will `#a371f7` 是**圆**（fill @0.9）；**AC 仍是 `#ffffff` 半透明盾（fill @0.18 + 白描边 @0.85）**，尺寸 30s 不变 |
+| 圆的折线段数 | `DEF_CIRCLE_SEGMENTS` | 24 | 24 段在 token 尺寸下已看不出角，点数只有盾形（87 点）的 1/4 |
+| 四防间距 | `DEF_GAP` | 6 | v1.7.5 起**两种直径混排**：相邻两枚的**边缘**间距 = 6s，圆心距 = 两枚半径之和 + 6s（四枚连排 = 22×3 + 30 + 3×6 = **114s**；v1.6.x 是 138s） |
+| 四防一排位置 | `rowCY = hpTop − gap − max(dAc,dDef)/2` | — | 整排在 **HP 红条上方** gap（3s）处；从左到右 **强韧 / 反射 / 意志 / AC**，**圆心 / 盾心同一 y**、x 递增。v1.7.5 仍按最高那枚（AC 的 30s 盾）算 rowCY → **AC 的上下位置与 v1.6.x 完全一致**，三枚圆上下各往里收 4s（整排变窄后仍按中线居中，x 跟着重排） |
 | 四防盾离边 | `SHIELD_INSET` | 4 | 可用宽度 = 条宽 `w − 2×4s`；整排以 token 中线居中，右缘不越出条的右缘 |
-| 盾数字字号 | `≤2 位 = d−8s；3 位 = d−15s` | 22 / 15 | 白字 + 黑描边（AC @0.85，三防 @0.7） |
+| 四防数字字号 | AC：`d−8s` / `d−15s`；圆：`d×0.5` / `d×0.45` | AC 22 / 15；圆 **11 / 10** | 白字 + 黑描边（AC @0.85，三防 @0.7）。v1.7.5：AC 字号一个字没动，圆里的数字小一号 |
 | Boss 环内缩 | `BOSS_RING_INSET` | 2 | `Ro = min(宽,高)/2 − 2s` |
 | Boss 环厚 | `BOSS_RING_THICK` | 10 | `T = clamp(10s, 6s, Ro×0.30)`，`Ri = Ro − T` |
 | Boss 环段数 | `BOSS_RING_SEGMENTS` | 48 | 每环 96 点；**不要 128**（脏矩形重绘翻倍） |
@@ -174,15 +198,15 @@ sig = [cur, max, temp, surges, surgesMax, defenses.join(","),
 | zIndex | 见 §2.1 | 9500~31050 | 固定 + `disableAutoZIndex` |
 | 玩家端阶梯 | `PLAYER_THRESHOLD_DEFAULT` | 25（%） | 向上取整：60% → 75% |
 
-**退化规则（v1.6.1 重写；选「丢盾」，不选「整体缩小」）**：
+**退化规则（v1.6.1 重写；v1.7.5 起按 22s 的圆重算阈值；选「丢盾」，不选「整体缩小」）**：
 
-- 这一排最多放得下 `fit = floor((w − 2×inset + 6s) / (30s + 6s))` 枚盾；
+- 一排的宽度 = `Σ 各枚直径 + (n−1)×6s`（`defRowWidth()`；三防 22s、AC 30s），可用宽度 = `w − 2×inset`；
 - 放不下时按 `DEF_DROP = ["will","reflex","fort"]` 丢 → **先丢意志，再丢反射，再丢强韧**，
   **AC 永远优先保留**（不在 `DEF_DROP` 里 = 最后才丢）；剩下的枚数重新居中，不留空档；
-- `fit < 1`（连一枚都放不下）或这一排会顶出 token 上沿（`rowCY − d/2 < token 顶 + inset`）→ **整排不画**，
+- 一枚都放不下（连 AC 也放不下）或这一排会顶出 token 上沿（`rowCY − max(d)/2 < token 顶 + inset`）→ **整排不画**，
   四防仍可在速览面板里看；
-- s=1 的方 token 上四枚正好排得下（4×30 + 3×6 = 138 ≤ w = 146），只有**很小 / 很低 dpi** 的 token 才会退化
-  （s 有 0.2 的下界，所以 14×40 这种小 token 上只剩 1 枚 AC）。
+- s=1 的方 token 上四枚排得下（22×3 + 30 + 18 = 114 ≤ w = 146），只有**很小 / 很低 dpi** 的 token 才会退化
+  （s 有 0.2 的下界，所以 13×40 这种小 token 上只剩 1 枚 AC；20×20 能放 3 枚 —— 只丢意志）。
 
 ---
 
@@ -197,13 +221,15 @@ surgeTop = bounds.max.y − pad − hSurge          // 蓝条贴底边内侧
 hpTop    = showSurge ? surgeTop − gap − hHp
                      : bounds.max.y − pad − hHp // 没有回复力数据 → 与 v1.5.0 完全一致
 
-d = 30s ; inset = 4s ; g = DEF_GAP·s = 6s
-rowCY = hpTop − gap − d/2                          // v1.6.1：整排在 HP 红条上方（不再占四角）
-fit   = floor((w − 2·inset + g) / (d + g))         // 这一排最多放几枚（<1 就整排不画）
-keys  = 先按 DEF_ROW 收下所有存在的四防，再按 DEF_DROP（will→reflex→fort）删到 ≤ fit
+dAc = 30s ; dDef = 22s ; dMax = max(dAc, dDef) = 30s   // v1.7.5：AC 盾 30s、三防圆 22s
+inset = 4s ; g = DEF_GAP·s = 6s
+rowCY = hpTop − gap − dMax/2                        // v1.6.1：整排在 HP 红条上方（v1.7.5 仍按最高那枚算 → AC 不动）
+rowW  = Σ d(key) + (n−1)·g                          // 两种直径混排（四枚 = 22×3 + 30 + 3×6 = 114s）
+keys  = 先按 DEF_ROW 收下所有存在的四防，再按 DEF_DROP（will→reflex→fort）删到 rowW ≤ w − 2·inset
         // → AC 永远保留；删完重新居中，AC 仍是最右那枚
-n     = keys.length ; rowW = n·d + (n−1)·g ; xFirst = center.x − rowW/2 + d/2
-shield[i] = { x: xFirst + i·(d + g), y: rowCY }     // i = 0..n−1：y 相同、x 从左到右递增
+n     = keys.length ; cursor = center.x − rowW/2
+shield[i] = { x: cursor + d(key)/2, y: rowCY } ; cursor += d(key) + g
+        // i = 0..n−1：圆心 / 盾心同一 y、x 从左到右递增（圆 22 / 盾 30）
 
 Ro = min(w,h)/2 − 2s ; T = clamp(10s, 6s, Ro·0.30) ; Ri = Ro − T
 环：a0 = −90°，sweep = ratio×360°，外弧 0→1 + 内弧 1→0，closed=true，tension=0
@@ -321,3 +347,103 @@ ref → reflex 的换算只在 track.js#defensesFromDerived（一处）
 | `README.md` | 顶部安装地址保留；功能表加「血条扩展 + Boss 样式」 |
 | `docs/hpbar-boss-v16.md` | 本文件 |
 | `docs/spec-*.md` | **未改**（规格是只读输入） |
+---
+
+## 12. v1.7.2：血条组件编辑小窗（HP / 四防 / 回复力）
+
+### 12.1 为什么加（用户真机）
+
+v1.6.0 的右键「添加血条组件」只写了一个开关 `com.4enext-owlbear/hp-bar/enabled = true`，
+**没有任何入口填数值**：
+
+- 绑定过角色卡的 token 还能在「速览弹窗」里加减血量（`info.html`）；
+- **没绑定角色卡的怪物 / 杂兵**（本来就没有卡）右键「添加血条组件」之后 → 血条画不出来 / 全是空值 ✗。
+
+参考实现 `FullPeople/obr-suite` 的 `src/modules/hpBar/index.ts` 是「选中 token → 弹一个可拖动的编辑
+popover」，`edit.ts` 负责写盘（校验 + 夹取），`target.ts` 负责「现在该编辑谁」的版本租约
+（规格 §2.2 / §2.6 已摘录）。本版按这个思路补一个**小窗**，不新开数据键。
+
+### 12.2 交互
+
+| 动作 | 结果 |
+| --- | --- |
+| 右键「添加血条组件」 | ① 写 `hp-bar/enabled = true`；② 打开 `hp-edit.html`（popover id `com.4enext-owlbear/hp-edit`，**340×150**，可拖动、位置按窗口名 `hpEdit` 记）；③ 广播 target |
+| 窗里的「生命」 | `20` = 设上限（原来没有当前值 → 满血 20/20，已有当前值 → 夹到不超过新上限）；`20/20` = 当前/上限；`+5` / `-3` = 在当前值上加减（没有上限时拒绝，提示先设上限）；`15+5` / `15-3` = 算式；看不懂的输入**保留原值**并提示 |
+| 窗里的「四防」 | AC / 强韧 / 反射 / 意志四个小框；**留空 = 那个字段不写 = 那枚盾不画**（规格 §6.1 的字段级规则），四个都空 → 把 `defenses` 整个从 metadata 删掉 |
+| 窗里的「回复力」 | `3/3` = 当前/上限；`3` = 当前（上限跟着长）；`+1` / `-1` = 加减；留空 = 不动 |
+| 保存 | 写 `com.4enext-owlbear/hp`（`cur/max/temp/surges/surgesMax/defenses/updatedAt`，其它字段如 `boss` / `locked` 原样保留），并顺手把 `hp-bar/enabled` 置 true → 血条立刻刷新 |
+| 取消 / ✕ / Esc | 只关窗，**不写任何数据**；Enter = 保存 |
+| 已绑定角色卡 | 先把卡里算出的 **上限 / 回复力 / 四防** 填进输入框（token 上**已有**的值优先——那才是真实状态，别把掉的血盖回去）；窗口状态行提示「已按绑定角色卡带入默认值」 |
+| 移除血条组件 | 照旧写 `false`、**不删 hp 数据**，下次「添加血条组件」能恢复（与 v1.6.0 一致） |
+
+### 12.3 权限（只读分支）
+
+- **城主** 或 **这枚 token 的创建者**（`item.createdUserId === playerId`）才能编辑；
+- 其他人打开是**只读**：输入框 `readOnly`、隐藏保存按钮、状态行写「只读：只有城主或这枚 token 的创建者能改血量与四防」；
+- 写失败的**任何**分支都 `OBR.notification.show(…, "ERROR")`（`feedback()` 同时写窗口内红字），不静默：
+  token 已删除 / 权限变了 / OBR 拒绝写 → 都有明确文案。
+
+### 12.4 写盘路径与两次校验（照 `edit.ts` 的口径）
+
+**写盘在页面里**（`assets/hp-edit-page.js` → `assets/hp-edit-core.js` 的 `writeHpEdit`），
+用 `OBR.scene.items.updateItems` 直写 token 元数据 —— token 元数据不需要后台，所以**后台挂掉时照样存得住**：
+
+```
+读最新（getItems） → 权限（mayEditToken）
+  → updateItems(ids, drafts => {
+        第二次权限校验（draft 是延迟执行的：期间 token 可能被删 / 换了创建者）
+        metadata[hp] = applyHpEdit(旧值, patch, now)   // 跨字段夹取
+        metadata[hp-bar/enabled] = true
+    })
+  → 广播 CH_HP_EDIT_SAVED（后台立刻重画，不等 items.onChange）
+```
+
+夹取（每次都做）：`max ≥ 1`、`−max ≤ cur ≤ max`、`temp ≥ 0`、`0 ≤ surges ≤ surgesMax`、
+`defenses.* ≥ 0`（缺的键不写）；`defenses` 为空对象时**删键**而不是写 `null`（别把 token 撑大）。
+
+### 12.5 编辑窗 ↔ 后台（规格 §2.2 的简化版）
+
+| 频道 | 方向 | 载荷 |
+| --- | --- | --- |
+| `com.4enext-owlbear/hp-edit-target` | 后台 → 页面（LOCAL） | `{ session, version, itemId, pending }` |
+| `com.4enext-owlbear/hp-edit-ready` | 页面 → 后台（LOCAL） | `{ session }`（页面加载完要一次补发，防丢第一条广播） |
+| `com.4enext-owlbear/hp-edit-saved` | 页面 → 后台（LOCAL） | `{ itemId, hp }`（后台 `scheduleBars()` 立刻重画） |
+
+页面侧用 `createHpEditLease(session)`（`hp-edit-core.js`）：**session 必须一致 + version 严格递增**，
+`accept()` 成功后 `epoch++`，`capture()` 拿到的 `itemId` 在 `epoch` 变了之后自然失效 —— 于是乱序包、
+上一轮后台的残包、`A → B → A` 都不会把输入框刷成别的 token。内容没变的 target 不重复发（幂等）。
+
+### 12.6 文件
+
+| 文件 | 内容 |
+| --- | --- |
+| `hp-edit.html`（新） | 340×150 的窗口壳（`#head` 拖动区 / `#pin` / ✕）+ 三行输入 + 状态行 + 底栏 |
+| `assets/hp-edit-page.js`（新） | DOM：读 `?item=` → 读 token / 角色卡 → 填表 → 保存 / 取消 / Enter / Esc → 租约 / ready / saved |
+| `assets/hp-edit-core.js`（新） | 纯逻辑（无 OBR / 无 DOM）：`parseHpInput` / `parseSurgeInput` / `parseDefenseInput` / `buildHpEditPatch` / `applyHpEdit` / `mayEditToken` / `writeHpEdit` / `hpEditView` / `hpText` / `surgeText` / `defText` / `createHpEditLease` |
+| `assets/background.core.js` | `ID_HP_EDIT` / `URL_HP_EDIT` / `WINS.hpEdit`（340×150）、`openWin(name, urlOverride)`、`openHpEdit`、`publishHpEditTarget`、`onHpEditReady` / `onHpEditSaved`、菜单「添加血条组件」→ `onHpBarAdd`（写开关 + 开窗） |
+| `assets/common.js` | `ID_HP_EDIT` / `URL_HP_EDIT` / 三个频道常量；`PLUGIN_VERSION = "1.7.2"` |
+| `assets/ui.css` | 末尾追加 `.hpe-*`（深色 + 绿，沿用 `:root` 变量，没有第二套色板） |
+| `dev/check.mjs` | 新增 v1.7.2 一节：页面 / 脚本 / 样式存在、popover id 两端一致、四防四个字段、`parseHpInput` 存在、保存写 hp、manifest 仍无 action、版本全链路 1.7.2 |
+| `dev/test-background.mjs` | 新增 v1.7.2 一节：语法（20 / 20/20 / +5 / -3 / 15+5 / 看不清）、夹取、**空四防 = 删键且一枚盾都不画**、权限分支、租约乱序、右键写 true + 开窗 + 保存后重画 |
+| `dev/selftest.mjs` | 注释补 v1.7.2（步骤仍是 5 条：hp-edit 的断言并进 `test-background`） |
+| `README.md` / `index.html` / `docs/hpbar-boss-v16.md` | 功能表 / 说明 / 本文件 |
+
+**没动的**：`docs/spec-*.md`（规格只读）、`vendor/`、`data/`、`samples/`、`manifest` 的字段（仍然**没有 action**）、
+`dev/test-dice.mjs` / `dev/test-track.mjs` / `dev/test-initiative.mjs`（除 manifest 版本断言）。
+
+### 12.7 自测
+
+```
+node dev/selftest.mjs        # check / test-background / test-initiative / test-track / test-dice，5/5
+node dev/test-background.mjs # v1.7.2 那一节：语法 / 夹取 / 空四防 / 权限 / 租约 / 开窗
+```
+
+### 12.8 已知限制
+
+1. **没在真实房间验证**（开发环境禁止启动浏览器）：340×150 是按三行输入 + 底栏算的，
+   真机觉得挤只改 `background.core.js` 的 `HPE_W` / `HPE_H`（页面按 `100vh` 排版，会自动跟着变）。
+2. 「生命」输入一个裸数字 = **设上限**（不是参考实现的「设当前值」）：本项目怪物多数是从「没有上限」开始的，
+   输入 `20` 直接得到 20/20 最省事；要让当前值低于上限请写 `12/20`。
+3. 编辑窗只写 `hp` 与 `hp-bar/enabled`；Boss 开关、`locked` 仍然走右键菜单 / 速览（同一份数据，两个入口不打架）。
+4. 玩家端 `locked` 仍然只是「本机不画数字」，metadata 对全桌可读（与 v1.6.0 相同，锁不是加密）。
+

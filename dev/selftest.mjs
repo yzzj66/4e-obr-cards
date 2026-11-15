@@ -22,6 +22,24 @@
 // 与骰子窗口各自开关、40 条封顶删最旧）；② **投骰动画**（effect.html + 纯 CSS 关键帧，布局 / 时间轴公式在
 // dice-core.js 的 fx*；modal 参数 fullScreen + hideBackdrop + hidePaper + disablePointerEvents；可开关、可降级）；
 // ③ 去掉「豁免」「先攻」两个 4E 预设（先攻条自带投先攻）。
+// v1.7.1 再补：投骰动画**整页完全透明**（v1.7.0 只透明了 body，ui.css 的 html{background:var(--bg)}
+// 仍是深色 → 全屏 modal 把地图整块盖住）；现在连 html 一起 transparent，并给关闭加了三级：
+// 播完 2600 ms → 兜底 3000 ms（FX_CLOSE_FALLBACK_MS）→ ESC / 点击任意处立即关。
+// check 断言「无深色纯色 background / 有兜底 close」，test-dice 断言「播完 modal.close / 兜底 close / ESC 立即关」。
+// v1.7.2 再补：**血条组件编辑小窗**（hp-edit.html + assets/hp-edit-page.js + assets/hp-edit-core.js）——
+// 右键「添加血条组件」改成「写开关 + 打开 340×150 编辑窗」，窗里填生命（20 / 20/20 / +5 / -3 / 15+5）、
+// 四防（AC / 强韧 / 反射 / 意志，留空 = 不画那枚盾）与回复力（3/3），保存写 token metadata
+// com.4enext-owlbear/hp；权限 = 城主 or token 创建者，写失败 ERROR 通知；编辑窗 ↔ 后台用
+// target / ready / saved 三个频道（规格 §2.2 的版本租约简化版）。
+// 为了保持「5 条独立进程」，hp-edit 的断言**并进 dev/test-background.mjs**（check 断言静态接线）。
+// v1.7.3 再补：先攻的三件事 + 一条样式 ——
+//   ① 右键菜单动态互斥（已在先攻里只显示「移出先攻」；ContextMenuIconFilter 没有 none，
+//      所以靠 token 元数据 in-init 镜像 + filter 的 metadata 条件，见 background.core.js 5.1）；
+//   ② token 被删除 → 条目自动清理 + 游标顺移（「见过 → 消失」才算删除，切场景不清名单），
+//      先攻条卡片上 GM 还有 ✕ 直接移出；
+//   ③ 先攻条外壳透明（html / .strip / .strip-items 透明，卡片仍不透明，控制行半透明）+
+//      常驻（进入房间按 4enext/strip-autostart 自动开、disableClickAway、「✕」记会话级关闭）。
+// test-initiative 断言行为（菜单 filter / 移出 / 清理 / 自动显示三态），check 断言静态接线与 CSS。
 // 每条都是独立进程（stdio 直接继承，不经管道，避免某些环境禁止子进程管道）。
 // 任何一条非 0 就整体返回 1，并在最后打印汇总表。
 import { spawnSync } from "node:child_process";

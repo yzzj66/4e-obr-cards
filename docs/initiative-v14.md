@@ -185,3 +185,72 @@ v1.3.x 的**列表窗口还在**（`initiative.html?view=list`，popover id `/in
 **自测**：`dev/test-initiative.mjs` 新增「同一 phase 下无论内容长度如何，尺寸完全相同」、
 「折叠 120×40 与展开三档高度不随内容变」；`dev/check.mjs` 断言 `stripSizeFor` 里没有测量值参与、
 `initiative-page.js` 里没有 `scrollWidth`、全仓没有 `measureWidth`。
+
+## 13. v1.7.3：移出先攻 / 删除自动清理 / 外壳透明 / 常驻显示
+
+用户真机反馈两件事，外加两条追加要求，全部在 v1.7.3 一起处理。
+
+### 13.1 右键菜单改成动态（「移出先攻」）
+
+* 现象：右键**只有**「加入先攻」「隐形加入先攻」，没有「移出先攻」→ 用户原话「移除先攻后不会从先攻条上去除」。
+* 限制（以 SDK 3.1.0 + 官方 API 文档为准）：
+  * `OBR.contextMenu` 只有 `create` / `remove`，**没有 `update()`**；
+  * `ContextMenuIconFilter` 只有 `min / max / permissions / roles / every / some` —— **没有 `none`**，
+    所以做不到「排除名单里的这些 tokenId」；
+  * filter 只能读被右键的 **item 自己的字段**，读不到房间数据（先攻名单在 `room.metadata` 里）。
+* 做法：把「在不在先攻里」**镜像到 token 元数据** `com.4enext-owlbear/in-init`（与 v1.6.0 的
+  `hp-bar/enabled` 完全同一套做法），菜单只注册一次，显示 / 隐藏由 filter 读这个键：
+  * 「移出先攻」→ `every` 加 `{ key: ["metadata", "…/in-init"], value: true }`；
+  * 「加入先攻」「隐形加入先攻」→ `every` 加 `{ …, operator: "!=", value: true }`（同时覆盖 undefined 与 false）。
+  于是「已在先攻里 → 只显示移出先攻，不在 → 只显示两项加入」。
+* 镜像由 `syncInitFlags()` 维护（只写需要改的 IMAGE token）：本机加入 / 移出、自动清理之后，
+  以及 `room.onMetadataChange`（页面或别的机器改了名单，300 ms 合并）与进房间时各对齐一次；
+  失败的写法是写 `false` 而不是 `delete`（`!=` true 的 filter 照样成立）。
+* 「移出先攻」= `initRemove()` 从 `entries` 删掉该 tokenId（`init` 值不动）→ 写房间数据 → 通知「已移出先攻」。
+  万一镜像过期（名单已被别人改过），点了只会提示「已经不在先攻里了」并立刻重新对齐镜像。
+
+### 13.2 token 被删除 → 条目自动清理 + 游标顺移
+
+* 订阅 `scene.items.onChange` → 400 ms 合并 → `pruneMissingInitEntries()`（只有 GM 会写房间数据）。
+* **只清「这台机器见过、现在不见了」的 token**（`initKnownTokens`）：
+  切场景时 OBR 的 `getItems()` 只返回新场景的 item，如果直接按「不在 items 里」删，
+  换个场景就会把整条先攻清空。所以场景 ready / 换场景只**刷新**见过集合（并静音 1.2 s），不清理。
+* 删掉当前回合那张 → 游标**顺移**到原位置的下一条（没有下一条就指最后一条）；删空 → `activeId = ""`、`round = 1`。
+  规则与 `initiative.js` 的 `removeEntry` 完全一致（`missingEntryIds` / `pruneMissingEntries` 是同一套的页面侧版本）。
+* 先攻条上 GM 的卡片右上角新增 **✕**（`data-strip-act="remove"`）：不用开列表窗口，点一下直接移出。
+  玩家看不到这个按钮（房间数据只有城主能写）。
+
+### 13.3 外壳背景透明（卡片仍不透明）
+
+| 位置 | 改动 |
+| --- | --- |
+| `assets/ui.css` `.strip` | `background: transparent`、去掉边框与投影（外壳完全不挡地图） |
+| `assets/ui.css` `.strip-items` | 去掉 v1.6.2 的 `#10161d`：右侧空列表区域透出地图 |
+| `assets/ui.css` `.strip-ctl` | 控制行保留半透明底 `rgba(11,15,20,.72)`（按钮 / 状态字要看得清） |
+| `assets/ui.css` `.strip.collapsed` | 折叠态药丸也透明，只留 `0 2px 10px rgba(0,0,0,.45)` 的轻微阴影 |
+| `assets/ui.css` `.initiative-item` | **不动**：卡片仍是不透明深色底 `#141b23`（透明就看不清了） |
+| `ui.css` + `initiative.html` | `html` 也 `transparent`（`html:has(body.strip-page)` + `html.strip-html` 内联兜底）—— 与 v1.7.1 修动画页黑屏同一个坑 |
+| `assets/initiative-page.js` | 只在先攻条视图给 `<html>` 挂 `.strip-html`；列表窗口（`?view=list`）仍是不透明窗 |
+
+### 13.4 常驻显示（不用点了才出来）
+
+* `disableClickAway: true` 从 v1.4.0 起就有，本版确认保留 → 点地图不会关。
+* **进入房间自动打开**：boot 与 `scene.onReadyChange` 都走 `maybeAutoOpenStrip()` ——
+  本机设置 `4enext/strip-autostart` 不是 `"0"`（**默认开**）且场景就绪就打开。
+* **本机开关**：设置窗口新增「先攻」分栏 →「进入房间自动显示先攻条 开 / 关」
+  （读写走 `common.js` 的 `readStripAutostart / writeStripAutostart`，设置页仍不直接碰 localStorage）。
+* **关掉入口**：条上「—」只是最小化（折叠成 120×40 药丸，popover 仍开着 → 药丸也常驻）；
+  「✕」才是真正关闭（`CH_STRIP_CMD {op:"close"}`）→ 写会话级标记 `4enext/strip-closed-this-session`，
+  本次会话不再自动弹；重新打开（工具栏 / 右键加入）时清掉标记，下个房间又会自动开。
+* 与 v1.3.1「popover 重开只移动不重载」的假设一致：拖动仍然可用。
+
+### 13.5 自测
+
+* `dev/test-initiative.mjs`：菜单 filter 互斥（`in-init` = true / "!=" true）、加入后 token 上的
+  `in-init` 变 true、点「移出先攻」后 entries 里没有该 tokenId 且标记回到 false、卡片 ✕ 的存在（玩家没有）、
+  token 删除后自动清理、当前条目被删后游标顺移、切场景不清名单、
+  `maybeAutoOpenStrip` 的三态（默认开 / 设置关 / 本次已关）+ 折叠态仍是同一个 popover 且
+  仍带 `disableClickAway`。
+* `dev/check.mjs`：`.strip` / `.strip-items` 透明、卡片仍不透明、`html` 透明、控制行半透明、
+  菜单 filter 读 `in-init` 且互斥、两个本机键两端一致（+ 折叠键）、设置项存在、版本 1.7.3 全链路。
+

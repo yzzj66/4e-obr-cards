@@ -39,7 +39,7 @@
 <!-- 单文件经典脚本：没有 type="module"，没有 import/export。见 dev/build-background.mjs
      ?v= 是缓存破坏参数：GitHub Pages / 浏览器会缓存旧脚本，改了 bundle 却看不到效果时靠它换新。
      以后升版本时把这处 ?v= 和 manifest.version 一起改（改漏了只会多缓存一会儿，不会坏）。 -->
-<script src="assets/background.bundle.js?v=1.7.0" onerror="(function(){var s=document.getElementById('diag-state');s.className='bad';s.textContent='background.bundle.js 加载失败：文件不存在或被拦截';})()"></script>
+<script src="assets/background.bundle.js?v=1.7.5" onerror="(function(){var s=document.getElementById('diag-state');s.className='bad';s.textContent='background.bundle.js 加载失败：文件不存在或被拦截';})()"></script>
 <noscript><p class="muted">这个页面需要 JavaScript。</p></noscript>
 </body>
 </html>

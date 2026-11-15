@@ -1,5 +1,8 @@
 // v1.3.2：设置 / 关于窗口的页面脚本（settings.html）。
 // v1.7.0：新增「骰子」一栏——只有**一个开关**（投骰动画 开 / 关）。
+// v1.7.3：新增「先攻」一栏——**进入房间自动显示先攻条** 开 / 关（写 common.js 的 LS_STRIP_AUTOSTART，
+//   默认开）。读写同样全部走 common.js 的 readStripAutostart / writeStripAutostart，
+//   这一页仍然不直接碰 localStorage（dev/check.mjs 会断言）。
 //   读写都走 common.js 的 readDiceAnim / writeDiceAnim：这一页**仍然不直接写 localStorage**
 //   （dev/check.mjs 断言这一页不直接写本机存储、也不碰房间数据 / token 元数据），
 //   所以「重置本机设置」也不可能顺手改掉别的东西。
@@ -15,7 +18,9 @@
 //      这一页里没有任何写房间 / 写 token 的调用（自测 dev/check.mjs 会断言这一点），
 //      所以「重置」不可能误删全桌共享的东西。
 // 窗口壳（拖动 / 位置记忆 / 后台在线检测 / 统一 feedback）与先攻、骰子共用 window.js。
-import { ID_SETTINGS_WIN, PLUGIN_VERSION, onReady, readDiceAnim, writeDiceAnim } from "./common.js";
+import {
+  ID_SETTINGS_WIN, PLUGIN_VERSION, onReady, readDiceAnim, readStripAutostart, writeDiceAnim, writeStripAutostart
+} from "./common.js";
 import { createWindow, feedback, closeSelf } from "./window.js";
 
 /** 构建日期：改后台脚本 / 重新生成 bundle 时一起改，只用于「关于」里的展示。 */
@@ -115,6 +120,33 @@ if (animToggle) {
       return;
     }
     feedback(next ? "投骰动画已打开" : "投骰动画已关闭（结果照常显示在骰子窗口里）", "SUCCESS");
+  });
+}
+
+/* ---------------- 先攻：进入房间自动显示先攻条（v1.7.3） ----------------
+ * 只改一个本机开关；后台在 scene ready / onReadyChange 时重新读它，所以这里点完下次进房间生效。 */
+const stripToggle = document.getElementById("strip-auto-toggle");
+const stripState = document.getElementById("strip-auto-state");
+
+function paintStripAuto() {
+  const on = readStripAutostart();
+  if (stripState) stripState.textContent = on ? "进入房间自动显示：开" : "进入房间自动显示：关";
+  if (stripToggle) {
+    stripToggle.textContent = on ? "关闭自动显示先攻条" : "打开自动显示先攻条";
+    stripToggle.classList.toggle("on", on);
+  }
+}
+
+if (stripToggle) {
+  stripToggle.addEventListener("click", function () {
+    const next = !readStripAutostart();
+    const saved = writeStripAutostart(next);
+    paintStripAuto();
+    if (!saved) {
+      feedback("这台机器存不下这个设置（隐私模式 / 存储被禁用？），本次仍按原设置", "WARNING");
+      return;
+    }
+    feedback(next ? "进入房间会自动显示先攻条（下次进房间 / 刷新后生效）" : "进入房间不再自动显示先攻条（工具栏「先攻」仍可打开）", "SUCCESS");
   });
 }
 
@@ -239,6 +271,7 @@ if (closeEl) closeEl.addEventListener("click", function () { closeSelf(ID_SETTIN
 onReady(function () {
   renderLocal();
   paintAnim();
+  paintStripAuto();
   /* 后台很慢时先把窗口状态画一次（状态条本身由 window.js 画） */
   win.onStatus(function () { /* 这里只留挂点 */ });
 });

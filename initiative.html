@@ -5,10 +5,18 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>4eNEXT to owlbear · 先攻条</title>
 <link rel="stylesheet" href="assets/ui.css">
+<style>
+  /* v1.7.3：先攻条**外壳透明**（用户：「先攻条背景设置成透明的」，挡住地图了）。
+     ui.css 顶部有 html{background:var(--bg)} —— 只透明 body 的话 html 的深色会整块露出来
+     （与 v1.7.1 修投骰动画黑屏同一个坑），所以 html 也要 transparent。
+     只有先攻条视图会给 html 挂 .strip-html；列表窗口（?view=list）仍是正常的不透明窗口。 */
+  html.strip-html, html.strip-html body.strip-page { background: transparent !important; }
+</style>
 </head>
 <body class="win-page">
 <!-- v1.4.0：同一张页面两种形态（由 assets/initiative-page.js 按 ?view= 决定）
      · 先攻条（默认，popover id = /initiative-strip）：屏幕顶部 720×(129|139|159)，可折叠成 120×40；
+       v1.7.3 起**外壳透明 + 常驻**（进入房间按设置自动显示，点地图不会关；「−」折叠 /「✕」真正关闭）；
      · 列表窗口（?view=list，popover id = /initiative-window）：v1.3.x 的管理视图（重掷 / 同步加值 / 删除）。
      先攻条上的「≡」广播 CH_STRIP_CMD {op:"list"}，由后台打开列表窗口。 -->
 <div class="strip-root" id="strip-root" hidden></div>

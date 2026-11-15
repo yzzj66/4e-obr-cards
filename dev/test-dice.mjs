@@ -2,6 +2,9 @@
 // v1.7.0 扩充：独立记录窗口的「41 条 → 40 且删最旧」、动画布局 / 时间轴常量（fxBaseSize / fxBeat / fxLayout / fxQuery）、
 //   以及「动画关掉时投掷**不调用** OBR.modal.open、开着时参数是 fullScreen + hideBackdrop + hidePaper +
 //   disablePointerEvents」；4E 预设只剩攻击 / 伤害 / 技能（豁免、先攻已删）。
+// v1.7.1 扩充：动画页**完全透明**之外，关闭有三条路 —— 播完 2600 ms 自己 OBR.modal.close、
+//   3000 ms 兜底（FX_CLOSE_FALLBACK_MS）也会 close、按 ESC / 点击任意处立即 close；
+//   且 finish 幂等（不会重复 close）。
 // ---------------------------------------------------------------------------
 // 覆盖规格 §8 的 16 条，外加用户拍板的三条（重击取满 / 战斗优势 +2 / 总和不含判定）：
 //   1. parseExpr("1d20+12") 结构正确，formatExpr 幂等
@@ -19,7 +22,7 @@
 //  13. 房间数据合并：重复 rollId 幂等、按 ts 倒序、封顶 40
 //  14. 40 条样例 JSON < 12000 字符（16 KB 的 75%）
 //  15. 频道常量 common.js ↔ background.core.js 逐字一致
-//  16. 骰子窗口 520×620（v1.7.0）在 1366×768 下仍 ≤ 视口 − 2×16
+//  16. 骰子窗口 320×620（v1.7.4）在 1366×768 下仍 ≤ 视口 − 2×16
 //   + 重击：2d6+3 全取 6，total = 15；带 adv 包裹时退化为普通投掷并提示
 //   + 战斗优势：+2 / −2 可逆，且直接进 modifier
 //   + 总和不含判定：total 只由骰子 + 加值决定
@@ -324,8 +327,8 @@ const margin = 16;
 if (winMatch) {
   const w = Math.min(+winMatch[1], vp.width - margin * 2);
   const h = Math.min(+winMatch[2], vp.height - margin * 2);
-  if (w === 520 && h === 620 && w <= 1334 && h <= 736)
-    ok("骰子窗口 520×620（v1.7.0 收窄），在 1366×768 下 = " + w + "×" + h + "（≤ 视口 − 2×16）");
+  if (w === 320 && h === 620 && w <= 1334 && h <= 736)
+    ok("骰子窗口 320×620（v1.7.4 收窄成窄竖条），在 1366×768 下 = " + w + "×" + h + "（≤ 视口 − 2×16）");
   else bad("窗口尺寸不对：" + w + "×" + h);
 } else bad("WINS.dice 没找到（骰子窗口尺寸读不到）");
 
@@ -445,13 +448,21 @@ const sentRolls = [];
 const sentClears = [];
 const sentCmds = [];
 const modalOpens = [];
+/* v1.7.4：记录窗口 —— 页面兜底会自己 OBR.popover.open，所以要记下来；
+ * 还要能收到 CH_DICE_HIST_STATE（后台回执），以及看通知有没有真的弹出来。 */
+const popoverOpens = [];
+const histStateCbs = [];
+const notesShown = [];
 const readyCbs = [];
 const fakeRoom = {};
 const fakeOBR = {
   isAvailable: true,
   isReady: true,
   onReady(cb) { readyCbs.push(cb); },
-  notification: { show() { return Promise.resolve("n"); }, close() {} },
+  notification: {
+    show(msg, variant) { notesShown.push({ msg, variant }); return Promise.resolve("n"); },
+    close() {}
+  },
   player: {
     getId: async () => "user-p1",
     getName: async () => "申比软软",
@@ -481,9 +492,16 @@ const fakeOBR = {
       else if (ch.slice(-14) === "/dice-hist-cmd") sentCmds.push(data);
       return Promise.resolve();
     },
-    onMessage() { return () => {}; }
+    onMessage(channel, cb) {
+      /* v1.7.4：记录窗口的开 / 关状态回执 */
+      if (String(channel).endsWith("/dice-hist-state")) histStateCbs.push(cb);
+      return () => {};
+    }
   },
-  popover: { open: async () => {}, close: async () => {} },
+  popover: {
+    open: async (cfg) => { popoverOpens.push(cfg); },
+    close: async () => {}
+  },
   viewport: { getWidth: async () => 1200, getHeight: async () => 800, onChange() { return () => {}; } },
   tool: { create: async () => {}, remove: async () => {} },
   /* v1.7.0：记录动画 modal 的调用（断言「开关关掉时不调用」用） */
@@ -569,16 +587,65 @@ else {
         ok("默认开动画：OBR.modal.open(effect.html, fullScreen + hideBackdrop + hidePaper + disablePointerEvents)");
       else bad("动画 modal 参数不对：" + JSON.stringify(first));
 
-      /* 记录窗口按钮：点一下发 CH_DICE_HIST_CMD（后台负责开 / 关，回 CH_DICE_HIST_STATE） */
+      /* 记录窗口按钮（v1.7.4 扩充）：点一下发 CH_DICE_HIST_CMD（后台负责开 / 关，回 CH_DICE_HIST_STATE）；
+       * v1.7.4 的关键：**等不到回执就由本页自己 OBR.popover.open 同一个 id / 页面**（dice-page.js 的
+       * openHistoryDirect），不许「点了没反应」。 */
       const histClicks = (domMap.btnHist.listeners.click || []);
-      if (histClicks.length) {
+      if (!histClicks.length) bad("「记录窗口」按钮没有绑定 click");
+      else {
         const cmdBefore = sentCmds.length;
         histClicks[0]({ preventDefault() {} });
         const cmd = sentCmds[sentCmds.length - 1] || null;
         if (sentCmds.length === cmdBefore + 1 && cmd && cmd.op === "toggle")
           ok("「记录窗口」按钮广播 CH_DICE_HIST_CMD { op: \"toggle\" }（与骰子窗口各自开关）");
         else bad("记录窗口按钮没有发 toggle 命令：" + JSON.stringify(cmd));
-      } else bad("「记录窗口」按钮没有绑定 click");
+        if (String(domMap.btnHist.textContent).indexOf("打开中") >= 0)
+          ok("点完先进「记录窗口 · 打开中…」（等后台回执，不再是一次点击毫无反馈）");
+        else bad("按钮没有「打开中」状态：" + domMap.btnHist.textContent);
+
+        /* ① 后台回执 CH_DICE_HIST_STATE { open: true } → 按钮显示「记录窗口 · 开」，且**不再**兜底开窗 */
+        if (!histStateCbs.length) bad("骰子窗口没有订阅 CH_DICE_HIST_STATE（开 / 关状态回不来）");
+        else {
+          const opensBeforeAck = popoverOpens.length;
+          histStateCbs[0]({ data: { open: true } });
+          await sleep(30);
+          if (domMap.btnHist.textContent === "记录窗口 · 开" && domMap.btnHist.classList.contains("on"))
+            ok("收到 CH_DICE_HIST_STATE { open:true } → 按钮显示「记录窗口 · 开」");
+          else bad("收到回执后按钮没变：" + domMap.btnHist.textContent);
+          await sleep(1000);
+          if (popoverOpens.length === opensBeforeAck)
+            ok("有回执时不会再多开一次（兜底只在后台没回应时触发）");
+          else bad("有回执还兜底开了窗：" + JSON.stringify(popoverOpens.slice(opensBeforeAck)));
+
+          /* ② 想「关」但后台没回执 → 不重复开窗，按钮回到「记录窗口」并给出提醒 */
+          histClicks[0]({ preventDefault() {} });
+          await sleep(1000);
+          if (popoverOpens.length === opensBeforeAck && domMap.btnHist.textContent === "记录窗口")
+            ok("关闭没回执：不会开新窗，按钮回到「记录窗口」（只给提醒）");
+          else bad("关闭没回执时的处理不对：" + domMap.btnHist.textContent + " / opens+" + (popoverOpens.length - opensBeforeAck));
+
+          /* ③ 想「开」但后台没回执 → 页面在 HIST_ACK_MS（900 ms）后走 openHistoryDirect，
+         *    直接 OBR.popover.open（同一个 id / 页面）把窗口开出来 */
+          const opensBeforeFallback = popoverOpens.length;
+          histClicks[0]({ preventDefault() {} });
+          await sleep(1050);
+          const fallback = popoverOpens[popoverOpens.length - 1] || null;
+          if (popoverOpens.length === opensBeforeFallback + 1 && fallback &&
+            fallback.id === "com.4enext-owlbear/dice-history-window" &&
+            String(fallback.url).indexOf("dice-history.html") >= 0 &&
+            fallback.anchorReference === "POSITION" && fallback.hidePaper === true &&
+            fallback.width > 0 && fallback.height > 0)
+            ok("后台没回执 → 骰子窗口自己 OBR.popover.open(dice-history.html) 兜底（窗口真的会出来）");
+          else bad("没回执时没有兜底开窗：" + JSON.stringify(fallback));
+          if (popoverOpens.length === opensBeforeFallback + 1 && domMap.btnHist.textContent === "记录窗口 · 开")
+            ok("兜底开窗后按钮同步成「记录窗口 · 开」");
+          else bad("兜底开窗后按钮状态不对：" + domMap.btnHist.textContent);
+          const fbNote = notesShown.map((n) => String(n.msg)).filter((m) => m.indexOf("记录窗口") >= 0);
+          if (fbNote.length && notesShown.some((n) => String(n.msg).indexOf("记录窗口由骰子窗口直接打开") >= 0))
+            ok("兜底开窗有可见提示（通知中心：" + fbNote[fbNote.length - 1].slice(0, 40) + "…）");
+          else bad("兜底开窗没有任何通知：" + JSON.stringify(notesShown.slice(-3)));
+        }
+      }
 
       /* 关掉动画 → 不再打开 modal，但投掷本身照常 */
       lsStore["4enext/dice/anim"] = "0";
@@ -652,17 +719,22 @@ globalThis.setTimeout = (fn, ms) => { fxTimers.push({ fn, ms }); return savedTim
 globalThis.setInterval = (fn, ms) => { fxIntervals.push({ fn, ms }); return savedTimers.setInterval(fn, ms); };
 globalThis.requestAnimationFrame = (fn) => { rafQueue.push(fn); return rafQueue.length; };
 globalThis.cancelAnimationFrame = () => {};
-globalThis.window = { innerWidth: 1200, innerHeight: 800, addEventListener() {} };
+/* v1.7.1：把窗口 / 文档上注册的监听器收集起来，「ESC / 点击立即关」才测得到 */
+const windowListeners = {};
+const docListeners = {};
+const recordListener = (box) => (type, fn) => { (box[type] = box[type] || []).push(fn); };
+globalThis.window = { innerWidth: 1200, innerHeight: 800, addEventListener: recordListener(windowListeners) };
 
 /* ---- 10.1 effect.html：按 URL 参数摆骰子、落地定数、播完自己关 ---- */
 const fxIds = ["fx-stage", "fx-flash", "fx-wrap", "fx-total", "fx-total-num", "fx-mod", "fx-mod-num", "fx-mod-label"];
 const fxDom = {};
 for (const id of fxIds) fxDom[id] = makeEl2("div");
+const fxSrc = fs.readFileSync(path.join(ROOT, "assets", "effect-page.js"), "utf8");
 globalThis.location = { href: "https://example.test/effect.html", protocol: "https:", search: "?dtypes=d20&dvalues=14&total=14&modifier=0&rollId=r-fx&wx=100&wy=200" };
 globalThis.document = {
   getElementById: (id) => fxDom[id] || makeEl2("div"),
   querySelectorAll: () => [],
-  addEventListener() {},
+  addEventListener: recordListener(docListeners),
   createElement: (tag) => makeEl2(tag),
   body: makeEl2("body")
 };
@@ -710,12 +782,74 @@ if (totalTimer) totalTimer.fn();
 if (fxDom["fx-total-num"].textContent === "14" && fxDom["fx-total"].classList.contains("on"))
   ok("当前总和显示本次总点数（14），并在 flight + hold/2 时淡入（.on）");
 else bad("当前总和不对：" + fxDom["fx-total-num"].textContent);
+/* v1.7.1：关闭有三级 —— 2600（播完）→ 3000（兜底）→ ESC / 点击（立即） */
+if (fxSrc.indexOf("var FX_CLOSE_FALLBACK_MS = 3000;") >= 0)
+  ok("effect-page.js 里有兜底常量 FX_CLOSE_FALLBACK_MS = 3000（比动画总时长 2600 ms 多留 400 ms）");
+else bad("effect-page.js 里没有 FX_CLOSE_FALLBACK_MS = 3000");
+const fallbackTimer = fxTimers.filter((t) => t.ms === 3000).pop();
+if (fallbackTimer && typeof fallbackTimer.fn === "function")
+  ok("动画页注册了 3000 ms 兜底 close（setTimeout(finish, FX_CLOSE_FALLBACK_MS)）");
+else bad("动画页没有注册 3000 ms 兜底 close");
 const closeTimer = fxTimers.filter((t) => t.ms === 2600).pop();
 if (closeTimer) { closeTimer.fn(); }
 await sleep(20);
-if (closedModals.length && fxDom["fx-stage"].classList.contains("fx-done"))
-  ok("播完 2600 ms 自己 OBR.modal.close 并把舞台标成 .fx-done（DOM 不累积）");
+if (closedModals.length === 1 && closedModals[0] && String(closedModals[0]).indexOf("dice-effect") >= 0 &&
+  fxDom["fx-stage"].classList.contains("fx-done"))
+  ok("播完 2600 ms 自己 OBR.modal.close（关的就是本次动画 modal）并把舞台标成 .fx-done（DOM 不累积）");
 else bad("播完没有关闭 / 没有隐藏：closed=" + closedModals.length + " done=" + fxDom["fx-stage"].classList.contains("fx-done"));
+if (fallbackTimer) fallbackTimer.fn();
+await sleep(10);
+if (closedModals.length === 1) ok("2600 ms 关过之后 3000 ms 兜底再触发也不会重复 close（finish 幂等）");
+else bad("finish 不幂等：OBR.modal.close 被调了 " + closedModals.length + " 次");
+
+/* 每个用例单独 import 一份新实例（query 不同 = 模块状态是新的） */
+async function fxFresh(tag) {
+  copyPageWithStub("effect-page.js");
+  const before = readyCbs.length;
+  let err = null;
+  try {
+    await import(pathToFileURL(path.join(tmp, "assets", "effect-page.js")).href + "?" + tag);
+  } catch (e) { err = e; }
+  for (const cb of readyCbs.slice(before)) cb();
+  await sleep(30);
+  return err;
+}
+
+{
+  /* 10.1b：兜底 3000 ms —— 2600 的定时器没跑到（动画被打断 / 页面被挂起）时强制关 */
+  const mark = closedModals.length;
+  const err = await fxFresh("fx-fb");
+  const fb = fxTimers.filter((t) => t.ms === 3000).pop();
+  if (fb) fb.fn();
+  await sleep(20);
+  if (!err && fb && closedModals.length === mark + 1 && String(closedModals[closedModals.length - 1]).indexOf("dice-effect") >= 0)
+    ok("兜底：3000 ms 到点强制 OBR.modal.close（动画被打断也不会留一层在屏幕上）");
+  else bad("3000 ms 兜底没有 close：closed +" + (closedModals.length - mark) + (err ? " err=" + err.message : ""));
+}
+
+{
+  /* 10.1c：ESC 立即关 */
+  const mark = closedModals.length;
+  const err = await fxFresh("fx-esc");
+  const keys = windowListeners.keydown || [];
+  const escFn = keys[keys.length - 1];
+  if (escFn) escFn({ key: "Escape" });
+  await sleep(20);
+  if (!err && escFn && closedModals.length === mark + 1) ok("按 ESC 立即关闭（不用等 2600 / 3000 ms）");
+  else bad("ESC 没有立即关闭：closed +" + (closedModals.length - mark) + (err ? " err=" + err.message : ""));
+}
+
+{
+  /* 10.1d：点击任意处立即关 */
+  const mark = closedModals.length;
+  const err = await fxFresh("fx-click");
+  const clicks = windowListeners.click || [];
+  const clickFn = clicks[clicks.length - 1];
+  if (clickFn) clickFn({});
+  await sleep(20);
+  if (!err && clickFn && closedModals.length === mark + 1) ok("点击任意处立即关闭");
+  else bad("点击没有立即关闭：closed +" + (closedModals.length - mark) + (err ? " err=" + err.message : ""));
+}
 
 /* ---- 10.2 dice-history.html：读房间数据 → 默认最近 4 条 → 可展开 ---- */
 const histDom = {};

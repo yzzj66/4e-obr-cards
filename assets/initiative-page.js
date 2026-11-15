@@ -245,12 +245,29 @@ function armClear() {
 async function onStripAct(act, tokenId) {
   if (!act) return;
   if (act === "expand") { collapsed = false; writeCollapsed(false); render(); return; }
+  /* 「—」只是折叠成 120×40 的小药丸：popover 仍开着，所以折叠态同样常驻。 */
   if (act === "collapse") { collapsed = true; writeCollapsed(true); render(); return; }
   if (act === "list") { sendCmd({ op: "list" }); return; }
+  /* v1.7.3：右上角「✕」= 真正关闭（后台记「本次会话已关」，之后进房间不再自动弹）。 */
+  if (act === "close") {
+    sendCmd({ op: "close" });
+    feedback("先攻条已关闭：本次会话不再自动显示，工具栏「先攻」随时可以再打开", "INFO");
+    return;
+  }
   if (act === "end") { await requestEndTurn(); return; }
   if (myRole !== "GM") {
     feedback("只有城主能操作先攻列表", "WARNING");
     return;
+  }
+  /* v1.7.3：卡片上的 ✕ —— 直接把这枚 token 移出先攻（不弹确认，点错了重新加入即可）。 */
+  if (act === "remove") {
+    if (!tokenId) return;
+    const entry = entryOf(tokenId);
+    if (!entry) {
+      feedback("这枚 token 已经不在先攻列表里了", "WARNING");
+      return;
+    }
+    return saveInit(removeEntry(initiative, tokenId), "已从先攻移出「" + entry.name + "」");
   }
   if (act === "prepare") return saveInit(startPreparation(initiative), "进入战斗准备：大家掷先攻");
   if (act === "surprise") return saveInit(startSurprise(initiative), "突袭轮开始（4E 突袭轮）");
@@ -603,6 +620,10 @@ async function checkBg() {
 if (VIEW === "strip") {
   document.body.classList.remove("win-page");
   document.body.classList.add("strip-page");
+  /* v1.7.3：先攻条外壳透明 —— ui.css 顶部有 html{background:var(--bg)}，
+   * 只透明 body 的话 html 的深色会整块盖住地图（与 v1.7.1 动画页同一个坑），所以给 html 也挂个类。
+   * 列表窗口（?view=list）不加：它仍然是不透明的独立窗口。 */
+  document.documentElement.classList.add("strip-html");
   if (shellEl) shellEl.hidden = true;
   if (stripRoot) stripRoot.hidden = false;
   if (stripRoot) {

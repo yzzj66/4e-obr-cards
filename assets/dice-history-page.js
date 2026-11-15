@@ -11,6 +11,10 @@
 //   · 广播 CH_ROLL（本机乐观插入）/ CH_ROLL_SAVED（重读）/ CH_ROLL_CLEAR（清空）
 // 显示：默认**最近 4 条**（.dh-list.compact 隐藏第 5 条起），点「展开全部」看全部（列表内滚动）。
 // 这里**只读**：不写房间数据、不写 token（清空仍然只在骰子窗口里由城主做）。
+//
+// v1.7.4：加载完先发一条 { op: "ready" } 握手给后台（CH_DICE_HIST_CMD）——
+//   万一是骰子窗口「等不到后台回执 → 自己 OBR.popover.open」兜底开的，后台的 winOpen 里
+//   并没有这一条；握手一来就把「开着」补上，之后点「记录窗口」才是**关闭**（不会又开一遍）。
 import OBR from "../vendor/obr-sdk.js";
 import { CH_DICE_HIST_CMD, CH_ROLL, CH_ROLL_CLEAR, CH_ROLL_SAVED, HIST_VISIBLE_ROWS, ID_DICE_HIST, KEY_ROLLS, LS_DICE_LOCAL, ROLL_MAX_ROWS, esc, onReady } from "./common.js";
 import { closeSelf, createWindow, feedback } from "./window.js";
@@ -144,6 +148,14 @@ function loadLocalStash() {
   } catch (e) { /* 忽略 */ }
 }
 
+/** v1.7.4：告诉后台「记录窗口的页面起来了」（握手，见文件头的说明）。 */
+function sayReady() {
+  try {
+    var p = OBR.broadcast.sendMessage(CH_DICE_HIST_CMD, { op: "ready", at: Date.now() }, { destination: "LOCAL" });
+    if (p && typeof p.catch === "function") p.catch(function () { /* 后台没起来就算了 */ });
+  } catch (e) { /* 忽略 */ }
+}
+
 /** 关掉自己：**先告诉后台**（它要把 winOpen 里这条清掉并广播 open:false），
  *  再 closeSelf 兜底 —— 否则后台以为窗口还开着，骰子窗口的「记录窗口」按钮就点不开了。 */
 function closeHistoryWindow() {
@@ -167,6 +179,7 @@ function wireEvents() {
 onReady(function () {
   if (els.toggle) els.toggle.title = "在「最近 " + HIST_VISIBLE_ROWS + " 条」和全部记录之间切换";
   wireEvents();
+  sayReady();
   renderRows();
 
   (async function init() {

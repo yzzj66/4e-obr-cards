@@ -31,6 +31,7 @@
       <button class="set-tab on" type="button" data-pane="about" aria-controls="pane-about" aria-current="true"><span class="ico" aria-hidden="true">ℹ</span>关于</button>
       <button class="set-tab" type="button" data-pane="guide" aria-controls="pane-guide"><span class="ico" aria-hidden="true">▸</span>使用说明</button>
       <button class="set-tab" type="button" data-pane="dice" aria-controls="pane-dice"><span class="ico" aria-hidden="true">⚄</span>骰子</button>
+      <button class="set-tab" type="button" data-pane="initiative" aria-controls="pane-initiative"><span class="ico" aria-hidden="true">⚔</span>先攻</button>
       <button class="set-tab" type="button" data-pane="data" aria-controls="pane-data"><span class="ico" aria-hidden="true">▤</span>数据与权限</button>
       <button class="set-tab" type="button" data-pane="limits" aria-controls="pane-limits"><span class="ico" aria-hidden="true">!</span>已知限制</button>
       <button class="set-tab" type="button" data-pane="reset" aria-controls="pane-reset"><span class="ico" aria-hidden="true">⌫</span>重置本机设置</button>
@@ -71,7 +72,9 @@
           <li><b>打起来</b>：在速览里点 <code>−1 / −5 / −10</code> 或 <code>＋1 / ＋5 / ＋10</code> 改血，
             token 上的血条会跟着变；威能 / 装备点一下变灰＝已用，再点恢复；「长休」一键还原。</li>
           <li><b>先攻</b>：右键 token →「加入先攻」/「隐形加入先攻」（先攻条会自动弹出）→
-      先攻条上「战斗准备 / 突袭 / 开始战斗」，再「上一回合 / 下一回合」推进；GM 任意推进，玩家点卡片上的「结束」。</li>
+      先攻条上「战斗准备 / 突袭 / 开始战斗」，再「上一回合 / 下一回合」推进；GM 任意推进，玩家点卡片上的「结束」。
+      <b>要移出</b>：右键已经在先攻里的 token →「移出先攻」，或点先攻条上 GM 卡片右上角的 ✕；
+      token 被删掉时条目会<b>自动清理</b>，游标顺移到下一条。</li>
         </ol>
         <div class="set-sec">
           <h4>窗口怎么用</h4>
@@ -94,7 +97,7 @@
             <span>工具栏「骰子」</span><span>骰子（表达式 / 战斗优势 +2 / 重击取满 / 4E 预设 / 本次结果）；记录在它自己的「记录窗口」里（最近 4 条）+ 投骰动画</span>
             <span>工具栏「设置」</span><span>本窗口</span>
             <span>右下角 4E 按钮</span><span>角色卡 / 导入</span>
-            <span>右键 token</span><span>绑定角色卡 / 加入先攻 / 隐形加入先攻（仅 GM）</span>
+            <span>右键 token</span><span>绑定角色卡 / 加入先攻 / 隐形加入先攻 / <b>移出先攻</b>（仅 GM；菜单随先攻名单动态变）</span>
           </div>
         </div>
       </section>
@@ -128,6 +131,32 @@
         </div>
       </section>
 
+      <!-- ---------------- 先攻（v1.7.3：先攻条常驻开关） ---------------- -->
+      <section class="set-pane" id="pane-initiative">
+        <h3>先攻</h3>
+        <p class="set-lead">先攻条（工具栏「先攻」）从 v1.7.3 起是<b>常驻</b>的：进入房间就自动出现在屏幕顶部，
+          <b>点地图不会把它关掉</b>；卡片区右侧不再铺深色底，<b>条的背景是透明的</b>（地图能透出来），
+          只有卡片自己是深色底。</p>
+        <div class="set-sec">
+          <h4>进入房间自动显示</h4>
+          <div class="set-kv">
+            <span class="k">当前状态</span><span><b id="strip-auto-state">—</b></span>
+          </div>
+          <p class="set-muted"><button class="btn" id="strip-auto-toggle" type="button" data-bg-soft>关闭自动显示先攻条</button></p>
+          <p class="set-hint">这是<b>本机</b>设置（只影响这台电脑 / 这个浏览器）。关掉之后仍然可以从工具栏「先攻」
+            或右键「加入先攻」随时打开。条右上角的 <b>「—」</b>只是最小化（折叠成 120×40 的小药丸，药丸也常驻）；
+            <b>「✕」</b>才是真正关掉 —— 关掉后<b>本次会话</b>不再自动弹，重新打开一次就恢复。</p>
+        </div>
+        <div class="set-sec">
+          <h4>从先攻里移出</h4>
+          <ul class="set-list">
+            <li>右键已在先攻里的 token →「<b>移出先攻</b>」（菜单是动态的：不在先攻里时显示「加入先攻 / 隐形加入先攻」）。</li>
+            <li>先攻条上 GM 的卡片右上角有 <b>✕</b>：点一下直接移出（不用开列表窗口）。</li>
+            <li><b>token 被删除后</b>，先攻条里对应的条目会自动清理，游标顺移到下一条（不会卡在一个已经不存在的单位上）。</li>
+          </ul>
+        </div>
+      </section>
+
       <!-- ---------------- 数据与权限 ---------------- -->
       <section class="set-pane" id="pane-data">
         <h3>数据与权限</h3>
@@ -150,6 +179,7 @@
             <span><code>com.4enext-owlbear/cardId</code></span><span>绑定的角色卡 id</span>
             <span><code>com.4enext-owlbear/hp</code></span><span><code>{ cur, max, temp, surges }</code>：这枚 token 的血量快照</span>
             <span><code>com.4enext-owlbear/init</code></span><span><code>{ bonus, cardId }</code>：先攻加值</span>
+            <span><code>com.4enext-owlbear/in-init</code></span><span><code>true / false</code>：这枚 token 在不在先攻名单里（v1.7.3，右键菜单据此显示「移出先攻」还是「加入先攻」）</span>
           </div>
         </div>
         <div class="set-sec">
@@ -162,6 +192,8 @@
             <span><code>4enext/dice/combos</code></span><span>骰子组合（最多 30 条）</span>
             <span><code>4enext/dice/last</code></span><span>上一次掷过的骰子公式</span>
             <span><code>4enext/dice/local</code></span><span>城主离线时的骰子暂存（最多 20 条）</span>
+            <span><code>4enext/strip-autostart</code></span><span>进入房间是否自动显示先攻条（v1.7.3，<code>"0"</code> = 不自动显示，缺省开）</span>
+            <span><code>4enext/strip-closed-this-session</code></span><span>本次会话是否手动关过先攻条（v1.7.3，关掉后本次不再自动弹）</span>
           </div>
         </div>
         <div class="set-sec">

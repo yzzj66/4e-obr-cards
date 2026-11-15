@@ -39,8 +39,11 @@ let roomMeta = { [NS + "/cards"]: { v: 1, cards: [deep(CARD)] } };
 let role = "GM";
 let playerId = "user-gm";
 let readyCb = null;
+/* v1.7.3：场景就绪回调（「进入房间自动打开先攻条」要走这条真实路径，所以留一份） */
+const sceneReadyCbs = [];
 const notifications = [];
 const createdMenus = [];
+const removedMenus = [];
 const broadcastCbs = {};
 const sentBroadcasts = [];
 const openedPopovers = [];
@@ -74,7 +77,7 @@ const OBR = {
   party: {},
   scene: {
     isReady: async () => true,
-    onReadyChange() { return () => {}; },
+    onReadyChange(cb) { if (typeof cb === "function") sceneReadyCbs.push(cb); return () => {}; },
     onMetadataChange() { return () => {}; },
     getMetadata: async () => ({}),
     grid: { getDpi: async () => 150, onChange() { return () => {}; } },
@@ -102,7 +105,7 @@ const OBR = {
   },
   contextMenu: {
     create(cfg) { createdMenus.push(cfg); return Promise.resolve(); },
-    remove() { return Promise.resolve(); }
+    remove(id) { removedMenus.push(id); return Promise.resolve(); }
   },
   tool: { create: async () => {}, remove: async () => {} },
   popover: {
@@ -305,7 +308,19 @@ const run = new Function("OBR", "buildCurve", "buildShape", "buildText",
   " onStripDrag: typeof onStripDrag === 'function' ? onStripDrag : null," +
   " onStripCmd: typeof onStripCmd === 'function' ? onStripCmd : null," +
   " openStrip: typeof openStrip === 'function' ? openStrip : null," +
-  " closeStrip: typeof closeStrip === 'function' ? closeStrip : null" +
+  " closeStrip: typeof closeStrip === 'function' ? closeStrip : null," +
+  " onInitRemoveClick: typeof onInitRemoveClick === 'function' ? onInitRemoveClick : null," +
+  " registerInitMenus: typeof registerInitMenus === 'function' ? registerInitMenus : null," +
+  " syncInitFlags: typeof syncInitFlags === 'function' ? syncInitFlags : null," +
+  " initMenuFilter: typeof initMenuFilter === 'function' ? initMenuFilter : null," +
+  " initRemove: typeof initRemove === 'function' ? initRemove : null," +
+  " initMissingIds: typeof initMissingIds === 'function' ? initMissingIds : null," +
+  " initPrune: typeof initPrune === 'function' ? initPrune : null," +
+  " pruneMissingInitEntries: typeof pruneMissingInitEntries === 'function' ? pruneMissingInitEntries : null," +
+  " refreshInitKnownTokens: typeof refreshInitKnownTokens === 'function' ? refreshInitKnownTokens : null," +
+  " maybeAutoOpenStrip: typeof maybeAutoOpenStrip === 'function' ? maybeAutoOpenStrip : null," +
+  " stripAutostartOn: typeof stripAutostartOn === 'function' ? stripAutostartOn : null," +
+  " markStripClosed: typeof markStripClosed === 'function' ? markStripClosed : null" +
   " };");
 const api = run(OBR, stubBuilder("CURVE"), stubBuilder("SHAPE"), stubBuilder("TEXT"));
 if (!api || typeof api.boot !== "function" || typeof readyCb !== "function") {
@@ -825,11 +840,246 @@ if (typeof api.onStripDrag === "function" && typeof api.onStripCmd === "function
 } else bad("后台没有暴露 onStripDrag / onStripCmd / openStrip");
 
 /* ---------------------------------------------------------------------------
+ * 7.5) v1.7.3：动态右键菜单（移出先攻）/ token 删除自动清理 / 先攻条常驻
+ * ------------------------------------------------------------------------- */
+console.log("== v1.7.3 右键菜单：动态互斥（已在先攻 → 只有「移出先攻」）");
+const MENU_ADD = "com.4enext-owlbear/init-add";
+const MENU_ADD_HIDDEN = "com.4enext-owlbear/init-add-hidden";
+const MENU_REMOVE = "com.4enext-owlbear/init-remove";
+const KEY_IN_INIT = "com.4enext-owlbear/in-init";
+const latestMenu = (id) => createdMenus.filter((m) => m && m.id === id).pop() || null;
+const filterOf = (m) => (m && m.icons && m.icons[0] ? m.icons[0].filter : null);
+const inInitCond = (m) => {
+  const f = filterOf(m);
+  const every = (f && f.every) || [];
+  return every.filter((c) => Array.isArray(c.key) && c.key[0] === "metadata" && c.key[1] === KEY_IN_INIT)[0] || null;
+};
+
+/* 1) 三项都在 + filter 读 token 元数据 in-init 且互斥 */
+{
+  const addM = latestMenu(MENU_ADD);
+  const hidM = latestMenu(MENU_ADD_HIDDEN);
+  const rmM = latestMenu(MENU_REMOVE);
+  if (addM && hidM && rmM && rmM.icons[0].label === "移出先攻")
+    ok("右键注册了三项：加入先攻 / 隐形加入先攻 / 移出先攻");
+  else bad("右键三项没注册齐（" + [!!addM, !!hidM, !!rmM].join("/") + "）");
+  const addC = inInitCond(addM);
+  const rmC = inInitCond(rmM);
+  if (addC && addC.operator === "!=" && addC.value === true && rmC && rmC.value === true && !rmC.operator)
+    ok("菜单 filter 互斥：加入两项要求 in-init「!= true」，移出要求 in-init「== true」（同一枚 token 只出现一种）");
+  else bad("菜单 filter 不是按 in-init 互斥：" + JSON.stringify({ addC, rmC }));
+  if (addM && addM.icons[0].filter.roles.indexOf("GM") >= 0 && addM.icons[0].filter.max === 1 &&
+    addM.icons[0].filter.every[0].value === "IMAGE")
+    ok("三项仍只对 GM + 单个 IMAGE token 出现");
+  else bad("右键三项的 GM / IMAGE / max 条件不对");
+}
+
+/* 2) 加入 → token 上 in-init = true；移出 → 写回 false */
+{
+  roomMeta[KEY_INITIATIVE] = null;
+  const addMenu = latestMenu(MENU_ADD);
+  await addMenu.onClick({ items: [itemById("tok-1")] }, "x");
+  await sleep(160);
+  if (itemById("tok-1").metadata[KEY_IN_INIT] === true)
+    ok("加入先攻后 token 元数据 in-init = true（右键菜单随之换成「移出先攻」）");
+  else bad("加入后 in-init 不是 true：" + JSON.stringify(itemById("tok-1").metadata[KEY_IN_INIT]));
+  if (itemById("tok-2").metadata[KEY_IN_INIT] !== true)
+    ok("没加入的 token 不会被标记（in-init 不是 true）");
+  else bad("没加入的 token 也被标记了");
+
+  const rmMenu = latestMenu(MENU_REMOVE);
+  const noteBefore = notifications.length;
+  await rmMenu.onClick({ items: [itemById("tok-1")] });
+  await sleep(160);
+  const after = I.normalizeInitiative(roomMeta[KEY_INITIATIVE]);
+  if (after.entries.every((e) => e.tokenId !== "tok-1")) ok("点「移出先攻」→ entries 里不再有该 tokenId（先攻条会跟着刷新）");
+  else bad("移出后 entries 里还有 tok-1：" + JSON.stringify(after.entries.map((e) => e.tokenId)));
+  if (notifications.slice(noteBefore).some((n) => /已移出先攻/.test(n.msg))) ok("移出后通知「已移出先攻」（不静默）");
+  else bad("移出后没有通知");
+  if (itemById("tok-1").metadata[KEY_IN_INIT] === false)
+    ok("移出后 in-init 写回 false（菜单变回「加入先攻」，不 delete）");
+  else bad("移出后 in-init 没有写回 false：" + JSON.stringify(itemById("tok-1").metadata[KEY_IN_INIT]));
+
+  /* 镜像过期（名单里没有、token 上还是 true）→ 提示 + 立刻改回 false */
+  roomMeta[KEY_INITIATIVE] = I.normalizeInitiative({ entries: [] });
+  await OBR.scene.items.updateItems(["tok-1"], function (drafts) {
+    for (const d of drafts) { if (!d.metadata) d.metadata = {}; d.metadata[KEY_IN_INIT] = true; }
+  });
+  const noteStale = notifications.length;
+  await latestMenu(MENU_REMOVE).onClick({ items: [itemById("tok-1")] });
+  await sleep(160);
+  if (notifications.slice(noteStale).some((n) => /已经不在先攻里/.test(n.msg)) &&
+    itemById("tok-1").metadata[KEY_IN_INIT] === false)
+    ok("镜像过期时点「移出先攻」→ 提示「已经不在先攻里了」并立刻把 in-init 改回 false");
+  else bad("镜像过期时的处理不对：" + JSON.stringify(itemById("tok-1").metadata[KEY_IN_INIT]));
+}
+
+/* 卡片上的 ✕（GM 有、玩家没有） */
+{
+  const st173 = I.normalizeInitiative({
+    phase: "combat", round: 1, activeId: "a",
+    entries: [{ tokenId: "a", name: "甲", init: 20, bonus: 5, ownerId: "p1" }]
+  });
+  const gmCard = I.renderStripHTML(st173, { role: "GM", playerId: "gm", items: {} });
+  const plCard = I.renderStripHTML(st173, { role: "PLAYER", playerId: "p1", items: {} });
+  if (gmCard.indexOf('class="item-del"') >= 0 && gmCard.indexOf('data-strip-act="remove"') >= 0 &&
+    gmCard.indexOf('data-token="a"') >= 0)
+    ok("GM 的卡片右上角有 ✕（data-strip-act=\"remove\" + data-token）");
+  else bad("GM 的卡片上没有 ✕");
+  if (plCard.indexOf("item-del") < 0 && plCard.indexOf('data-strip-act="remove"') < 0)
+    ok("玩家卡片上没有 ✕（房间数据只有城主能写）");
+  else bad("玩家卡片上出现了 ✕");
+}
+
+console.log("== v1.7.3 token 被删除 → 自动清理 + 游标顺移");
+{
+  const prSt = I.normalizeInitiative({
+    phase: "combat", round: 2, activeId: "b",
+    entries: [
+      { tokenId: "a", name: "甲", init: 30 },
+      { tokenId: "b", name: "乙", init: 20 },
+      { tokenId: "c", name: "丙", init: 10 }
+    ]
+  });
+  const missing = I.missingEntryIds(prSt, ["a", "c"]);
+  const pruned = I.pruneMissingEntries(prSt, ["a", "c"]);
+  if (missing.join("") === "b" && pruned.entries.map((e) => e.tokenId).join("") === "ac" &&
+    pruned.activeId === "c" && pruned.round === 2)
+    ok("pruneMissingEntries：删掉当前条目 b → 条目只剩 a/c，游标顺移到 c，轮数不变");
+  else bad("pruneMissingEntries 不对：" + JSON.stringify({ missing, ids: pruned.entries.map((e) => e.tokenId), active: pruned.activeId }));
+  const onlyOne = I.pruneMissingEntries(prSt, ["a", "b", "c"]);
+  if (onlyOne.entries.length === 3) ok("token 都还在时一条都不删");
+  else bad("没有缺 token 也删了条目");
+  const allGone = I.pruneMissingEntries(prSt, []);
+  if (allGone.entries.length === 0 && allGone.activeId === "" && allGone.round === 1)
+    ok("token 全被删 → 名单清空、activeId 清空、轮数回 1");
+  else bad("清空后的状态不对：" + JSON.stringify(allGone));
+}
+
+{
+  /* 后台版：先记住「现在有哪些 token」，再删一枚 → 清理只针对「见过 → 消失」 */
+  role = "GM";
+  roomMeta[KEY_INITIATIVE] = I.normalizeInitiative({
+    phase: "combat", round: 1, activeId: "tok-1",
+    entries: [
+      { tokenId: "tok-1", name: "甲", init: 20, ownerId: "user-player" },
+      { tokenId: "tok-2", name: "乙", init: 10, ownerId: "user-gm" }
+    ]
+  });
+  await api.refreshInitKnownTokens();
+  await sleep(1300); /* 等「刚进场景」的静音窗口过去（防止把切换场景当成删除） */
+  items = items.filter((it) => it.id !== "tok-1");
+  const noteBefore = notifications.length;
+  const cleaned = await api.pruneMissingInitEntries();
+  const state173 = I.normalizeInitiative(roomMeta[KEY_INITIATIVE]);
+  if (cleaned === 1 && state173.entries.length === 1 && state173.entries[0].tokenId === "tok-2" &&
+    state173.activeId === "tok-2")
+    ok("token tok-1 被删 → 先攻条目自动清理，当前回合游标顺移到 tok-2");
+  else bad("自动清理不对：" + JSON.stringify({ cleaned, ids: state173.entries.map((e) => e.tokenId), active: state173.activeId }));
+  if (notifications.slice(noteBefore).some((n) => /已被删除/.test(n.msg))) ok("自动清理后通知（不静默）");
+  else bad("自动清理没有通知");
+
+  /* 切场景保护：只「刷新见过集合」，不因为「不在 items 里」就清空 */
+  roomMeta[KEY_INITIATIVE] = I.normalizeInitiative({
+    phase: "combat", round: 1, activeId: "tok-x",
+    entries: [{ tokenId: "tok-x", name: "别的场景的 token", init: 15 }]
+  });
+  await api.refreshInitKnownTokens();
+  const keep = await api.pruneMissingInitEntries();
+  const stateKeep = I.normalizeInitiative(roomMeta[KEY_INITIATIVE]);
+  if (keep === 0 && stateKeep.entries.length === 1)
+    ok("刚进场景 / 换场景时不清名单（否则换个场景就把整条先攻清了）");
+  else bad("换场景把名单清了：" + JSON.stringify({ keep, n: stateKeep.entries.length }));
+}
+
+console.log("== v1.7.3 先攻条常驻（进入房间自动显示 / 关掉不再弹 / 折叠态也常驻）");
+{
+  const STRIP_ID = "com.4enext-owlbear/initiative-strip";
+  const AUTO_KEY = "4enext/strip-autostart";
+  const CLOSED_KEY = "4enext/strip-closed-this-session";
+  const stripCfgs = () => openedPopovers.filter((c) => c && c.id === STRIP_ID);
+
+  globalThis.localStorage.removeItem(AUTO_KEY);
+  globalThis.localStorage.removeItem(CLOSED_KEY);
+  await api.closeStrip();
+  openedPopovers.length = 0;
+  /* 真实入口：scene.onReadyChange(true) → boot 里那个回调 → maybeAutoOpenStrip() */
+  if (sceneReadyCbs.length) {
+    for (const cb of sceneReadyCbs) {
+      try { cb(true); } catch (e) { /* 其它订阅自己的事，别挡住这条断言 */ }
+    }
+    await sleep(220);
+    const viaReady = stripCfgs().pop();
+    if (viaReady && viaReady.disableClickAway === true && viaReady.hidePaper === true)
+      ok("scene.onReadyChange(true) → 按设置自动打开先攻条（disableClickAway + hidePaper 都在）");
+    else bad("scene.onReadyChange 时没有按设置自动打开先攻条");
+  } else {
+    bad("后台没有订阅 scene.onReadyChange");
+  }
+
+  await api.closeStrip();
+  openedPopovers.length = 0;
+  const autoOpened = await api.maybeAutoOpenStrip("自测");
+  const autoCfg = stripCfgs().pop();
+  if (autoOpened && autoCfg) ok("设置未写（默认）→ 进入房间自动打开先攻条");
+  else bad("默认没有自动打开先攻条");
+  if (autoCfg && autoCfg.disableClickAway === true && autoCfg.hidePaper === true)
+    ok("自动打开的先攻条仍带 disableClickAway（点地图不会关）");
+  else bad("自动打开的先攻条没有 disableClickAway");
+  if (api.stripAutostartOn() === true) ok("stripAutostartOn 默认 true（缺省按开）");
+  else bad("stripAutostartOn 默认不是 true");
+
+  /* 设置为 0 → 不自动开 */
+  globalThis.localStorage.setItem(AUTO_KEY, "0");
+  await api.closeStrip();
+  openedPopovers.length = 0;
+  const offOpened = await api.maybeAutoOpenStrip("自测");
+  if (!offOpened && stripCfgs().length === 0 && api.stripAutostartOn() === false)
+    ok("设置 " + AUTO_KEY + " = \"0\" → 不自动打开先攻条");
+  else bad("设置为 0 仍然自动打开了");
+  globalThis.localStorage.removeItem(AUTO_KEY);
+
+  /* 条上的 ✕（CH_STRIP_CMD {op:"close"}）→ 会话级标记 → 不再自动弹 */
+  globalThis.localStorage.removeItem(CLOSED_KEY);
+  await api.openStrip();
+  api.onStripCmd({ data: { op: "close" } });
+  await sleep(80);
+  const closedMark = globalThis.localStorage.getItem(CLOSED_KEY);
+  openedPopovers.length = 0;
+  const reopened = await api.maybeAutoOpenStrip("自测");
+  if (closedMark === "1" && !reopened)
+    ok("「✕」写 " + CLOSED_KEY + " = 1 → 本次会话不再自动弹");
+  else bad("「✕」没有记会话级标记 / 仍然自动弹");
+
+  /* 重新打开 → 清掉标记（下个房间照样自动开） */
+  await api.openStrip();
+  if (globalThis.localStorage.getItem(CLOSED_KEY) === null)
+    ok("重新打开先攻条 → 清掉会话级关闭标记（下个房间又会自动开）");
+  else bad("重新打开没有清掉会话级标记");
+
+  /* 折叠态药丸：同一个 popover（id 不变）+ 仍是常量 120×40 + 仍带 disableClickAway。
+     模拟页面折叠后报尺寸（setWidth/setHeight + CH_STRIP_CMD size），再拖动一次让 popover 重开。 */
+  openedPopovers.length = 0;
+  api.onStripCmd({ data: { op: "size", width: 120, height: 40 } });
+  await sleep(40);
+  api.onStripDrag({ data: { phase: "start", dx: 0, dy: 0 } });
+  api.onStripDrag({ data: { phase: "move", dx: 6, dy: 6 } });
+  api.onStripDrag({ data: { phase: "end", dx: 6, dy: 6 } });
+  await sleep(200);
+  const pillCfg173 = stripCfgs().pop();
+  if (pillCfg173 && pillCfg173.id === STRIP_ID && pillCfg173.disableClickAway === true &&
+    pillCfg173.width === 120 && pillCfg173.height === 40)
+    ok("折叠态（120×40 药丸）还是同一个 popover、仍带 disableClickAway（药丸也常驻）");
+  else bad("折叠态没有保持常驻：" + JSON.stringify(pillCfg173 && [pillCfg173.width, pillCfg173.height, pillCfg173.disableClickAway]));
+  await api.closeStrip();
+}
+
+/* ---------------------------------------------------------------------------
  * 8. 静态：v1.3.1 拆掉三 tab / 独立窗口 / 版本
  * ------------------------------------------------------------------------- */
 console.log("== 静态检查");
 const man = JSON.parse(fs.readFileSync(path.join(ROOT, "manifest.json"), "utf8"));
-if (man.name === "4eNEXT to owlbear" && man.version === "1.7.0") ok("manifest 名称 / 版本 = 4eNEXT to owlbear 1.7.0");
+if (man.name === "4eNEXT to owlbear" && man.version === "1.7.5") ok("manifest 名称 / 版本 = 4eNEXT to owlbear 1.7.5");
 else bad("manifest 名称 / 版本不对：" + man.name + " " + man.version);
 if (!man.action) ok("manifest 仍然没有 action 字段（真机验证过无 action 能加载）");
 else bad("manifest 又加回了 action 字段");

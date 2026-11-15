@@ -17,7 +17,7 @@
 
 | 文件 / id | 作用 | 备注 |
 | --- | --- | --- |
-| `dice.html` + `assets/dice-page.js` | 骰子窗口（**单列，520×620**） | 只留骰子 / 表达式 / 战斗优势 +2 / 重击取满 / 本次结果 / 4E 预设 / 组合 |
+| `dice.html` + `assets/dice-page.js` | 骰子窗口（**单列，520×620**；**v1.7.4 起 320×620**，见 §7） | 只留骰子 / 表达式 / 战斗优势 +2 / 重击取满 / 本次结果 / 4E 预设 / 组合 |
 | `dice-history.html` + `assets/dice-history-page.js` | **记录窗口**（独立 popover，380×380） | id `com.4enext-owlbear/dice-history-window`；默认最近 4 条；只读 |
 | `effect.html` + `assets/effect-page.js` | **投骰动画页**（全屏 modal） | **不是** popover：透明 + `disablePointerEvents`，播完自己关 |
 | `assets/dice-core.js` | 规则 + **动画布局 / 时间轴的纯函数** | `fxBaseSize` / `fxDieSize` / `fxArcProfile` / `fxBeat` / `fxLayout` / `fxQuery` |
@@ -30,7 +30,7 @@
 窗口 id 一览（互不相同 → 可以同时开着）：
 
 ```text
-com.4enext-owlbear/dice-window           骰子窗口（520×620）
+com.4enext-owlbear/dice-window           骰子窗口（v1.7.4 起 320×620；v1.7.0 是 520×620）
 com.4enext-owlbear/dice-history-window   记录窗口（380×380，可拖动、单独记位置）
 effect.html                              动画页 —— 全屏 modal，id = com.4enext-owlbear/dice-effect-<rollId>
 ```
@@ -137,6 +137,39 @@ sy = worldY * scale + vp.y;        // --ty
 * 播放完 `finish()` 清所有 `setTimeout` / `setInterval` / `rAF`，并把舞台 `.fx-done` 隐藏，
   DOM 随 modal 一起销毁 —— 不会累积。
 
+### 2.6 v1.7.1：完全透明背景 + 三级关闭
+
+**问题**：v1.7.0 投完骰整个屏幕变黑，地图被完全盖住（用户截图「投掷怎么黑屏了」）。
+
+**原因**：黑底来自动画页自己的 `html`，**不是** OBR 的 backdrop（`hideBackdrop` 已生效）。
+`assets/ui.css` 顶部有一条 `html, body { background: var(--bg) }`（`--bg = #0b0f14`），
+v1.7.0 只给 `body.fx-page` 覆盖了 `background: transparent !important`，`html` 仍是**不透明深色**；
+body 一透明，html 那层黑就从整个 iframe 透出来 —— 全屏 modal 于是成了一整块黑。
+
+**修法**（两处，双保险）：
+
+| 位置 | 规则 |
+| --- | --- |
+| `effect.html`（内联 `<style>`，在 `ui.css` 之后） | `html, body.fx-page { background: transparent !important; color-scheme: normal !important; }`；`#app / .fx-root / .fx-stage / .fx-wrap` 也一律 transparent |
+| `assets/ui.css`（`.fx-*` 段） | `html:has(body.fx-page) { background: transparent !important; }`；`body.fx-page` 也 transparent + `color-scheme: normal` |
+
+* `color-scheme` 跟着退回 `normal`：深色 color-scheme 会让浏览器给透明 iframe 垫一层深色 canvas（同样是「黑屏」）；
+* `.fx-*` 段里**没有任何纯色深色 background**：唯一的深色是每颗骰子自己的 `.fx-box` 径向渐变
+  （那是骰面，不是页面底）—— `dev/check.mjs` 断言「effect.html / .fx-* 段没有深色纯色 background」；
+* `pointer-events: none` 全保留：骰子不挡鼠标，动画期间照样能平移 / 选中地图；
+* `hideBackdrop + hidePaper` 不变（backdrop / 纸张底都不出现）。
+
+**关闭有三级**（`assets/effect-page.js`）：
+
+| 触发 | 时机 | 实现 |
+| --- | --- | --- |
+| 播完 | `fxBeat().total = 2600 ms` | `later(finish, b.total)` |
+| **兜底** | **3000 ms**（`FX_CLOSE_FALLBACK_MS`） | `later(finish, FX_CLOSE_FALLBACK_MS)` —— 动画被打断 / 定时器被挂起也一定收场 |
+| ESC / 点击任意处 | 立即 | `window` 捕获阶段 `keydown`（`Escape` / `Esc` / 27）+ `click` → `finish()` |
+
+`finish()` 幂等（`state.closed`）：清掉所有 `setTimeout` / `setInterval`、`cancelAnimationFrame`、
+舞台加 `.fx-done`、`OBR.modal.close(id)`；先到的那个赢，后到的空跑，不会重复关 / 报错。
+
 ## 3. 开关与降级
 
 | 情况 | 行为 |
@@ -146,6 +179,8 @@ sy = worldY * scale + vp.y;        // --ty
 | `OBR.modal.open` 失败（旧 SDK / 被拦） | 骰子窗口 `playEffect` 捕获 → 状态行提示「投骰动画打不开（不影响结果）」 |
 | 连续投掷 | 打开新动画前先 `OBR.modal.close` 上一个（`effectModalId`），不会叠一层又一层 |
 | 动画期间点地图 | `disablePointerEvents: true` + `.fx-stage * { pointer-events: none }` → 点击穿透，能照常平移 / 选中 |
+| 动画被打断 / 定时器没跑到（v1.7.1） | **3000 ms 兜底** `finish()` 强制关闭；按 **ESC** / **点击任意处**也立即关（都不等播完） |
+| 地图被黑色盖住（v1.7.1 修复） | 页面底 **html + body 全透明**（v1.7.0 只透明了 body，html 的 `#0b0f14` 会整块露出来） |
 | 骰子超过 20 颗 | 只画前 20 颗（`FX_MAX_DICE`），总点数仍是真实总和 |
 
 开关存在本机：`localStorage["4enext/dice/anim"]`，`"0"` = 关，缺省 / `"1"` = 开。
@@ -184,6 +219,9 @@ v1.7.0 新加的断言（不启动浏览器，全部是纯函数 / 假 OBR / 假
 7. 设置关掉动画时投掷**不调用 `OBR.modal.open`**；开着时调用，且参数里有
    `fullScreen / hideBackdrop / hidePaper / disablePointerEvents: true` 与 `effect.html`；
 8. 预设只剩 attack / damage / skill，`dice-4e.js` 里不再出现「豁免」「先攻」。
+9. （v1.7.1）动画页**完全透明**：`effect.html` 显式把 `html` 一起设成 `transparent`、
+   `effect.html` 与 `.fx-*` 段都没有深色纯色 `background`；`3000 ms` 兜底 `close` 真的会调用
+   `OBR.modal.close`，ESC / 点击也能立即关（假 DOM + 假 OBR，不启动浏览器）。
 
 ## 6. 已知限制
 
@@ -193,3 +231,93 @@ v1.7.0 新加的断言（不启动浏览器，全部是纯函数 / 假 OBR / 假
 3. **动画不写历史**：它只呈现那一投，历史仍然只由 `CH_ROLL` → 城主落库那条链路写；
 4. **动画页不显示皮肤**（皮肤仍未做）：骰面是 CSS 画的圆角方块 + 大数字 + 小类型标；
 5. 记录窗口的「最近 4 条」是**条数**不是高度：展开后由列表自己滚动，不会把窗口撑出屏幕。
+
+## 7. v1.7.4：骰子窗口收窄（≈320×620）+ 本次结果固定底部 + 「记录窗口」打不开修复
+
+用户 2026-11-15 的三条要求（外加一次明确更正）：
+
+1. **「记录窗口」按钮点了打不开** —— 按钮在，点下去没有独立窗口出现；
+2. **窗口要窄** —— 最初说「和 Players 面板差不多」，中途给了一张 790 宽的效果图
+   （7 颗骰子一行 + 结果在底部），**随后又明确否掉宽版**：仍然要 **≈320 宽 / 620 高**的竖条；
+3. **字号整体小一号 +「本次结果」固定在窗口底部**（用分隔线隔开、上部独立滚动、结果不随滚动消失）。
+
+### 7.1 布局（`dice.html` + `assets/ui.css`）
+
+```text
+┌─ .win（320×620，后台 WINS.dice，仍按视口夹紧）──────────────┐
+│ 标题栏（可拖动）/ 后台状态条                                  │
+│ ┌─ .dice-cols（flex 竖排）────────────────────────────────┐ │
+│ │ .dice-left（flex:1 + overflow-y:auto）＝独立滚动区        │ │
+│ │   ① 骰子：4 + 3 两排（.dice-row = repeat(4)，第 2 行 3 颗）│ │
+│ │   ② 表达式：− [输入框 13px] ＋                             │ │
+│ │      投掷 / 上一次                                        │ │
+│ │      保存组合 / 记录窗口      （2×2）                      │ │
+│ │      战斗优势 +2 / 重击·伤害取满                           │ │
+│ │      清空记录（.wide 独占一行）                            │ │
+│ │   ③ 4E 预设（未选中绑定卡 → 提示文字）                     │ │
+│ │   ④ 组合                                                  │ │
+│ ├─ .dice-result（flex:0 0 auto + 上边框）＝固定底栏 ────────┤ │
+│ │   本次结果 · 投骰动画：开                                  │ │
+│ │   大号总点数 + 每骰 chip + 备注 / 标签 + 公式（#result）    │ │
+│ └──────────────────────────────────────────────────────────┘ │
+│ 底部状态行                                                    │
+└──────────────────────────────────────────────────────────────┘
+```
+
+* **结果固定底部**：`.dice-result` 是 `.dice-cols` 的第二个 flex 子项（`flex: 0 0 auto`），
+  `.dice-left` 才是唯一的滚动容器（`flex: 1 1 auto; overflow-y: auto`）→ 上面的内容怎么滚，
+  结果都在底部不动；`.res-box` 自己再限高 146px 滚动（掷 20 颗骰子也不会把窗口撑开）。
+* **为什么不再是一排 7 颗**：320 宽扣掉内边距只剩 ≈276px，7 颗每颗不到 40px（挤成一条缝），
+  所以改用四列栅格 → 自动 4 + 3；每颗约 64×42。
+* **字号整体小一号**：表达式输入 15→**13px**、分区说明 10.5→**10px**、按钮 13→**12px**、
+  骰面 11.5→**10.5px**、总点数 34→**26px**、chip 11.5→**10.5px**。
+
+### 7.2 「记录窗口」打不开：五层加固
+
+链路上**每一环本来都在**（`CH_DICE_HIST_CMD` 两端一致 → 后台 `onDiceHistCmd` → `WINS.diceHistory`
+→ `openWin("diceHistory")` → `CH_DICE_HIST_STATE`），但**任何一环没走通，用户看到的就是「点了没反应」**。
+所以 v1.7.4 把这条链改成「怎么都得开出来 / 开不出来必须吵」：
+
+| # | 位置 | 做法 |
+| --- | --- | --- |
+| ① | `assets/background.core.js` | `openDiceHistory()` 失败**重试一次**（宿主偶尔会在关窗动画没结束时拒绝 `popover.open`）；仍失败 → `stepFail`（**ERROR 通知**，并提示「先关掉骰子窗口再点一次」） |
+| ② | `assets/background.core.js` | toggle 前先用 `OBR.popover.getWidth(ID_DICE_HIST)` 确认窗口**真的还开着**；reject = 状态跟丢 → 清掉 `winOpen` 并**重开**（否则会点成「关闭」，还是没反应） |
+| ③ | `assets/background.core.js` | 记录窗口默认位置改成**贴着骰子窗口**开（右 → 左 → 下 → 上，见 `winDefaultPos(name, size, vp)`）。原来两个窗口都「水平居中 + 偏上」，380×380 的记录窗会被 320×620 的骰子窗**整块盖住** = 看起来像没打开 |
+| ④ | `assets/dice-page.js` | 骰子窗口发命令后开 **900 ms 回执计时器**：等不到 `CH_DICE_HIST_STATE` 就**自己** `OBR.popover.open` 同一个 id / 同一个页面（位置放视口右上）+ WARNING 通知；连这个也失败 → **ERROR 通知** |
+| ⑤ | `assets/dice-history-page.js` | 页面加载完发 `{ op: "ready" }` 握手 → 后台把「开着」补上（万一是骰子页兜底开的，下次点「记录窗口」才是关闭，不会又开一遍） |
+
+按钮状态也跟着变：点下去先显示「记录窗口 · 打开中…」→ 回执到 → 「记录窗口 · 开 / 记录窗口」；
+不再有「点了什么都没发生」这条路径。
+
+### 7.3 改动清单
+
+| 文件 | 改了什么 |
+| --- | --- |
+| `dice.html` | 结构改成「上部滚动区 + 底部固定结果」；结果块移到 DOM 末尾；按钮分两组（2×2 / 2+1） |
+| `assets/ui.css` | `.dice-cols` 改 flex 竖排、`.dice-row` 四列、`.dice-acts` 两列 + `.wide`、新增 `.dice-result`、字号整体收一档 |
+| `assets/dice-page.js` | 记录窗口：回执计时器 + 本页兜底 `openHistoryDirect` + ERROR 通知（布局逻辑没动） |
+| `assets/dice-history-page.js` | 加载完 `{ op: "ready" }` 握手 |
+| `assets/background.core.js` | `WINS.dice` → **320×620**；`openDiceHistory` 重试 + ERROR；`diceHistoryAlive()`；`ready` 握手；`winDefaultPos(name, …)` 让记录窗口贴着骰子窗口开 |
+| 版本 | **1.7.4**（manifest×2 / common.js / background.core.js / background.html `?v=` / index.html / index.js）+ bundle 重建 |
+
+### 7.4 自测（不启动浏览器）
+
+```bash
+node dev/check.mjs          # 320×620 / repeat(4) / .dice-result 在 DOM 末尾 + flex:none + 上边框 /
+                            # .dice-left 独立滚动 / 字号 / 记录窗口五层加固 / 版本 1.7.4 全链路
+node dev/test-dice.mjs      # 点「记录窗口」→ 发 toggle；回执 → 按钮变「开」且不再兜底；
+                            # 没回执 → 本页真的 OBR.popover.open(dice-history.html) + 通知
+node dev/test-background.mjs# toggle → popover.open(dice-history.html)（380×380，贴在骰子窗口右边，
+                            # 不重叠）+ STATE{open:true}；再 toggle → close + STATE{open:false}；
+                            # ready 握手补状态；开窗失败重试 1 次 + ERROR 通知
+node dev/selftest.mjs       # 5/5
+```
+
+### 7.5 已知限制
+
+1. 仍然**没有真机联调**（开发环境不能起浏览器）：记录窗口的加固是按「哪一环可能断」逐条补的，
+   真机上如果还有一条路径没覆盖，`background.html` 的自检日志里会留下
+   「骰子记录窗口：已打开 / 打开骰子记录窗口（可以先关掉骰子窗口，再点一次…）」这样的行；
+2. ④ 的兜底开窗**不经过后台**，所以那个窗口**拖不动、也不记位置**（后台的 `winOpen` 里没有几何信息）；
+   它自己的 ✕ 仍然能关（会广播 `open:false`），下一次正常链路打开后又恢复拖动。
+

@@ -5,6 +5,16 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>4eNEXT to owlbear · 投骰动画</title>
 <link rel="stylesheet" href="assets/ui.css">
+<!-- v1.7.1：**整页完全透明**（修「投完骰地图被全屏黑盖住」）。
+     黑底不是 OBR 的 backdrop（hideBackdrop 已生效），而是 assets/ui.css 顶部那句
+     `html, body { background: var(--bg) }`：v1.7.0 只给 body.fx-page 盖了 transparent，
+     html 仍然是不透明的深色 #0b0f14，body 一透明，下面那层 html 的黑就从整个 iframe 透出来，
+     把地图整块糊住。所以这里连 html 一起钉成 transparent（!important 盖掉 ui.css），
+     color-scheme 也退回 normal —— 深色 color-scheme 会让浏览器给透明 iframe 垫一层深色 canvas。 -->
+<style>
+  html, body.fx-page { background: transparent !important; color-scheme: normal !important; }
+  #app, .fx-root, .fx-stage, .fx-wrap { background: transparent !important; }
+</style>
 </head>
 <body class="fx-page">
 <!-- v1.7.0：投骰动画页（全屏 modal，由 assets/dice-page.js 在**算完结果之后**打开）。
@@ -14,7 +24,8 @@
      · 背景透明（hideBackdrop + hidePaper），**整层 pointer-events:none**：骰子不挡鼠标，
        动画期间照样能平移 / 选中地图（参考实现就是这么做的，见 dice-effect.html 的注释）；
      · 骰子数量、尺寸、换行、居中、附属元素位置全部由 fxLayout 算，CSS 只做关键帧；
-     · 播放完（2600 ms）自己关掉；出任何错就把这一层隐藏并关闭 —— 结果早已显示在骰子窗口里。 -->
+     · 播放完（2600 ms）自己关掉，**另挂 3000 ms 兜底**（动画被打断也不会留一层），
+       ESC / 点击任意处也立即关；出任何错就把这一层隐藏并关闭 —— 结果早已显示在骰子窗口里。 -->
 <div class="fx-stage" id="fx-stage">
   <div class="fx-flash" id="fx-flash" aria-hidden="true"></div>
   <div class="fx-wrap" id="fx-wrap">

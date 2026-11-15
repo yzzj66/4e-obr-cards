@@ -27,8 +27,11 @@ export const ID_DICE_WIN = NS + "/dice-window";
 export const ID_DICE_HIST = NS + "/dice-history-window";
 /* v1.3.2：设置 / 关于窗口（与 assets/background.core.js 的 ID_SETTINGS_WIN 必须一致）。 */
 export const ID_SETTINGS_WIN = NS + "/settings-window";
+/* v1.7.2：血条组件编辑小窗（右键「添加血条组件」→ 填生命 / 四防 / 回复力）。
+ * id 与其它窗口都不同 → 可以和速览 / 先攻条同时开着；位置按窗口名 "hpEdit" 单独记。 */
+export const ID_HP_EDIT = NS + "/hp-edit";
 
-export const PLUGIN_VERSION = "1.7.0";
+export const PLUGIN_VERSION = "1.7.5";
 
 /**
  * 站点根地址。
@@ -53,6 +56,8 @@ export const URL_DICE = new URL("dice.html", URL_BASE).href;
 /* v1.7.0：骰子记录窗口（独立 popover）+ 投骰动画页（全屏 modal，透明 + 不挡鼠标）。 */
 export const URL_DICE_HIST = new URL("dice-history.html", URL_BASE).href;
 export const URL_EFFECT = new URL("effect.html", URL_BASE).href;
+/* v1.7.2：血条组件编辑小窗页（340×150，可拖动）。 */
+export const URL_HP_EDIT = new URL("hp-edit.html", URL_BASE).href;
 /* v1.3.2：设置 / 关于窗口页。 */
 export const URL_SETTINGS = new URL("settings.html", URL_BASE).href;
 export const URL_BUTTON = new URL("button.html", URL_BASE).href;
@@ -88,6 +93,14 @@ export const LS_DICE_LOCAL = "4enext/dice/local";
  * LS_DICE_ANIM = 投骰动画开关（"0" 关闭，缺省 / "1" 开启）；设置窗口里改它。 */
 export const CH_DICE_HIST_CMD = NS + "/dice-hist-cmd";
 export const CH_DICE_HIST_STATE = NS + "/dice-hist-state";
+
+/* ---- v1.7.2：血条组件编辑小窗（与 background.core.js 的同名常量必须一字不差）----
+ * CH_HP_EDIT_TARGET 后台 → 页面：{ session, version, itemId, pending }（版本租约，规格 §2.2 简化版）
+ * CH_HP_EDIT_READY  页面 → 后台：{ session }（页面加载完要一次补发 target，防丢第一条广播）
+ * CH_HP_EDIT_SAVED  页面 → 后台：{ itemId, hp }（保存成功后立刻重画血条，不等 items.onChange） */
+export const CH_HP_EDIT_TARGET = NS + "/hp-edit-target";
+export const CH_HP_EDIT_READY = NS + "/hp-edit-ready";
+export const CH_HP_EDIT_SAVED = NS + "/hp-edit-saved";
 export const LS_DICE_ANIM = "4enext/dice/anim";
 /** 记录窗口默认只显示最近几条（其余滚 / 点「展开全部」看）。 */
 export const HIST_VISIBLE_ROWS = 4;
@@ -111,6 +124,24 @@ export const CH_STRIP_DRAG = NS + "/strip-drag";
 export const CH_STRIP_CMD = NS + "/strip-cmd";
 /** 先攻条拖动时 pointermove 的节流间隔（毫秒）。 */
 export const STRIP_DRAG_THROTTLE_MS = 33;
+
+/* ---- v1.7.3：先攻条常驻（本机设置；与 background.core.js 的 STRIP_AUTOSTART_KEY /
+ * STRIP_CLOSED_KEY 必须一字不差）----
+ *   LS_STRIP_AUTOSTART  "0" = 进入房间不自动显示；缺省 / "1" = 自动显示（**默认开**）
+ *   LS_STRIP_CLOSED     会话级「本次已经手动关掉」标记（条上的 ✕ 写它，重新打开时清掉）
+ * 设置窗口（settings.html 的「先攻」栏）只调这里的读写函数，**不自己碰 localStorage**
+ * （dev/check.mjs 断言这一页没有直接写本机存储）。 */
+export const LS_STRIP_AUTOSTART = "4enext/strip-autostart";
+export const LS_STRIP_CLOSED = "4enext/strip-closed-this-session";
+
+/** 进入房间要不要自动显示先攻条（默认开；localStorage 不可用时也当开）。 */
+export function readStripAutostart() {
+  try { return localStorage.getItem(LS_STRIP_AUTOSTART) !== "0"; } catch (e) { return true; }
+}
+/** 写自动显示开关（设置窗口用；写失败只影响记忆，不影响打开条）。 */
+export function writeStripAutostart(on) {
+  try { localStorage.setItem(LS_STRIP_AUTOSTART, on ? "1" : "0"); return true; } catch (e) { return false; }
+}
 
 /** 后台心跳频道（与 assets/background.core.js 里的常量必须一致）。 */
 export const CH_HELLO = NS + "/diag-hello"; // 后台 → 页面：我起来了
