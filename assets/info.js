@@ -17,10 +17,10 @@ import OBR from "../vendor/obr-sdk.js";
 import { CH_INFO_DRAG, ID_INFO, ID_PANEL, INFO_DRAG_THROTTLE_MS, URL_PANEL, KEY_BIND, getCards, findCard, esc, onReady, notify } from "./common.js";
 /* v1.7.13：带版本查询串 —— 旧缓存的 glance.js / track.js 正是「chip 点不动」的另一种可能，
  * 更新后必须让浏览器重新取这两个文件（info.html 的入口也带了 ?v=）。 */
-import { renderGlanceHTML, deriveGlance, magicItemDailyUses } from "./glance.js?v=1.7.15";
+import { renderGlanceHTML, deriveGlance, magicItemDailyUses, loadCardIndex, cardIndex } from "./glance.js?v=1.8.3";
 /* v1.7.10：✕ 统一走「OBR.popover.close(正确 id) + OBR.modal.close + 后台 {op:"close-win"}」双保险。 */
 import { closeSelf } from "./window.js";
-import { KEY_HP, applyAction, hpView, loadState, mayEditItem, readItem, scopeText, syncTokenStats } from "./track.js?v=1.7.15";
+import { KEY_HP, applyAction, hpView, loadState, mayEditItem, readItem, scopeText, syncTokenStats } from "./track.js?v=1.8.3";
 
 const params = new URLSearchParams(location.search);
 let itemId = params.get("item") || "";
@@ -246,6 +246,14 @@ async function refresh(force) {
 async function runAction(act, el) {
   if (!card || !act) return;
   derived = deriveGlance(card.char, undefined, { hp: hp, state: state });
+  /* v1.8.1：临时回复值算进「使用回复力」；短休要清掉「遭遇」类专长的已用标记，
+   * 专长频率来自按需加载的 card-index（没加载到就只清威能，功能降级不报错）。 */
+  const liveState = state && typeof state === "object" ? state : {};
+  const surgeTemp = typeof liveState.surgeTemp === "number" ? liveState.surgeTemp : 0;
+  const idx = cardIndex();
+  const encounterFeatKeys = (derived.feats || []).filter(function (f) {
+    return !!(idx && idx.feats && idx.feats[f.id] === "e");
+  }).map(function (f) { return f.key; });
   try {
     const res = await applyAction(act, el, {
       cardId: card.id,
@@ -255,7 +263,8 @@ async function runAction(act, el) {
       maxHp: derived.hpMax,
       surgesMax: derived.surgesMax || derived.surges,
       defenses: derived.defenses,
-      surgeValue: derived.surgeValue,
+      surgeValue: Math.max(0, derived.surgeValue + surgeTemp),
+      encounterFeatKeys: encounterFeatKeys,
       canHp: canHp,
       itemDailyMax: magicItemDailyUses(derived.level, derived.milestones)
     });
@@ -330,5 +339,13 @@ onReady(function () {
   } catch (e) {
     console.error(e);
   }
-  void refresh(true);
+  /* v1.8.1：先按需加载速览增强索引（动作类型 / 攻击命中 / 专长频率，约 1.2MB，只在这个弹窗用），
+   * 再首帧渲染；加载失败也照常渲染（少几个标签，数值与点击不受影响）。 */
+  void loadCardIndex().then(function () {
+    lastSig = "";
+    return refresh(true);
+  }, function () {
+    lastSig = "";
+    return refresh(true);
+  });
 });

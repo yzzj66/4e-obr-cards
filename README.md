@@ -1,7 +1,7 @@
 # 4eNEXT to owlbear · Owlbear Rodeo 插件
 
 > 基于 4E NEXT 的 4E 跑团适配 mod：在枭熊里看角色卡速览、绑定 token、先攻条、骰子与血条。
-> **当前版本 v1.7.15** · 纯静态（无需 npm / 无需构建）· 零服务器。
+> **当前版本 v1.8.3** · 纯静态（无需 npm / 无需构建）· 零服务器。
 > 历史更新记录见 [CHANGELOG.md](CHANGELOG.md)。
 
 ## ⭐ 安装地址（复制这一行）
@@ -26,8 +26,9 @@ https://yzzj66.github.io/4e-obr-cards/manifest.json
 **右键加入先攻并按角色卡的先攻加值推进回合**。
 
 - 纯静态：HTML + 原生 JS + CSS，**不需要 npm、不需要构建**，扔到任何静态托管就能用。
-- 零服务器：卡片与追踪状态存在 Owlbear 的**房间数据（room metadata）**里，全房间共享；
-  血量存在**token 的 item metadata** 上。
+- 零服务器：角色卡**双写** —— **房间数据**存精简名单副本（全桌共享、跨场景还在，用于绑定与速览）；
+  **当前场景的隐藏 item**（`com.4enext-owlbear/card`）存**完整卡**（字段不丢；换场景看不到，但数据还在那个场景里）；
+  两边都写不进才降级本机 localStorage（`4enext/cards-local`）。追踪状态在房间数据，血量存在 **token 的 item metadata** 上。
 - 不改卡：插件不碰角色卡本身（威能选择 / 属性 / 装备都不动），只记本场战斗的消耗。
 - **入口分块**（v1.3.1，v1.3.2 补齐；v1.4.0 的「先攻」变成屏幕顶部的条）：左上角扩展图标（角色卡 / 导入面板）、
   左侧工具栏**五个**图标（速览 / 角色卡 / 先攻条 / 骰子 / 设置）、右下角浮动按钮、右键菜单。每个功能打开**自己的窗口 / 条**，互不嵌套；
@@ -47,10 +48,10 @@ https://yzzj66.github.io/4e-obr-cards/manifest.json
 | **血量加减** | 弹窗里 `−1 / −5 / −10`、`＋1 / ＋5 / ＋10`，或填数字点「受伤 / 治疗」；临时生命 ±、回复力圆点、使用回复力 |
 | **token 血条** | 第一次在弹窗里加减过血量后，token 上会自动画「当前 / 上限」血条（含临时生命），受伤 / 治疗立刻变（不需要像参考插件那样右键「添加血条组件」） |
 | **token 血条（v1.6.0；v1.7.9 改成环形）** | token 上画 **环形血条**：`Ro = 半短边 − 2s`、环厚 `10s`、48 段，空余部分是暗色底环、血量按 `cur/max` 从 12 点顺时针填；**HP 数字（`12/20`，含临时生命 `+3`）写在环内正中**。**四防在四个角**：左上黄=强韧、右上绿=反射、左下紫=意志、右下=**AC 半透明白盾**（直径都 30s、字 15s、贴角内侧 4s）；窄 token 上按「先丢意志 → 再丢反射 → 再丢强韧」退化，**AC 优先保留**。**回复力不画在 token 上**（速览 / 编辑窗里照旧能看、能改）。**右键「添加血条组件」** 显式开启（老 token 默认照旧画，关闭写 `false`，不会自己回来） |
-| **v1.6.2 修复** | ① 速览弹窗**删掉 HP 绿条下面那条彩色四防箭头条**（蓝 / 黄 / 绿 / 紫四块盾形夹片），四防数值看下面 **AC / 强韧 / 反射 / 意志 四张数值卡**；token 上的四防 v1.6.1 是一排（**v1.7.9 起回到四角**）。② **先攻条宽高固定**：折叠 **120×40** / 展开 **720×(170\|180\|200)**（v1.7.10 加高，卡片不再被裁切），只在视口太窄时才缩；不再按内容测量 → **投骰后不会再变窄**，卡片区**内部横向滚动**，右侧空列表区域保持深色。见 [`docs/ui-v162.md`](docs/ui-v162.md) |
+| **v1.6.2 修复** | ① 速览弹窗**删掉 HP 绿条下面那条彩色四防箭头条**（蓝 / 黄 / 绿 / 紫四块盾形夹片），四防数值看下面 **AC / 强韧 / 反射 / 意志 四张数值卡**；token 上的四防 v1.6.1 是一排（**v1.7.9 起回到四角**）。② **先攻条宽高固定**：折叠 **120×40** / 展开 **720×(170\|180\|200)**（v1.7.10 加高，卡片不再被裁切），只在视口太窄时才缩；不再按内容测量 → **投骰后不会再变窄**，卡片区**内部横向滚动**，右侧空列表区域保持深色。见 [`docs/NOTES.md`](docs/NOTES.md) |
 | **血条组件编辑窗（v1.7.2）** | 右键「添加血条组件」→ **顺带打开 340×150 的编辑小窗**（可拖动、位置单独记）：**生命**（`20` 设上限 / `20/20` 当前/上限 / `+5`、`-3` 加减 / `15+5` 算式）、**四防**（AC / 强韧 / 反射 / 意志，留空 = 不画那枚盾）、**回复力**（`3/3`）。保存写 token 的 `com.4enext-owlbear/hp` → 血条立即刷新。**没绑定角色卡的怪物 / 杂兵也能加血条与防御**；绑了卡先带入卡里的数值；只有城主或 token 创建者能编辑，写失败弹 ERROR 通知（不静默） |
-| **移出先攻 / 自动清理 / 透明 / 常驻（v1.7.3）** | ① **右键「移出先攻」**：菜单随名单动态变（已在先攻里 → 只显示移出，不在 → 显示加入两项），点了立刻从条上消失；② **token 被删除 → 条目自动清理 + 游标顺移**，GM 的卡片右上角 **✕** 也能直接移出；③ **先攻条外壳透明**（卡片仍是不透明深色底，右侧空白区不铺深色）；④ **常驻**：进入房间按设置自动显示（默认开、点地图不消失、药丸折叠态同样常驻），「✕」关掉后本次会话不再自动弹。见 [`docs/initiative-v14.md`](docs/initiative-v14.md) §13 |
-| **记录窗口直开 / 删小字 / 先攻条真透明 / 四防重排（v1.7.6）** | ① **记录窗口**：点按钮**直接**弹出（不再「先发命令等后台」），出来之后按钮变「关闭记录窗口」；打不开会弹 ERROR 通知并让后台关掉骰子窗口再补开。② **删掉 12 处说明小字**（标题副标题、表达式 / 组合 / 预设区右上、防御参考整行、「投骰动画：开」、速览的「token：xxx / 检定已含半等级 / 点一下=已用 / 纯展示」…），**错误提示保留**；顶部状态条**只在后台未连接时出现**。③ **先攻条外壳真正透明**：连 `#app` / `.win` / `.win-body` 也 `transparent !important`，只留卡片与控制行的半透明底。④ **token 四防重排**：四枚统一 **30s**、字放大到 **15s**、整排**左右铺满 token 并均分**（左缘 +4s / 右缘 −4s），AC 半透明白盾仍在最右。见 [`docs/dice-v17.md`](docs/dice-v17.md) §8、[`docs/initiative-v14.md`](docs/initiative-v14.md) §14、[`docs/hpbar-boss-v16.md`](docs/hpbar-boss-v16.md) §0.7 |
+| **移出先攻 / 自动清理 / 透明 / 常驻（v1.7.3）** | ① **右键「移出先攻」**：菜单随名单动态变（已在先攻里 → 只显示移出，不在 → 显示加入两项），点了立刻从条上消失；② **token 被删除 → 条目自动清理 + 游标顺移**，GM 的卡片右上角 **✕** 也能直接移出；③ **先攻条外壳透明**（卡片仍是不透明深色底，右侧空白区不铺深色）；④ **常驻**：进入房间按设置自动显示（默认开、点地图不消失、药丸折叠态同样常驻），「✕」关掉后本次会话不再自动弹。见 [`docs/NOTES.md`](docs/NOTES.md) §13 |
+| **记录窗口直开 / 删小字 / 先攻条真透明 / 四防重排（v1.7.6）** | ① **记录窗口**：点按钮**直接**弹出（不再「先发命令等后台」），出来之后按钮变「关闭记录窗口」；打不开会弹 ERROR 通知并让后台关掉骰子窗口再补开。② **删掉 12 处说明小字**（标题副标题、表达式 / 组合 / 预设区右上、防御参考整行、「投骰动画：开」、速览的「token：xxx / 检定已含半等级 / 点一下=已用 / 纯展示」…），**错误提示保留**；顶部状态条**只在后台未连接时出现**。③ **先攻条外壳真正透明**：连 `#app` / `.win` / `.win-body` 也 `transparent !important`，只留卡片与控制行的半透明底。④ **token 四防重排**：四枚统一 **30s**、字放大到 **15s**、整排**左右铺满 token 并均分**（左缘 +4s / 右缘 −4s），AC 半透明白盾仍在最右。见 [`docs/NOTES.md`](docs/NOTES.md) §8、[`docs/NOTES.md`](docs/NOTES.md) §14、[`docs/NOTES.md`](docs/NOTES.md) §0.7 |
 | **选中即弹血条编辑窗（v1.7.7）** | **选中**一枚 token 就会按它的状态弹对应的窗：**已绑定角色卡** → 速览（老行为）；**没绑定卡、但已经有血条**（有生命 / 四防 / 回复力数据，或开着「血条组件」）→ 直接弹 **340×150 的血条编辑窗**，不用先右键。多选 / 没血条的 token 照旧不弹。**同一个 token 只自动弹一次**（关掉之后不会再被选中事件弹回来）；要再改就右键新增的「**编辑血条**」（只在血条开着的 token 上出现）。**Boss 锁**（玩家端隐藏精确数字）时非城主的编辑窗是**只读**的：藏保存、提示「已锁定」。见 [`docs/NOTES.md`](docs/NOTES.md) |
 | **减少打扰：只保留错误提示（v1.7.8）** | 用户：「这种提示太多了，不要吧」→ **成功 / 普通提示全部去掉**，不再弹「已保存：50/100，四防已写入」「已加入先攻」「已移出先攻」「已复制」「记录窗口已打开 / 已关闭」「后台已恢复」「投骰已发送」「已保存组合」「已重置本机设置」这类通知（窗口内那一行「已保存 …」小字也一起去掉）；**只保留 `ERROR` / `WARNING`**——断线、写盘失败、窗口打不开、只读 / 锁定（`hp.locked`）这些必须让人知道的问题照旧提示。成功的反馈就是界面本身：血条当场重画、先攻卡片当场消失、按钮文字变「关闭记录窗口」，操作成功不弹窗也不会「没反应」。 |
 | **血条全改环形 + 去掉 Boss 模式（v1.7.9）** | 用户定稿：① **去掉 Boss 模式** —— 右键「显示为 Boss」「隐藏 Boss 血条」、速览里的「显示为 Boss」开关、token 上的**名牌 / 分段线 / 锁**全部删除（`hp.boss` 字段只为旧数据兼容保留，不再读取 / 绘制）；② **所有血条改成环形**（复用原来 Boss 的环：48 段、环厚 10s、`Ro = 半短边 − 2s`），**直的 HP 条与蓝色回复力条不再画**；③ **四防回到四角**（左上强韧 / 右上反射 / 左下意志 / 右下 AC 盾）；④ HP 数字仍在（环内正中），编辑窗（改 HP / 四防 / 回复力）照旧 |
@@ -59,17 +60,18 @@ https://yzzj66.github.io/4e-obr-cards/manifest.json
 | **资源追踪补全 + 共享数据（v1.7.12）** | 用户实测：遭遇 / 每日 / 辅助 / 种族职业四组威能有些 chip 点不动、装备行也点不动。本版：① **四组威能 chips 全部可点**（点 = 已用变灰 + 删除线、再点恢复；**随意威能**无限次，仍是纯展示）；② **装备 / 魔法物品每一行都可点**（耗尽 / 恢复）；③ **默认状态修正**：装备 key 改成稳定 id（`前缀:物品id:第几件`），旧版按下标写的 key 一律忽略 —— 从没点过的卡不会再显示「已用 10/12」，缺省 = 未用、计数 `已用 0 / N`；④ 原 HP 区「🔒 玩家端隐藏数字」挪到**顶部标题区右侧**并改名 **「共享数据」**（开 = 共享 = 全桌显示精确数字，关 = 玩家端只看量化比例；HP 区旧按钮删除）；⑤ 专长仍纯展示。自测：`dev/test-glance.mjs` 断言四组每个 chip 带 `data-act="power"`、每行装备带 `data-act="equipment"`、默认 0 / N、共享数据在顶部；`dev/test-track.mjs` 断言四组都能 toggle / 默认全未用。 |
 | **速览「点不动」回归（v1.7.13）** | 用户实测 v1.7.12 后速览窗里**威能 chip / 装备行仍然完全点不动**（原话「一点没改啊」）。本版三层修复：① **全仓审计 pointer-events** —— 速览页（#app / .win / .win-body / .pop / .pop-body / .gl4-* / button）**一条 none 都没有**（运行代码里只剩两处装饰层的 none：投骰动画 .fx-stage、先攻条拖拽落位线 .drop-mark，都不在速览页）；另给速览页容器链与所有 [data-act] 显式写回 **pointer-events:auto** ——万一宿主 / 旧样式给祖先留了 none，后代仍能成为命中目标；② **事件委托从 #body 挪到 document 捕获阶段**（重画换 DOM、子元素 stopPropagation 都不会丢点击）；③ **缓存穿透**：info popover URL 与 info.html / info.js / glance.js / track.js / css 全带 **?v=1.7.13** ——旧缓存的 v1.7.11 渲染层里威能 chip 根本不是 button，这正是「一点没改」的来源。自测：新增 dev/test-info-click.mjs（假 DOM + 真 info.js，dispatchEvent(new MouseEvent("click")) → 断言 track.js 写入 powerUsed / equipmentUsed）；dev/check.mjs 静态扫描 pointer-events 并 spawn 该冒烟。 || **资源追踪** | 威能 / 装备点一下变灰＝已用，再点恢复；行动点与里程碑并成一排加减；短休 / 长休一键恢复（专长只展示，不追踪） |
 | **房间数据超限真修复（v1.7.15）** | 真机控制台报 `Unable to update metadata: over size limit of 16 kB` → 之后**加入先攻 / 改加值 / 回合推进 / 骰子历史 / 资源标记全部写不进去**（而且静默）。根因：导入的角色卡 JSON 被**整份**塞进房间数据（单张 4E 卡 4~50 KB）。本版：① **只存渲染必需字段**（名字 / 等级 / 种族职业 / HP·四防 / 属性 / 技能 / 威能列表 / 专长 / 装备 / 先攻 / 被动·移动；**不存**立绘 / spellbook / backpack / 详情正文），单卡实测 **4945 → 1906 字符（5721 → 2436 字节，-57%）≤ 2 KB**；② **写前算体积**：超过 **14 KB**（16 kB 硬上限留余量）就**不写**，弹 **ERROR**「房间数据已满（16KB）：请减少导入的角色卡，或清理骰子历史」；③ **降级本机**：角色卡超限时改存 `localStorage`，房间里的先攻 / 骰子照旧能写，token 绑定仍在 item metadata，面板标 **「角色卡：本机」**；④ 设置 →「数据与权限」新增 **清理房间数据**（看用量 + 一键清骰子历史 / 清空角色卡，各两次确认）。自测：新增 `dev/test-cards.mjs` 断言「单卡 ≤ 2 KB」「导入大卡后房间数据仍 ≤ 14 KB」「超限不写 + ERROR」「降级本机」「设置里有清理按钮」。 |
+| **场景兜底 + 修误弹窗（v1.8.0）** | ① **角色卡双写**：**房间数据** = 精简名单副本（跨场景 / 全桌可见、用于绑定与速览；受 14 KB 预算）＋ **当前场景隐藏 item** = 完整卡（`com.4enext-owlbear/card`，字段不丢、没有 16 KB 总额限制）→ 两边都写不进才降级本机 localStorage 并弹 ERROR。读的时候按 id 取并集、同 id 用场景里的完整卡（房间名单过期也不会让新卡「刷新后消失」）。② **名字兜底**：token 绑定的卡被删 / 不在本机时，按 token 名字找同名卡，不再误弹血条编辑窗。③ **血条几何修正**（环厚 / 底环透明度 / 四防直径与内缩按真机反馈重调，由另一名队员负责）。④ 全站静态资源带 `?v=1.8.0`；`effect.html` / `dice-history.html` 补内联透明三件套。 |
 | **先攻条背景真透明（v1.7.14）** | 用户指出：前面三版（v1.7.3 透明 body / v1.7.6 六层 `transparent !important` / v1.7.10 换 `OBR.modal.open`）**全都没成**，而 FullPeople 的现成实现本来就是透明的 —— 于是**逐行照抄**它。抄的是 `initiative-panel-v131.html` 的三件套：① `<html>` / `<body>` 的 **`style` 属性**里写 `background:transparent!important`（inline `!important` 在级联里**高于任何选择器 `!important`**，后加载样式表与暗色扩展都压不过它，这正是前三版缺的那一层）；② `<meta name="darkreader-lock">`（Dark Reader 之类的扩展整页不处理）；③ `<style data-overlay-canvas>` 里 `:root{color-scheme:normal!important;background:transparent!important}` + `body,#root,.app-hbar,.hbar-cluster{background:transparent!important}`（类名映射成 `#app / .win / .win-head / .win-body / .win-foot / .strip-root / .strip / .strip-items`）。popover 参数也按他们的 `openPanel()` **原样原序**排：`POSITION` + `anchorPosition` + `anchorOrigin/transformOrigin = CENTER/TOP` + `disableClickAway:true` + `hidePaper:true`，**不再用 modal、不再有 disablePointerEvents**（v1.7.10 就是这么把整条交互打穿的）。仍然只有**两处底色**：控制行 `.strip-ctl`（`rgba(11,15,20,.72)`）与卡片 `.initiative-item`（`#141b23`）。列表窗口（`?view=list`）按 `?view=` 判断，保持不透明。自测：`dev/check.mjs` 断言 darkreader-lock / inline 透明 / `:root` 规则 / 参数顺序，`dev/test-initiative.mjs` 的交互断言（右键加入先攻 / 加值输入 / d20 / ✕ / 拖动）全部保留。 |
 | **各自独立窗口** | 没有 tab（v1.3.1 拆掉了）：**速览**（选中 token 弹出的小窗）/ **先攻** / **骰子**（占位）/ **角色卡 · 导入** / **设置 · 关于**（v1.3.2）各自一个 popover，id 互不相同 → 可以同时打开、互不嵌套 |
 | **各自入口 + 各自位置** | 角色卡：左上角图标 / 工具栏「角色卡」/ 右下角浮动按钮；**速览**（v1.3.2）：选中 token 自动弹 + 工具栏「速览」；先攻、骰子、设置（v1.3.2）：工具栏各自一个图标。每个窗口都能**按住标题栏拖走**，位置按窗口名记在 localStorage，⌖ 回默认点 |
-| **设置 / 关于（v1.3.2）** | 工具栏「设置」打开：**左侧分栏**（关于 / 使用说明 / 数据与权限 / 已知限制 / 重置本机设置 / 致谢）+ **右侧内容**；版本号取自 `PLUGIN_VERSION`；「重置本机设置」**二次确认**，只清本机窗口位置与追踪降级数据（不动房间数据 / token 数据）。见 [`docs/settings-window.md`](docs/settings-window.md) |
+| **设置 / 关于（v1.3.2）** | 工具栏「设置」打开：**左侧分栏**（关于 / 使用说明 / 数据与权限 / 已知限制 / 重置本机设置 / 致谢）+ **右侧内容**；版本号取自 `PLUGIN_VERSION`；「重置本机设置」**二次确认**，只清本机窗口位置与追踪降级数据（不动房间数据 / token 数据）。见 [`docs/NOTES.md`](docs/NOTES.md) |
 | **先攻加值联动** | 绑定角色卡时把卡里的「先攻」写进 token 元数据（如 +25）；先攻合计 = d20 + 加值 |
 | **先攻条（v1.4.0）** | 屏幕顶部（工具栏「先攻」打开）：折叠 120×40 / 展开 720×170\|180\|200（按战斗状态三档，v1.7.10 加高）；左端**战斗准备 / 突袭 / 一键清空**（要点两次）、战斗态「上一回合 / 下一回合 / 结束战斗」；中间 56×80 头像卡，**当前回合卡高 100 并高亮**；GM 可**拖拽排序**，也可点卡片直接设为当前 |
 | **加入先攻** | GM 右键 token →「加入先攻」/「隐形加入先攻」（隐藏身份，只 GM 在列表里可见；地图上的 token 不动），先攻条会自动弹出 |
 | **回合推进** | 先攻条：GM 可**任意**推进 / 回退（绕回第一张时轮数 +1）；玩家轮到自己时点卡片上的「结束」，只发广播、由城主客户端落笔。列表窗口（先攻条上的 **≡**）还有重掷全部 / 同步加值 / 上下移 / 删除 / 清空 |
-| **骰子（v1.5.0；v1.7.4 窄版）** | 独立窗口 **320×620**（v1.7.4 收窄成窄竖条；打开前仍按视口夹紧），单列：骰子 d4–d100（**4 + 3 两排**）/ 表达式 / **战斗优势 +2** / **重击 · 伤害取满** / 4E 预设（攻击 · 伤害 · 技能）/ 组合；**「本次结果」是窗口底部的固定栏**（上边框分隔，上面的内容自己滚，结果不随滚动消失），按钮 **2×2 换行**、字号整体小一号。表达式支持 `2d6+5`、`-1d6`、`adv()`、`dis()`、`max()`、`min()`、`reset()`、`burst()`、`repeat()`。**只显示点数**：没有 TN 输入，不判定命中 / 豁免；重击是 4E 口径（所有伤害骰取最大值）。历史由**城主客户端**写进房间数据（40 条封顶），城主不在线时本次结果只在本机。见 [`docs/dice-v15.md`](docs/dice-v15.md) |
-| **骰子记录窗口（v1.7.0；v1.7.4 修「打不开」）** | 从骰子窗口的「记录窗口」按钮打开（**独立 popover**，自己的 id、可拖动、位置单独记住，默认开在骰子窗口**右边**、不重叠）：默认显示**最近 4 条**，点「展开全部」看全部（最多 40 条，列表内滚动）。数据与骰子窗口同一份房间数据，**40 条封顶、超出删最旧**；两个窗口各自开关、可以同时开着。**v1.7.4**：按钮点下去先显示「打开中…」，后台开窗失败会重试并 **ERROR 通知**，等不到回执时骰子窗口**自己把窗口开出来**（不再「点了没反应」）。见 [`docs/dice-v17.md`](docs/dice-v17.md) §7 |
-| **投骰动画（v1.7.0）** | 投掷后在选中 token 的头顶（没选中时屏幕中央）放大骰子：飞入 → 落地读数 → 放大 ×1.18 → 淡出，约 **2.6 秒**；点数就是本次真实结果（先算完再播）。**纯 CSS 关键帧、无外部库、全屏透明且不挡鼠标**（动画期间照样能平移 / 选中地图）；「设置 → 骰子」可关，关掉 / 打不开时只是不播动画，结果照常显示。见 [`docs/dice-v17.md`](docs/dice-v17.md) |
+| **骰子（v1.5.0；v1.7.4 窄版）** | 独立窗口 **320×620**（v1.7.4 收窄成窄竖条；打开前仍按视口夹紧），单列：骰子 d4–d100（**4 + 3 两排**）/ 表达式 / **战斗优势 +2** / **重击 · 伤害取满** / 4E 预设（攻击 · 伤害 · 技能）/ 组合；**「本次结果」是窗口底部的固定栏**（上边框分隔，上面的内容自己滚，结果不随滚动消失），按钮 **2×2 换行**、字号整体小一号。表达式支持 `2d6+5`、`-1d6`、`adv()`、`dis()`、`max()`、`min()`、`reset()`、`burst()`、`repeat()`。**只显示点数**：没有 TN 输入，不判定命中 / 豁免；重击是 4E 口径（**只把伤害骰取最大值；d20 与减法骰保持真实掷值**，不是骰数翻倍）。历史由**城主客户端**写进房间数据（**20 条封顶**），城主不在线时本次结果只在本机。见 [`docs/NOTES.md`](docs/NOTES.md) |
+| **骰子记录窗口（v1.7.0；v1.7.4 修「打不开」）** | 从骰子窗口的「记录窗口」按钮打开（**独立 popover**，自己的 id、可拖动、位置单独记住，默认开在骰子窗口**右边**、不重叠）：默认显示**最近 4 条**，点「展开全部」看全部（**最多 20 条**，列表内滚动）。数据与骰子窗口同一份房间数据，**20 条封顶、超出删最旧**；两个窗口各自开关、可以同时开着。**v1.7.4**：按钮点下去先显示「打开中…」，后台开窗失败会重试并 **ERROR 通知**，等不到回执时骰子窗口**自己把窗口开出来**（不再「点了没反应」）。见 [`docs/NOTES.md`](docs/NOTES.md) §7 |
+| **投骰动画（v1.7.0）** | 投掷后在选中 token 的头顶（没选中时屏幕中央）放大骰子：飞入 → 落地读数 → 放大 ×1.18 → 淡出，约 **2.6 秒**；点数就是本次真实结果（先算完再播）。**纯 CSS 关键帧、无外部库、全屏透明且不挡鼠标**（动画期间照样能平移 / 选中地图）；「设置 → 骰子」可关，关掉 / 打不开时只是不播动画，结果照常显示。见 [`docs/NOTES.md`](docs/NOTES.md) |
 | 全屏面板 | 右下角绿色 **4E** 按钮打开：拖拽 / 选择文件 / 粘贴导入导出 JSON，管理房间里的卡，一键绑到当前选中的 token |
 | 同名覆盖 | 重新导入同名卡会就地更新（升级、改装备后重新导出即可），已绑定的 token 不丢 |
 
@@ -180,10 +182,10 @@ Netlify / Vercel / Cloudflare Pages / 自己的 nginx 都行：把目录原样�
    > 面板左下角也会显示「后台已连接 / 后台脚本没有响应」。对照表见 [`docs/owlbear-debug.md`](docs/owlbear-debug.md)。
    > 血条与资源追踪的细节（字段、权限、已知限制）见 [`docs/hp-bar-and-tracking.md`](docs/hp-bar-and-tracking.md)；
    > v1.2.1 的界面微调见 [`docs/ui-tweaks-v121.md`](docs/ui-tweaks-v121.md)；
-   > 弹窗拖动的实现、参数与已知限制见 [`docs/popover-drag.md`](docs/popover-drag.md)。
+   > 弹窗拖动的实现、参数与已知限制见 [`docs/NOTES.md`](docs/NOTES.md)。
 
 > 扩展是**每个玩家各自安装**的：你装了，别人也得装一次才能看到速览面板；
-> 但**卡片数据在房间数据里**，所以别人装好后不用再导入。
+> 但**卡片的精简名单副本在房间数据里**，所以别人装好后不用再导入（完整数据在当前场景的隐藏 item 里，换场景需重新导入）。
 
 ---
 
@@ -215,7 +217,7 @@ Netlify / Vercel / Cloudflare Pages / 自己的 nginx 都行：把目录原样�
      （`d6`→6），结果标「重击 · 已取满」。**只显示点数**：没有 TN，不判定命中 / 豁免。
    - **4E 预设**：选中一枚已绑定角色卡的 token，会列出攻击（vs 四防，四防数值另作「防御参考」显示）、
      伤害、豁免（1d20）、技能、先攻——点一下只是把公式填进表达式框。
-   - 右边是**本次结果**与**团队共享历史**：城主客户端把每次投掷写进房间数据（40 条封顶），
+   - 右边是**本次结果**与**团队共享历史**：城主客户端把每次投掷写进房间数据（20 条封顶），
      所有人刷新后还在；城主不在线时本次结果只在本机（顶部黄条提示）。「清空记录」只有城主能做（点两次确认）。
    - **组合**：填好公式 →「保存组合」（可留空名字），下次点组合名一键填回（只存本机）。
 8. **设置 / 关于**：工具栏 **设置** 图标打开独立窗口：左侧分栏看版本 / 使用说明 / 数据与权限 / 已知限制 / 致谢；
@@ -223,7 +225,7 @@ Netlify / Vercel / Cloudflare Pages / 自己的 nginx 都行：把目录原样�
 
 面板里还有：
 
-- 左侧列表点名字切换预览；每行右侧 **✕** 删除这张卡（只删房间数据，不动 4E NEXT）；
+- 左侧列表点名字切换预览；每行右侧 **✕** 删除这张卡（同时删掉房间名单副本与当前场景里的完整卡 item，不动 4E NEXT）；
 - 选中一枚 token 后，预览区右上角可「绑定到「XXX」」——不用右键也能绑；
 - 没有卡时可以点「载入示例」看看渲染效果。
 
@@ -233,7 +235,8 @@ Netlify / Vercel / Cloudflare Pages / 自己的 nginx 都行：把目录原样�
 
 | 位置 | 键 | 内容 |
 | --- | --- | --- |
-| 房间数据 `OBR.room.metadata` | `com.4enext-owlbear/cards` | `{ v, updatedAt, cards: [{ id, name, level, char, importedAt, exportedAt }] }` |
+| 房间数据 `OBR.room.metadata` | `com.4enext-owlbear/cards` | 角色卡**精简名单副本**（v1.8.0 双写）：`{ v, updatedAt, cards: [{ id, name, level, char(精简格式), importedAt, exportedAt }] }`；跨场景 / 玩家侧可见，用于绑定与速览，受 14 KB 预算约束 |
+| 当前场景 item `item.metadata` | `com.4enext-owlbear/card` | 角色卡**完整数据**（v1.8.0 双写）：`{ v: 1, card: { id, name, level, char(完整 Character，只去立绘), importedAt, exportedAt, updatedAt } }`；item 为 `visible:false` / `locked:true` / `disableHit:true`，**没有 16 KB 总额限制**；换场景后这张卡不在（数据仍在这个场景里） |
 | 房间数据 `OBR.room.metadata` | `com.4enext-owlbear/state/<cardId>` | `{ powerUsed, featUsed, equipmentUsed, itemDailyUsed, actionPoints, milestones, updatedAt }`（v1.2.0 的键名；v1.2.1 起界面只写 powerUsed / equipmentUsed / actionPoints / milestones） |
 | Token 元数据 `item.metadata` | `com.4enext-owlbear/cardId` | 卡片 id（字符串） |
 | Token 元数据 `item.metadata` | `com.4enext-owlbear/hp` | `{ cur, max, temp, surges, updatedAt }`（v1.2.0，每枚 token 独立）；**v1.6.0 新增** `surgesMax` / `defenses: { ac, fort, reflex, will }` / `boss: boolean \| { enabled, segments, phase, exact, order }` / `locked`（默认 true） |
@@ -241,23 +244,24 @@ Netlify / Vercel / Cloudflare Pages / 自己的 nginx 都行：把目录原样�
 | 场景元数据 `OBR.scene.metadata` | `com.4enext-owlbear/settings.playerThreshold` | v1.6.0：玩家端量化阈值（百分比，缺省 25；只影响本机画法，不是加密） |
 | Token 元数据 `item.metadata` | `com.4enext-owlbear/init` | `{ bonus, cardId, updatedAt }`（v1.3.0：先攻加值，绑定角色卡时写入） |
 | Token 元数据 `item.metadata` | `com.4enext-owlbear/in-init` | v1.7.3：这枚 token 在不在先攻名单里（`true` / `false`）。右键菜单的 filter 只能读 item 字段（`ContextMenuIconFilter` 没有 `none`），靠它区分「移出先攻」与「加入先攻」；由后台 `syncInitFlags()` 维护，写 `false` **不 delete** |
-| 房间数据 `OBR.room.metadata` | `com.4enext-owlbear/initiative` | `{ v, updatedAt, phase, round, surprise, activeId, entries: [{ tokenId, name, bonus, d20, init, tb, hidden, ownerId, updatedAt }] }`（v1.3.0 起；v1.4.0 新增 `phase` / `surprise` / `d20` / `tb`，**最多 60 条**） |
+| 房间数据 `OBR.room.metadata` | `com.4enext-owlbear/initiative` | `{ v, updatedAt, phase, round, surprise, activeId, entries: [{ tokenId, name, bonus, d20, init, tb, hidden, ownerId, updatedAt }] }`（v1.3.0 起；v1.4.0 新增 `phase` / `surprise` / `d20` / `tb`，**最多 40 条**） |
 | 浏览器 `localStorage` | `4enext/info-pos` | `{ v: 1, pos: { "<tokenId>": { left, top } } }`（v1.2.2：速览弹窗位置，按 token 记，最多 40 枚；只在本机） |
 | 浏览器 `localStorage` | `4enext/win-pos` | `{ v: 1, pos: { "<窗口名（panel / initiative / dice / settings）>": { left, top } } }`（v1.3.1：独立窗口各自的位置；v1.3.2 加了 settings；只在本机） |
 | 浏览器 `localStorage` | `4enext/state/<cardId>` | 追踪降级数据：房间数据写不进去时，威能 / 装备「已用」等只记在这台机器上（只在本机） |
-| 浏览器 `localStorage` | `4enext/state/initiative` | 先攻降级副本：房间数据写不进去（如 60 条上限 / 数据满）时先记在这台机器上（只在本机） |
+| 浏览器 `localStorage` | `4enext/state/initiative` | 先攻降级副本：房间数据写不进去（如 40 条上限 / 数据满）时先记在这台机器上（只在本机） |
 | 浏览器 `localStorage` | `4enext/strip-pos` | `{ v: 1, dx, dy }`：先攻条相对屏幕中线的偏移（v1.4.0；只在本机） |
 | 浏览器 `localStorage` | `4enext/strip-collapsed` | 先攻条是否折叠成 120×40 药丸（v1.4.0；只在本机） |
 | 浏览器 `localStorage` | `4enext/strip-autostart` | v1.7.3：进入房间是否自动显示先攻条（`"0"` = 不自动显示；缺省 = 开；只在本机，设置窗口「先攻」栏改它） |
 | 浏览器 `localStorage` | `4enext/strip-closed-this-session` | v1.7.3：本次会话是否手动关过先攻条（条上「✕」写 `"1"`，重新打开时清掉；只在本机） |
-| 房间数据 `OBR.room.metadata` | `com.4enext-owlbear/rolls` | `{ v, updatedAt, seq, rows: [{ rollId, ts, rollerId, rollerName, rollerColor, label, expression, mode, dice: [{ type, value, loser?, subtract?, originalValue?, burstParent? }], modifier, total, crit }] }`（v1.5.0：骰子团队共享，**最多 40 条**；只有城主客户端能写） |
+| 房间数据 `OBR.room.metadata` | `com.4enext-owlbear/rolls` | `{ v, updatedAt, seq, rows: [{ rollId, ts, rollerId, rollerName, rollerColor, label, expression, mode, dice: [{ type, value, loser?, subtract?, originalValue?, burstParent? }], modifier, total, crit }] }`（v1.5.0：骰子团队共享，**最多 20 条**；只有城主客户端能写） |
 | 浏览器 `localStorage` | `4enext/dice/combos` | `{ v: 1, combos: [{ id, name, expr }] }`（v1.5.0：骰子组合，最多 30 条；只在本机） |
 | 浏览器 `localStorage` | `4enext/dice/last` | 上一次掷过的规范化公式（v1.5.0；只在本机） |
 | 浏览器 `localStorage` | `4enext/dice/local` | 城主离线时的骰子暂存（v1.5.0：最多 20 条；只在本机） |
 
 - 房间数据对**同房间所有人**可见（包括玩家），所以玩家装好扩展就能看到速览；写操作通常需要 GM。
-- 卡片里的立绘（原图 / 裁切图）会被丢弃——速览用不到它，房间数据越小越稳。
-- 卸载扩展不会删除房间数据；换房间需要重新导入。
+- 角色卡**双写**：房间名单副本会跑 `packCard` 精简（只留速览字段）；当前场景 item 里的完整卡**只去立绘**
+  （原图 / 裁切 data URL 动辄几百 KB），其它字段原样保留。读的时候按 id 取并集、同 id 用场景里的完整卡。
+- 卸载扩展不会删房间数据 / 场景 item；换房间需要重新导入，换场景后要看到完整数据也要重新导入。
 - **血条本身不存数据**：后台页按 `hp` 元数据用 `OBR.scene.local`（本地图形层）画，
   每台机器各画一份 —— 不需要场景写权限，也不会进别人的场景导出。
 - **v1.2.1 没有改键名**：`featUsed` / `itemDailyUsed` 仍留在数据里，旧状态照旧能读；
@@ -297,27 +301,27 @@ Netlify / Vercel / Cloudflare Pages / 自己的 nginx 都行：把目录原样�
   页面侧量一次 DOM 后自己 `OBR.popover.setWidth/setHeight`，并把尺寸广播给后台（拖动 / 视口变化重新夹紧要用）。
   拖动只发「起点 + 累计位移」（`CH_STRIP_DRAG`），后台按「屏幕中线 + dx / 45 + dy」换算、夹紧，位置只记偏移。
   排序是「合计 DESC → tiebreak ASC」两级，拖拽用中点法写 `init`（允许小数）/ `tb`；玩家「结束我的回合」只发广播，
-  GM 侧四道校验（activeId / owner / GM / 正在推进中）。规格见 `docs/spec-initiative.md`，落地说明见
-  [`docs/initiative-v14.md`](docs/initiative-v14.md)。
+  GM 侧四道校验（activeId / owner / GM / 正在推进中）。规格见 `docs/NOTES.md`，落地说明见
+  [`docs/NOTES.md`](docs/NOTES.md)。
 - **骰子（v1.5.0）**：`assets/dice-core.js` 是纯函数（表达式解析 / 掷骰 / 重击取满 / 载荷归一化 / 合并去重），
   `assets/dice-page.js` 只管 DOM 与广播，`assets/dice-4e.js` 把 `glance.js` 的攻击 / 伤害 / 技能 / 先攻转成预设按钮。
   投掷广播 `CH_ROLL`（LOCAL + REMOTE）→ **城主客户端的后台**（`background.core.js` §7.5）校验归一化、
-  幂等合并后写房间数据 `com.4enext-owlbear/rolls`（**40 条封顶**）→ 广播 `CH_ROLL_SAVED`。
-  重击不是 5E 的骰数翻倍，而是**每颗伤害骰取满**；公式里带 `adv` / `max` 等包裹时无法逐颗取满，
-  会退化为普通投掷并在结果面板提示。规格见 `docs/spec-dice.md`，落地说明见 [`docs/dice-v15.md`](docs/dice-v15.md)。
+  幂等合并后写房间数据 `com.4enext-owlbear/rolls`（**20 条封顶**）→ 广播 `CH_ROLL_SAVED`。
+  重击不是 5E 的骰数翻倍，而是**每颗伤害骰取满**（d20 攻击骰与减法骰保持真实掷值）；公式里带 `adv` / `max` 等包裹时无法逐颗取满，
+  会退化为普通投掷并在结果面板提示。规格见 `docs/NOTES.md`，落地说明见 [`docs/NOTES.md`](docs/NOTES.md)。
 - **先攻**：`assets/initiative.js` 管数据模型 / 掷骰 / 回合推进 / 先攻条渲染 / 排序数学；`glance.js` 的 `initiativeBonus()` 是唯一的加值口径，
   绑定角色卡时由 `common.js` 写进 token 元数据。右键菜单与玩家结束回合请求在 `background.core.js`（经典脚本，
-  不能 import，所以那边只读元数据、不重算加值）。数据与权限见 [`docs/initiative-v13.md`](docs/initiative-v13.md)。
+  不能 import，所以那边只读元数据、不重算加值）。数据与权限见 [`docs/NOTES.md`](docs/NOTES.md)。
 - **独立窗口（v1.3.1，v1.3.2 补齐入口）**：`background.core.js` 里的 `WINS` 注册表给每个功能一个 popover id
   （`/panel`、`/initiative-window`、`/dice-window`、`/settings-window`；速览仍是 `/info`），打开前统一用
   `OBR.viewport.getWidth()/getHeight()` 夹紧（宽高都 ≤ 视口 − 2×16），位置按窗口名记在
   `localStorage["4enext/win-pos"]`；页面侧（`assets/window.js`）只负责发「起点 + 累计位移」、
-  后台在线检测、离线置灰与统一提示。为什么这么拆见 [`docs/separate-windows-v131.md`](docs/separate-windows-v131.md)。
+  后台在线检测、离线置灰与统一提示。为什么这么拆见 [`docs/NOTES.md`](docs/NOTES.md)。
 - **工具栏五个入口（v1.3.2）**：`registerTools()` 注册速览 / 角色卡 / 先攻 / 骰子 / 设置五个 `OBR.tool.create`
   （旧三个 id 没改，新的两个是 `/glance-tool` 与 `/settings-tool`）。**速览不注册进 `WINS`**：它是
   按 token 记位置的小窗（`infoOpen / infoGeom` 那一套），工具栏入口只负责「给当前选中的 token 重开 `/info`」
   （没选中就给提示）。为什么这么分、设置窗口长什么样、「重置本机设置」的边界见
-  [`docs/settings-window.md`](docs/settings-window.md)。
+  [`docs/NOTES.md`](docs/NOTES.md)。
 - **血量与资源追踪**：`assets/track.js` 是唯一的动作入口（`applyAction`）与读写层，
   语义照抄 4E NEXT 的速览页（`GlanceVitals.tsx` / `GlanceResources.tsx`）。
   页面里只挂一个 `[data-act]` 事件委托，点完重画。
@@ -370,18 +374,19 @@ assets/
 data/rules.js          离线规则索引（自动生成）
 vendor/obr-sdk.js      @owlbear-rodeo/sdk 3.1.0（本地化，离线可用）
 samples/sample-card.json  示例卡（30 级游侠，可删）
+docs/NOTES.md          维护口径速查（v1.7.7 起 docs/ 只留这一个维护文档 + docs/_briefs/ 历史简报）
 docs/owlbear-debug.md  排查记录：为什么没按钮、改了什么、怎么验证
 docs/hp-bar-and-tracking.md  血条与资源追踪：字段、权限差异、实现取舍、已知限制（v1.2.0）
 docs/ui-tweaks-v121.md  v1.2.1 的界面微调：弹窗尺寸、行动点/里程碑同排、去掉专长与每日威能追踪
-docs/popover-drag.md    v1.2.2 弹窗拖动：实现方式、拖动区、可调参数、已知限制
-docs/initiative-v13.md  v1.3.0 先攻：数据结构、权限、渲染、自测清单
-docs/separate-windows-v131.md  v1.3.1 为什么拆掉三 tab、四个窗口的入口 / 位置 / 夹紧 / 置灰
-docs/settings-window.md  v1.3.2 工具栏入口补齐 + 设置 / 关于窗口（分栏、版本来源、重置边界）
-docs/initiative-v14.md   v1.4.0 先攻条：数据结构、几何、卡片、排序 / 拖拽、回合推进、权限与自测
-docs/dice-v15.md        v1.5.0 骰子：表达式、重击取满、战斗优势、团队共享 / 落库、4E 预设、自测与限制
-docs/hpbar-boss-v16.md  v1.6.0 血条扩展（临时生命 / 四防 / 蓝条）+ Boss 方案 A：数据、几何、**像素常数集中表**、自测；v1.6.1 四防改一排（§0.5）
-docs/ui-v162.md         v1.6.2：速览删掉彩色四防条 + 先攻条宽高改常量（修「随投骰变窄」）
-docs/dice-v17.md        v1.7.0：独立记录窗口 + 投骰动画（公式 / 常量表 / 参数 / 降级）+ 去豁免先攻预设 + 40 条删最旧
+docs/NOTES.md    v1.2.2 弹窗拖动：实现方式、拖动区、可调参数、已知限制
+docs/NOTES.md  v1.3.0 先攻：数据结构、权限、渲染、自测清单
+docs/NOTES.md  v1.3.1 为什么拆掉三 tab、四个窗口的入口 / 位置 / 夹紧 / 置灰
+docs/NOTES.md  v1.3.2 工具栏入口补齐 + 设置 / 关于窗口（分栏、版本来源、重置边界）
+docs/NOTES.md   v1.4.0 先攻条：数据结构、几何、卡片、排序 / 拖拽、回合推进、权限与自测
+docs/NOTES.md        v1.5.0 骰子：表达式、重击取满、战斗优势、团队共享 / 落库、4E 预设、自测与限制
+docs/NOTES.md  v1.6.0 血条扩展（临时生命 / 四防 / 蓝条）+ Boss 方案 A：数据、几何、**像素常数集中表**、自测；v1.6.1 四防改一排（§0.5）
+docs/NOTES.md         v1.6.2：速览删掉彩色四防条 + 先攻条宽高改常量（修「随投骰变窄」）
+docs/NOTES.md        v1.7.0：独立记录窗口 + 投骰动画（公式 / 常量表 / 参数 / 降级）+ 去豁免先攻预设 + 20 条删最旧
 dev/                   开发期工具（普通用户用不到）
 ```
 
@@ -412,20 +417,20 @@ dev/                   开发期工具（普通用户用不到）
    掷骰按钮只给 GM（房间数据只有 GM 能写，准备阶段由 GM 代掷）。玩家「结束我的回合」需要 **GM 客户端在线**
    （由 GM 的 background 落笔），GM 不在时请求不生效（按钮会给提示）。隐形**只隐藏先攻列表里的名字 / 点数**，
    不动地图上的 token；房间数据对全桌可读，开发者工具仍能看到隐形条目的原始数据（v1.3.0 起的限制）。
-   先攻条目上限 **60**，写不进房间数据时会降级到本机并提示。
-   细节见 [`docs/initiative-v14.md`](docs/initiative-v14.md)、[`docs/initiative-v13.md`](docs/initiative-v13.md)。
+   先攻条目上限 **40**，写不进房间数据时会降级到本机并提示。
+   细节见 [`docs/NOTES.md`](docs/NOTES.md)、[`docs/NOTES.md`](docs/NOTES.md)。
 6. **骰子（v1.5.0 / v1.7.0）不做判定**：没有 TN 输入框，不显示命中 / 未命中、豁免成功 / 失败，只显示每颗骰子的点数与总点数；
    重击只对平铺伤害骰生效（`adv(...)` / `max(...)` 等包裹会退化为普通投掷并提示）；
    记录由城主客户端落笔，城主不在线时本次结果只在本机（暂存最多 20 条，不会自动补交）；记录窗口只是把同一份
-   房间数据画出来（**40 条封顶、超出删最旧**），删掉记录仍然只能在骰子窗口里由城主做；
+   房间数据画出来（**20 条封顶、超出删最旧**），删掉记录仍然只能在骰子窗口里由城主做；
    **动画没有皮肤**（骰面是 CSS 画的圆角方块 + 大数字），手感（抛物线高度 / 落地挤压）只在纸面上按参考实现的
    公式推过，真机想调只改 `assets/dice-core.js` 的 `FX_*` 与 `assets/ui.css` 末尾的关键帧（两处一一对应）。
-   细节见 [`docs/dice-v15.md`](docs/dice-v15.md)、[`docs/dice-v17.md`](docs/dice-v17.md)。
+   细节见 [`docs/NOTES.md`](docs/NOTES.md)、[`docs/NOTES.md`](docs/NOTES.md)。
 7. **窗口可以拖，但不跟地图**：速览弹窗默认仍弹在 token 上方，位置按这枚 token 记；
    独立窗口（角色卡 / 先攻 / 骰子 / 设置）的位置按**窗口名**记，各自独立。都记在**本机** `localStorage`，
    平移 / 缩放地图不会跟着漂（避免每次拖动都闪一下），点 ⌖ 回默认位置。
    拖动依赖「同一个 popover id 重新 open 只更新位置、不重载页面」这一行为，**尚未真机验证**；
-   细节见 [`docs/popover-drag.md`](docs/popover-drag.md) 与 [`docs/separate-windows-v131.md`](docs/separate-windows-v131.md)。
+   细节见 [`docs/NOTES.md`](docs/NOTES.md) 与 [`docs/NOTES.md`](docs/NOTES.md)。
    另外：**左上角扩展图标打开的那份面板由 Owlbear 自己定位，拖不动**（拖动只对工具栏 / 浮动按钮打开的
    窗口生效）；想拖请用工具栏图标打开。
 8. **数据跟着房间走**：房间数据不跨房间、不跨账号同步；删除扩展不会清空数据（想清空可在面板里逐张删除）。
@@ -443,19 +448,19 @@ dev/                   开发期工具（普通用户用不到）
    设置页六栏齐全、版本号只来自 PLUGIN_VERSION、重置本机设置只清白名单内的三个键（代码里没有
    setMetadata / updateItems / setItem / clear）」，并在后台冒烟里点「设置」开窗、点「速览」重开 /info；
    v1.4.0 起再断言「先攻条常量（与 background.core.js 逐项对比）、phase 三档高度、卡片 56×80 / 当前 100 /
-   合计 24% / 血条 4px / 掷骰按钮上移 8px 的 CSS、五个控制按钮 + 三种掷骰、popover 锚点 CENTER/TOP + top 45、
+   合计 24% / 血条 4px / 掷骰按钮在卡片下方长方形的 CSS、五个控制按钮 + 三种掷骰、popover 锚点 CENTER/TOP + top 45、
    先攻条拖动只发位移、位置只记偏移」，并在先攻自测里覆盖数据层 / 排序 / 拖拽中点法 / 回合绕回 / 四道权限校验；
    v1.5.0 起再断言「七颗骰子 / 战斗优势+2 / 重击取满 / 没有优势劣势、暗骰、示例框、5etools、
-   CH_ROLL 三个频道与 ROLL_MAX_ROWS=40 两端一致、城主落库链路、docs/dice-v15.md」，
+   CH_ROLL 三个频道与 ROLL_MAX_ROWS=40 两端一致、城主落库链路、docs/NOTES.md」，
    并在骰子自测里覆盖解析 / 掷骰 / 重击 / 归一化 / 合并 / 4E 预设；
    v1.7.0 起再断言「骰子窗口单列（v1.7.4 起 **320×620**）、记录窗口是**独立 popover id**（与骰子窗口不同、可同时开、默认 4 条）、
    动画页存在且常量 / 时间轴与 CSS 关键帧一一对应、modal 参数 fullScreen + hideBackdrop + hidePaper +
-   disablePointerEvents、没有任何外部库引用、豁免 / 先攻预设已删、40 条封顶时删最旧」，
-   并在骰子自测里覆盖 fxBaseSize / fxDieSize / fxBeat / fxLayout / fxQuery、41 条 → 40 条删最旧、
+   disablePointerEvents、没有任何外部库引用、豁免 / 先攻预设已删、20 条封顶时删最旧」，
+   并在骰子自测里覆盖 fxBaseSize / fxDieSize / fxBeat / fxLayout / fxQuery、21 条 → 20 条删最旧、
    动画关掉时**不调用 OBR.modal.open**、预设只剩三组；
    并断言后台心跳链路：diag-hello / diag-ping / diag-pong 两端逐字一致、收到 ping 一定回 pong，
    core 与 bundle 都带 `OBR.onReady(boot)` 启动入口）。
-   **拖动的手感与「重开 popover 是否重载 iframe」没有真机验证**，真机若不对，先看 `docs/popover-drag.md` 的「已知限制」。
+   **拖动的手感与「重开 popover 是否重载 iframe」没有真机验证**，真机若不对，先看 `docs/NOTES.md` 的「已知限制」。
    **血条的像素级位置只在纸面上按参考实现的比例推过**，真机若偏了，改 `barLayout()` 里的常数即可。
    如果房间里加载不正常：先看 index.html 顶部「自检」、面板左下角的连接状态条，或直接打开 `background.html` 看逐步日志，
    都不行再把这三样截图贴出来（详见 `docs/owlbear-debug.md`）。
@@ -466,7 +471,7 @@ dev/                   开发期工具（普通用户用不到）
 13. **v1.6.0 的 Boss 是「token 附带」方案 A**（规格 §7）：没有全屏屏底 Boss 条（方案 B 是 P4 可选，本版没做），
     也不限制 Boss 数量；环形 / 名牌的像素位置**只在纸面上按规格推过**（**v1.6.1 的四防一排已在真机跑通**），
     真机若偏了只改 `assets/background.core.js` 顶部常数区与 `barLayout()`（对照
-    [`docs/hpbar-boss-v16.md`](docs/hpbar-boss-v16.md) §3 的像素常数集中表）。
+    [`docs/NOTES.md`](docs/NOTES.md) §3 的像素常数集中表）。
     玩家端「锁」= 本机不画精确数字与四防，**metadata 仍对全桌可读**（不是加密）；旋转 token 上环 / 牌按包围盒重算位置，不会跟转。
 
 ---
@@ -476,7 +481,7 @@ dev/                   开发期工具（普通用户用不到）
 需要 Node 18+（只是开发期用，跑插件不需要）：
 
 ```bash
-# 一条命令跑完全部自测（= check + test-background + test-initiative + test-track + test-dice）
+# 一条命令跑完全部自测（8 步 = check + test-background + test-initiative + test-track + test-dice + test-geometry + test-import + test-glance2）
 #   Windows PowerShell 不支持 &&，所以给了这个包装脚本；全部通过时 exit 0
 node dev/selftest.mjs
 
@@ -502,11 +507,11 @@ node dev/serve.mjs
 #                代码里没有 setMetadata / updateItems / localStorage.setItem / clear
 #   v1.4.0：先攻条尺寸常量与 background.core.js 逐项一致、phase 三档、卡片 CSS 尺寸、
 #                战斗准备 / 突袭 / 一键清空 / 三档掷骰按钮、popover 锚点（POSITION + CENTER/TOP + top 45）、
-#                先攻条频道 / 位置键两端一致、docs/initiative-v14.md 存在、docs/spec-*.md 未改
+#                先攻条频道 / 位置键两端一致、docs/NOTES.md 存在、docs/spec-*.md 未改
 #   v1.5.0：dice-core / dice-4e 存在且不依赖 OBR、表达式 wrapper 齐全、重击取满 + 退化提示、
 #                骰子窗口的元素 id、d4–d100 七颗、战斗优势+2 / 重击按钮、没有优势劣势 / 暗骰 / 示例框 / 5etools、
 #                CH_ROLL / CH_ROLL_CLEAR / CH_ROLL_SAVED / KEY_ROLLS 两端一致、ROLL_MAX_ROWS = 40、
-#                城主落库链路、docs/dice-v15.md（v1.7.4 起窗口是 320×620 单列）
+#                城主落库链路、docs/NOTES.md（v1.7.4 起窗口是 320×620 单列）
 #   v1.7.4：骰子窗口 320×620、骰子 repeat(4) 4+3 两排、.dice-acts 两列 + .wide、
 #                「本次结果」在 DOM 末尾且 .dice-result 是 flex:none + 上边框、.dice-left 独立滚动、
 #                字号整体收一档；记录窗口五层加固（重试 + ERROR 通知 / getWidth 确认 / 贴着骰子窗开 /
@@ -515,18 +520,18 @@ node dev/serve.mjs
 #                ref→reflex 只在 track.js 映射、像素常数（20/12/3/30/10/2/48/26/6）、
 #                zIndex（盾 15000 / 填充 20000 / 数值 30000）、环 / 盾用 Curve 手绘（没有 buildShape）、
 #                Boss 压制普通条、右键 4 项 + operator:"!=" + 关闭写 false、速览四防 / 蓝条 / 锁、
-#                docs/hpbar-boss-v16.md、版本 1.6.2
+#                docs/NOTES.md、版本 1.6.2
 #   v1.6.1：四防一排（DEF_ROW = fort/reflex/will/ac、DEF_GAP = 6、rowCY = hpTop − gap − d/2）、
 #                退化规则「从右往左保留 → AC 最后才丢」、AC 半透明白（DEF_AC_FILL/STROKE_OPACITY）、
 #                四角摆位（var spots）必须已删干净、版本身份 = 1.6.2
 #   v1.6.2：速览里没有彩色四防条（gl4-def-row / data-act="defense" 已删、四防数值卡 .gl4-defs 还在）、
 #                先攻条宽高是常量（stripSizeFor 不收测量值、页面没有 scrollWidth、全仓没有 measureWidth）、
-#                后台 snapStripSize 兜住页面报上来的尺寸、docs/ui-v162.md 存在
+#                后台 snapStripSize 兜住页面报上来的尺寸、docs/NOTES.md 存在
 #   v1.7.0：dice-history.html / effect.html / 两个页面脚本都在；记录窗口有独立 id 且注册进 WINS；
 #                动画常量（128 / 0.86 / 72 / 1200 / 500 / 360 / 220 / 320 / 55 / 4 段弧）与 CSS 关键帧一致；
 #                modal 参数 fullScreen + hideBackdrop + hidePaper + disablePointerEvents；
 #                动画页 / 记录页没有外部库引用（没有 http(s):// 脚本、没有 CDN）；豁免 / 先攻预设已删；
-#                40 条封顶是「删最旧」；设置里有投骰动画开关；docs/dice-v17.md 存在；版本 1.7.0
+#                20 条封顶是「删最旧」；设置里有投骰动画开关；docs/NOTES.md 存在；版本 1.7.0
 #   v1.7.1：effect.html 把 html + body 一起设成 background: transparent !important（不是只透明 body）；
 #                effect.html / .fx-* 段**没有深色纯色 background**；html:has(body.fx-page) 也是 transparent；
 #                3000 ms 兜底 close（FX_CLOSE_FALLBACK_MS = 3000）+ ESC / 点击立即关；版本 1.7.1
@@ -547,7 +552,7 @@ node dev/check.mjs
 #   + v1.4.0：工具栏「先攻」打开先攻条（CENTER/TOP + top 45 + 720×129）；
 #                拖动 → 夹紧 → 只记偏移 → ⌖ 回中；「≡」打开列表窗口（?view=list，880×640）
 #   + v1.5.0：骰子落库（CH_ROLL → 校验归一化 → 同 rollId 幂等 → 写 rolls → 广播 CH_ROLL_SAVED；
-#                40 条封顶、d600 夹到 600、玩家客户端不写房间数据、城主清空写空 rows）
+#                20 条封顶、d600 夹到 600、玩家客户端不写房间数据、城主清空写空 rows）
 #   + v1.6.0：带四防 + 回复力画 14 件（HP 3 + 蓝条 3 + 4 盾 + 4 数字）、文本 12/20 +3 与 5/6、
 #                boss:true → 20 件（环 / 牌 / 锁）且压制 HP 条、segments=3 → 2 条分段 + 阶段文案、
 #                解锁只改锁颜色、玩家端 0.6 → 0.75 阶梯且不画数字 / 四防、enabled=false 一件不留、
@@ -563,7 +568,7 @@ node dev/test-background.mjs
 
 # 先攻自测：绑定写 init / 右键两项 / 加入先攻写房间数据 /
 #   GM 推进 / 玩家结束回合权限 / 隐形对非 GM 不可见
-#   v1.4.0：d20 / tb / phase / round、上限 60 截断、旧数据兼容、两级排序、
+#   v1.4.0：d20 / tb / phase / round、上限 40 截断、旧数据兼容、两级排序、
 #   绕回轮数 +1、突袭轮、拖拽中点法（同分只改 tb / 不同分取中点 / 最顶最底 ±1）、
 #   写失败降级本机 + WARNING、四道权限校验（含「正在推进中」只推一格）
 #   v1.7.3：右键菜单 filter 按 in-init 互斥（加入后写 true / 移出写回 false）、
@@ -581,7 +586,7 @@ node dev/test-track.mjs
 #   负数骰 / max 抬值保留原值 / resetmin 重掷 / burst 链 / repeat 每行加值、
 #   **重击 = 所有伤害骰取满**（带 adv 等包裹时退化为普通投掷并提示）、**战斗优势 +2 可逆**、
 #   载荷归一化（旧 rolls[] 形状 / d600 夹到 600 / 无 rollId 丢弃）、**没有 target / hit**（不做命中判定）、
-#   合并幂等 + 倒序 + 40 封顶、40 条样例 < 12000 字符、频道与上限三处一致、窗口尺寸
+#   合并幂等 + 倒序 + 20 封顶、20 条样例 < 6000 字符、频道与上限三处一致、窗口尺寸
 node dev/test-dice.mjs
 
 # 改了 assets/background.core.js 之后重新生成 assets/background.bundle.js

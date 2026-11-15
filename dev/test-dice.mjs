@@ -156,6 +156,32 @@ if (critPlain.dice.map((d) => d.value).join(",") === "8,10" && critPlain.total =
   ok("重击多类型：d8→8、d10→10（不是骰数翻倍）");
 else bad("重击多类型不对：" + JSON.stringify(critPlain.dice));
 
+/* ---- v1.8.0：重击只对**伤害骰**取满；d20（攻击 / 豁免）与减法骰保持真实掷值 ---- */
+console.log("== 3b 重击只取满伤害骰（v1.8.0）");
+const critMix = D.rollParsed(D.parseExpr("1d20+2d6"), { crit: true, rand: () => 0.5 });
+const critD20 = critMix.dice.filter((d) => d.type === "d20")[0];
+const critDmg = critMix.dice.filter((d) => d.type === "d6");
+if (critD20 && critD20.value === 11 && critDmg.length === 2 && critDmg.every((d) => d.value === 6) && critMix.total === 23)
+  ok("重击 1d20+2d6：d20 保持真实掷值 11（不是 20）、2d6 都取 6、total = 23");
+else bad("重击把 d20 也取满了 / 伤害骰不对：" + JSON.stringify(critMix.dice));
+const critSub = D.rollParsed(D.parseExpr("-1d6+2d8"), { crit: true, rand: () => 0.5 });
+const critSubDie = critSub.dice.filter((d) => d.subtract)[0];
+const critPos = critSub.dice.filter((d) => !d.subtract);
+if (critSubDie && critSubDie.value === 4 && critSubDie.subtract === true &&
+  critPos.length === 2 && critPos.every((d) => d.value === 8) && critSub.total === 12)
+  ok("重击 -1d6+2d8：减法骰保持真实值 4（不取满）、正伤害骰 8/8、total = 8+8-4 = 12");
+else bad("重击把减法骰也取满了 / 总和不对：" + JSON.stringify(critSub));
+const critNegOnly = D.rollParsed(D.parseExpr("-1d6"), { crit: true, rand: () => 0.5 });
+if (critNegOnly.dice.length === 1 && critNegOnly.dice[0].value === 4 && critNegOnly.dice[0].subtract === true &&
+  critNegOnly.total === -4 && critNegOnly.crit === false)
+  ok("重击 -1d6：没有正伤害骰可取满 → 仍为真实的 -4，不谎报 crit");
+else bad("重击纯减法骰不对：" + JSON.stringify(critNegOnly));
+const critOnlyD20 = D.rollParsed(D.parseExpr("1d20"), { crit: true, rand: () => 0.5 });
+if (critOnlyD20.crit === false && critOnlyD20.critRequested === true &&
+  critOnlyD20.dice[0].value === 11 && critOnlyD20.critDegraded === false)
+  ok("重击纯 d20（攻击 / 豁免）：d20 真实值 11，没有可取的伤害骰 → crit=false（不谎报「已取满」）");
+else bad("纯 d20 重击的 crit 语义不对：" + JSON.stringify(critOnlyD20));
+
 /* ---------------------------------------------------------------------------
  * 4. 战斗优势 +2
  * ------------------------------------------------------------------------- */
@@ -547,7 +573,7 @@ globalThis.localStorage = {
 
 fs.mkdirSync(path.join(tmp, "vendor"), { recursive: true });
 fs.writeFileSync(path.join(tmp, "vendor", "obr-stub.mjs"), "export default globalThis.__OBR__;\n", "utf8");
-for (const name of ["common.js", "window.js", "dice-page.js"]) {
+for (const name of ["cards-scene.js", "common.js", "window.js", "dice-page.js"]) {
   let src = fs.readFileSync(path.join(ROOT, "assets", name), "utf8");
   src = src.replace('from "../vendor/obr-sdk.js"', 'from "../vendor/obr-stub.mjs"');
   fs.writeFileSync(path.join(tmp, "assets", name), src, "utf8");

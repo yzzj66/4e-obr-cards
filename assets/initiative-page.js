@@ -13,15 +13,15 @@
 // 数据读写全部在 assets/initiative.js（与自测共用同一份）；窗口壳在 assets/window.js。
 import OBR from "../vendor/obr-sdk.js";
 import {
-  CH_HELLO, CH_INIT_REQUEST, CH_STRIP_CMD, CH_STRIP_DRAG, ID_INIT_WIN, ID_STRIP,
+  CH_GLANCE_SUPPRESS, CH_HELLO, CH_INIT_REQUEST, CH_STRIP_CMD, CH_STRIP_DRAG, ID_INIT_WIN, ID_STRIP,
   STRIP_DRAG_THROTTLE_MS, getCards, onReady, pingBackground
 } from "./common.js";
 import { createWindow, feedback, closeSelf } from "./window.js";
 import {
   INIT_MAX_ENTRIES, LS_STRIP_COLLAPSED, advanceInitiative, bonusOfItem, canEditBonus, clearInitiative,
   currentEntry, endCombat, moveEntry, normalizeInitiative, readInitiative, removeEntry, renderInitiativeHTML,
-  renderStripHTML, reorderEntry, rerollAll, rerollEntry, setActiveEntry, setEntryBonus, startCombat,
-  startPreparation, startSurprise, stripSizeFor, syncInitBonuses, tokenInfoMap,
+  renderStripHTML, reorderEntry, rerollAll, rerollEntry, setActiveEntry, setEntryBonus, setEntryRoll,
+  startCombat, startPreparation, startSurprise, stripSizeFor, syncInitBonuses, tokenInfoMap,
   writeInitiative
 } from "./initiative.js";
 
@@ -42,7 +42,10 @@ let playerId = "";
 /** tokenId → { img, hp, name }（头像 / 血条）；先攻条用，拿不到就退回名字首字。 */
 let itemsMap = {};
 let collapsed = readCollapsed();
-let busy = false;
+/** v1.8.0：写房间是异步的，用**串行队列**代替旧的「busy 时直接 return」——快速连点
+ * 「下一回合 / 上一回合」不会再被静默丢掉一次。job 是状态或 (当前 state) → 新 state 的函数。 */
+const saveQueue = [];
+let saveRunning = false;
 let bgReady = false;
 /** 一键清空的二次确认（规格 §P1：二次确认，4 秒内有效）。 */
 let confirmClear = false;
@@ -198,7 +201,7 @@ async function loadInit(withItems) {
     initiative = await readInitiative();
     if (initiative.local && !localWarned) {
       localWarned = true;
-      feedback("先攻目前只记在本机（房间数据写不进去，通常是超过 60 条或城主没有写权限）", "WARNING");
+      feedback("先攻目前只记在本机（房间数据写不进去，通常是超过 " + INIT_MAX_ENTRIES + " 条或城主没有写权限）", "WARNING");
     }
   } catch (e) {
     feedback("读取先攻失败：" + msgOf(e), "ERROR");
@@ -212,7 +215,7 @@ function scheduleReload() {
   if (reloadTimer) return;
   reloadTimer = setTimeout(function () {
     reloadTimer = null;
-    if (busy) { scheduleReload(); return; }
+    if (saveRunning) { scheduleReload(); return; }
     void loadInit(true);
   }, 120);
 }
@@ -221,23 +224,44 @@ function scheduleReload() {
  * 写先攻：**只有失败 / 降级到本机才出声**（不允许静默）。写失败会自动降级并带 .local 标记。
  * v1.7.8：成功不再弹通知（条上的卡片 / 回合数当场就变了），第二个参数 message 只留作
  * 调用方的语义说明，不再进通知中心 —— 这样 40 多个调用点都不用改。
+ *
+ * v1.8.0：**串行队列**。旧版在 busy=true 时直接 return，快速连点「下一回合」会少推进一次
+ * 且没有任何提示。现在每次请求都排队（不丢点击），前一次写完再执行下一次；
+ * job 传函数时会在**轮到它执行时**基于刚写回的 initiative 计算 → 连点 3 次真的推进 3 次。
+ * 写失败发 ERROR 通知；返回的 Promise 在**该次请求**处理完（成功或失败）后 resolve。
  */
-async function saveInit(next, message) {
+function saveInit(next, message) {
   void message; /* v1.7.8：成功类提示已不再弹（见上） */
-  if (busy) return;
-  busy = true;
+  return new Promise(function (resolve) {
+    saveQueue.push({ job: next, done: resolve });
+    void pumpSaveQueue();
+  });
+}
+
+/** 队列消费者：一次只跑一个写请求，跑完立刻接着跑队列里的下一个（串行、不丢）。 */
+async function pumpSaveQueue() {
+  if (saveRunning) return;
+  saveRunning = true;
   try {
-    const written = await writeInitiative(next);
-    initiative = written;
-    render();
-    if (written.local) {
-      feedback("先攻没能写进房间数据：已暂存在本机（先攻最多 " + INIT_MAX_ENTRIES + " 条）", "WARNING");
+    while (saveQueue.length) {
+      const item = saveQueue.shift();
+      try {
+        const next = typeof item.job === "function" ? item.job(initiative) : item.job;
+        const written = await writeInitiative(next);
+        initiative = written;
+        render();
+        if (written.local) {
+          feedback("先攻没能写进房间数据：已暂存在本机（先攻最多 " + INIT_MAX_ENTRIES + " 条）", "WARNING");
+        }
+      } catch (e) {
+        console.error("[4enext] 写先攻失败", e);
+        feedback("写不进房间数据：先攻通常只有城主能改（" + msgOf(e) + "）", "ERROR");
+      } finally {
+        item.done();
+      }
     }
-  } catch (e) {
-    console.error("[4enext] 写先攻失败", e);
-    feedback("写不进房间数据：先攻通常只有城主能改（" + msgOf(e) + "）", "ERROR");
   } finally {
-    busy = false;
+    saveRunning = false;
   }
 }
 
@@ -289,21 +313,17 @@ async function onStripAct(act, tokenId) {
     }
     return saveInit(removeEntry(initiative, tokenId), "已从先攻移出「" + entry.name + "」");
   }
-  if (act === "prepare") return saveInit(startPreparation(initiative), "进入战斗准备：大家掷先攻");
-  if (act === "surprise") return saveInit(startSurprise(initiative), "突袭轮开始（4E 突袭轮）");
-  if (act === "start") return saveInit(startCombat(initiative), "战斗开始");
-  if (act === "cancel") return saveInit(endCombat(initiative), "已取消准备，名单保留");
-  if (act === "end-combat") return saveInit(endCombat(initiative), "战斗结束，名单保留");
-  if (act === "prev") return saveInit(advanceInitiative(initiative, -1), "已回到上一回合");
+  if (act === "prepare") return saveInit(function (st) { return startPreparation(st); }, "进入战斗准备：大家掷先攻");
+  if (act === "surprise") return saveInit(function (st) { return startSurprise(st); }, "突袭轮开始（4E 突袭轮）");
+  if (act === "start") return saveInit(function (st) { return startCombat(st); }, "战斗开始");
+  if (act === "cancel") return saveInit(function (st) { return endCombat(st); }, "已取消准备，名单保留");
+  if (act === "end-combat") return saveInit(function (st) { return endCombat(st); }, "战斗结束，名单保留");
+  if (act === "prev") {
+    return saveInit(function (st) { return advanceInitiative(st, -1); }, "已回到上一回合");
+  }
   if (act === "next") {
-    const before = initiative;
-    const next = advanceInitiative(initiative, 1);
-    const who = currentEntry(next);
-    let msg = "已推进到下一回合";
-    if (next.round !== before.round) msg = "第 " + next.round + " 轮开始";
-    else if (next.surprise !== before.surprise) msg = "突袭轮结束，第 1 轮开始";
-    if (who) msg += "：" + who.name;
-    return saveInit(next, msg);
+    /* v1.8.0：传函数 —— 连点时第二次点击会在**第一次写回之后**才执行，基于最新 state 推进。 */
+    return saveInit(function (st) { return advanceInitiative(st, 1); }, "已推进到下一回合");
   }
   if (act === "clear") {
     if (armClear()) return;
@@ -311,7 +331,7 @@ async function onStripAct(act, tokenId) {
   }
   if (act === "active") {
     if (!tokenId) return;
-    return saveInit(setActiveEntry(initiative, tokenId), "当前回合：「" + nameOf(tokenId) + "」");
+    return saveInit(function (st) { return setActiveEntry(st, tokenId); }, "当前回合：「" + nameOf(tokenId) + "」");
   }
   feedback("未知操作：" + act, "WARNING");
 }
@@ -328,10 +348,9 @@ async function onRoll(mode, tokenId) {
     feedback("这枚 token 已经不在先攻列表里了", "WARNING");
     return;
   }
-  const next = rerollEntry(initiative, tokenId, undefined, "normal");
-  const rolled = next.entries.filter(function (e) { return e.tokenId === tokenId; })[0];
-  return saveInit(next, "「" + entry.name + "」掷出 " + (rolled ? Math.round(rolled.init) : "?") +
-    (rolled && rolled.d20 !== null ? "（d20 " + rolled.d20 + signed(rolled.bonus) + "）" : ""));
+  /* v1.8.0：传函数，连点 d20 时每次都在最新的 state 上重掷（不会两次都基于同一个旧 state）。 */
+  return saveInit(function (st) { return rerollEntry(st, tokenId, undefined, "normal"); },
+    "「" + entry.name + "」重新掷先攻");
 }
 
 /* ---------------- v1.7.10：先攻加值可编辑（卡片左上角 + 状态行同一份写逻辑） ---------------- */
@@ -371,6 +390,49 @@ async function commitBonus(el) {
   await saveInit(setEntryBonus(initiative, tokenId, bonus), "先攻加值：" + signed(bonus));
 }
 
+/* ---------------------------------------------------------------------------
+ * v1.8.2：先攻条卡片可直接手填「掷出的点数（d20）」
+ * ---------------------------------------------------------------------------
+ * 用户原话：「我可以输入 20，左上角是 100，然后实际先攻是 20+100」——
+ * 输入框里是 **d20**（不是合计），保持左上角加值不变；合计自动 = d20 + 加值 并重排。
+ * 写回走 setEntryRoll（写 entries[].d20、重算 init、按「合计 DESC → tiebreak ASC」排序）。
+ * 输入 0~99 的整数；空 / 非法 → 恢复原值、不写。preparing 且未掷（d20 为空）时后端不渲染输入框。
+ */
+function parseD20Text(raw) {
+  const s = String(raw == null ? "" : raw).trim().replace(/[+\s]/g, "");
+  if (!s) return null;
+  const v = Number(s);
+  if (!isFinite(v)) return null;
+  return Math.max(0, Math.min(99, Math.round(v)));
+}
+
+async function commitD20(el) {
+  if (!el) return;
+  /* 回车先 commit 再 blur → focusout 再进来一次；写过就忽略（与 commitBonus 同一套防重复）。 */
+  if (el.dataset && el.dataset.d20Committed === "1") return;
+  const tokenId = el.getAttribute("data-init-d20") || "";
+  const entry = entryOf(tokenId);
+  if (!entry) return;
+  const cur = entry.d20 === null || entry.d20 === undefined ? null : Math.round(Number(entry.d20));
+  const d20 = parseD20Text(el.value);
+  if (cur === null || d20 === null) {
+    el.value = cur === null ? "" : String(cur);
+    return;
+  }
+  if (d20 === cur) {
+    el.value = String(cur);
+    return;
+  }
+  if (!canEditBonus(entry, { role: myRole, playerId: playerId, items: itemsMap })) {
+    el.value = String(cur);
+    feedback("只有城主能改别人的先攻点数（自己的 token 可以自己改）", "WARNING");
+    return;
+  }
+  if (el.dataset) el.dataset.d20Committed = "1";
+  await saveInit(function (st) { return setEntryRoll(st, tokenId, d20); },
+    "先攻点数：" + d20 + "+" + signed(entry.bonus) + " = " + (d20 + entry.bonus));
+}
+
 function signed(v) {
   const x = typeof v === "number" && isFinite(v) ? Math.round(v) : 0;
   return x >= 0 ? "+" + x : String(x);
@@ -379,11 +441,16 @@ function signed(v) {
 async function onCardClick(tokenId) {
   if (!tokenId || suppressClick) return;
   if (myRole === "GM" && initiative.phase === "combat") {
-    await saveInit(setActiveEntry(initiative, tokenId), "当前回合：「" + nameOf(tokenId) + "」");
+    await saveInit(function (st) { return setActiveEntry(st, tokenId); }, "当前回合：「" + nameOf(tokenId) + "」");
     return;
   }
-  /* 非战斗 / 玩家：把选中切到这枚 token（速览会跟着弹出，等于「聚焦」）。 */
-  try { await OBR.player.select([tokenId], true); } catch (e) { /* 忽略 */ }
+  /* 非战斗 / 玩家：把选中切到这枚 token（地图高亮照旧），但**不弹速览**。
+   * v1.8.2：先广播 CH_GLANCE_SUPPRESS 再 select —— 后台 refreshInfo 收到抑制信号，1.5s 内不弹窗；
+   * 先发再选，避免「select 引起的 onChange 比广播先到」的竞态。 */
+  try {
+    void OBR.broadcast.sendMessage(CH_GLANCE_SUPPRESS, { tokenId: tokenId, at: Date.now() }, { destination: "LOCAL" });
+    await OBR.player.select([tokenId], true);
+  } catch (e) { /* 忽略 */ }
 }
 
 /** 玩家「结束我的回合」：只发广播，**不写房间数据**（规格 §5）。 */
@@ -656,9 +723,11 @@ async function onListAction(act, tokenId) {
     feedback("只有城主能操作先攻列表", "WARNING");
     return;
   }
-  if (act === "next") return saveInit(advanceInitiative(initiative, 1), "已推进到下一回合");
-  if (act === "prev") return saveInit(advanceInitiative(initiative, -1), "已回到上一回合");
-  if (act === "roll-all") return saveInit(rerollAll(initiative), "所有人都重新掷了先攻");
+  /* v1.8.0：列表窗口的 next / prev / roll-all / 单条重掷也走串行队列；
+   * 传函数保证轮到执行时基于最新 state（连点不丢步、不重复基于旧 state）。 */
+  if (act === "next") return saveInit(function (st) { return advanceInitiative(st, 1); }, "已推进到下一回合");
+  if (act === "prev") return saveInit(function (st) { return advanceInitiative(st, -1); }, "已回到上一回合");
+  if (act === "roll-all") return saveInit(function (st) { return rerollAll(st); }, "所有人都重新掷了先攻");
   if (act === "sync") return syncInit(true);
   if (act === "clear") {
     if (!window.confirm("清空先攻？token 与角色卡都不受影响，只是把先攻名单清掉。")) {
@@ -672,18 +741,16 @@ async function onListAction(act, tokenId) {
     return;
   }
   if (act === "roll") {
-    const next = rerollEntry(initiative, tokenId);
-    const rolled = next.entries.filter(function (e) { return e.tokenId === tokenId; })[0];
-    return saveInit(next, "「" + entry.name + "」掷出 " + (rolled ? Math.round(rolled.init) : "?"));
+    return saveInit(function (st) { return rerollEntry(st, tokenId); }, "「" + entry.name + "」重新掷先攻");
   }
-  if (act === "up") return saveInit(moveEntry(initiative, tokenId, -1));
-  if (act === "down") return saveInit(moveEntry(initiative, tokenId, 1));
-  if (act === "active") return saveInit(setActiveEntry(initiative, tokenId), "当前回合：「" + entry.name + "」");
+  if (act === "up") return saveInit(function (st) { return moveEntry(st, tokenId, -1); });
+  if (act === "down") return saveInit(function (st) { return moveEntry(st, tokenId, 1); });
+  if (act === "active") return saveInit(function (st) { return setActiveEntry(st, tokenId); }, "当前回合：「" + entry.name + "」");
   if (act === "remove") {
     if (!window.confirm("把「" + entry.name + "」从先攻里移除？")) {
       return; /* v1.7.8：取消不再弹「已取消」 */
     }
-    return saveInit(removeEntry(initiative, tokenId), "已从先攻移除");
+    return saveInit(function (st) { return removeEntry(st, tokenId); }, "已从先攻移除");
   }
   feedback("未知操作：" + act, "WARNING");
 }
@@ -720,19 +787,26 @@ if (VIEW === "strip") {
       /* v1.7.11：双击拖动柄 = 回到顶部中间（后台清偏移 + 重开 popover 贴顶居中）。 */
       sendDrag("reset", 0, 0);
     });
-    /* v1.7.10：加值输入 —— 回车 / 失焦保存（卡片左上角与状态行共用 commitBonus）。 */
+    /* v1.7.10：加值输入 —— 回车 / 失焦保存（卡片左上角与状态行共用 commitBonus）。
+     * v1.8.2：卡片大号 d20 点数输入（data-init-d20）走 commitD20，同一批监听器。 */
     stripRoot.addEventListener("keydown", function (ev) {
       if (ev.key !== "Enter") return;
       const el = ev.target;
-      if (!el || !el.matches || !el.matches("[data-bonus-input], [data-bonus-row]")) return;
+      if (!el || !el.matches) return;
+      const isBonus = el.matches("[data-bonus-input], [data-bonus-row]");
+      const isD20 = el.matches("[data-init-d20]");
+      if (!isBonus && !isD20) return;
       ev.preventDefault();
       ev.stopPropagation();
-      void commitBonus(el);
+      if (isD20) void commitD20(el);
+      else void commitBonus(el);
       if (typeof el.blur === "function") el.blur();
     });
     stripRoot.addEventListener("focusout", function (ev) {
       const el = ev.target;
-      if (!el || !el.matches || !el.matches("[data-bonus-input], [data-bonus-row]")) return;
+      if (!el || !el.matches) return;
+      if (el.matches("[data-init-d20]")) { void commitD20(el); return; }
+      if (!el.matches("[data-bonus-input], [data-bonus-row]")) return;
       void commitBonus(el);
     });
   }

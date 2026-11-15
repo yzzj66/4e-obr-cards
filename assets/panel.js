@@ -16,7 +16,7 @@ import {
   ID_PANEL, getCardsInfo, writeCards, mergeImports, parseExport, loadSample,
   bindToken, selectedImageToken, esc, fmtTime, onReady
 } from "./common.js";
-import { renderGlanceHTML, cardMeta, deriveGlance, magicItemDailyUses } from "./glance.js";
+import { renderGlanceHTML, cardMeta, deriveGlance, magicItemDailyUses, loadCardIndex } from "./glance.js";
 import { applyAction, loadState, scopeText } from "./track.js";
 import { createWindow, feedback, closeSelf } from "./window.js";
 
@@ -87,11 +87,28 @@ function emptyViewHtml() {
   return '<div class="empty-panel">' +
     "<h2>4eNEXT to owlbear · 速览</h2>" +
     "<p>三步开始：<br>" +
-    "① 在 4E NEXT 里「导出存档（JSON）」；<br>" +
+    "① 在 4E NEXT 里「导出存档（JSON）」；也可以用「导出全部数据」的备份文件一次导入多张卡；<br>" +
     "② 把文件拖进这个面板（或点左侧「导入 JSON」）；<br>" +
     "③ 回到地图右键一个 token →「绑定 4E NEXT 角色卡」，之后选中它就会弹出速览。</p>" +
     '<div style="display:flex;gap:8px"><button class="btn" id="v-sample">载入示例卡看看效果</button></div>' +
     "</div>";
+}
+
+/**
+ * 「角色卡：…」来源标签（v1.8.0 三态）：
+ *   room  → 全桌（房间）：存在房间数据里，全房间共享、切场景还在（正常情况）；
+ *   scene → 本场景：房间数据 16 KB 装不下时自动改存当前场景的隐藏 item，本场景全桌可见；
+ *   local → 本机：场景也写不进（玩家身份 / 场景未就绪）的最后兜底，只有这台机器看得到。
+ */
+function scopeBadge() {
+  if (cardsScope === "scene") {
+    return '<span title="' + esc("本场景完整卡：房间数据放不下全桌名单时，完整角色卡（不精简、字段不丢）存在当前场景的隐藏 item 里；换场景后看不到，需要重新导入或等卡库同步。") +
+      '">角色卡：本场景</span>';
+  }
+  const tip = cardsScope === "local"
+    ? "本机兜底：房间数据与场景都写不进时，卡片列表只记在这台机器上（其他玩家看不到）；先攻 / 骰子照旧能写。设置 →「清理房间数据」可以瘦身。"
+    : "全桌名单（精简副本）：房间数据里存的是跨场景可见、玩家可见、用于绑定的精简名单；完整卡在当前场景的隐藏 item 里。";
+  return '<span title="' + esc(tip) + '">角色卡：' + (cardsScope === "local" ? "本机" : "全桌") + (cardsScope === "room" ? "（房间）" : "") + "</span>";
 }
 
 function toolbar(card) {
@@ -101,13 +118,12 @@ function toolbar(card) {
   return '<div class="card-toolbar">' +
     '<div class="card-toolbar-meta">Lv' + esc(m.level) + (ident ? " · " + esc(ident) : "") +
     (card.updatedAt ? " · 导入于 " + esc(fmtTime(card.updatedAt)) : "") +
-    ' · <span title="' + esc(cardsScope === "local"
-      ? "房间数据装不下这张卡（16KB 上限），卡片列表只记在这台机器上；先攻 / 骰子照旧能写。设置 →「清理房间数据」可以瘦身。"
-      : "角色卡存在房间数据里，全桌共享") + '">角色卡：' + (cardsScope === "local" ? "本机" : "全桌") + "</span>" +
+    " · " + scopeBadge() +
     ' · <span title="' + esc(scopeText(liveScope)) + '">资源：' + (liveScope === "local" ? "本机" : "全桌") + "</span>" +
     ' · <span title="血量写在 token 上，请选中 token 在速览弹窗里改">血量：见 token</span></div>' +
     '<div class="card-toolbar-acts">' +
     '<button class="btn small" id="v-bind" data-bg-soft' + (selectedToken ? "" : " disabled") + ">" + tokenText + "</button>" +
+    '<button class="btn small" id="v-export" title="把这张卡导出成 4E NEXT 可导入的 JSON（换场景 / 备份用）">导出 JSON</button>' +
     '<button class="btn small danger" id="v-del" data-bg-soft>删除这张卡</button>' +
     "</div></div>";
 }
@@ -142,6 +158,8 @@ async function renderView() {
   paintGates();
   const bindBtn = document.getElementById("v-bind");
   if (bindBtn) bindBtn.addEventListener("click", function () { void bindCurrent(); });
+  const expBtn = document.getElementById("v-export");
+  if (expBtn) expBtn.addEventListener("click", function () { exportCard(card); });
   const delBtn = document.getElementById("v-del");
   if (delBtn) delBtn.addEventListener("click", function () { void removeCard(card.id); });
 }
@@ -257,7 +275,7 @@ async function saveCards(next) {
 async function importText(text, label) {
   let imports;
   try {
-    imports = parseExport(text);
+    imports = await parseExport(text);
   } catch (e) {
     feedback("导入失败：" + (e && e.message ? e.message : e), "ERROR");
     return;
@@ -294,6 +312,42 @@ async function importSample() {
     await importText(JSON.stringify(data), "示例卡");
   } catch (e) {
     feedback("示例卡加载失败：" + (e && e.message ? e.message : e), "ERROR");
+  }
+}
+
+/**
+ * 导出当前卡（v1.8.0）：生成结构同 4E NEXT「导出存档」的单角色 JSON，方便换场景 / 备份。
+ * 卡片数据都在页面内存里（char 已被 unpackCard 还原成 4E NEXT Character），不需要后台脚本；
+ * 4E NEXT 存卡时就丢了立绘 / 法术书 / 背景正文（cards-core.js 的精简格式），所以导出文件很小。
+ */
+function exportCard(card) {
+  try {
+    const char = (card && card.char) || {};
+    const data = {
+      app: "4enext",
+      format: 1,
+      exportedAt: new Date().toISOString(),
+      pages: {
+        character: char,
+        reserve: { spellbook: char.spellbook || [], backpack: char.backpack || [] },
+        overview: {},
+        background: char.creation || {}
+      }
+    };
+    const name = String(char.name || (card && card.name) || "角色").replace(/[\\/:*?"<>|]/g, "_");
+    const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = name + ".json";
+    a.style.display = "none";
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    /* 等下载真正开始再回收 ObjectURL（立刻 revoke 在部分浏览器会得到空文件）。 */
+    window.setTimeout(function () { URL.revokeObjectURL(url); }, 1000);
+  } catch (e) {
+    feedback("导出失败：" + (e && e.message ? e.message : e), "ERROR");
   }
 }
 
@@ -420,7 +474,11 @@ onReady(function () {
   } catch (e) {
     console.error(e);
   }
-  void refresh().then(refreshSelection, function (e) {
-    feedback("读取角色卡失败：" + (e && e.message ? e.message : e), "ERROR");
-  });
+  /* v1.8.1：面板预览也要显示威能动作类型 / 专长每日 / 装备等级（与速览弹窗同一份 card-index）；
+   * 先按需加载再首帧刷新，加载失败静默（loadCardIndex 内部已 catch），面板照常打开。 */
+  void loadCardIndex()
+    .then(function () { return refresh(); })
+    .then(refreshSelection, function (e) {
+      feedback("读取角色卡失败：" + (e && e.message ? e.message : e), "ERROR");
+    });
 });

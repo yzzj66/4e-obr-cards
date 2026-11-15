@@ -19,7 +19,7 @@ const NOTES_PATH = path.join(ROOT, "docs", "NOTES.md");
 const NOTES = exists(NOTES_PATH) ? fs.readFileSync(NOTES_PATH, "utf8") : "";
 const notesHas = (s) => NOTES.indexOf(s) >= 0;
 /* 当前版本号：所有「版本全链路」断言都读它，升版本只改这一处（+ 各文件里的真实版本号）。 */
-const VER = "1.7.15";
+const VER = "1.8.3";
 
 function walk(dir, out = []) {
   for (const name of fs.readdirSync(dir)) {
@@ -770,8 +770,9 @@ cssOk("当前回合卡 100 高", /\.initiative-item\.active \{[^}]*height: 100px
 cssOk("头像占 80%（上下各裁 10%）", /\.item-img \{[^}]*height: 80%/s);
 cssOk("合计条 bottom:0 / height:24%", /\.item-count \{[^}]*bottom: 0; height: 24%/s);
 cssOk("HP 条 bottom:24% / height:4px", /\.item-hp-track \{[^}]*bottom: 24%; height: 4px/s);
-cssOk("掷骰按钮上移 8px", /\.roll-buttons \{[^}]*margin-top: -8px/s);
-cssOk("掷骰按钮 22 高", /\.roll-btn \{[^}]*height: 22px/s);
+cssOk("掷骰按钮在卡片正下方（margin-top: 1px，不再压卡片）", /\.roll-buttons \{[^}]*margin-top: 1px/s);
+cssOk("d20 按钮是整宽长方形（100% × 16 高 / 4px 圆角）", /\.roll-btn\.normal \{[^}]*width: 100%; height: 16px[^}]*border-radius: 4px/s);
+cssOk("卡片区 min-height 104（卡片 80 + 下方 d20 17）", /\.strip-items \{[^}]*min-height: 104px/s);
 cssOk("结束回合按钮 18 高", /\.end-turn-btn \{[^}]*height: 18px/s);
 cssOk("拖拽落位指示线", /\.drop-mark \{/);
 
@@ -1007,18 +1008,21 @@ console.log("== v1.6.0 血条扩展（临时生命 / 四防 / 蓝条）+ Boss �
   /* ---- 2) 几何常数（像素常数集中表） ----
    * [v1.7.9 改] 直条 / 蓝条 / 名牌 / 锁的常数全删；环形血条的常数改名 HP_RING_*。 */
   const geom = {
-    SHIELD_DIAMETER: 30, DEF_CIRCLE_DIAMETER: 30, DEF_CIRCLE_SEGMENTS: 24,
-    SHIELD_INSET: 4, DEF_GAP: 6,
-    HP_RING_THICK: 10, HP_RING_INSET: 2, HP_RING_SEGMENTS: 48, HP_RING_BG_OPACITY: 0.55
+    SHIELD_DIAMETER: 22, DEF_CIRCLE_DIAMETER: 22, DEF_CIRCLE_SEGMENTS: 24,
+    SHIELD_INSET: 8, DEF_GAP: 6,
+    HP_RING_THICK: 7, HP_RING_INSET: 2, HP_RING_SEGMENTS: 48, HP_RING_BG_OPACITY: 0.35
   };
   const geomBad = Object.keys(geom).filter((k) => numConst(coreSrc2, k) !== geom[k]);
   const goneConst = ["BAR_HP_H", "BAR_SURGE_H", "BAR_GAP", "BOSS_RING_THICK", "BOSS_RING_INSET",
     "BOSS_RING_SEGMENTS", "BOSS_PLATE_H", "BOSS_PLATE_GAP"].filter((k) => coreSrc2.indexOf("var " + k + " =") >= 0);
   if (!geomBad.length && !goneConst.length) {
-    ok("像素常数：四防直径 30 / 24 段圆 / 四角内缩 4 / 环厚 10 / Ro 内缩 2 / 48 段 / 底环不透明度 0.55；" +
+    ok("像素常数（v1.8.0）：四防直径 22 / 24 段圆 / 四角内缩 8 / 环厚 7 / Ro 内缩 2 / 48 段 / 底环不透明度 0.35；" +
       "直条 / 蓝条 / 名牌 / 锁的常数已全删");
   } else bad("像素常数不对：" + geomBad.map((k) => k + "=" + numConst(coreSrc2, k)).concat(
     goneConst.map((k) => k + " 不该还在")).join(" "));
+  if (/var COLOR_HP_BLOODIED = "#7f1416";/.test(coreSrc2) && /var COLOR_HP_FILL = "#a52424";/.test(coreSrc2)) {
+    ok("血怒色 COLOR_HP_BLOODIED = #7f1416（v1.8.0：cur ≤ max/2 时环换深红，正常色仍是 #a52424）");
+  } else bad("缺少血怒色 COLOR_HP_BLOODIED=#7f1416（或正常血条色 #a52424 被改了）");
   if (/var PLAYER_THRESHOLD_DEFAULT = 25;/.test(coreSrc2) && /function quantiseRatio\(/.test(coreSrc2)) {
     ok("玩家端 quantiseRatio + 阈值 25");
   } else bad("缺少 quantiseRatio / PLAYER_THRESHOLD_DEFAULT");
@@ -1042,13 +1046,16 @@ console.log("== v1.6.0 血条扩展（临时生命 / 四防 / 蓝条）+ Boss �
 
   /* ---- 4) 布局：**环形血条**（所有 token）+ **四角四防**；直条 / 蓝条 / Boss 全删 ---- */
   /* [v1.7.9 改] 这里原来断言「两行直条 + Boss 压制」与「四防一排」，现在整段换成环形 + 四角。 */
-  if (/var ringRo = Math\.max\(3 \* s, halfShort - RING_INSET \* s\);/.test(coreSrc2) &&
-    /var ringT = Math\.max\(1 \* s, Math\.min\(RING_THICK \* s, ringRo \* 0\.8\)\);/.test(coreSrc2) &&
-    /var ringRi = Math\.max\(1 \* s, ringRo - ringT\);/.test(coreSrc2) &&
+  if (/var ringRo = Math\.max\(0, halfShort - RING_INSET \* s\);/.test(coreSrc2) &&
+    /var ringT = Math\.min\(RING_THICK \* s, ringRo \* 0\.9\);/.test(coreSrc2) &&
+    /var ringRi = Math\.max\(0, ringRo - ringT\);/.test(coreSrc2) &&
     /var RING_SEGMENTS = HP_RING_SEGMENTS;/.test(coreSrc2) &&
+    /var availR = Math\.max\(0, ringRi - 1\.5 \* s\);/.test(coreSrc2) &&
+    /if \(!hpTextFits\) \{ hpText = ""/.test(coreSrc2) &&
     /var hpText = exact \? \(String\(cur\) \+ "\/" \+ max/.test(coreSrc2)) {
-    ok("环形血条几何：Ro = 半短边 − 2s、环厚 10s、Ri = Ro − 环厚、48 段；HP 数字仍按 cur/max 生成");
-  } else bad("环形血条的几何公式不对（Ro / 环厚 / Ri / 段数 / HP 数字）");
+    ok("环形血条几何（v1.8.0）：Ro = max(0, 半短边 − 2s)、环厚 = min(7s, 0.9·Ro)、Ri = Ro − 环厚、48 段；" +
+      "HP 数字仍按 cur/max 生成，并在内圆拟合（装不下自动降字号，绝不裁切）");
+  } else bad("环形血条的几何公式不对（Ro / 环厚 / Ri / 段数 / HP 数字内圆拟合）");
   if (/var DEF_CORNER = \{/.test(coreSrc2) &&
     /fort: "left-top"/.test(coreSrc2) && /reflex: "right-top"/.test(coreSrc2) &&
     /will: "left-bottom"/.test(coreSrc2) && /ac: "right-bottom"/.test(coreSrc2) &&
@@ -1274,21 +1281,21 @@ console.log("== v1.7.0 骰子记录窗口 + 投骰动画 + 去豁免 / 先攻预
     ok("记录窗口默认只显示最近 4 条（.dh-list.compact 隐藏第 5 条起）");
   else bad("记录窗口没有「最近 4 条」的实现（compact 规则 / CSS 缺）");
   if (has(histJsV17, "展开全部") && has(histJsV17, "compact"))
-    ok("「展开全部」把 compact 去掉 → 看全部（最多 40 条，列表内滚动）");
+    ok("「展开全部」把 compact 去掉 → 看全部（最多 20 条，列表内滚动）");
   else bad("记录窗口没有展开 / 收起切换");
-  if (has(histHtmlV17, 'id="dh-toggle"') && has(histHtmlV17, 'id="dh-meta"') && has(histHtmlV17, "40"))
-    ok("记录窗口有「共 N / 40 条」与展开按钮");
+  if (has(histHtmlV17, 'id="dh-toggle"') && has(histHtmlV17, 'id="dh-meta"') && has(histHtmlV17, "共 0 / 20 条"))
+    ok("记录窗口有「共 N / 20 条」与展开按钮");
   else bad("记录窗口缺少计数 / 展开按钮");
 
-  /* ---- 2) 40 条封顶 = 删最旧 ---- */
+  /* ---- 2) 20 条封顶 = 删最旧（v1.8.0：40 → 20） ---- */
   if (has(diceCoreV17, "return list.slice(0, limit);") &&
     has(diceCoreV17, "list.sort(function (a, b) { return numOr(b.ts, 0) - numOr(a.ts, 0); });") &&
-    (has(coreV17, "超过 40 条时删掉最旧") || has(diceCoreV17, "超过 40 条时删掉最旧")))
-    ok("40 条封顶是「倒序后 slice(0,40)」= 删最旧（core 里也写明了）");
+    (has(coreV17, "超过 20 条时删掉最旧") || has(diceCoreV17, "超过 20 条时删掉最旧")))
+    ok("20 条封顶是「倒序后 slice(0,20)」= 删最旧（core 里也写明了）");
   else bad("封顶逻辑不是「倒序后砍尾巴」（可能只截断显示）");
-  if (has(testDiceV17, "最旧") && has(testDiceV17, "mergeRollRows"))
-    ok("dev/test-dice.mjs 有「41 条 → 40 且最旧的被删」的断言");
-  else bad("dev/test-dice.mjs 没有钉住「超过 40 删最旧」");
+  if (has(testDiceV17, "最旧") && has(testDiceV17, "mergeRollRows") && has(testDiceV17, "21 条"))
+    ok("dev/test-dice.mjs 有「21 条 → 20 且最旧的被删」的断言");
+  else bad("dev/test-dice.mjs 没有钉住「超过 20 删最旧」");
 
   /* ---- 3) 去豁免 / 先攻预设 ---- */
   const code4e = stripComments(dice4eV17);
@@ -1529,9 +1536,11 @@ console.log("== v1.7.2 血条组件编辑小窗（HP / 四防 / 回复力）");
   if (has(editHtmlV172, 'class="win') && has(editHtmlV172, 'id="head"') && has(editHtmlV172, 'id="pin"'))
     ok("编辑窗用 .win 外壳 + #head 拖动区 + #pin（复用 window.js 的拖动 / 记位置）");
   else bad("编辑窗缺少窗口外壳 / 拖动区 #head / 回到默认位置 #pin");
-  if (has(editHtmlV172, 'href="assets/ui.css"') && has(editHtmlV172, 'src="assets/hp-edit-page.js"') &&
+  const assetRef = (src, name) =>
+    new RegExp('(?:href|src)="assets/' + name.replace(/\./g, "\\.") + '(?:\\?v=[^"]*)?"').test(src);
+  if (assetRef(editHtmlV172, "ui.css") && assetRef(editHtmlV172, "hp-edit-page.js") &&
     has(editHtmlV172, "<title>4eNEXT to owlbear"))
-    ok("hp-edit.html 引 ui.css + hp-edit-page.js，标题带「4eNEXT to owlbear」");
+    ok("hp-edit.html 引 ui.css + hp-edit-page.js（允许 ?v= 缓存参数），标题带「4eNEXT to owlbear」");
   else bad("hp-edit.html 的样式 / 脚本引用或标题不对");
   if (has(editJsV172, 'createWindow({ name: "hpEdit" })') && has(editJsV172, 'closeSelf(ID_HP_EDIT, "hpEdit")'))
     ok("hp-edit-page.js 用 window.js 的 createWindow（窗口名 hpEdit）+ closeSelf 关自己");
@@ -1543,9 +1552,9 @@ console.log("== v1.7.2 血条组件编辑小窗（HP / 四防 / 回复力）");
   if (!missingDef.length) ok("编辑窗有四个四防输入框：AC / 强韧 / 反射 / 意志（hpe-def-ac/fort/reflex/will）");
   else bad("编辑窗缺少四防输入框：" + missingDef.join(" / "));
   if (has(editHtmlV172, "hpe-hp") && has(editHtmlV172, "hpe-surge") && has(editHtmlV172, "hpe-save") &&
-    has(editHtmlV172, "hpe-cancel"))
-    ok("编辑窗有生命 / 回复力 / 保存 / 取消");
-  else bad("编辑窗缺少生命 / 回复力 / 保存 / 取消");
+    !has(editHtmlV172, "hpe-cancel"))
+    ok("编辑窗底部只有生命 / 回复力 / 保存（取消按钮已移除，✕ / Esc 仍可关窗）");
+  else bad("编辑窗底栏应只有生命 / 回复力 / 保存、且没有取消按钮");
   if (has(editHtmlV172, "20 / 20/20 / +5 / -3"))
     ok("生命输入的提示里写清了 20 / 20/20 / +5 / -3");
   else bad("生命输入没有语法提示（用户不知道能填什么）");
@@ -1981,9 +1990,9 @@ console.log("== v1.7.5 四防一排改样式（3 个圆 + 1 个 AC 盾；只改�
     return m ? +m[1] : NaN;
   };
 
-  /* ---- 1) [v1.7.6 改] 直径：四枚**都是 30s**（三防圆 22 → 30，与 AC 盾同尺寸） ---- */
-  if (numV175("DEF_CIRCLE_DIAMETER") === 30 && numV175("SHIELD_DIAMETER") === 30)
-    ok("直径：强韧 / 反射 / 意志 的圆 = 30s（v1.7.6：22 → 30），AC 的盾也是 30s —— 四枚同直径");
+  /* ---- 1) [v1.8.0 改] 直径：四枚**都是 22s**（v1.8.0 按真机反馈 30 → 22，四角更不容易越界） ---- */
+  if (numV175("DEF_CIRCLE_DIAMETER") === 22 && numV175("SHIELD_DIAMETER") === 22)
+    ok("直径：强韧 / 反射 / 意志 的圆 = 22s（v1.8.0：30 → 22），AC 的盾也是 22s —— 四枚同直径");
   else bad("直径不对：DEF_CIRCLE_DIAMETER=" + numV175("DEF_CIRCLE_DIAMETER") + " SHIELD_DIAMETER=" + numV175("SHIELD_DIAMETER"));
 
   /* ---- 2) 外形：圆用 circlePoints（24 段），AC 用 shieldPoints，构建与增量刷新共用 defShapePoints ---- */
@@ -2176,18 +2185,18 @@ console.log("== v1.7.6 删提示小字 + 记录窗直开 + 先攻条真透明 + 
     const m = new RegExp("var " + name + " = (\\d+(?:\\.\\d+)?);").exec(coreV176);
     return m ? +m[1] : NaN;
   };
-  if (numV176("DEF_CIRCLE_DIAMETER") === 30 && numV176("SHIELD_DIAMETER") === 30)
-    ok("四防直径：圆 22s → **30s**（与 AC 盾同直径，参考图 15 里四个一样大）");
+  if (numV176("DEF_CIRCLE_DIAMETER") === 22 && numV176("SHIELD_DIAMETER") === 22)
+    ok("四防直径（v1.8.0）：圆和 AC 盾统一 22s（真机反馈 30 → 22，四角贴边更稳）");
   else bad("四防直径不对：圆=" + numV176("DEF_CIRCLE_DIAMETER") + " 盾=" + numV176("SHIELD_DIAMETER"));
   /* [v1.7.9 改] 「一排铺满均分」换成四角：断言坐标公式 + 退化判据，并确认旧 helper 已删。 */
   if (/var DEF_CORNER = \{/.test(coreV176) &&
     /x: onLeft \? bounds\.min\.x \+ inset \+ dk \/ 2 : bounds\.max\.x - inset - dk \/ 2,/.test(coreV176) &&
     /var needTwo = 2 \* dRow \+ inset \* 2;/.test(coreV176) &&
     coreV176.indexOf("defRowGap") < 0 && coreV176.indexOf("var rowLeft") < 0) {
-    ok("四防四角公式：贴 token 四角内侧 4s；两枚并排 / 两行叠放放不下就按 DEF_DROP 丢（AC 最后）；「一排均分」的 helper 已删");
+    ok("四防四角公式：贴 token 四角内侧 8s；两枚并排 / 两行叠放放不下就按 DEF_DROP 丢（AC 最后）；「一排均分」的 helper 已删");
   } else bad("四防四角的坐标 / 退化公式不对（defRowGap / rowLeft 应该已经删掉）");
   if (/fontSize: Math\.max\(8 \* s, dk \* \(txt\.length > 2 \? 0\.46 : 0\.5\)\)/.test(coreV176))
-    ok("四防数字字号统一放大：d×0.5 / d×0.46（30s → 15 / 13.8 ≈ 14）");
+    ok("四防数字字号统一放大：d×0.5 / d×0.46（22s → 11 / 10.12 ≈ 10）");
   else bad("四防数字字号没有统一放大");
   if (/var DEF_ROW = \["fort", "reflex", "will", "ac"\];/.test(coreV176) &&
     /DEF_AC_FILL_OPACITY = 0\.18/.test(coreV176) && /DEF_AC_STROKE_OPACITY = 0\.85/.test(coreV176))
@@ -2488,9 +2497,9 @@ console.log("== v1.7.9 血条改环形 + 去掉 Boss 模式 / 蓝条 + 四防回
     return m ? +m[1] : NaN;
   };
 
-  /* ---- 1) 环形血条的常数（环厚 10s / Ro 内缩 2s / 48 段） + barLayout 顶部常量区 ---- */
-  if (numV179("HP_RING_THICK") === 10 && numV179("HP_RING_INSET") === 2 && numV179("HP_RING_SEGMENTS") === 48) {
-    ok("环形血条常数：环厚 10s / Ro = 半短边 − 2s / 48 段");
+  /* ---- 1) 环形血条的常数（v1.8.0：环厚 7s / Ro 内缩 2s / 48 段） + barLayout 顶部常量区 ---- */
+  if (numV179("HP_RING_THICK") === 7 && numV179("HP_RING_INSET") === 2 && numV179("HP_RING_SEGMENTS") === 48) {
+    ok("环形血条常数（v1.8.0）：环厚 7s / Ro = 半短边 − 2s / 48 段");
   } else bad("环形血条常数不对：THICK=" + numV179("HP_RING_THICK") + " INSET=" + numV179("HP_RING_INSET") +
     " SEG=" + numV179("HP_RING_SEGMENTS"));
   if (/var RING_THICK = HP_RING_THICK;/.test(coreV179) && /var RING_INSET = HP_RING_INSET;/.test(coreV179) &&
@@ -2522,13 +2531,13 @@ console.log("== v1.7.9 血条改环形 + 去掉 Boss 模式 / 蓝条 + 四防回
     ok("直条 / 蓝条 / 锁用到的 helper 与常数（roundRectPoints / arcPoints / BAR_HP_H / BAR_SURGE_H / COLOR_SURGE_*）都删了");
   } else bad("还留着直条 / 蓝条 / 锁用的 helper 或常数");
 
-  /* ---- 4) 四防回四角：左上强韧 / 右上反射 / 左下意志 / 右下 AC 盾，直径 30s、inset 4s ---- */
+  /* ---- 4) 四防回四角：左上强韧 / 右上反射 / 左下意志 / 右下 AC 盾，直径 22s、inset 8s（v1.8.0 真机微调） ---- */
   if (/fort: "left-top"/.test(coreV179) && /reflex: "right-top"/.test(coreV179) &&
     /will: "left-bottom"/.test(coreV179) && /ac: "right-bottom"/.test(coreV179)) {
     ok("四角映射：fort=left-top / reflex=right-top / will=left-bottom / ac=right-bottom");
   } else bad("四角映射不对（DEF_CORNER）");
-  if (numV179("SHIELD_DIAMETER") === 30 && numV179("DEF_CIRCLE_DIAMETER") === 30 && numV179("SHIELD_INSET") === 4) {
-    ok("四防直径 30s、贴角内侧 4s（和用户要求一致）");
+  if (numV179("SHIELD_DIAMETER") === 22 && numV179("DEF_CIRCLE_DIAMETER") === 22 && numV179("SHIELD_INSET") === 8) {
+    ok("四防直径 22s、贴角内侧 8s（v1.8.0 按真机反馈重调：30/4 → 22/8）");
   } else bad("四防直径 / inset 不对：" + numV179("SHIELD_DIAMETER") + " / " + numV179("SHIELD_INSET"));
   if (/var DEF_COLORS = \{ ac: "#ffffff", fort: "#e3b341", reflex: "#56d364", will: "#a371f7" \};/.test(coreV179)) {
     ok("配色：左上黄 #e3b341 / 右上绿 #56d364 / 左下紫 #a371f7 / AC 半透明白");
@@ -2637,10 +2646,11 @@ console.log("== v1.7.10 / v1.7.11 先攻条（popover 回退）+ Full Suite 卡�
     [/\.item-img \{[^}]*height: 80%/s, ".item-img 80%"],
     [/\.item-count \{[^}]*height: 24%/s, ".item-count 24%"],
     [/\.item-hp-track \{[^}]*bottom: 24%; height: 4px/s, "血条 4px bottom 24%"],
-    [/\.roll-buttons \{[^}]*top: 100%[^}]*margin-top: -8px/s, "掷骰按钮 top:100% / −8px"]
+    [/\.roll-buttons \{[^}]*top: 100%[^}]*margin-top: 1px/s, "掷骰按钮 top:100% / 1px（卡片下方）"],
+    [/\.roll-btn\.normal \{[^}]*width: 100%; height: 16px[^}]*border-radius: 4px/s, "d20 整宽长方形 16 高"]
   ];
   const missFS = FS.filter(([re]) => !re.test(cssV1710)).map(([, why]) => why);
-  if (!missFS.length) ok("④ Full Suite 几何全对上：56×80 / active 100 / img 80% / count 24% / hp 4px bottom 24% / 按钮 −8px");
+  if (!missFS.length) ok("④ Full Suite 几何全对上：56×80 / active 100 / img 80% / count 24% / hp 4px bottom 24% / 按钮在卡片下方长方形");
   else bad("④ 少了 Full Suite 的几何：" + missFS.join(" / "));
   if (has(initV1710, 'data-roll="normal"') && !has(initV1710, 'data-roll="adv"') &&
     !has(initV1710, 'data-roll="dis"') && (initV1710.match(/class="roll-btn /g) || []).length === 1) {
@@ -3016,7 +3026,7 @@ console.log("== docs 合并（docs/NOTES.md；不再按版本 / 规格拆文件�
   else bad("缺少 docs/NOTES.md");
   const wants = [
     ["必须重建 bundle", "改 core 要重建 bundle"],
-    ["5 条自测", "自测命令"],
+    ["7 条自测", "自测命令"],
     ["manifest 不要加 `action`", "manifest 不加 action"],
     ["数据键名不要改", "数据键名不改（旧存档不丢）"],
     ["token 血条/四防的位置与尺寸", "血条 / 四防常数在哪"],
@@ -3128,9 +3138,9 @@ console.log("== v1.7.15 房间数据超限（16 kB）真修复：卡片精简 / 
   if (!/await OBR\.room\.setMetadata\(\{ \[(KEY_INITIATIVE|KEY_ROLLS)\]/.test(coreV1715)) {
     ok("③ 后台没有绕过预算的裸 setMetadata（先攻 / 骰子都改走 guard）");
   } else bad("background.core.js 里还有裸 setMetadata 写先攻 / 骰子");
-  if (/localCardsFallback\(\)/.test(coreV1715) && /local\.updatedAt > roomAt/.test(coreV1715)) {
-    ok("③ 后台 getCards 也读本机副本（绑定关系不会因为降级而失效）");
-  } else bad("background.core.js 的 getCards 没读本机副本");
+  if (/localCardsFallback\(\)/.test(coreV1715) && /sceneCardsFallback\(\)/.test(coreV1715)) {
+    ok("③ 后台 getCards 依次读 房间 → 场景 item → 本机副本（绑定关系不会因为降级而失效）");
+  } else bad("background.core.js 的 getCards 没读场景兜底 / 本机副本");
   if (has(bundleV1715, "function roomWriteGuarded(") && has(bundleV1715, "var ROOM_MAX_BYTES = 14 * 1024;")) {
     ok("③ bundle 已重建（roomWriteGuarded / 预算常量都在产物里）");
   } else bad("bundle 没重建：roomWriteGuarded 不在 background.bundle.js 里");
@@ -3190,6 +3200,60 @@ console.log("== v1.7.15 房间数据超限行为自测（dev/test-cards.mjs）")
   const code = typeof r.status === "number" ? r.status : 1;
   if (code === 0) ok("房间数据超限自测通过（精简 / 预算 / 降级 / 清理）");
   else bad("房间数据超限自测失败（exit " + code + "）：手动跑 node dev/test-cards.mjs 看细节");
+}
+
+/* v1.8.0：effect.html / dice-history.html 的透明补强（交接文件 §3.3 的老坑）。
+ * 样式表 !important 压不住宿主 / Dark Reader 后注入的 !important → 必须「内联 style + darkreader-lock +
+ * data-overlay-canvas」三件套（照抄 initiative.html 的做法），同时只透明外壳、内容卡片保留底色。 */
+console.log("== v1.8.0 透明三件套补强（effect.html / dice-history.html）");
+{
+  const effectHtmlV18 = fs.readFileSync(path.join(ROOT, "effect.html"), "utf8");
+  const histHtmlV18 = fs.readFileSync(path.join(ROOT, "dice-history.html"), "utf8");
+  const uiV18 = fs.readFileSync(path.join(ROOT, "assets", "ui.css"), "utf8");
+  for (const [label, src] of [["effect.html", effectHtmlV18], ["dice-history.html", histHtmlV18]]) {
+    if (/<html[^>]*style="[^"]*color-scheme:normal!important[^"]*background:transparent!important[^"]*"/.test(src))
+      ok(label + "：<html> 的 style 属性带 color-scheme:normal!important + background:transparent!important（inline !important 压过宿主注入）");
+    else bad(label + "：<html> 缺少 inline style 的 transparent !important（样式表压不住注入的 !important）");
+    if (/<body[^>]*style="[^"]*background:transparent!important[^"]*"/.test(src))
+      ok(label + "：<body> 的 style 属性带 background:transparent!important");
+    else bad(label + "：<body> 缺少 inline style 的 transparent !important");
+    if (/<meta name="darkreader-lock">/.test(src)) ok(label + "：有 <meta name=\"darkreader-lock\">");
+    else bad(label + "：缺 darkreader-lock（暗色扩展会把透明层染深）");
+    if (/<style data-overlay-canvas>/.test(src) && /:root\s*\{[^}]*color-scheme:\s*normal\s*!important/.test(src) &&
+      /:root\s*\{[^}]*background:\s*transparent\s*!important/.test(src))
+      ok(label + "：有 <style data-overlay-canvas>（:root color-scheme normal + 各层 transparent !important）");
+    else bad(label + "：缺 data-overlay-canvas 三件套");
+  }
+  if (/body\.dh-page \.win \{[\s\S]{0,200}?rgba\(15, 20, 28, \.86\)/.test(uiV18))
+    ok("dice-history：卡片内容仍有底色（body.dh-page .win 的 rgba(15,20,28,.86) 没被透明规则抹掉）");
+  else bad("dice-history：卡片底色规则丢了（透明补强不能把内容也透明掉）");
+  if (histHtmlV18.indexOf('class="win"') >= 0 && histHtmlV18.indexOf('id="dh-list"') >= 0 &&
+    effectHtmlV18.indexOf('class="fx-stage"') >= 0)
+    ok("两个页面的 DOM 结构未被改动（effect .fx-stage / history .win + #dh-list 都在）");
+  else bad("透明补强把页面结构改坏了");
+}
+
+/* v1.8.2：先攻条点卡片不再弹速览 —— 页面先广播抑制频道，后台 1.5s 内 refreshInfo 早退。
+ * 频道常量必须 common.js / background.core.js 逐字一致；后台要真的订阅。 */
+console.log("== v1.8.2 先攻条：点卡片不弹速览（CH_GLANCE_SUPPRESS）");
+{
+  const commonSrcV182 = fs.readFileSync(path.join(ROOT, "assets", "common.js"), "utf8");
+  const coreSrcV182 = fs.readFileSync(path.join(ROOT, "assets", "background.core.js"), "utf8");
+  const pageSrcV182 = fs.readFileSync(path.join(ROOT, "assets", "initiative-page.js"), "utf8");
+  const chCommon = (/export const CH_GLANCE_SUPPRESS = NS \+ "([^"]+)";/.exec(commonSrcV182) || [])[1] || "";
+  const chCore = (/var CH_GLANCE_SUPPRESS = NS \+ "([^"]+)";/.exec(coreSrcV182) || [])[1] || "";
+  if (chCommon && chCommon === chCore) ok("抑制速览频道一致：CH_GLANCE_SUPPRESS = " + chCommon);
+  else bad("CH_GLANCE_SUPPRESS 不一致：common=" + chCommon + " core=" + chCore);
+  if (chCore === "/glance-suppress" && /onMessage\(CH_GLANCE_SUPPRESS/.test(coreSrcV182) &&
+    /suppressGlanceUntil = Date\.now\(\) \+ 1500;/.test(coreSrcV182) &&
+    /if \(Date\.now\(\) < suppressGlanceUntil\) return;/.test(coreSrcV182))
+    ok("后台：订阅 CH_GLANCE_SUPPRESS → suppressGlanceUntil = now+1500、refreshInfo 里早退");
+  else bad("后台没有接抑制速览（频道订阅 / 1.5s 窗口 / refreshInfo 早退 缺一）");
+  const sendIdx = pageSrcV182.indexOf("sendMessage(CH_GLANCE_SUPPRESS");
+  const selIdx = pageSrcV182.indexOf("OBR.player.select");
+  if (sendIdx >= 0 && selIdx >= 0 && sendIdx < selIdx)
+    ok("先攻条页面：先发 CH_GLANCE_SUPPRESS 再 select（避免速览抢在抑制之前弹）");
+  else bad("先攻条页面没有「先发抑制再 select」");
 }
 
 console.log(fail ? "\n" + fail + " 个问题" : "\n全部通过");

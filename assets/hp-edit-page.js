@@ -43,7 +43,6 @@ var els = {
   surge: document.getElementById("hpe-surge"),
   note: document.getElementById("hpe-note"),
   save: document.getElementById("hpe-save"),
-  cancel: document.getElementById("hpe-cancel"),
   close: document.getElementById("close"),
   off: document.getElementById("hpe-off")
 };
@@ -285,7 +284,7 @@ function closeWindow() {
  * 事件
  * ------------------------------------------------------------------------- */
 if (els.close) els.close.addEventListener("click", closeWindow);
-if (els.cancel) els.cancel.addEventListener("click", closeWindow);
+/* v1.8.3：底栏只留「保存」——取消按钮已移除；✕ 与 Esc（window.js / 输入框 keydown）仍能关窗。 */
 if (els.save) els.save.addEventListener("click", function () { void save(); });
 
 var inputs = [els.hp, els.surge];

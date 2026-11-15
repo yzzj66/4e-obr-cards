@@ -34,7 +34,7 @@ fs.mkdirSync(path.join(tmp, "vendor"), { recursive: true });
 fs.writeFileSync(path.join(tmp, "package.json"), JSON.stringify({ type: "module" }), "utf8");
 fs.copyFileSync(path.join(ROOT, "data", "rules.js"), path.join(tmp, "data", "rules.js"));
 fs.writeFileSync(path.join(tmp, "vendor", "obr-stub.mjs"), "export default globalThis.__OBR__;\n", "utf8");
-for (const name of ["cards-core.js", "common.js", "window.js", "track.js", "glance.js", "info.js"]) {
+for (const name of ["cards-core.js", "cards-scene.js", "common.js", "window.js", "track.js", "glance.js", "info.js"]) {
   let src = fs.readFileSync(path.join(ROOT, "assets", name), "utf8");
   src = src.replace('from "../vendor/obr-sdk.js"', 'from "../vendor/obr-stub.mjs"');
   fs.writeFileSync(path.join(tmp, "assets", name), src, "utf8");

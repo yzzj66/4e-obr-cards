@@ -7,12 +7,16 @@ import {
   ROOM_NS, ROOM_MAX_BYTES, ROOM_HARD_BYTES, ROOM_FULL_MESSAGE, CARD_MAX_BYTES, LS_CARDS,
   packCard, unpackCard, cardBytes, cardsBytes, roomBytes, mergeRoom, roomBudget
 } from "./cards-core.js";
+/* v1.8.0：房间数据（16 KB 硬上限）装不下时，卡片改存**当前场景的隐藏 item**（全桌可见）。
+ * 为什么不是只存本机：本机副本只有城主看得到，玩家侧绑定 / 速览全是空的（v1.7.15 的真事）。 */
+import { CARD_ITEM_KEY, readSceneCards, writeSceneCards, clearSceneCards } from "./cards-scene.js";
 
 export const NS = ROOM_NS;
 /* 透出给页面 / 自测用（settings-page.js 只从 common.js 取，不自己碰 OBR 房间数据）。 */
 export {
   ROOM_NS, ROOM_MAX_BYTES, ROOM_HARD_BYTES, ROOM_FULL_MESSAGE, CARD_MAX_BYTES, LS_CARDS,
-  packCard, unpackCard, cardBytes, cardsBytes, roomBytes, mergeRoom, roomBudget
+  packCard, unpackCard, cardBytes, cardsBytes, roomBytes, mergeRoom, roomBudget,
+  CARD_ITEM_KEY, readSceneCards, writeSceneCards, clearSceneCards
 };
 /** 房间数据键：全房间共享的角色卡列表（无需自建服务器）。 */
 export const KEY_CARDS = NS + "/cards";
@@ -43,7 +47,7 @@ export const ID_SETTINGS_WIN = NS + "/settings-window";
  * id 与其它窗口都不同 → 可以和速览 / 先攻条同时开着；位置按窗口名 "hpEdit" 单独记。 */
 export const ID_HP_EDIT = NS + "/hp-edit";
 
-export const PLUGIN_VERSION = "1.7.15";
+export const PLUGIN_VERSION = "1.8.3";
 
 /**
  * 站点根地址。
@@ -78,6 +82,9 @@ export const URL_ICON = new URL("icon.svg", URL_BASE).href;
 
 /** 玩家「结束我的回合」请求频道（与 background.core.js 的 CH_INIT_REQUEST 必须一致）。 */
 export const CH_INIT_REQUEST = NS + "/init-request";
+/** v1.8.2：先攻条点卡片时先广播这个频道，后台 1.5 秒内不自动弹速览
+ *  （选中 token 的后台副作用 —— 地图高亮保留，只是别弹窗）。与 background.core.js 常量必须一致。 */
+export const CH_GLANCE_SUPPRESS = NS + "/glance-suppress";
 
 /* ---- v1.5.0：骰子（团队共享）----
  * CH_ROLL        任何人 → 全桌：一次投掷（LOCAL + REMOTE；投掷者自己也听 LOCAL）
@@ -353,25 +360,48 @@ function hydrateCard(card) {
 }
 
 /**
- * 读角色卡：**谁更新用谁**。
- *   · 房间数据里有卡片列表，且不比本机副本旧 → 用房间（全桌共享，正常情况）；
- *   · 本机副本更新（= 上一次导入因为房间数据超限而降级了）→ 用本机，UI 标「角色卡：本机」；
- *   · 房间数据里根本没有这个键 → 有本机副本就用本机。
- * 返回 { cards, scope: "room"|"local", bytes }。
+ * 读角色卡（v1.8.0 双写）：房间数据里是**精简名单副本**（跨场景 / 玩家可见 / 用于绑定），
+ * 当前场景的隐藏 item 里是**完整卡**（不精简、字段不丢）。两份按卡 id 取并集：
+ * 返回 { cards, scope: "room"|"scene"|"local", bytes }。
  */
 export async function getCardsInfo() {
   const meta = await readRoomMeta();
   const box = meta[KEY_CARDS];
+  const bytes = roomBytes(meta);
   const local = readLocalCards();
+  const roomCards = box && Array.isArray(box.cards) ? box.cards : null;
   const roomAt = box && typeof box.updatedAt === "number" ? box.updatedAt : 0;
-  if (box && Array.isArray(box.cards)) {
-    if (local && local.updatedAt > roomAt) {
-      return { cards: local.cards.map(hydrateCard), scope: "local", bytes: roomBytes(meta) };
-    }
-    return { cards: box.cards.map(hydrateCard), scope: "room", bytes: roomBytes(meta) };
+  const scene = await readSceneCards();
+  const sceneById = new Map(scene.map(function (c) { return [c.id, c]; }));
+  const localNewer = !!local && local.updatedAt > roomAt;
+  const localById = new Map((localNewer ? local.cards : []).map(function (c) { return [c.id, c]; }));
+  /* v1.8.0（F1 修复）：房间列表和场景 item 是**同一批卡的两层副本**（房间=精简名单，场景=完整数据）。
+   * 以前是「房间非空就只用房间」，结果房间名单过期时新导入、只写进场景的卡会被挡住
+   * （真机表现：刷新后新卡消失、绑定它的 token 误弹血条编辑窗）。现在按 id 取并集：
+   *   同 id 优先用场景里的完整卡 → 没有就用本机较新的副本 → 再没有就用房间里的精简副本；
+   *   场景里独有的新卡一律追加。 */
+  const merged = [];
+  const seen = new Set();
+  const push = function (card) {
+    if (!card || !card.id || seen.has(card.id)) return;
+    seen.add(card.id);
+    merged.push(card);
+  };
+  for (const w of (roomCards || [])) {
+    if (!w || !w.id) continue;
+    const full = sceneById.get(w.id);
+    if (full) { push(full); continue; }
+    if (localNewer && localById.has(w.id)) { push(hydrateCard(localById.get(w.id))); continue; }
+    push(hydrateCard(w));
   }
-  if (local) return { cards: local.cards.map(hydrateCard), scope: "local", bytes: roomBytes(meta) };
-  return { cards: [], scope: "room", bytes: roomBytes(meta) };
+  if (!roomCards && local) for (const c of local.cards) push(hydrateCard(c));
+  if (localNewer) for (const c of local.cards) push(hydrateCard(c));
+  for (const c of scene) push(c);
+  let scope = "room";
+  if (roomCards && roomCards.length) scope = "room";
+  else if (scene.length) scope = "scene";
+  else if (local && local.cards.length) scope = "local";
+  return { cards: merged, scope: scope, bytes: bytes, roomCards: roomCards ? roomCards.length : 0, sceneCards: scene.length };
 }
 
 /** 读房间里的全部角色卡（按导入顺序）。 */
@@ -381,27 +411,38 @@ export async function getCards() {
 
 /**
  * 写角色卡列表（导入 / 删除卡都走这里）。
- * 成功 → 房间数据（顺手清掉本机副本）；超预算 / 写失败 → 本机副本 + **ERROR** 通知。
- * 返回 { payload, scope: "room"|"local", bytes, saved?, error? }。
+ * v1.8.0 起**双写**：
+ *   · 当前场景的隐藏 item ← **完整数据**（只去立绘；场景 item 没有 16 KB 总额限制，任何字段都不丢）；
+ *   · 房间数据 ← **精简名单副本**（packCard 短键，够速览用；换场景 / 玩家侧仍能看到这些卡并绑定 token）；
+ *   两边都写不进（玩家身份 + 房间只读）→ 本机副本 + **ERROR** 通知（最后一道兜底，不静默）。
+ * 返回 { payload, scope: "room"|"scene"|"local", fullInScene, bytes, saved?, error? }。
  */
 export async function writeCards(cards) {
-  const wire = (cards || []).map(function (c) {
+  const list = cards || [];
+  const wire = list.map(function (c) {
     return Object.assign({}, c, { char: packCard(c && c.char) });
   });
   const payload = { v: 1, updatedAt: Date.now(), cards: wire };
-  const res = await writeRoomKey(KEY_CARDS, payload);
-  if (res.ok) {
+  const scene = await writeSceneCards(list);
+  const room = await writeRoomKey(KEY_CARDS, payload);
+  if (scene.ok || room.ok) {
     clearLocalCards();
-    return { payload: payload, scope: "room", bytes: res.bytes };
+    return {
+      payload: payload,
+      /* scope 说明这份卡片列表的「主来源」：房间写得进就是全桌名单（跨场景可见），否则是本场景。 */
+      scope: room.ok ? "room" : "scene",
+      fullInScene: !!scene.ok,
+      bytes: room.bytes
+    };
   }
   const saved = saveLocalCards(wire);
-  if (res.reason === "full") {
+  if (room.reason === "full") {
     notify(ROOM_FULL_MESSAGE, "ERROR");
   } else {
-    notify("角色卡没能写进房间数据（" + msgOf(res.error) + "）：" +
+    notify("角色卡没能写进房间数据（" + msgOf(room.error) + "）：" +
       (saved ? "已改为只记在这台机器上（房间数据通常只有城主能写）" : "本机也存不下，这次导入没有保存"), "ERROR");
   }
-  return { payload: payload, scope: "local", bytes: res.bytes, saved: saved, error: res.error || null };
+  return { payload: payload, scope: "local", fullInScene: false, bytes: room.bytes, saved: saved, error: room.error || null };
 }
 
 /** 设置窗口用：看一眼房间数据现在多满 / 有几张卡 / 几条骰子记录 / 几条先攻。 */
@@ -411,16 +452,27 @@ export async function getRoomUsage() {
   const rollsBox = meta[KEY_ROLLS];
   const initBox = meta[KEY_INITIATIVE];
   const local = readLocalCards();
-  const roomAt = cardsBox && typeof cardsBox.updatedAt === "number" ? cardsBox.updatedAt : 0;
-  const useLocal = !!local && (!(cardsBox && Array.isArray(cardsBox.cards)) || local.updatedAt > roomAt);
+  const roomCards = cardsBox && Array.isArray(cardsBox.cards) ? cardsBox.cards : null;
+  let sceneCards = [];
+  try { sceneCards = await readSceneCards(); } catch (e) { sceneCards = []; }
+  /* 卡片张数 = 房间名单 ∪ 场景 item ∪ 本机副本的并集（同一张卡只算一次）。 */
+  const ids = new Set();
+  for (const c of (roomCards || [])) if (c && c.id) ids.add(c.id);
+  for (const c of sceneCards) if (c && c.id) ids.add(c.id);
+  for (const c of (local ? local.cards : [])) if (c && c.id) ids.add(c.id);
+  let cardScope = "room";
+  if (roomCards && roomCards.length) cardScope = "room";
+  else if (sceneCards.length) cardScope = "scene";
+  else if (local && local.cards.length) cardScope = "local";
   return {
     bytes: roomBytes(meta),
     max: ROOM_MAX_BYTES,
     hard: ROOM_HARD_BYTES,
-    cards: useLocal ? (local ? local.cards.length : 0) : (cardsBox && Array.isArray(cardsBox.cards) ? cardsBox.cards.length : 0),
-    roomCards: cardsBox && Array.isArray(cardsBox.cards) ? cardsBox.cards.length : 0,
+    cards: ids.size,
+    roomCards: roomCards ? roomCards.length : 0,
+    sceneCards: sceneCards.length,
     localCards: local ? local.cards.length : 0,
-    cardScope: useLocal ? "local" : "room",
+    cardScope: cardScope,
     rows: rollsBox && Array.isArray(rollsBox.rows) ? rollsBox.rows.length : 0,
     entries: initBox && Array.isArray(initBox.entries) ? initBox.entries.length : 0
   };
@@ -441,16 +493,18 @@ export async function clearRoomRolls() {
   }
 }
 
-/** 清空房间里的角色卡（连带清掉本机兜底副本）。同理只减不增，不做预算检查。 */
+/** 清空角色卡（房间数据里的那一份 + 场景兜底副本 + 本机副本）。同理只减不增，不做预算检查。 */
 export async function clearRoomCards() {
+  let ok = true;
   try {
     await OBR.room.setMetadata({ [KEY_CARDS]: { v: 1, updatedAt: Date.now(), cards: [] } });
-    clearLocalCards();
-    return { ok: true };
   } catch (e) {
+    ok = false;
     notify("清空角色卡失败：" + msgOf(e) + "（房间数据通常只有城主能改）", "ERROR");
-    return { ok: false, error: e };
   }
+  try { await clearSceneCards(); } catch (e) { /* 场景里本来就没有 */ }
+  clearLocalCards();
+  return { ok: ok };
 }
 
 export function findCard(cards, id) {
@@ -467,40 +521,40 @@ export function compactChar(char) {
   return copy;
 }
 
-/** 解析 4E NEXT 导出 JSON（也接受直接粘贴 Character）。返回 { char, exportedAt } 数组。 */
-export function parseExport(text) {
-  let data;
-  try {
-    data = JSON.parse(String(text));
-  } catch (e) {
-    throw new Error("不是合法的 JSON");
-  }
-  const list = Array.isArray(data) ? data : [data];
-  const out = [];
-  for (const item of list) {
-    const char = pickCharacter(item);
-    if (char) out.push({ char: char, exportedAt: item && item.exportedAt ? item.exportedAt : "" });
-  }
-  if (!out.length) throw new Error("没找到角色数据（需要 4E NEXT 的「导出存档」文件，含 pages.character）");
-  return out;
+/**
+ * 解析 4E NEXT 导出文件（v1.8.0）。
+ * 支持：单角色「导出存档」（pages.character）、全量「导出全部数据」（data 里 SavedCard[]，
+ * 一次导入多张卡，含私设资源包）、以及旧行为兼容的裸 Character / {character} / 数组。
+ * 解析逻辑集中在 assets/import4e.js（纯函数，Node 可测），这里只做动态 import + 取 imports。
+ *
+ * 为什么用动态 import：common.js 会被多个页面和 Node 自测（test-track / test-cards /
+ * test-initiative）复制加载，静态 import 会让这些自测多拷一个模块；而解析只在真正导入时发生。
+ * 返回 { char, exportedAt, id?, name? } 数组（id/name 只有全量备份里的 SavedCard 才有）。
+ */
+export async function parseExport(text) {
+  /* ?v= 缓存破坏：与页面脚本同一套约定（版本变了必须重新取模块，否则玩家会吃到旧缓存）。 */
+  const mod = await import("./import4e.js?v=" + encodeURIComponent(PLUGIN_VERSION));
+  return mod.parse4eFile(text).imports;
 }
 
-function pickCharacter(item) {
-  if (!item || typeof item !== "object") return null;
-  if (item.pages && item.pages.character && typeof item.pages.character === "object") return item.pages.character;
-  if (item.character && typeof item.character === "object" && item.character.level != null) return item.character;
-  if (item.level != null && item.abilities && item.name != null) return item;
-  return null;
+/** 同 parseExport，但保留完整解析结果（format / homebrew），给面板做「导入了几张 / 含私设」提示用。 */
+export async function parseExportFile(text) {
+  const mod = await import("./import4e.js?v=" + encodeURIComponent(PLUGIN_VERSION));
+  return mod.parse4eFile(text);
 }
 
-/** 把解析结果合并进现有卡片列表：同名卡就地更新（绑定关系不丢），新卡追加。 */
+/**
+ * 把解析结果合并进现有卡片列表：同名卡就地更新（绑定关系不丢），新卡追加。
+ * 全量备份里的 SavedCard 自带稳定 id（4E NEXT 的卡片 id），没有撞车就沿用；
+ * 单角色导出没有 id，沿用旧逻辑按名字 + 时间生成（导入同一张卡走「同名更新」分支，旧 id 保留）。
+ */
 export function mergeImports(cards, imports) {
   const next = cards.slice();
   let added = 0;
   let updated = 0;
   for (const imp of imports) {
     const char = compactChar(imp.char);
-    const name = String(char.name || "").trim() || "未命名角色";
+    const name = String(char.name || imp.name || "").trim() || "未命名角色";
     char.name = name;
     const idx = next.findIndex((c) => String(c.name).trim() === name);
     if (idx >= 0) {
@@ -513,8 +567,10 @@ export function mergeImports(cards, imports) {
       });
       updated++;
     } else {
+      const given = typeof imp.id === "string" ? imp.id.trim() : "";
+      const id = given && !next.some((c) => c.id === given) ? given : "c-" + hashId(name + "|" + Date.now());
       next.push({
-        id: "c-" + hashId(name + "|" + Date.now()),
+        id: id,
         name: name,
         level: char.level || 1,
         char: char,

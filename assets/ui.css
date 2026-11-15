@@ -911,13 +911,26 @@ html.strip-html .strip-items {
   font-family: ui-monospace, "Cascadia Code", Consolas, monospace;
   font-size: 13px; line-height: 1; color: #e6edf3; font-variant-numeric: tabular-nums;
 }
+/* v1.8.2：大号合计可手改（点数字直接输入）；视觉与 .item-count b 一致，容器 24% 高规则不动。 */
+.item-count-input {
+  width: 100%; height: 13px; margin: 0; padding: 0; flex: 0 0 auto;
+  border: 0; border-radius: 0; background: transparent;
+  font-family: ui-monospace, "Cascadia Code", Consolas, monospace;
+  font-size: 13px; line-height: 1; color: #e6edf3; font-variant-numeric: tabular-nums;
+  text-align: center; -webkit-appearance: none; appearance: none;
+  user-select: text; touch-action: auto; pointer-events: auto; cursor: text;
+}
+.item-count-input:focus {
+  outline: 1px solid #58a6ff; outline-offset: -1px;
+  background: rgba(88, 166, 255, .12); border-radius: 2px;
+}
 .item-count .count-formula {
   font-size: 8px; line-height: 1.1; color: #93a1b0;
   font-variant-numeric: tabular-nums; white-space: nowrap;
 }
 
-/* 掷骰按钮：上移 8px 藏在卡下面，露出 14px（规格 §3.5） */
-.roll-buttons { position: absolute; top: 100%; left: 0; right: 0; z-index: -1; display: flex; gap: 1px; margin-top: -8px; }
+/* 掷骰按钮：v1.8.3 起放在卡片正下方 1px（不再上移压住卡片 / 遮挡合计数字） */
+.roll-buttons { position: absolute; top: 100%; left: 0; right: 0; z-index: -1; display: flex; gap: 1px; margin-top: 1px; }
 .roll-btn {
   flex: 1 1 0; height: 22px; padding: 0; line-height: 1;
   border: 1px solid #2b3746; border-radius: 0 0 5px 5px;
@@ -1261,7 +1274,7 @@ body.hpe-page { padding: 6px; overflow: hidden; height: 100vh; }
  * **不再退回 modal**（可用性优先）。
  * 卡片几何逐项照抄 Full Suite：
  *   56×80 / .active 100 高 / .item-img 80% / img 125% top −12.5% / .item-count 24% /
- *   .item-hp-track 4px bottom 24% / .roll-buttons top 100% margin-top −8。
+ *   .item-hp-track 4px bottom 24% / .roll-buttons top 100% margin-top 1px（v1.8.3 起在卡片正下方）。
  */
 html.strip-html { color-scheme: normal !important; }
 html.strip-html body.strip-page {
@@ -1314,15 +1327,15 @@ html.strip-html body.strip-page .strip-ctl { min-height: 36px; }
 }
 .item-mod.item-mod-input:focus { border-color: #58a6ff; background: rgba(11, 15, 20, .92); }
 
-/* 卡片区：给「卡片 80 + 底部 d20 16」留高度，不裁切 */
-.strip-items { min-height: 96px; padding: 0 4px 0; }
+/* 卡片区：给「卡片 80 + 下方 d20 16 + 间距」留高度，不裁切 */
+.strip-items { min-height: 104px; padding: 0 4px 0; }
 
-/* 卡片下方**只留一枚** d20（4E 没有优势 / 劣势）：圆形、居中、上移 8px */
+/* 卡片正下方**只留一枚** d20（4E 没有优势 / 劣势）：整宽长方形、不遮挡卡片内容 */
 .roll-buttons { justify-content: center; z-index: 3; }
 .roll-btn.normal {
-  flex: 0 0 auto; width: 24px; height: 24px; padding: 0;
-  border: 1px solid #2b3746; border-radius: 50%;
-  font-size: 10px; line-height: 1; color: #cfd9e3; background: #2a3542;
+  flex: 0 0 100%; width: 100%; height: 16px; padding: 0;
+  border: 1px solid #2b3746; border-radius: 4px;
+  font-size: 9px; line-height: 1; color: #cfd9e3; background: #2a3542;
   box-shadow: 0 2px 6px rgba(0, 0, 0, .45);
 }
 .roll-btn.normal:hover { color: #fff; background: #33445a; }

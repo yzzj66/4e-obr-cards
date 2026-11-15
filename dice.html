@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>4eNEXT to owlbear · 骰子</title>
-<link rel="stylesheet" href="assets/ui.css">
+<link rel="stylesheet" href="assets/ui.css?v=1.8.3">
 </head>
 <body class="win-page dice-page">
 <!-- v1.7.0：骰子（独立窗口，**单列**）。v1.5.0 的两栏右栏（本次结果 + 团队记录）已经拆开：
@@ -94,7 +94,7 @@
           <!-- v1.7.4：战斗优势 / 重击 一行 2 个，清空记录独占一行 -->
           <div class="dice-acts">
             <button class="btn toggle" type="button" id="btnAdvantage" data-bg-soft title="4E 战斗优势：公式 +2（再点一下撤回）">战斗优势 +2</button>
-            <button class="btn toggle" type="button" id="btnCrit" data-bg-soft title="4E 重击：所有伤害骰取最大值（d6→6），不是骰数翻倍">重击 · 伤害取满</button>
+            <button class="btn toggle" type="button" id="btnCrit" data-bg-soft title="4E 重击：伤害骰取最大值（d6→6；d20 与减法骰不取满），不是骰数翻倍">重击 · 伤害取满</button>
             <button class="btn ghost wide" type="button" id="btnClear" data-bg title="清空全桌记录（只有城主能做，要点两次）">清空记录</button>
           </div>
         </div>
@@ -136,6 +136,6 @@
     <span class="win-hint">拖动标题栏 · 动画在「设置」</span>
   </div>
 </div>
-<script type="module" src="assets/dice-page.js"></script>
+<script type="module" src="assets/dice-page.js?v=1.8.3"></script>
 </body>
 </html>

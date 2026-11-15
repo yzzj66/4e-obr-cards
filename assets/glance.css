@@ -339,6 +339,63 @@ button.gl4-item.used:hover { background: rgba(227, 179, 65, .1); }
 .gl4-compact .gl4-rest-hint { display: none; }
 
 /* ===========================================================================
+ * v1.8.1 · 对齐 4E NEXT 速览页：动作类型 / 可用总数 / 专长频率 / 装备等级 / 临时加值
+ * 只加新类，不改上面的既有选择器（check.mjs 对既有类的断言保持原样）。
+ * ========================================================================= */
+
+/* 威能 chip 里的动作类型小标签（标准动作 / 即时反应 / 移动动作 / 自由动作 …） */
+.gl4-chip .gl4-act,
+.gl4-chip .gl4-chip-name { white-space: nowrap; }
+.gl4-chip .gl4-act {
+  font-style: normal; font-size: 10px; line-height: 1.3;
+  color: var(--gl4-blue); border-left: 1px solid var(--gl4-line);
+  padding-left: 4px; margin-left: 2px;
+}
+.gl4-chip.used .gl4-act { color: var(--gl4-muted); }
+
+/* 威能区标题里的「可用 N/N」（所有可追踪威能的剩余 / 总数） */
+.gl4-h .gl4-avail {
+  font-style: normal; font-size: 11px; font-weight: 700;
+  color: var(--gl4-green); border: 1px solid rgba(86, 211, 100, .35);
+  border-radius: 999px; padding: 0 7px; margin-left: 2px;
+}
+
+/* 四防的临时加值（显示值 = 基础 + 临时；控件只在有 token 写权限时出现） */
+.gl4-def { gap: 1px; }
+.gl4-def-temp { display: inline-flex; align-items: center; gap: 2px; margin-top: 2px; }
+.gl4-def-temp em, .gl4-def-delta {
+  font-style: normal; font-size: 10.5px; color: var(--gl4-orange); min-width: 16px; text-align: center;
+}
+.gl4-def-temp .gl4-step { width: 17px; height: 17px; font-size: 11px; }
+
+/* 攻击 / 伤害的临时命中、临时伤害（所有行共用） */
+.gl4-atk-temp {
+  display: flex; align-items: center; gap: 7px; flex-wrap: wrap;
+  margin: 0 0 6px; padding: 0 2px;
+}
+.gl4-atk-temp .gl4-counter b { min-width: 20px; }
+
+/* 回复力行的临时回复值 */
+.gl4-surge-temp { display: inline-flex; align-items: center; gap: 3px; }
+.gl4-surge-temp em {
+  font-style: normal; font-size: 11px; color: var(--gl4-orange); min-width: 18px; text-align: center;
+}
+.gl4-surge-temp .gl4-step { width: 18px; height: 18px; font-size: 11px; }
+
+/* 装备行的物品等级档位（L3 8 13 18 23 28） */
+.gl4-item .gl4-lv {
+  font-size: 10px; color: var(--gl4-muted); opacity: .85; white-space: nowrap;
+  border: 1px solid var(--gl4-line); border-radius: 5px; padding: 0 4px;
+}
+
+/* 紧凑模式：动作标签 / 可用总数 / 临时值都再小一号，别把弹窗撑宽 */
+.gl4-compact .gl4-chip .gl4-act { font-size: 9.5px; padding-left: 3px; }
+.gl4-compact .gl4-h .gl4-avail { font-size: 10.5px; }
+.gl4-compact .gl4-def-temp em, .gl4-compact .gl4-def-delta { font-size: 10px; }
+.gl4-compact .gl4-atk-temp { gap: 5px; }
+.gl4-compact .gl4-item .gl4-lv { font-size: 9.5px; }
+
+/* ===========================================================================
  * v1.7.13：速览窗「全部点不动」的回归兜底 —— pointer-events 显式写回 auto
  * ---------------------------------------------------------------------------
  * 全仓审计结果：**没有任何 pointer-events:none 作用到速览窗**（#app / .win /

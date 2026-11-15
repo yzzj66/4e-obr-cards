@@ -9,7 +9,8 @@
 // 规格：docs/spec-dice.md（§1 协议 / §2 表达式 / §3.5 4E 预设 / §8 自测）。
 // 用户拍板（覆盖规格 D1–D3）：
 //   · **不做命中判定**：没有 TN 输入，载荷里没有 target / hit，只有每骰点数与总点数；
-//   · **重击 = 4E 版**：所有伤害骰取最大值（d6→6、d8→8），不是 5E 的骰数翻倍；
+//   · **重击 = 4E 版**：只把**伤害骰**取最大值（d6→6、d8→8），不是 5E 的骰数翻倍；
+//     **d20（攻击 / 豁免）保持真实掷值**，**减法骰（subtract）也不取满**（取满会放大减法）；
 //     公式里带 adv / dis / max / min / reset* / burst / repeat 等包裹时无法逐颗取满，
 //     退化为普通投掷并给出提示（critDegraded / note）；
 //   · 优势 / 劣势按钮、暗骰、示例框都不做（语法层仍保留，粘贴旧公式照样能掷）。
@@ -396,7 +397,9 @@ export function rollDie(sides, rand) {
   return Math.max(1, Math.min(n, v));
 }
 
-/** 平铺项掷一遍：正 count 正常骰，负 count 掷出来但标 subtract（总和减）。 */
+/** 平铺项掷一遍：正 count 正常骰，负 count 掷出来但标 subtract（总和减）。
+ *  v1.8.0：ctx.maximize（重击）只对**伤害骰**取满 —— d20 是攻击 / 豁免骰，保持真实掷值；
+ *  subtract 减法骰也不取满（取满会把减法放大，更错）。 */
 export function rollPlainSet(plain, ctx) {
   const c = ctx || {};
   const rand = c.rand || Math.random;
@@ -406,9 +409,11 @@ export function rollPlainSet(plain, ctx) {
     const sides = sidesOf(g.type);
     if (!sides) continue;
     const n = Math.abs(g.count);
+    const subtract = g.count < 0;
+    const canMaximize = !!(c && c.maximize) && !subtract && sides !== 20;
     for (let i = 0; i < n; i++) {
-      const one = { type: "d" + sides, value: c.maximize ? sides : rollDie(sides, rand) };
-      if (g.count < 0) one.subtract = true;
+      const one = { type: "d" + sides, value: canMaximize ? sides : rollDie(sides, rand) };
+      if (subtract) one.subtract = true;
       dice.push(one);
     }
   }
@@ -539,7 +544,8 @@ function lastKind(wrappers) {
 /**
  * 掷整条表达式。
  * opts = { rand, crit }
- *   crit=true：**所有伤害骰取满**（4E 重击）。
+ *   crit=true：**只把伤害骰取满**（4E 重击）—— d20 保持真实掷值、subtract 减法骰不取满；
+ *   返回值 crit 只在「真的取满了至少一颗伤害骰」时为 true。
  *   公式带任何 wrapper 时无法逐颗取满 → 退化为普通投掷，critDegraded=true 并给 note。
  */
 export function rollParsed(parsed, opts) {
@@ -556,7 +562,8 @@ export function rollParsed(parsed, opts) {
   let critDegraded = false;
   if (wantCrit) {
     if (wrapped) critDegraded = true;
-    else { ctx.maximize = true; critApplied = true; }
+    /* maximize 交给 rollPlainSet 判断：它只对非 d20、非 subtract 的伤害骰取满。 */
+    else ctx.maximize = true;
   }
 
   let rowCount = 1;
@@ -593,6 +600,11 @@ export function rollParsed(parsed, opts) {
    * 所以行数 > 1 时取 inner 的 modifier，计算总和时按行各加一次（规格 §2.5）。 */
   const modifier = rowCount > 1 && segPlain ? numOr(segPlain.modifier, 0) : numOr(outerPlain.modifier, 0);
   const total = computeTotal(dice, modifier, rowCount);
+  /* v1.8.0：只有真的把「伤害骰」取满才算重击生效 —— 纯 d20（攻击 / 豁免）公式没有可取的伤害骰，
+   * 不显示「重击 · 已取满」；减法骰不参与。 */
+  if (wantCrit && !wrapped) {
+    critApplied = dice.some(function (d) { return d && !d.subtract && d.type !== "d20"; });
+  }
   return {
     dice: dice,
     modifier: modifier,
@@ -728,7 +740,7 @@ export function rowsFromRaw(raw) {
 }
 
 /** GM 侧合并：**幂等**（同 rollId 不重复插）→ 按 ts 倒序 → 封顶 40。
- *  **超过 40 条时删掉最旧的那条**：倒序后 slice(0, 40) 砍掉的正是 ts 最小的尾巴。 */
+ *  **超过 20 条时删掉最旧的那条**：倒序后 slice(0, 20) 砍掉的正是 ts 最小的尾巴。 */
 export function mergeRollRows(rows, incoming, cap) {
   const limit = Math.max(1, Math.min(200, typeof cap === "number" ? cap : ROLL_MAX_ROWS));
   const list = Array.isArray(rows) ? rows.slice() : [];

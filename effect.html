@@ -1,10 +1,13 @@
 <!doctype html>
-<html lang="zh-CN">
+<html lang="zh-CN" style="color-scheme:normal!important;background:transparent!important">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
+<!-- v1.8.0：跟 initiative.html 一样加 darkreader-lock —— 暗色扩展看到它就不处理本页；
+     否则它注入的 html{background:#181a1b!important} 会把「整页透明」的动画层重新染深。 -->
+<meta name="darkreader-lock">
 <title>4eNEXT to owlbear · 投骰动画</title>
-<link rel="stylesheet" href="assets/ui.css">
+<link rel="stylesheet" href="assets/ui.css?v=1.8.3">
 <!-- v1.7.1：**整页完全透明**（修「投完骰地图被全屏黑盖住」）。
      黑底不是 OBR 的 backdrop（hideBackdrop 已生效），而是 assets/ui.css 顶部那句
      `html, body { background: var(--bg) }`：v1.7.0 只给 body.fx-page 盖了 transparent，
@@ -15,8 +18,18 @@
   html, body.fx-page { background: transparent !important; color-scheme: normal !important; }
   #app, .fx-root, .fx-stage, .fx-wrap { background: transparent !important; }
 </style>
+<!-- v1.8.0（交接文件 §3.3）：光有样式表 !important 压不住 OBR / Dark Reader 后注入的 !important，
+     必须补 **inline style 的 !important**（级联里高于任何选择器 !important）+ 首帧前生效的三件套。
+     这里是静态单形态页面，直接写在 html / body 的 style 属性上即可。 -->
+<style data-overlay-canvas>
+  :root { color-scheme: normal !important; background: transparent !important; }
+  body:not(.config), #root, #app, .fx-root, .fx-stage, .fx-wrap {
+    background: transparent !important;
+    background-color: transparent !important;
+  }
+</style>
 </head>
-<body class="fx-page">
+<body class="fx-page" style="background:transparent!important">
 <!-- v1.7.0：投骰动画页（全屏 modal，由 assets/dice-page.js 在**算完结果之后**打开）。
      布局 / 时间轴公式照抄 docs/spec-dice.md §4（来源 FullPeople/obr-suite 的
      src/modules/dice/effect-page.ts + 仓库根 dice-effect.html），数值在 assets/dice-core.js 的
@@ -36,6 +49,6 @@
     </div>
   </div>
 </div>
-<script type="module" src="assets/effect-page.js"></script>
+<script type="module" src="assets/effect-page.js?v=1.8.3"></script>
 </body>
 </html>

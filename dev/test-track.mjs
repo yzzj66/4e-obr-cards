@@ -28,6 +28,16 @@ globalThis.localStorage = {
   removeItem: (k) => { delete store[k]; }
 };
 
+/* ---- 假 OBR：可模拟真机的「元数据回声延迟」（v1.8.1 读-改-写竞态复现用） ----
+ * echoDelay = false（默认，老断言用）：setMetadata 之后 getMetadata 立刻就能看到新值（旧假 OBR）。
+ * echoDelay = true：模拟 OBR 元数据同步 —— setMetadata 提交后，**下一次** getMetadata 仍返回
+ * 写之前的快照（回声延迟），再下一次才看到新值。真机连续点资源标记时正是这个时序。
+ * onMetadataChange 仍然即时把「已提交的最新 meta」推给订阅者（宿主 push 事件不会等回声）。 */
+const clone = (o) => JSON.parse(JSON.stringify(o || {}));
+let echoDelay = false;
+let visibleMeta = {};
+let pendingMeta = null;
+const metaCbs = [];
 const OBR = {
   player: {
     getRole: async () => "GM",
@@ -40,11 +50,21 @@ const OBR = {
     }
   },
   room: {
-    getMetadata: async () => roomMeta,
+    getMetadata: async () => {
+      const out = clone(visibleMeta);
+      if (pendingMeta) { visibleMeta = clone(pendingMeta); pendingMeta = null; }
+      return out;
+    },
     setMetadata: async (update) => {
       if (roomFails) throw new Error("只有城主能写房间数据");
-      for (const k of Object.keys(update)) roomMeta[k] = update[k];
-    }
+      for (const k of Object.keys(update)) roomMeta[k] = clone(update[k]);
+      if (echoDelay) pendingMeta = clone(roomMeta);
+      else visibleMeta = clone(roomMeta);
+      for (const cb of metaCbs) {
+        try { cb(clone(roomMeta)); } catch (e) { /* 订阅者自己报错不影响写入 */ }
+      }
+    },
+    onMetadataChange: (cb) => { metaCbs.push(cb); return () => {}; }
   }
 };
 
@@ -56,9 +76,15 @@ globalThis.__OBR__ = OBR;
  * ROOM_FULL_MESSAGE），所以这里改成把**真的** common.js + cards-core.js 拷过来（只换 OBR 的 import），
  * 用一行 NS 常量冒充会把 import 打断。 */
 fs.copyFileSync(path.join(ROOT, "assets", "cards-core.js"), path.join(tmp, "cards-core.mjs"));
+/* v1.8.0：common.js 还会 import cards-scene.js（房间装不下时的场景 item 存储）。 */
+let sceneSrc = fs.readFileSync(path.join(ROOT, "assets", "cards-scene.js"), "utf8");
+sceneSrc = sceneSrc.replace('from "../vendor/obr-sdk.js"', "from " + JSON.stringify(pathToFileURL(path.join(tmp, "obr-stub.mjs")).href));
+sceneSrc = sceneSrc.replace('from "./cards-core.js"', 'from "./cards-core.mjs"');
+fs.writeFileSync(path.join(tmp, "cards-scene.mjs"), sceneSrc, "utf8");
 let commonSrc = fs.readFileSync(path.join(ROOT, "assets", "common.js"), "utf8");
 commonSrc = commonSrc.replace('from "../vendor/obr-sdk.js"', "from " + JSON.stringify(pathToFileURL(path.join(tmp, "obr-stub.mjs")).href));
 commonSrc = commonSrc.replace('from "./cards-core.js"', 'from "./cards-core.mjs"');
+commonSrc = commonSrc.replace('from "./cards-scene.js"', 'from "./cards-scene.mjs"');
 fs.writeFileSync(path.join(tmp, "common.mjs"), commonSrc, "utf8");
 
 let src = fs.readFileSync(path.join(ROOT, "assets", "track.js"), "utf8");
@@ -68,6 +94,11 @@ const modPath = path.join(tmp, "track.mjs");
 fs.writeFileSync(modPath, src, "utf8");
 
 const T = await import(pathToFileURL(modPath).href);
+/* v1.8.1：再拷一份 track.mjs 当「第二个页面实例」（info 弹窗 / panel 面板是两个独立 iframe，
+ * 各有自己的模块状态与缓存），用来测两个页面交替点同一张卡会不会互相覆盖。 */
+const modPathB = path.join(tmp, "track-b.mjs");
+fs.writeFileSync(modPathB, src, "utf8");
+const TB = await import(pathToFileURL(modPathB).href);
 const ctx = () => ({ cardId: "c-1", itemId: item.id, hp: null, state: null, maxHp: 20, surgesMax: 4, surgeValue: 5, canHp: true, itemDailyMax: 2 });
 const el = (data) => ({ dataset: data || {}, closest: () => null, querySelector: () => null });
 
@@ -187,6 +218,81 @@ if (res.scope === "local" && res.tone === "WARNING" && stored.powerUsed && store
 const loaded = await T.loadState("c-1");
 if (loaded.scope === "local" && loaded.state.powerUsed["encounter-1"]) ok("之后读状态时继续用本机那份");
 else bad("本机状态读取不对：" + JSON.stringify(loaded));
+
+/* ---------------------------------------------------------------------------
+ * 13. v1.8.1：资源标记「读-改-写」竞态（真机 bug：点 A 把已用过的 B 改回未使用）
+ * ---------------------------------------------------------------------------
+ * 真机根因：OBR 的 room.getMetadata() 有同步延迟（回声延迟）——刚 setMetadata 写完，
+ * 下一次 getMetadata 仍可能返回写之前的旧快照。commitState 若拿旧快照做 base，
+ * 上一次写入的 powerUsed 键就被整份覆盖掉。这里用假 OBR 的 echoDelay 复现，
+ * 并要求 17 个威能 / 专长 / 装备 / 两个页面交替点击都不丢标记。 */
+echoDelay = true;
+
+const raceCtx = (cardId) => ({
+  cardId: cardId, itemId: null, hp: null, state: null,
+  maxHp: 20, surgesMax: 4, surgeValue: 5, canHp: false, itemDailyMax: 2
+});
+function resetRace() {
+  for (const k of Object.keys(roomMeta)) delete roomMeta[k];
+  for (const k of Object.keys(visibleMeta)) delete visibleMeta[k];
+  pendingMeta = null;
+  for (const k of Object.keys(store)) delete store[k];
+  roomFails = false;
+}
+
+console.log("== 13 回声延迟：资源标记读-改-写竞态（v1.8.1）");
+const POWERS17 = [];
+for (let i = 0; i < 5; i++) POWERS17.push("encounter-" + i);
+for (let i = 0; i < 5; i++) POWERS17.push("daily-" + i);
+for (let i = 0; i < 4; i++) POWERS17.push("utility-" + i);
+for (let i = 0; i < 3; i++) POWERS17.push("special-" + i);
+resetRace();
+for (const k of POWERS17) await T.applyAction("power", el({ k }), raceCtx("c-race-17"));
+let race = await T.loadState("c-race-17");
+const lost17 = POWERS17.filter((k) => !race.state.powerUsed[k]);
+if (!lost17.length) ok("回声延迟下连点 17 个威能（遭遇/每日/辅助/种族职业）全部保留");
+else bad("回声延迟下丢了 " + lost17.length + " 个威能标记：" + lost17.join(","));
+await T.applyAction("power", el({ k: POWERS17[0] }), raceCtx("c-race-17"));
+race = await T.loadState("c-race-17");
+const lost16 = POWERS17.slice(1).filter((k) => !race.state.powerUsed[k]);
+if (!race.state.powerUsed[POWERS17[0]] && !lost16.length)
+  ok("再点一次 A 只把 A 恢复为未用，其它 16 个标记还在（不互相覆盖）");
+else bad("再点 A 把其它标记也动了：" + JSON.stringify({ a: !!race.state.powerUsed[POWERS17[0]], lost: lost16 }));
+
+resetRace();
+for (const k of ["daily-0", "daily-1", "daily-2"]) await T.applyAction("power", el({ k }), raceCtx("c-race-3"));
+race = await T.loadState("c-race-3");
+if (["daily-0", "daily-1", "daily-2"].every((k) => race.state.powerUsed[k]))
+  ok("回声延迟下连续点 3 次（同一张卡）不丢标记");
+else bad("回声延迟下连点 3 次丢标记：" + JSON.stringify(race.state.powerUsed));
+
+resetRace();
+for (let i = 0; i < 5; i++) await T.applyAction("feat", el({ k: "g-race-" + i }), raceCtx("c-race-feat"));
+for (let i = 0; i < 5; i++) await T.applyAction("equipment", el({ k: "e:race-" + i + ":1" }), raceCtx("c-race-eq"));
+const featState = (await T.loadState("c-race-feat")).state;
+const eqState = (await T.loadState("c-race-eq")).state;
+const lostFeat = Array.from({ length: 5 }, (_, i) => "g-race-" + i).filter((k) => !featState.featUsed[k]);
+const lostEq = Array.from({ length: 5 }, (_, i) => "e:race-" + i + ":1").filter((k) => !eqState.equipmentUsed[k]);
+if (!lostFeat.length && !lostEq.length) ok("回声延迟下专长连续点 5 个 / 装备连续点 5 个都不丢");
+else bad("专长或装备丢标记：" + JSON.stringify({ lostFeat, lostEq }));
+
+resetRace();
+const PAIR_CARD = "c-race-pair";
+await T.loadState(PAIR_CARD);
+await TB.loadState(PAIR_CARD);
+const PAIR_KEYS = Array.from({ length: 6 }, (_, i) => "e:pair-" + i + ":1");
+for (let i = 0; i < PAIR_KEYS.length; i++) {
+  const M = i % 2 === 1 ? TB : T;
+  await M.applyAction("equipment", el({ k: PAIR_KEYS[i] }), raceCtx(PAIR_CARD));
+}
+const seenA = (await T.loadState(PAIR_CARD)).state;
+const seenB = (await TB.loadState(PAIR_CARD)).state;
+const lostA = PAIR_KEYS.filter((k) => !seenA.equipmentUsed[k]);
+const lostB = PAIR_KEYS.filter((k) => !seenB.equipmentUsed[k]);
+if (!lostA.length && !lostB.length) ok("两个页面实例交替点同一张卡的装备：最终状态是两者并集（不互相覆盖）");
+else bad("两个页面互相覆盖：" + JSON.stringify({ lostA, lostB }));
+
+echoDelay = false;
 
 console.log(fail ? "\n" + fail + " 个问题" : "\n全部通过");
 process.exit(fail ? 1 : 0);

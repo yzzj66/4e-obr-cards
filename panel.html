@@ -4,8 +4,8 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>4eNEXT to owlbear · 角色卡</title>
-<link rel="stylesheet" href="assets/ui.css">
-<link rel="stylesheet" href="assets/glance.css">
+<link rel="stylesheet" href="assets/ui.css?v=1.8.3">
+<link rel="stylesheet" href="assets/glance.css?v=1.8.3">
 </head>
 <body class="win-page">
 <!-- v1.3.1：「角色卡面板」只负责**导入 / 列表 / 预览 / 绑定**（用户口中的「导入面板」）。
@@ -38,16 +38,16 @@
         </div>
         <input type="file" id="file" accept=".json,application/json" multiple hidden>
         <div id="paste-wrap" style="display:none;margin-top:8px">
-          <textarea id="paste" placeholder="把 4E NEXT「导出存档」得到的 JSON 全文粘贴到这里"></textarea>
+          <textarea id="paste" placeholder="把 4E NEXT「导出存档」或「导出全部数据（备份）」的 JSON 全文粘贴到这里"></textarea>
           <button class="btn small" id="paste-ok" data-bg-soft style="margin-top:6px">导入这段 JSON</button>
         </div>
-        <div class="drop-hint" style="margin-top:8px">也可以把 .json 文件直接拖进窗口</div>
+        <div class="drop-hint" style="margin-top:8px">也可以把「导出存档」或「导出全部数据」的 .json 文件直接拖进窗口</div>
       </div>
       <div class="sel-token" id="sel">未选中 token</div>
       <div class="card-list" id="list"></div>
       <div class="side-foot">
-        <p>数据保存在<b>房间数据</b>里：同一个房间的所有人（包括玩家）都能看到速览。</p>
-        <p>面板只读；改卡仍然在 4E NEXT 里做，改完重新导出导入即可覆盖同名卡。</p>
+        <p>角色卡<b>双写</b>：<b>房间数据</b>存精简名单副本（跨场景 / 全桌可见，用于绑定与速览）；<b>当前场景</b>的隐藏 item 存完整卡（换场景看不到完整数据，但名单仍在）；两边都写不进才兜底到<b>本机</b>。工具栏那一行会写清当前来源。</p>
+        <p>面板只读；改卡仍然在 4E NEXT 里做，改完重新导出导入即可覆盖同名卡。「导出 JSON」把当前卡导出成 4E NEXT 可导入的单角色文件。</p>
         <p><b>先攻</b>与<b>骰子</b>已经是独立窗口：左侧工具栏的对应图标（或右键「加入先攻」）。</p>
       </div>
     </aside>
@@ -59,7 +59,7 @@
     <span class="win-hint">每个窗口各自记住位置，可以同时打开</span>
   </div>
 </div>
-<div class="drag-overlay" id="overlay"><b>松手导入 4E NEXT 导出 JSON</b></div>
-<script type="module" src="assets/panel.js"></script>
+<div class="drag-overlay" id="overlay"><b>松手导入 4E NEXT JSON（导出存档 / 全量备份）</b></div>
+<script type="module" src="assets/panel.js?v=1.8.3"></script>
 </body>
 </html>

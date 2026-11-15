@@ -1,4 +1,4 @@
-/*! 4eNEXT to owlbear · background.bundle.js  (v1.7.15)
+/*! 4eNEXT to owlbear · background.bundle.js  (v1.8.3)
  * ---------------------------------------------------------------------------
  * 这是后台页唯一加载的脚本：纯「经典脚本」，没有 type="module"，没有 import/export，
  * 不依赖任何 CDN。内容是：
@@ -7,7 +7,7 @@
  *
  * 不要手改本文件。改逻辑请改 assets/background.core.js，然后：
  *     node dev/build-background.mjs
- * 生成时间：2026-11-15T16:10:01.766Z
+ * 生成时间：2026-11-15T18:00:56.809Z
  * --------------------------------------------------------------------------- */
 (function () {
 "use strict";
@@ -70,6 +70,10 @@ if (!OBR || typeof OBR.onReady !== "function") {
 
 var NS = "com.4enext-owlbear";
 var KEY_CARDS = NS + "/cards";
+/* v1.8.0：卡片也可以存在**当前场景的隐藏 item** 里（房间数据 16 KB 装不下时的全桌共享兜底）。
+ * 与 assets/cards-scene.js 的 CARD_ITEM_KEY 必须一字不差（dev/check.mjs 会对比）。
+ * item.metadata[KEY_CARD_ITEM] = { v: 1, card: { id, name, level, char, importedAt, exportedAt, updatedAt } } */
+var KEY_CARD_ITEM = NS + "/card";
 var KEY_BIND = NS + "/cardId";
 var ID_BUTTON = NS + "/button";
 var ID_INFO = NS + "/info";
@@ -95,7 +99,7 @@ var TOOL_SETTINGS_ID = NS + "/settings-tool";
 var CH_HELLO = NS + "/diag-hello";
 var CH_PING = NS + "/diag-ping";
 var CH_PONG = NS + "/diag-pong";
-var PLUGIN_VERSION = "1.7.15";
+var PLUGIN_VERSION = "1.8.3";
 
 var KEY_HP = NS + "/hp";
 
@@ -156,12 +160,14 @@ function localCardsFallback() {
   return null;
 }
 
-var SHIELD_DIAMETER = 30;
-var DEF_CIRCLE_DIAMETER = 30;
+/* v1.8.0 真机几何：四防从 30s 缩到 22s、贴角内缩从 4s 加到 8s，
+ * 让「盾/圆 + 描边」整枚都落在 token 包围盒内（旧值会探出 token 外）。 */
+var SHIELD_DIAMETER = 22;
+var DEF_CIRCLE_DIAMETER = 22;
 
 var DEF_CIRCLE_SEGMENTS = 24;
 
-var SHIELD_INSET = 4;
+var SHIELD_INSET = 8;
 
 var DEF_GAP = 6;
 
@@ -170,13 +176,16 @@ var DEF_AC_STROKE_OPACITY = 0.85;
 var DEF_FILL_OPACITY = 0.9;
 var DEF_STROKE_OPACITY = 0.45;
 
-var HP_RING_THICK = 10;
+/* v1.8.0：环厚 10s → 7s（旧值太厚像黑盘子）、底环不透明度 0.55 → 0.35。 */
+var HP_RING_THICK = 7;
 var HP_RING_INSET = 2;
 var HP_RING_SEGMENTS = 48;
-var HP_RING_BG_OPACITY = 0.55;
+var HP_RING_BG_OPACITY = 0.35;
 var PLAYER_THRESHOLD_DEFAULT = 25;
 
 var COLOR_HP_FILL = "#a52424";
+/* 4E「血怒（bloodied）」：HP ≤ 上限一半时血量环换成这个更暗的红（只改颜色语义，不动数据）。 */
+var COLOR_HP_BLOODIED = "#7f1416";
 
 var COLOR_RING_BG = "#0b0f14";
 var DEF_KEYS = ["ac", "fort", "reflex", "will"];
@@ -260,6 +269,8 @@ var CH_STRIP_DRAG = NS + "/strip-drag";
 var CH_STRIP_CMD = NS + "/strip-cmd";
 
 var CH_WIN_CLOSE = NS + "/win-close";
+/* v1.8.2：先攻条点卡片时页面先广播这个频道，后台 1.5s 内不自动弹速览（与 common.js 逐字一致）。 */
+var CH_GLANCE_SUPPRESS = NS + "/glance-suppress";
 
 var CH_ROLL = NS + "/roll";
 var CH_ROLL_CLEAR = NS + "/roll-clear";
@@ -543,6 +554,8 @@ async function closeWinById(name) {
     var st = winOpen[name];
     if (st && st.timer) { clearTimeout(st.timer); st.timer = null; }
     delete winOpen[name];
+    /* v1.8.1：手动 ✕ 关掉血条编辑窗后，别再对同一个选中 token 自动弹（要再改就右键「编辑血条」）。 */
+    if (name === "hpEdit" && hpEditTarget.itemId) hpAutoPopped[hpEditTarget.itemId] = true;
   }
   try { await OBR.popover.close(def.id); } catch (e) {  }
   try { if (OBR.modal && typeof OBR.modal.close === "function") await OBR.modal.close(def.id); } catch (e2) {  }
@@ -901,6 +914,8 @@ async function openHpEdit(itemId) {
     return false;
   }
   hpAutoPopped[itemId] = true;
+  /* v1.8.1：窗口已经开着同一枚 token → 直接复用，不再关掉重开（重开会闪、也会被 onWinClose 当成手关）。 */
+  if (winOpen["hpEdit"] && hpEditTarget.itemId === itemId && !hpEditTarget.pending) return true;
   if (!hpEditSession) hpEditSession = newHpEditSession();
   var url = URL_HP_EDIT + "?item=" + encodeURIComponent(itemId) +
     "&session=" + encodeURIComponent(hpEditSession);
@@ -928,6 +943,8 @@ function onHpEditSaved(ev) {
   var data = ev && ev.data !== undefined ? ev.data : ev;
   var itemId = data && typeof data.itemId === "string" ? data.itemId : "";
   if (!itemId) return;
+  /* v1.8.1：保存完就不再对同一个选中 token 自动弹编辑窗（否则 items.onChange 会把窗关掉再弹一次）。 */
+  hpAutoPopped[itemId] = true;
   scheduleBars();
   stepOk("血条编辑窗已保存：" + itemId);
 }
@@ -1621,14 +1638,56 @@ async function getCards() {
     pageLog("err", "读取房间数据失败：" + errText(e));
   }
 
-  var local = localCardsFallback();
-  var roomAt = box && typeof box.updatedAt === "number" ? box.updatedAt : 0;
-  if (box && Array.isArray(box.cards)) {
-    if (local && local.updatedAt > roomAt) return local.cards;
-    return box.cards;
+  /* v1.8.0：房间名单（精简副本）与场景 item（完整数据）是同一批卡的两层副本，按 id 取并集，
+   * 同 id 优先用场景里的完整卡。只认房间列表会漏掉「房间名单过期但新卡写进场景」的卡（F1）。 */
+  var roomCards = box && Array.isArray(box.cards) ? box.cards : [];
+  var scene = await sceneCardsFallback();
+  var byId = {};
+  var i;
+  for (i = 0; i < scene.length; i++) {
+    if (scene[i] && scene[i].id) byId[scene[i].id] = scene[i];
   }
+  var out = [];
+  var seen = {};
+  for (i = 0; i < roomCards.length; i++) {
+    var w = roomCards[i];
+    if (!w || typeof w.id !== "string" || !w.id || seen[w.id]) continue;
+    seen[w.id] = 1;
+    out.push(byId[w.id] || w);
+  }
+  for (i = 0; i < scene.length; i++) {
+    var sc = scene[i];
+    if (!sc || typeof sc.id !== "string" || !sc.id || seen[sc.id]) continue;
+    seen[sc.id] = 1;
+    out.push(sc);
+  }
+  if (out.length) return out;
+
+  var local = localCardsFallback();
   if (local) return local.cards;
   return [];
+}
+
+/** 当前场景里挂在隐藏 item 上的卡片（精简格式，只用得上 id / name），没有就 []。 */
+async function sceneCardsFallback() {
+  try {
+    var items = await OBR.scene.items.getItems(function (i) {
+      return !!(i && i.metadata && i.metadata[KEY_CARD_ITEM]);
+    });
+    var out = [];
+    if (!items || !items.length) return out;
+    for (var i = 0; i < items.length; i++) {
+      var box = items[i].metadata[KEY_CARD_ITEM];
+      var wire = box && box.card;
+      if (!wire || typeof wire !== "object") continue;
+      if (typeof wire.id !== "string" || !wire.id) continue;
+      out.push(wire);
+    }
+    out.sort(function (a, b) { return (a.importedAt || 0) - (b.importedAt || 0); });
+    return out;
+  } catch (e) {
+    return [];
+  }
 }
 
 function findCard(cards, id) {
@@ -1903,21 +1962,84 @@ async function selectedItem() {
   }
 }
 
-async function boundCardId(item) {
+/** 比名字用的归一化：去括号备注（token 名常带「（玩家）」）、去空白、忽略大小写。 */
+function normCardName(s) {
+  return String(s == null ? "" : s).replace(/[（(][^)）]*[)）]/g, "").replace(/\s+/g, "").toLowerCase();
+}
+
+/**
+ * 按 token 名字找卡（v1.8.0 的名字兜底）。
+ * 场景：城主删掉了卡又重新导入（卡片 id 变了），token 上还挂着旧 id。
+ * 没有这层兜底时，这种 token 会被当成「没有卡」，选中时会误弹血条编辑窗（v1.7.15 的真 bug）。
+ */
+function findCardByName(cards, name) {
+  var key = normCardName(name);
+  if (!key) return null;
+  var i;
+  for (i = 0; i < cards.length; i++) {
+    if (normCardName(cards[i] && cards[i].name) === key) return cards[i];
+  }
+  var loose = null;
+  for (i = 0; i < cards.length; i++) {
+    var cn = normCardName(cards[i] && cards[i].name);
+    if (!cn) continue;
+    if (cn.indexOf(key) >= 0 || key.indexOf(cn) >= 0) {
+      if (!loose) loose = cards[i];
+    }
+  }
+  return loose;
+}
+
+/**
+ * 解析 token 的绑定：先按 id，再按名字（并顺手把新 id 写回去修复旧绑定）。
+ * 返回 { cardId, via: "id"|"name", stale } 或 null。
+ */
+async function resolveBinding(item) {
   if (!item || !item.metadata) return null;
-  var cardId = item.metadata[KEY_BIND];
-  if (typeof cardId !== "string" || !cardId) return null;
   var cards = await getCards();
-  if (!findCard(cards, cardId)) return null;
-  return cardId;
+  var bound = item.metadata[KEY_BIND];
+  if (typeof bound === "string" && bound && findCard(cards, bound)) {
+    return { cardId: bound, via: "id", stale: false, cards: cards };
+  }
+  var byName = findCardByName(cards, item.name);
+  if (!byName) return null;
+  return {
+    cardId: byName.id,
+    via: "name",
+    stale: typeof bound === "string" && !!bound,
+    cards: cards
+  };
+}
+
+/** 名字兜底命中后，把正确的卡片 id 写回 token（只修不伤；失败只记日志）。 */
+async function healBinding(itemId, cardId) {
+  try {
+    await OBR.scene.items.updateItems([itemId], function (items) {
+      for (var i = 0; i < items.length; i++) {
+        if (!items[i].metadata || typeof items[i].metadata !== "object") items[i].metadata = {};
+        items[i].metadata[KEY_BIND] = cardId;
+      }
+    });
+    pageLog("ok", "按名字修复了 token " + itemId + " 的卡片绑定 → " + cardId);
+  } catch (e) {
+    pageLog("info", "修复卡片绑定失败（" + itemId + "）：" + errText(e));
+  }
+}
+
+async function boundCardId(item) {
+  var hit = await resolveBinding(item);
+  if (!hit) return null;
+  if (hit.via === "name" && hit.stale) void healBinding(item.id, hit.cardId);
+  return hit.cardId;
 }
 
 async function selectedBinding() {
   var item = await selectedItem();
   if (!item) return null;
-  var cardId = await boundCardId(item);
-  if (!cardId) return null;
-  return { itemId: item.id, cardId: cardId };
+  var hit = await resolveBinding(item);
+  if (!hit) return null;
+  if (hit.via === "name" && hit.stale) void healBinding(item.id, hit.cardId);
+  return { itemId: item.id, cardId: hit.cardId };
 }
 
 async function openGlance(where) {
@@ -1940,6 +2062,9 @@ async function openGlance(where) {
 }
 
 var infoErrorShown = false;
+/* v1.8.2：先攻条点卡片头像 → 页面先发 CH_GLANCE_SUPPRESS，1.5 秒内不自动弹速览
+ * （token 仍会被选中 / 地图高亮，只是别弹窗；GM 战斗中点是设当前回合，不受影响）。 */
+var suppressGlanceUntil = 0;
 
 async function refreshInfo() {
   var item = await selectedItem();
@@ -1947,8 +2072,13 @@ async function refreshInfo() {
   if (selId !== hpAutoSel) {
     hpAutoSel = selId;
     hpAutoPopped = {};
+    /* v1.8.1 诊断：选中变化时才重置「自动弹过」记录。真机排查时看这行就知道是不是选择事件在抖。 */
+    pageLog("info", "选中变化 → " + (selId || "无") + "（自动弹窗记录已重置）");
   }
   if (!item) return closeInfo();
+  /* v1.8.2：先攻条点卡片头像（页面先发 CH_GLANCE_SUPPRESS 再 select）→ 1.5 秒内不自动弹速览。
+   * token 仍然被选中 / 地图高亮，只是不弹；不碰下面 hpAutoSel / hpAutoPopped / hasHpBarData 顺序。 */
+  if (Date.now() < suppressGlanceUntil) return;
 
   var cardId = await boundCardId(item);
   if (cardId) {
@@ -1965,6 +2095,8 @@ async function refreshInfo() {
     return;
   }
 
+  /* v1.8.1 说明：这里不写「窗口开着就 return」，否则「取消选中 → 再选回来」这类正常重弹会被误杀。
+   * 防止「保存后关掉又自己弹」的护栏在 openHpEdit()：同一枚 token 的窗口已经开着时直接复用、不重开。 */
   await closeInfo();
   if (!hasHpBarData(item)) return;
   if (hpAutoPopped[item.id]) return;
@@ -2173,6 +2305,8 @@ function barLayout(bounds, dpi, hp, viewer) {
   var max = hp.max > 0 ? hp.max : (hp.cur !== null ? Math.max(1, hp.cur) : 1);
   var cur = hp.cur === null ? max : hp.cur;
   var ratio = Math.max(0, Math.min(1, cur / max));
+  /* v1.8.0 血怒（bloodied）：4E 口径 cur ≤ max/2。只影响颜色与返回值，不动数据结构。 */
+  var bloodied = max > 0 ? cur <= max / 2 : false;
   var s = Math.min(bounds.width, bounds.height) / dpi;
   if (!isFinite(s) || s <= 0) s = 1;
   s = Math.max(0.2, Math.min(6, s));
@@ -2182,9 +2316,13 @@ function barLayout(bounds, dpi, hp, viewer) {
   var shownRatio = exact ? ratio : quantiseRatio(ratio, threshold);
 
   var halfShort = Math.min(bounds.width, bounds.height) / 2;
-  var ringRo = Math.max(3 * s, halfShort - RING_INSET * s);
-  var ringT = Math.max(1 * s, Math.min(RING_THICK * s, ringRo * 0.8));
-  var ringRi = Math.max(1 * s, ringRo - ringT);
+  /* v1.8.0：RO = 半短边 − inset·s（环的所有点半径 ≤ RO ⇒ 永远不超出包围盒）；
+   * Ri = RO − T。不再用 max(3s, …) 把半径顶回去 —— 那会让极小 token 的环越界。 */
+  var ringRo = Math.max(0, halfShort - RING_INSET * s);
+  var ringT = Math.min(RING_THICK * s, ringRo * 0.9);
+  if (!(ringT > 0) || !isFinite(ringT)) ringT = 0;
+  var ringRi = Math.max(0, ringRo - ringT);
+  if (!isFinite(ringRi)) ringRi = 0;
   var ring = {
     cx: bounds.center.x, cy: bounds.center.y,
     Ro: ringRo, Ri: ringRi, T: ringT,
@@ -2192,16 +2330,40 @@ function barLayout(bounds, dpi, hp, viewer) {
   };
 
   var hpText = exact ? (String(cur) + "/" + max + (hp.temp > 0 ? " +" + hp.temp : "")) : "";
-  var hpTextW = Math.max(14 * s, ringRi * 1.4);
-  var hpFont = Math.max(6 * s, Math.min(ringRi * 0.62, (hpTextW / Math.max(4, hpText.length || 4)) * 1.4));
-  var hpTextH = Math.max(8 * s, hpFont * 1.35);
+  /* v1.8.0：HP 数字放环内且自动降字号 —— 文字框必须落在内圆 Ri 里（旧版固定 1.4·Ri 宽，
+   * 长文本会被裁）。availR = Ri − 1.5s 是文字可用的半径；字宽按 0.66em/字符估
+   * （≥ Roboto 数字实际宽度），装不下就 ×0.9 递减到 3s 下限；连下限都装不下
+   * （极小 token）就整块隐藏，绝不裁切。 */
+  var textDrop = 0.52;
+  var availR = Math.max(0, ringRi - 1.5 * s);
+  var hpFont = 0, hpTextW = 0, hpTextH = 0, hpTextFits = false;
+  if (hpText && availR > 2 * s) {
+    var tryFont = Math.max(4 * s, Math.min(ringRi * 0.62, availR * 0.9));
+    var fontFloor = 3 * s;
+    for (var fitTry = 0; fitTry < 64; fitTry++) {
+      var needW = Math.max(6 * s, hpText.length * tryFont * 0.66);
+      var needH = Math.max(4 * s, tryFont * 1.35);
+      var yFar = textDrop * ringRi + needH / 2;
+      var chord = yFar < availR ? Math.sqrt(availR * availR - yFar * yFar) : 0;
+      if (needH / 2 <= availR && needW / 2 <= chord * 0.98) {
+        hpFont = tryFont; hpTextW = needW; hpTextH = needH; hpTextFits = true;
+        break;
+      }
+      if (!(tryFont > fontFloor)) break;
+      tryFont = Math.max(fontFloor, tryFont * 0.9);
+    }
+  }
+  if (!hpTextFits) { hpText = ""; hpFont = 0; hpTextW = 0; hpTextH = 0; }
   var hpTextX = bounds.center.x - hpTextW / 2;
   var hpTextY = bounds.center.y + ringRi * 0.52 - hpTextH / 2;
 
   var dAc = SHIELD_DIAMETER * s;
   var dDef = DEF_CIRCLE_DIAMETER * s;
   var dRow = Math.max(dAc, dDef);
-  var inset = SHIELD_INSET * s;
+  /* v1.8.0：贴角内缩至少留下「描边一半 + 0.5s」，保证整枚四防（含 strokeWidth）
+   * 完全落在包围盒内。名义值 8s（SHIELD_INSET）远大于描边，这里只是兜底。 */
+  var strokeHalf = Math.max(0.6, dRow * 0.04) / 2;
+  var inset = Math.max(SHIELD_INSET * s, strokeHalf + 0.5 * s);
   var needTwo = 2 * dRow + inset * 2;
   var rowKeys = [];
   var i;
@@ -2255,11 +2417,13 @@ function barLayout(bounds, dpi, hp, viewer) {
   return {
     scale: s, exact: exact,
     ratio: shownRatio, rawRatio: ratio,
+    bloodied: bloodied,
     ring: ring,
     hpText: hpText, hpFont: hpFont, hpTextW: hpTextW, hpTextH: hpTextH,
-    hpTextX: hpTextX, hpTextY: hpTextY,
+    hpTextX: hpTextX, hpTextY: hpTextY, hpTextFits: hpTextFits,
+    colorFill: bloodied ? COLOR_HP_BLOODIED : COLOR_HP_FILL,
     showDefenses: showDefenses, shields: shields, d: dRow, dAc: dAc, dDef: dDef,
-    cornerInset: inset, textVisible: exact
+    cornerInset: inset, textVisible: exact && hpTextFits && !!hpText
   };
 }
 
@@ -2354,7 +2518,7 @@ function buildBarItems(tokenId, L) {
     { fill: COLOR_RING_BG, fillOpacity: HP_RING_BG_OPACITY }));
   items.push(barCurveItem(tokenId, "ring-fill",
     ringSectorPoints(R.Ro, R.Ri, R.ratio, R.segments), R.cx, R.cy,
-    { fill: COLOR_HP_FILL, fillOpacity: 0.9, visible: R.ratio > 0 }));
+    { fill: L.colorFill, fillOpacity: 0.9, visible: R.ratio > 0 }));
 
   items.push(barTextItem(tokenId, "bar-text", L.hpText, L.hpFont, "#ffffff",
     L.hpTextX, L.hpTextY, L.hpTextW, L.hpTextH,
@@ -2398,6 +2562,8 @@ async function patchBar(entry, L) {
         case "ring-fill":
           d.position = { x: R.cx, y: R.cy };
           d.points = ringSectorPoints(R.Ro, R.Ri, R.ratio, R.segments);
+          /* v1.8.0 血怒两段色：只改填充色，不重建 item（rolesKey 不变时走的就是这里）。 */
+          if (d.style) d.style.fillColor = L.colorFill;
           d.visible = R.ratio > 0;
           break;
         case "bar-text":
@@ -3347,6 +3513,12 @@ async function boot() {
   await attempt("订阅 " + CH_WIN_CLOSE + "（窗口 ✕ 兜底）", function () {
     OBR.broadcast.onMessage(CH_WIN_CLOSE, onWinClose);
   });
+  /* v1.8.2：先攻条点卡片头像时，页面先发这条 → 后台 1.5s 内不自动弹速览（token 仍会选中高亮）。 */
+  await attempt("订阅 " + CH_GLANCE_SUPPRESS + "（先攻条点卡片：暂不弹速览）", function () {
+    OBR.broadcast.onMessage(CH_GLANCE_SUPPRESS, function () {
+      suppressGlanceUntil = Date.now() + 1500;
+    });
+  });
   await attempt("订阅 " + CH_ROLL + "（骰子落库：仅城主处理）", function () {
     OBR.broadcast.onMessage(CH_ROLL, onRoll);
   });
@@ -3433,6 +3605,42 @@ if (typeof OBR === "undefined" || !OBR || typeof OBR.onReady !== "function") {
     pageLog("err", "注册 OBR.onReady 失败：" + errText(e3));
     if (diagNotifyEnabled()) notify("4E 后台：注册 OBR.onReady 失败：" + errText(e3), "ERROR");
   }
+}
+
+/* ---- 只读调试钩子（v1.8.0）：
+ * 暴露血条几何的纯函数与常数，供 dev/test-geometry.mjs 在 Node 里对**真实源码**做离线断言。
+ * 只读：页面运行时没有任何代码会写这个对象；挂在 window 上也只是多一个引用。 */
+if (typeof window !== "undefined") {
+  window.__4eBar = {
+    version: PLUGIN_VERSION,
+    barLayout: barLayout,
+    barSig: barSig,
+    barRolesKey: barRolesKey,
+    ringSectorPoints: ringSectorPoints,
+    shieldPoints: shieldPoints,
+    circlePoints: circlePoints,
+    defShapePoints: defShapePoints,
+    quantiseRatio: quantiseRatio,
+    CONSTANTS: {
+      SHIELD_DIAMETER: SHIELD_DIAMETER,
+      DEF_CIRCLE_DIAMETER: DEF_CIRCLE_DIAMETER,
+      DEF_CIRCLE_SEGMENTS: DEF_CIRCLE_SEGMENTS,
+      SHIELD_INSET: SHIELD_INSET,
+      DEF_GAP: DEF_GAP,
+      HP_RING_THICK: HP_RING_THICK,
+      HP_RING_INSET: HP_RING_INSET,
+      HP_RING_SEGMENTS: HP_RING_SEGMENTS,
+      HP_RING_BG_OPACITY: HP_RING_BG_OPACITY,
+      COLOR_HP_FILL: COLOR_HP_FILL,
+      COLOR_HP_BLOODIED: COLOR_HP_BLOODIED,
+      COLOR_RING_BG: COLOR_RING_BG,
+      DEF_CORNER: DEF_CORNER,
+      DEF_COLORS: DEF_COLORS,
+      DEF_ROW: DEF_ROW,
+      DEF_DROP: DEF_DROP,
+      BAR_Z: BAR_Z
+    }
+  };
 }
 
 })();

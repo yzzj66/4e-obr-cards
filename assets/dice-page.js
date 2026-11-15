@@ -211,7 +211,7 @@ function renderResult(row) {
   var tags = "";
   var mode = row.mode && row.mode !== "free" ? MODE_LABEL[row.mode] || "" : "";
   if (mode) tags += '<span class="res-tag">' + esc(mode) + "</span>";
-  if (row.crit) tags += '<span class="res-tag crit">重击 · 已取满</span>';
+  if (row.crit) tags += '<span class="res-tag crit">重击 · 伤害取满</span>';
   if (row.label) tags += '<span class="res-tag">' + esc(row.label) + "</span>";
 
   var rowLine = "";
@@ -386,7 +386,7 @@ async function doRoll() {
     if (payload.critDegraded) {
       flash("重击未生效：公式里有包裹（adv / max 等），本次按普通投掷", "WARNING");
     } else {
-      flash((payload.crit ? "重击 · 已取满：" : "掷出：") + formatExpr(parsed) + " = " + payload.total +
+      flash((payload.crit ? "重击 · 伤害取满：" : "掷出：") + formatExpr(parsed) + " = " + payload.total +
         (result.rowCount > 1 ? "（" + result.rowCount + " 行）" : ""), "SUCCESS");
     }
 
@@ -827,7 +827,8 @@ onReady(function () {
     applyParsed(parseExpr("1d20"));
   }
   if (els.btnAdvantage) els.btnAdvantage.title = "4E 战斗优势：公式 +2（再点一下撤回）";
-  if (els.btnCrit) els.btnCrit.title = "4E 重击：所有伤害骰取最大值（d6→6），不是骰数翻倍";
+  /* v1.8.0：重击只取满**伤害骰** —— d20（攻击 / 豁免）与减法骰保持真实值。 */
+  if (els.btnCrit) els.btnCrit.title = "4E 重击：伤害骰取最大值（d6→6），d20 与减法骰不取满；不是骰数翻倍";
   loadCombos();
   setHistButton(false);
 

@@ -166,7 +166,7 @@ fs.mkdirSync(path.join(tmp, "vendor"), { recursive: true });
 fs.writeFileSync(path.join(tmp, "package.json"), JSON.stringify({ type: "module" }), "utf8");
 fs.writeFileSync(path.join(tmp, "vendor", "obr-stub.mjs"), "export default globalThis.__OBR__;\n", "utf8");
 fs.copyFileSync(path.join(ROOT, "data", "rules.js"), path.join(tmp, "data", "rules.js"));
-for (const f of ["cards-core.js", "common.js", "glance.js", "initiative.js"]) {
+for (const f of ["cards-core.js", "cards-scene.js", "common.js", "glance.js", "initiative.js"]) {
   let src = fs.readFileSync(path.join(ROOT, "assets", f), "utf8");
   src = src.replace('from "../vendor/obr-sdk.js"', 'from "../vendor/obr-stub.mjs"');
   fs.writeFileSync(path.join(tmp, "assets", f), src, "utf8");
@@ -1178,6 +1178,64 @@ console.log("== v1.7.10 先攻加值可编辑 + 无卡 token 加入先攻");
     ok("玩家只在自己的 token 上看到加值输入框（别人的条目只读）");
   else bad("玩家权限在渲染层没有生效");
 
+  /* v1.8.2：卡片上可直接手填「掷出的点数（d20）」（data-init-d20，GM / 自己的 token） */
+  if (gmHtml10.indexOf('data-init-d20="a"') >= 0 && gmHtml10.indexOf('data-init-d20="b"') >= 0)
+    ok("GM 的卡片上大号数字是可编辑的 d20 输入框（data-init-d20，每张都有）");
+  else bad("GM 卡片上没有可编辑的 d20 点数输入框");
+  const d20A = /data-init-d20="a"[^>]*value="(\d+)"/.exec(gmHtml10);
+  if (d20A && d20A[1] === "10") ok("d20 输入框的值 = 当前掷出的点数（a：10，不是合计 15）");
+  else bad("d20 输入框的初始值不对：" + JSON.stringify(d20A && d20A[1]));
+  if (p1Html10.indexOf('data-init-d20="a"') >= 0 && p1Html10.indexOf('data-init-d20="b"') < 0)
+    ok("玩家只在自己的 token 上看到 d20 输入框（别人的条目保持只读）");
+  else bad("d20 输入框的玩家权限没有生效");
+  const prepUnrolled = I.normalizeInitiative({
+    phase: "preparing",
+    entries: [{ tokenId: "c", name: "丙", bonus: 0, d20: null, init: 0, ownerId: "p1" }]
+  });
+  const prepHtml = I.renderStripHTML(prepUnrolled, { role: "GM", playerId: "gm", items: {} });
+  if (prepHtml.indexOf('data-init-d20="c"') < 0 && prepHtml.indexOf("—") >= 0)
+    ok("preparing 且未掷 d20：保持只读（显示「—」，不渲染 d20 输入框）");
+  else bad("preparing 未掷时 d20 不该可编辑");
+  const prepRolled = I.normalizeInitiative({
+    phase: "preparing",
+    entries: [{ tokenId: "c", name: "丙", bonus: 5, d20: 7, init: 12, ownerId: "p1" }]
+  });
+  if (I.renderStripHTML(prepRolled, { role: "GM", playerId: "gm", items: {} }).indexOf('data-init-d20="c"') >= 0)
+    ok("preparing 但已掷 d20：点数可编辑（GM 可在开战前先改）");
+  else bad("preparing 已掷时 d20 应该可编辑");
+
+  /* setEntryRoll：改 d20、保持加值、重算合计并重排 */
+  const rolledA = I.setEntryRoll(st0, "a", 20);
+  const ra = rolledA.entries.filter((e) => e.tokenId === "a")[0];
+  if (ra.d20 === 20 && ra.bonus === 5 && ra.init === 25 && rolledA.entries[0].tokenId === "a")
+    ok("setEntryRoll：a 的 d20 10→20、加值保持 5、合计 25，并按合计重排到第一");
+  else bad("setEntryRoll 不对：" + JSON.stringify({ d20: ra.d20, bonus: ra.bonus, init: ra.init, order: rolledA.entries.map((e) => e.tokenId) }));
+  const rolledClamp = I.setEntryRoll(st0, "a", 200);
+  if (rolledClamp.entries.filter((e) => e.tokenId === "a")[0].d20 === 99)
+    ok("setEntryRoll 把超范围点数夹到 99（不抛错）");
+  else bad("setEntryRoll 没有夹紧 d20");
+  if (JSON.stringify(I.setEntryRoll(st0, "missing", 3)) === JSON.stringify(I.normalizeInitiative(st0)))
+    ok("setEntryRoll 对不存在的条目不改数据（不抛错）");
+  else bad("setEntryRoll 改了不存在的条目");
+  /* 边界 0 / 99：放宽到 0~99 后，合计与排序必须照常，不能出现 NaN */
+  const rollZero = I.setEntryRoll(st0, "a", 0);
+  const rz = rollZero.entries.filter((e) => e.tokenId === "a")[0];
+  if (rz.d20 === 0 && rz.init === 5 && isFinite(rz.init) && rollZero.entries[0].tokenId === "b")
+    ok("setEntryRoll d20=0：合计 = 0+5 = 5、按合计排到 b(18) 之后，不 NaN");
+  else bad("setEntryRoll d20=0 不对：" + JSON.stringify({ d20: rz.d20, init: rz.init, order: rollZero.entries.map((e) => e.tokenId) }));
+  const roll99 = I.setEntryRoll(st0, "a", 99);
+  const r99 = roll99.entries.filter((e) => e.tokenId === "a")[0];
+  if (r99.d20 === 99 && r99.init === 104 && isFinite(r99.init) && roll99.entries[0].tokenId === "a")
+    ok("setEntryRoll d20=99：合计 = 99+5 = 104、按合计排到第一，不 NaN");
+  else bad("setEntryRoll d20=99 不对：" + JSON.stringify({ d20: r99.d20, init: r99.init, order: roll99.entries.map((e) => e.tokenId) }));
+  /* 正常掷骰路径仍只产生 1~20（放宽夹取只服务手填，不影响 rollD20 / rerollEntry） */
+  const lowRoll = I.entryFromItem({ id: "tok-low", name: "低", createdUserId: "u1", metadata: {} }, [], false, () => 0);
+  const highRoll = I.entryFromItem({ id: "tok-high", name: "高", createdUserId: "u1", metadata: {} }, [], false, () => 0.999999);
+  const rerolledLow = I.rerollEntry(I.addEntry(I.normalizeInitiative(null), lowRoll), "tok-low", () => 0);
+  if (lowRoll.d20 === 1 && highRoll.d20 === 20 && rerolledLow.entries[0].d20 === 1)
+    ok("正常掷骰路径仍是 d20 1~20（entryFromItem / rerollEntry 不受 0~99 手填范围影响）");
+  else bad("正常掷骰路径被放宽影响了：" + JSON.stringify({ low: lowRoll.d20, high: highRoll.d20, rerolled: rerolledLow.entries[0].d20 }));
+
   const boundItem = {
     id: "tok-bound", name: "有卡单位", createdUserId: "u1",
     metadata: { [KEY_BIND]: CARD.id, [KEY_INIT]: { bonus: expectedBonus, cardId: CARD.id, updatedAt: 1 } }
@@ -1215,7 +1273,7 @@ console.log("== v1.7.10 先攻加值可编辑 + 无卡 token 加入先攻");
 
 console.log("== 静态检查");
 const man = JSON.parse(fs.readFileSync(path.join(ROOT, "manifest.json"), "utf8"));
-if (man.name === "4eNEXT to owlbear" && man.version === "1.7.15") ok("manifest 名称 / 版本 = 4eNEXT to owlbear 1.7.15");
+if (man.name === "4eNEXT to owlbear" && man.version === "1.8.3") ok("manifest 名称 / 版本 = 4eNEXT to owlbear 1.8.3");
 else bad("manifest 名称 / 版本不对：" + man.name + " " + man.version);
 if (!man.action) ok("manifest 仍然没有 action 字段（真机验证过无 action 能加载）");
 else bad("manifest 又加回了 action 字段");
@@ -1242,6 +1300,46 @@ else bad("先攻 / 骰子没有各自 createWindow");
 if (/ID_INIT_WIN/.test(initPageSrc) && /ID_DICE_WIN/.test(dicePageSrc))
   ok("先攻 / 骰子各自关闭自己的 popover id");
 else bad("先攻 / 骰子的 popover id 用错了");
+
+/* v1.8.0：写房间改「串行队列」——快速连点「下一回合」不再被 busy 静默丢掉一次。
+ * 页面不在 Node 里执行（依赖完整 DOM / OBR），这里按源码口径钉住三件事：
+ *   ① 没有「busy 时直接 return」；
+ *   ② 每次请求都入队，队列逐个消费（一次只写一个）；
+ *   ③ next / prev 传的是**函数**（轮到执行时才基于刚写回的 state 计算）→ 连点 N 次推进 N 次。 */
+if (!/if \(busy\) return;/.test(initPageSrc) &&
+  /const saveQueue = \[\];/.test(initPageSrc) &&
+  /saveQueue\.push\(\{ job: next, done: resolve \}\)/.test(initPageSrc) &&
+  /while \(saveQueue\.length\)/.test(initPageSrc) &&
+  /typeof item\.job === "function" \? item\.job\(initiative\) : item\.job/.test(initPageSrc))
+  ok("先攻写入 = 串行队列（不再 busy 时静默丢点击；每次请求都排队、写完再跑下一次）");
+else bad("先攻写入还不是串行队列（快速连点「下一回合」仍可能少推进一次）");
+if (initPageSrc.indexOf('act === "next") return saveInit(function (st) { return advanceInitiative(st, 1); }') >= 0 &&
+  initPageSrc.indexOf('act === "prev") return saveInit(function (st) { return advanceInitiative(st, -1); }') >= 0)
+  ok("「下一回合 / 上一回合」把推进函数交给队列：执行时才基于最新 state（连点 3 次 → 推进 3 次，不丢）");
+else bad("next / prev 仍把提前算好的旧 state 交给 saveInit（连点会少推进）");
+if (initPageSrc.indexOf('超过 " + INIT_MAX_ENTRIES + " 条') >= 0 && initPageSrc.indexOf("超过 60 条") < 0)
+  ok("先攻上限文案跟 INIT_MAX_ENTRIES（40）一致，不再写死 60");
+else bad("先攻上限文案还是写死 60 / 没跟 INIT_MAX_ENTRIES");
+
+/* v1.8.2：①点先攻条卡片不再弹速览（先广播抑制频道再 select；后台 refreshInfo 早退）。
+ *         ②大号数字可手填 d20（commitD20 → setEntryRoll，保持加值、合计自动 = d20 + 加值）。 */
+if (initPageSrc.indexOf("CH_GLANCE_SUPPRESS") >= 0 &&
+  initPageSrc.indexOf("sendMessage(CH_GLANCE_SUPPRESS") >= 0 &&
+  initPageSrc.indexOf("sendMessage(CH_GLANCE_SUPPRESS") < initPageSrc.indexOf("OBR.player.select"))
+  ok("点先攻条卡片：先广播 CH_GLANCE_SUPPRESS 再 OBR.player.select（地图高亮保留、不再弹速览）");
+else bad("点卡片没有先广播 CH_GLANCE_SUPPRESS / 顺序不对（速览还是会弹）");
+if (CORE.indexOf('var CH_GLANCE_SUPPRESS = NS + "/glance-suppress";') >= 0 &&
+  CORE.indexOf("var suppressGlanceUntil = 0;") >= 0 &&
+  CORE.indexOf("Date.now() < suppressGlanceUntil") >= 0 &&
+  CORE.indexOf("onMessage(CH_GLANCE_SUPPRESS") >= 0)
+  ok("后台：CH_GLANCE_SUPPRESS 常量 + suppressGlanceUntil + refreshInfo 早退 + 频道订阅都在");
+else bad("后台没有接 CH_GLANCE_SUPPRESS（抑制速览不会生效）");
+if (initPageSrc.indexOf("async function commitD20(") >= 0 &&
+  initPageSrc.indexOf("[data-init-d20]") >= 0 &&
+  initPageSrc.indexOf("setEntryRoll(st, tokenId, d20)") >= 0 &&
+  initPageSrc.indexOf("d20Committed") >= 0)
+  ok("页面：commitD20 手填 d20（保持加值 → 合计 = d20 + 加值 → setEntryRoll），回车 / 失焦都接");
+else bad("页面没有 commitD20 / 没接 [data-init-d20] 监听");
 
 /* 窗口模式：不重复大标题，但操作按钮和「结束我的回合」的 data-bg 标记都在 */
 const winGmHtml = I.renderInitiativeHTML(hiddenState, { role: "GM", playerId: "user-gm", backgroundReady: true, inWindow: true });

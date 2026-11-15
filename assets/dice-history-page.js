@@ -6,7 +6,7 @@
 //   骰子窗口只发 CH_DICE_HIST_CMD 让后台开 / 关它。
 //
 // 数据来源（与 v1.5.0 完全相同，没有新协议）：
-//   · 房间数据 com.4enext-owlbear/rolls（城主客户端落笔，rows 40 条封顶、超出删最旧）
+//   · 房间数据 com.4enext-owlbear/rolls（城主客户端落笔，rows 20 条封顶、超出删最旧）
 //   · 本机暂存 4enext/dice/local（城主不在线时自己掷的那几条）
 //   · 广播 CH_ROLL（本机乐观插入）/ CH_ROLL_SAVED（重读）/ CH_ROLL_CLEAR（清空）
 // 显示：默认**最近 4 条**（.dh-list.compact 隐藏第 5 条起），点「展开全部」看全部（列表内滚动）。
@@ -194,7 +194,7 @@ function wireEvents() {
     els.toggle.addEventListener("click", function () {
       expanded = !expanded;
       renderRows();
-      /* v1.7.10：默认 240 高只显示 4 条；「展开全部」才临时变高（最多 40 条，列表内滚动）。 */
+      /* v1.7.10：默认 240 高只显示 4 条；「展开全部」才临时变高（最多 20 条，列表内滚动）。 */
       try {
         var p = OBR.popover.setHeight(ID_DICE_HIST, expanded ? EXPANDED_H : HIST_H);
         if (p && typeof p.catch === "function") p.catch(function () { /* 不是 popover 时忽略 */ });

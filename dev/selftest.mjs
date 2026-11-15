@@ -72,7 +72,12 @@ const STEPS = [
   "dev/test-background.mjs",
   "dev/test-initiative.mjs",
   "dev/test-track.mjs",
-  "dev/test-dice.mjs"
+  "dev/test-dice.mjs",
+  "dev/test-geometry.mjs",
+  /* v1.8.0：4E NEXT 导入（单角色导出 / 导出全部数据备份）+ 真实卡数值回归。 */
+  "dev/test-import.mjs",
+  /* v1.8.0：速览对齐 4E NEXT（动作类型标签 / 专长每日 / 装备等级 / 临时值 / 短休）。 */
+  "dev/test-glance2.mjs"
 ];
 
 const results = [];

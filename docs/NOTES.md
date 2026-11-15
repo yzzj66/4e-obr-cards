@@ -17,9 +17,9 @@ dev/      开发自测脚本（不上传也能跑，node dev/selftest.mjs）
 ## 改代码的注意事项
 
 1. **改了 `assets/background.core.js` 必须重建 bundle**：`node dev/build-background.mjs`，否则后台不生效。
-2. 改完跑 `node dev/selftest.mjs`（5 条自测：check / test-background / test-initiative / test-track / test-dice）。
+2. 改完跑 `node dev/selftest.mjs`（**8 条自测**：check / test-background / test-initiative / test-track / test-dice / test-geometry / test-import / test-glance2）。
    `dev/check.mjs` 会额外 spawn `dev/test-info-click.mjs`（v1.7.13）与 `dev/test-cards.mjs`（v1.7.15），
-   所以「5 条命令」仍然覆盖点击链路与房间数据体积预算。
+   所以「8 条命令」仍然覆盖点击链路与角色卡双写存储。
 3. **manifest.json 的 `description` ≤ 128 字符**（Owlbear 会校验，超了直接拒绝加载）。
 4. **manifest 不要加 `action` 字段**（真机验证过：加了反而加载失败）。
 5. GitHub Pages 必须在仓库根放 **`.nojekyll`**，否则 `{{...}}` 模板语法会让构建失败、线上一直是旧版本。
@@ -29,13 +29,16 @@ dev/      开发自测脚本（不上传也能跑，node dev/selftest.mjs）
 
 | 要调什么 | 去哪改 |
 |---|---|
-| token 血条/四防的位置与尺寸 | `assets/background.core.js` 顶部 `HP_RING_*`（环厚 **10s** / `Ro = 半短边 − 2s` / 48 段）与 `DEF_*`（直径 **30s** / 四角内缩 **4s** / 橙绿紫+白盾），几何全在 `barLayout()`；v1.7.9 起**只有环形血条 + 四角四防**（直条 / 蓝条 / Boss 名牌 / 锁已删） |
+| token 血条/四防的位置与尺寸 | `assets/background.core.js` 顶部 `HP_RING_*`（环厚 **7s** / `Ro = max(0, 半短边 − 2s)` / `Ri = Ro − 环厚` / 48 段）与 `DEF_*`（直径 **22s** / 四角内缩 **8s** / 橙绿紫+白盾），几何全在 `barLayout()`；v1.8.0 起 HP 数字按内圆拟合自动降字号（装不下整块隐藏、绝不裁切）；`COLOR_HP_BLOODIED`（#7f1416）是血怒色。v1.7.9 起**只有环形血条 + 四角四防**（直条 / 蓝条 / Boss 名牌 / 锁已删） |
 | 骰子动画手感 | `assets/dice-core.js` 的 `FX_*` + `assets/ui.css` 末尾 `@keyframes fx-*` |
 | 先攻条尺寸 / 外壳 | `assets/background.core.js` 的 `STRIP_H_ALLOWED` / `stripSizeFor`（折叠 120×40，展开 720×**170/180/200**）；v1.7.11 起先攻条**回退 popover**（`stripPopoverOptions`：POSITION + CENTER/TOP、`hidePaper:true`、`disableClickAway:true`），尺寸 / 位置由后台重新 `popover.open` 决定（页面只发 `{op:"size"}` 与指针位移） |
 | 窗口默认尺寸 | `assets/background.core.js` 的 `WINS` |
 
 
 ## 房间数据为什么必须精简（v1.7.15，16 kB 上限）
+
+> v1.8.0 起改为**双写**：房间数据里只放**精简名单副本**，完整卡放当前场景的隐藏 item
+> （见下面「v1.8.x 维护口径 → 角色卡双写存储」）。这一节保留 v1.7.15 的来龙去脉。
 
 真机控制台报 `Unable to update metadata: over size limit of 16 kB`。Owlbear 的 **room metadata 有 16 kB 上限**，
 而 `setMetadata` 是**合并写**：合并之后整份文档超限，这一次写入就被拒（不是只拒这一个键）。
@@ -130,7 +133,7 @@ iframe 里的 `.strip { pointer-events:auto }` 无法把事件救回来：
   `hp.locked`：**开 = `locked:false` = 全桌可见精确数字**；关（默认）= 玩家端只看 25% 阶梯比例。
   HP 区不要再放第二个开关。
 - 自测：`node dev/test-glance.mjs`（四组 chip / 每行装备 / 默认 0 / N / 共享数据在顶部）、
-  `node dev/test-track.mjs`（四组 toggle / 默认全未用 / equipment 动作），再跑 `node dev/selftest.mjs` 5/5。
+  `node dev/test-track.mjs`（四组 toggle / 默认全未用 / equipment 动作），再跑 `node dev/selftest.mjs` 8/8。
 
 ## 速览窗点击回归（v1.7.13）
 
@@ -152,7 +155,82 @@ iframe 里的 `.strip { pointer-events:auto }` 无法把事件救回来：
 - **自测**：`node dev/test-info-click.mjs`（假 DOM + 真 `info.js` / `track.js`，
   `dispatchEvent(new MouseEvent("click"))` → 断言房间数据写入 `powerUsed` / `equipmentUsed`、重画 `.used`、再点恢复）；
   `node dev/check.mjs` 静态扫描 pointer-events、委托位置、`?v=`，并 spawn 上面这条冒烟。
-  `node dev/selftest.mjs` 仍是 5 条命令、5/5。
+  `node dev/selftest.mjs` 仍是 8 条命令、8/8（v1.8.0 起加入 test-geometry / test-import / test-glance2）。
 - **排查提示**：真机再遇到「点不动」，先在速览窗里开 DevTools 看三件事：① 元素是不是 `<button data-act=...>`
   （不是 → 页面还是旧的，看 `?v=` / 清缓存）；② computed `pointer-events` 是不是 `auto`（不是 → 有别的样式在压容器链）；
   ③ 点一下有没有走到 `applyAction`（`OBR.room.setMetadata` 失败会弹 WARNING，不静默）。
+
+## v1.8.x 维护口径
+
+> 自测命令：v1.8.0 起从 **7 条自测** 扩到 **8 条自测**（新增 `dev/test-glance2.mjs`，速览对齐 4E NEXT）；
+> 完整步骤见本文开头「改代码的注意事项」。check.mjs 会 spawn test-info-click / test-cards，实际覆盖更多。
+
+### 角色卡双写存储（房间名单 + 场景完整卡 + 本机兜底）
+
+v1.7.15 及以前只有两级（房间 → 本机）；房间 16 KB 塞不下卡时只存城主本机，**别的玩家看不到卡**。
+v1.8.0 起 `assets/common.js` 的 `writeCards()` / `getCardsInfo()` 是唯一入口，改成**双写**：
+
+1. **房间数据** `com.4enext-owlbear/cards` = **精简名单副本**（`packCard` 短键；全桌共享、跨场景还在，
+   用于绑定与速览；受 14 KB 预算约束）。
+2. **当前场景的隐藏 item** = **完整卡**：新文件 `assets/cards-scene.js`；每张卡一个 item，metadata 键
+   `KEY_CARD_ITEM = "com.4enext-owlbear/card"`，值 `{ v:1, card:{ id,name,level,char,importedAt,exportedAt,updatedAt } }`
+   （`char` 是**完整 Character，只去立绘**，不再跑 `packCard` 精简）；item 必须
+   `visible:false` / `locked:true` / `disableHit:true`，显示名 `4E卡：<角色名>`。
+   这一层**全桌可见、没有 16 KB 总额限制、字段不丢**；代价是**跟当前场景走**（换场景看不到）。
+3. **本机** `localStorage["4enext/cards-local"]`：两边都写不进（玩家身份 + 房间只读）时的最后兜底，弹 ERROR。
+
+- 读：`getCardsInfo()` 把 **房间名单 + 场景完整卡 + 本机较新副本按 id 取并集**；
+  同 id 优先场景完整卡 → 本机较新副本 → 房间精简副本，场景独有新卡追加；返回
+  `scope: "room"|"scene"|"local"` 与 `roomCards` / `sceneCards`。后台 `background.core.js` 的
+  `getCards()` 也读「房间 → 场景 item → 本机」，token 绑定不会因为降级失效。
+- 写：先写场景（完整卡）再写房间（精简名单）；任一成功即清本机副本；都失败才落本机 + ERROR。
+- 清：`clearRoomCards()` 同时清房间 / 场景 item / 本机三处（设置窗口「清空角色卡」）。
+- 已知限制：换场景后完整数据看不到（房间名单仍在，绑定 / 速览仍可用），要完整字段需重新导入，或等后续「卡库同步」。
+- 自测：`node dev/test-cards.mjs`（房间 / 场景 / 本机 + 场景 item 契约 + 增删 + 清理；`dev/check.mjs` 会 spawn 它）。
+
+### 资源标记「读-改-写」竞态（v1.8.1）
+
+真机 bug：速览页逐个点威能 / 专长 / 装备时，**点 A 会把已经点过的 B 改回未使用**。
+根因：OBR 的 `room.getMetadata()` 有同步延迟（回声延迟）——`setMetadata` 刚写完，下一次
+`getMetadata` 仍可能返回写之前的旧快照；`track.js` 的 `commitState` 每次「读 → 改 → 写」若拿旧快照当 base，
+上一次写进去的 `powerUsed` / `featUsed` / `equipmentUsed` 键就被整份覆盖。
+
+维护口径（改 `track.js` 必读）：
+- `stateCache[cardId]` 记录本页最后一次已知状态（含刚写成功的乐观状态）；`commitState` 以
+  「缓存 vs 房间读数 vs 本机」中 `updatedAt` **严格更大**者为 base（相等时信房间读数 —— 外部写入可能同毫秒）；
+- 本页每次写入把 `updatedAt` 强制 +1 单调递增（同一毫秒连点也不会判错新旧）；
+- 懒注册 `OBR.room.onMetadataChange`：把别的页面（info 弹窗 / panel 面板）写进房间的状态同步进缓存，
+  两个页面交替点同一张卡时按并集累积；
+- **所有资源动作必须走 `commitState`**（威能 / 专长 / 装备 / 每日威能 / 行动点 / 临时加值 / 长短休），
+  不要自己读写房间 state 键，否则又会绕过缓存产生覆盖；
+- 回归：`dev/test-track.mjs` 的 §13「回声延迟」（17 个威能全点、连点 3 次、专长/装备各 5 个、
+  两个页面实例交替点 → 并集）；假 OBR 的 `echoDelay=true` 会模拟「下一次 getMetadata 仍是旧快照」。
+
+### 血条几何常数（v1.8.0 真机微调）
+
+`assets/background.core.js` 顶部：`HP_RING_THICK=7`（环厚，旧 10）、`HP_RING_INSET=2`、
+`HP_RING_SEGMENTS=48`、`HP_RING_BG_OPACITY=0.35`（旧 0.55）；`SHIELD_DIAMETER=DEF_CIRCLE_DIAMETER=22`（旧 30）、
+`SHIELD_INSET=8`（旧 4）。`barLayout()` 里 `Ro = max(0, 半短边 − 2s)`、`T = min(7s, 0.9·Ro)`、`Ri = Ro − T`；
+HP 数字按内圆拟合自动降字号（ultra 小 token 整块隐藏，绝不裁切）；`COLOR_HP_BLOODIED=#7f1416` 是血怒（`cur ≤ max/2`）环色。
+改完全套自测：`node dev/test-geometry.mjs`（纯函数离线断言）+ `node dev/test-background.mjs`（假 OBR 冒烟）。
+
+### 调试钩子 `window.__4eBar`
+
+`background.core.js` 末尾（v1.8.0）把血条几何的纯函数与常数挂到 `window.__4eBar`
+（`barLayout / barSig / barRolesKey / ringSectorPoints / shieldPoints / circlePoints / defShapePoints /
+quantiseRatio / CONSTANTS`）。**只读**：运行时没有任何代码会写它；`dev/test-geometry.mjs` 用它在 Node 里
+对真实源码做离线断言（四种 token 尺寸 × 不越界 / 文字不裁切）。真机排查时也可以在 `background.html` 的
+DevTools 控制台里直接 `__4eBar.barLayout(...)` 看几何。
+
+### 本地 HTTPS 真机验证（不用先部署）
+
+`Owlbear Rodeo` 是 https 站点，本地 `http://localhost` 会被当混合内容拦掉，所以用自签 HTTPS：
+
+```powershell
+node dev/serve-https.mjs            # 默认 https://localhost:8443（证书在 dev/certs/，10 年有效）
+# 首次：浏览器打开 https://localhost:8443/manifest.json → 接受自签证书
+#       → 枭熊 Extension → Add → 粘贴 https://localhost:8443/manifest.json
+```
+
+服务器会按请求的 `Host` 动态改写 `manifest.json` 里的绝对地址（线上域名 → 当前 Host），
+所以本地和线上共用同一份 manifest 源文件；改完文件 Ctrl+Shift+R 强刷房间即可（服务端 no-cache）。

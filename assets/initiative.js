@@ -14,7 +14,7 @@
 //   · init     = d20 + bonus（掷的时候一次算好，**不要**改成显示时相加，否则旧数据全错位）
 //   init 可以是小数：拖拽排序写「两卡中点」，显示一律 Math.round（规格 §4 / §7.3）。
 //
-// 条目上限 60（规格 §9.3）：60 条约 11~13 KB，留出 cards 键的余量仍在房间数据 16 KB 内。
+// 条目上限 40（v1.8.0：60 → 40，给角色卡 + 骰子记录留余量）：仍然受房间数据 16 KB 预算约束。
 // normalizeInitiative 里截断（不抛错）；writeInitiative 写不进去时降级到本机
 // localStorage["4enext/state/initiative"] 并弹 WARNING（不允许静默）。
 //
@@ -185,7 +185,7 @@ export function normalizeInitiative(raw) {
       name: name,
       init: init,
       bonus: bonus,
-      d20: d20raw === null ? null : clamp(Math.round(d20raw), 1, 20),
+      d20: d20raw === null ? null : clamp(Math.round(d20raw), 0, 99),
       tb: tbraw === null ? null : clamp(tbraw, 0.001, 0.999),
       hidden: !!e.hidden,
       ownerId: String(e.ownerId == null ? "" : e.ownerId),
@@ -530,6 +530,25 @@ export function setEntryBonus(state, tokenId, bonus) {
   return out;
 }
 
+/**
+ * v1.8.2：直接改「掷出的点数（d20）」——用户要手填点数，保持左上角加值不变，
+ * 合计自动 = d20 + 加值，并按「合计 DESC → tiebreak ASC」重排（与 setEntryBonus 同一套）。
+ * 范围 0~99（与 normalizeInitiative 同一口径；正常投骰仍是 1~20）。
+ */
+export function setEntryRoll(state, tokenId, d20) {
+  const out = normalizeInitiative(clone(state));
+  const e = out.entries.filter((x) => x.tokenId === tokenId)[0];
+  if (!e) return out;
+  const roll = clamp(Math.round(num(d20, 0)), 0, 99);
+  if (roll === e.d20) return out;
+  e.d20 = roll;
+  e.init = clamp(roll + n(e.bonus, 0), INIT_MIN, INIT_MAX);
+  e.updatedAt = Date.now();
+  out.entries = sortEntries(out.entries);
+  out.updatedAt = Date.now();
+  return out;
+}
+
 /** 右键「加入先攻」用：从 token 生成一条先攻条目（默认自动掷 d20 + 加值）。 */
 export function entryFromItem(item, cards, hidden, rng, mode) {
   const cardId = item && item.metadata ? item.metadata[KEY_BIND] : null;
@@ -575,7 +594,7 @@ export function addEntry(state, entry) {
       name: String(entry.name || "未命名").slice(0, INIT_NAME_MAX) || "未命名",
       init: clamp(num(entry.init, 0), INIT_MIN, INIT_MAX),
       bonus: clamp(n(entry.bonus, 0), INIT_MIN, INIT_MAX),
-      d20: entry.d20 === null || entry.d20 === undefined ? null : clamp(n(entry.d20, 0), 1, 20),
+      d20: entry.d20 === null || entry.d20 === undefined ? null : clamp(n(entry.d20, 0), 0, 99),
       tb: entry.tb === null || entry.tb === undefined ? genTiebreak(entry.bonus) : clamp(num(entry.tb, 0.5), 0.001, 0.999),
       hidden: !!entry.hidden,
       ownerId: String(entry.ownerId || ""),
@@ -795,6 +814,30 @@ function stripBonusField(e, opts) {
     ' title="先攻加值：回车 / 点别处保存（现在 ' + esc(signed(e.bonus)) + '）">';
 }
 
+/**
+ * v1.8.2：卡片底部大号数字 —— 有权限时直接渲染「掷出的点数（d20）」输入框。
+ *   · 用户原话：「输入 20，左上角是 100，然后实际先攻是 20+100」→ 输入框里是 **d20**，
+ *     合计（大字位置）会随它 = d20 + 加值（下面小字公式仍是 `(d20+加值)` 由 stripCard 传进来）；
+ *   · 只在「战斗 / 准备中且已掷 d20」时给输入框；`preparing` 未掷（显示「—」）保持只读 <b>；
+ *   · 权限复用 canEditBonus（GM 任意 / 玩家只自己 token）；别人的条目仍是只读 <b>；
+ *   · 页面 commitD20 会解析输入并走 setEntryRoll（写 entries[].d20、重算 init、按合计重排）。
+ */
+function stripRollField(e, st, opts, total, formula) {
+  const rolled = e.d20 !== null && e.d20 !== undefined;
+  const editable = rolled &&
+    (st.phase === PHASE_COMBAT || st.phase === PHASE_PREPARING) &&
+    canEditBonus(e, opts);
+  if (!editable) {
+    return "<b>" + esc(total) + '</b><small class="count-formula">' + esc(formula) + "</small>";
+  }
+  const rollText = String(Math.round(num(e.d20, 0)));
+  return '<input class="item-count-input" data-init-d20="' + esc(e.tokenId) +
+    '" value="' + esc(rollText) + '" inputmode="numeric" autocomplete="off" spellcheck="false"' +
+    ' title="输入先攻点数（d20）：回车 / 点别处保存；合计 = 点数 + 加值（当前 ' + esc(rollText) +
+    esc(signed(e.bonus)) + '）">' +
+    '<small class="count-formula">' + esc(formula) + "</small>";
+}
+
 function stripCard(e, st, opts) {
   const isGM = opts.role === "GM";
   const info = (opts.items || {})[e.tokenId] || null;
@@ -835,7 +878,7 @@ function stripCard(e, st, opts) {
     stripBonusField(e, opts) +
     '<div class="item-img">' + img + "</div>" +
     hpTrack +
-    '<div class="item-count"><b>' + total + '</b><small class="count-formula">' + formula + "</small></div>" +
+    '<div class="item-count">' + stripRollField(e, st, opts, total, formula) + "</div>" +
     stripRollButtons(e, isGM, st.phase) +
     /* v1.7.3：GM 的卡片上放一个 ✕ —— 不用开列表窗口，点一下就把这枚 token 移出先攻。
        玩家没有（房间数据只有城主能写）。 */

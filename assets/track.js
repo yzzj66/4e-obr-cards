@@ -37,10 +37,22 @@ export const LS_STATE_PREFIX = "4enext/state/";
 
 const AP_MAX = 5;
 const COUNTER_MAX = 99;
+/* v1.8.1：临时加值的范围（与 4E NEXT 速览页一致：命中/伤害/防御 ±20，临时回复值 ±50）。 */
+const TEMP_MAX = 20;
+const TEMP_SURGE_MAX = 50;
 
 const clone = (o) => JSON.parse(JSON.stringify(o || {}));
 const int = (v, d) => (typeof v === "number" && isFinite(v) ? Math.round(v) : d);
 const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
+
+/** 四防临时加值对象（缺字段 = 0；键名与 glance.js 的 d.defenses 一致：ac / fort / ref / will）。 */
+function normDefTemp(v) {
+  const out = { ac: 0, fort: 0, ref: 0, will: 0 };
+  if (v && typeof v === "object") {
+    for (const k of ["ac", "fort", "ref", "will"]) out[k] = clamp(int(v[k], 0), -TEMP_MAX, TEMP_MAX);
+  }
+  return out;
+}
 
 /* ---------------------------------------------------------------------------
  * 状态（消耗类资源）
@@ -55,7 +67,13 @@ export function defaultState() {
     equipmentUsed: {},
     itemDailyUsed: 0,
     actionPoints: 1,
-    milestones: 0
+    milestones: 0,
+    /* v1.8.1：速览页的临时加值（不改角色卡，只记在房间 / 本机的追踪状态里）。
+     * 缺字段 = 0，旧状态直接兼容；四个数字合计约 90 字节 / 卡。 */
+    atkTemp: 0,
+    dmgTemp: 0,
+    surgeTemp: 0,
+    defTemp: { ac: 0, fort: 0, ref: 0, will: 0 }
   };
 }
 
@@ -69,6 +87,10 @@ export function normalizeState(raw) {
   out.itemDailyUsed = clamp(int(raw.itemDailyUsed, 0), 0, COUNTER_MAX);
   out.actionPoints = clamp(int(raw.actionPoints, 1), 0, AP_MAX);
   out.milestones = clamp(int(raw.milestones, 0), 0, COUNTER_MAX);
+  out.atkTemp = clamp(int(raw.atkTemp, 0), -TEMP_MAX, TEMP_MAX);
+  out.dmgTemp = clamp(int(raw.dmgTemp, 0), -TEMP_MAX, TEMP_MAX);
+  out.surgeTemp = clamp(int(raw.surgeTemp, 0), -TEMP_SURGE_MAX, TEMP_SURGE_MAX);
+  out.defTemp = normDefTemp(raw.defTemp);
   return out;
 }
 
@@ -112,32 +134,117 @@ async function readRoomState(cardId) {
 // 本页里一旦确认「房间数据写不进去」，这张卡后续就走本机，避免每次点击都先失败一遍。
 const scopeOverride = {};
 
-/** 读当前有效状态：房间数据优先，本机更新的更晚就用本机。 */
+/* ---------------------------------------------------------------------------
+ * v1.8.1：资源标记「读-改-写」竞态修复
+ * ---------------------------------------------------------------------------
+ * 真机 bug：速览页把威能逐个点成「已用」，点多了前面的会自己回到未使用（点 A 把 B 覆盖掉）。
+ * 根因：OBR 的 room.getMetadata() 有同步延迟（回声延迟）——setMetadata 刚写完，下一次
+ * getMetadata 仍可能返回写之前的旧快照；commitState 每次「读 → 改 → 写」如果拿旧快照当 base，
+ * 上一次写进去的 powerUsed / featUsed / equipmentUsed 键就被整份覆盖丢失。
+ *
+ * 修法（不改变 state 结构）：
+ *   1) 本页内存缓存 stateCache[cardId] = { state, scope }：loadState / commitState 都更新它；
+ *   2) commitState 以「缓存（含刚写成功的乐观状态）vs 房间读数 vs 本机」中 updatedAt 最新者为 base；
+ *      本页写入的 updatedAt 强制单调递增，连续快速点击不会因为同一毫秒而判错新旧；
+ *   3) 订阅 room.onMetadataChange：把别的页面（info 弹窗 / panel 面板）写进房间的状态同步进缓存，
+ *      两个页面交替点同一张卡时按并集累积，而不是各自用旧快照互相覆盖；
+ *   4) 降级本机与 ERROR 通知的既有行为保留。
+ * 所有资源动作（power / feat / equipment / item-daily / 行动点 / 临时加值 / 长短休）都走 commitState。
+ * ------------------------------------------------------------------------- */
+const stateCache = {}; /* cardId -> { state, scope } */
+
+function cacheGet(cardId) {
+  return stateCache[cardId] ? stateCache[cardId].state : null;
+}
+
+/** 写入缓存；旧状态（事件乱序 / 回声迟到）不允许覆盖新状态。返回最终缓存里的 state。 */
+function cachePut(cardId, state, scope) {
+  const st = normalizeState(state);
+  const cur = stateCache[cardId];
+  if (cur && cur.state.updatedAt > st.updatedAt) return cur.state;
+  stateCache[cardId] = { state: st, scope: scope || "room" };
+  return st;
+}
+
+let metaWatcherRegistered = false;
+/** 懒注册 room.onMetadataChange（首次 loadState / commitState 时调用；失败下次重试）。 */
+function watchRoomMeta() {
+  if (metaWatcherRegistered) return;
+  try {
+    if (!OBR.room || typeof OBR.room.onMetadataChange !== "function") return;
+    OBR.room.onMetadataChange(function (meta) {
+      if (!meta || typeof meta !== "object") return;
+      for (const k of Object.keys(meta)) {
+        if (k.indexOf(KEY_STATE_PREFIX) !== 0) continue;
+        const cardId = k.slice(KEY_STATE_PREFIX.length);
+        if (!cardId) continue;
+        const st = normalizeState(meta[k]);
+        const cur = stateCache[cardId];
+        if (!cur || st.updatedAt > cur.state.updatedAt) stateCache[cardId] = { state: st, scope: "room" };
+      }
+    });
+    metaWatcherRegistered = true;
+  } catch (e) {
+    /* OBR 未就绪 / 老 SDK 没有 onMetadataChange：下次再试，不影响读写 */
+  }
+}
+
+/** 读当前有效状态：房间数据优先，本机更新的更晚就用本机；本页缓存里刚写但房间还没回声的更新。 */
 export async function loadState(cardId) {
+  watchRoomMeta();
   const local = readLocal(cardId);
   const room = await readRoomState(cardId);
   const scope = scopeOverride[cardId] || "";
-  if (scope === "local") return { state: local || defaultState(), scope: "local" };
-  if (room && (!local || room.updatedAt >= local.updatedAt)) return { state: room, scope: "room" };
-  if (local) return { state: local, scope: "local" };
-  return { state: defaultState(), scope: "room" };
+  let picked = null;
+  let pickedScope = "room";
+  if (scope === "local") {
+    picked = local || defaultState();
+    pickedScope = "local";
+  } else if (room && (!local || room.updatedAt >= local.updatedAt)) {
+    picked = room;
+    pickedScope = "room";
+  } else if (local) {
+    picked = local;
+    pickedScope = "local";
+  } else {
+    picked = defaultState();
+    pickedScope = "room";
+  }
+  /* 缓存可能比房间读数新（刚写完、回声还没回来）→ 用缓存；否则把房间 / 本机结果同步进缓存。
+   * 注意严格大于：updatedAt 相等时以房间 / 本机读数为准（外部写入可能和本页写在同一毫秒）。 */
+  const cached = cacheGet(cardId);
+  if (cached && cached.updatedAt > picked.updatedAt) {
+    return { state: clone(cached), scope: (stateCache[cardId] && stateCache[cardId].scope) || pickedScope };
+  }
+  return { state: clone(cachePut(cardId, picked, pickedScope)), scope: pickedScope };
 }
 
 /** 读最新 → mutate → 写回。返回 { state, scope, message?, tone? }。
  *  v1.7.15：写之前先算房间数据体积 —— 超预算时**不写**、弹 ERROR（ROOM_FULL_MESSAGE），
- *  再降级到本机（tone 仍是 WARNING，面板里那一行小字照旧）。 */
+ *  再降级到本机（tone 仍是 WARNING，面板里那一行小字照旧）。
+ *  v1.8.1：base 不再只信 room 读数 —— 缓存里有本页刚写、房间还没回声的更新时以缓存为准。 */
 export async function commitState(cardId, mutate) {
+  watchRoomMeta();
   const key = KEY_STATE_PREFIX + cardId;
   const scope = scopeOverride[cardId] || "room";
-  let base = null;
-  if (scope === "room") base = await readRoomState(cardId);
-  if (!base) base = readLocal(cardId);
+  const local = readLocal(cardId);
+  let room = null;
+  if (scope === "room") room = await readRoomState(cardId);
+  let base = room;
+  if (!base) base = local;
+  const cached = cacheGet(cardId);
+  /* 严格大于：相等时信房间读数（外部写入可能和本页写入落在同一毫秒）。 */
+  if (cached && (!base || cached.updatedAt > base.updatedAt)) base = cached;
+  else if (room) cachePut(cardId, room, "room");
+  else if (local) cachePut(cardId, local, "local");
   const next = normalizeState(mutate(clone(base || defaultState())));
-  next.updatedAt = Date.now();
+  /* updatedAt 强制单调递增：同一毫秒内连点也不会让「谁更新」判断失效。 */
+  next.updatedAt = Math.max(Date.now(), (base && base.updatedAt ? base.updatedAt : 0) + 1);
   const res = await writeRoomKey(key, next);
   if (res.ok) {
     scopeOverride[cardId] = "room";
-    return { state: next, scope: "room" };
+    cachePut(cardId, next, "room");
+    return { state: clone(next), scope: "room" };
   }
   if (res.reason === "full") {
     notify(ROOM_FULL_MESSAGE, "ERROR");
@@ -148,8 +255,9 @@ export async function commitState(cardId, mutate) {
   }
   const ok = writeLocal(cardId, next);
   scopeOverride[cardId] = "local";
+  cachePut(cardId, next, "local");
   return {
-    state: next,
+    state: clone(next),
     scope: "local",
     message: res.reason === "full"
       ? "房间数据已满（16KB），这次只记在这台机器上（设置 →「清理房间数据」可以瘦身）"
@@ -416,6 +524,11 @@ export async function applyAction(act, el, ctx) {
       out.itemDailyUsed = 0;
       out.actionPoints = 1;
       out.milestones = 0;
+      /* v1.8.1：长休也清空速览页的临时加值 */
+      out.atkTemp = 0;
+      out.dmgTemp = 0;
+      out.surgeTemp = 0;
+      out.defTemp = { ac: 0, fort: 0, ref: 0, will: 0 };
       return out;
     });
     let hp = null;
@@ -437,14 +550,23 @@ export async function applyAction(act, el, ctx) {
     return { state: res.state, scope: res.scope, hp: hp, message: res.message || "长休完成：生命、回复力与全部消耗已恢复", tone: res.tone || "SUCCESS" };
   }
 
-  // ---- 短休：只恢复遭遇威能（4E NEXT 还会挑「每次遭遇」的专长，离线拿不到专长正文，见 README）----
+  // ---- 短休：恢复遭遇威能（4E NEXT 还会挑「每次遭遇」的专长）与遭遇级临时加值 ----
   if (act === "rest-short") {
     const res = await commitState(ctx.cardId, function (s) {
       const out = normalizeState(s);
       for (const k of Object.keys(out.powerUsed)) if (k.indexOf("encounter-") === 0) delete out.powerUsed[k];
+      /* v1.8.1：短休会结束「遭遇级」效果 —— 临时命中/伤害/四防/回复值清零；
+       * 遭遇类专长的已用标记也清掉（键清单由 info.js 从 card-index 里算好传进来）。 */
+      out.atkTemp = 0;
+      out.dmgTemp = 0;
+      out.surgeTemp = 0;
+      out.defTemp = { ac: 0, fort: 0, ref: 0, will: 0 };
+      if (Array.isArray(ctx.encounterFeatKeys)) {
+        for (const k of ctx.encounterFeatKeys) delete out.featUsed[k];
+      }
       return out;
     });
-    return { state: res.state, scope: res.scope, message: res.message || "短休完成：遭遇威能已恢复", tone: res.tone || "SUCCESS" };
+    return { state: res.state, scope: res.scope, message: res.message || "短休完成：遭遇威能 / 遭遇专长已恢复，临时加值已清空", tone: res.tone || "SUCCESS" };
   }
 
   // ---- 其余都是资源状态 ----
@@ -483,6 +605,22 @@ export async function applyAction(act, el, ctx) {
       case "item-daily": {
         const max = ctx.itemDailyMax > 0 ? ctx.itemDailyMax : 0;
         out.itemDailyUsed = clamp(out.itemDailyUsed + step, 0, max > 0 ? max : COUNTER_MAX);
+        break;
+      }
+      /* v1.8.1：速览页的临时加值（命中 / 伤害 / 四防 / 回复值）。只改追踪状态，不改角色卡。 */
+      case "atk-temp":
+        out.atkTemp = clamp(int(out.atkTemp, 0) + step, -TEMP_MAX, TEMP_MAX);
+        break;
+      case "dmg-temp":
+        out.dmgTemp = clamp(int(out.dmgTemp, 0) + step, -TEMP_MAX, TEMP_MAX);
+        break;
+      case "surge-temp":
+        out.surgeTemp = clamp(int(out.surgeTemp, 0) + step, -TEMP_SURGE_MAX, TEMP_SURGE_MAX);
+        break;
+      case "def-temp": {
+        out.defTemp = normDefTemp(out.defTemp);
+        const dk = ["ac", "fort", "ref", "will"].indexOf(key) >= 0 ? key : "";
+        if (dk) out.defTemp[dk] = clamp(out.defTemp[dk] + step, -TEMP_MAX, TEMP_MAX);
         break;
       }
       default:

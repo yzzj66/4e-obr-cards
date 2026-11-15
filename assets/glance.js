@@ -32,6 +32,37 @@
 
 import { RULES } from "../data/rules.js";
 
+/* v1.8.1：速览增强索引（威能动作类型 / 攻击命中摘要、专长每日·遭遇标记）。
+ * 该文件约 1.2MB，**不**做静态 import：glance.js 会被角色卡面板、先攻、骰子等页面用
+ * （那里不需要这些标签），只在速览弹窗（info.js）打开时调用 loadCardIndex() 按需加载。
+ * 加载失败 / 还没加载完时，所有依赖它的标签自动降级为不显示，数值与点击不受影响。
+ * Node 自测可直接 import 后 setCardIndex(CARD_INDEX) 注入。 */
+let CARD_INDEX = null;
+/** 注入 / 清空索引（info.js 加载完调用；Node 自测也用它）。 */
+export function setCardIndex(index) {
+  CARD_INDEX = index && typeof index === "object" ? index : null;
+  return CARD_INDEX;
+}
+/** 当前已加载的索引（可能为 null）。 */
+export function cardIndex() {
+  return CARD_INDEX;
+}
+/** 按需加载 data/card-index.js；?v= 跟当前 glance.js 的版本查询串一致（缓存破坏）。 */
+export async function loadCardIndex() {
+  if (CARD_INDEX) return CARD_INDEX;
+  try {
+    let q = "";
+    try {
+      q = new URL(import.meta.url).searchParams.get("v") || "";
+    } catch (e) { /* Node / 老环境 */ }
+    const mod = await import("../data/card-index.js" + (q ? "?v=" + encodeURIComponent(q) : ""));
+    setCardIndex(mod.CARD_INDEX || mod.default || null);
+  } catch (e) {
+    console.warn("[4enext] card-index 加载失败（动作类型 / 专长频率标签将缺失）", e);
+  }
+  return CARD_INDEX;
+}
+
 const ABILITIES = ["str", "con", "dex", "int", "wis", "cha"];
 const ABILITY_ZH = { str: "力量", con: "体质", dex: "敏捷", int: "智力", wis: "感知", cha: "魅力" };
 const SKILL_TABLE = [
@@ -58,6 +89,25 @@ const WEAPON_TYPES = ["近战", "远程"];
 const HANDEDNESS = ["单手", "双手"];
 const EQUIP_USED_PREFIX = { fixed: "e", other: "o", consumable: "c", wondrous: "w", companion: "m" };
 const QUICK_STEPS = [1, 5, 10];
+
+/** v1.8.1：从实时状态里取临时加值（缺字段 = 0，向后兼容旧状态）。 */
+function stateTemps(st) {
+  st = st && typeof st === "object" ? st : {};
+  const d = st.defTemp && typeof st.defTemp === "object" ? st.defTemp : {};
+  return {
+    atk: n0(st.atkTemp),
+    dmg: n0(st.dmgTemp),
+    surge: n0(st.surgeTemp),
+    def: { ac: n0(d.ac), fort: n0(d.fort), ref: n0(d.ref), will: n0(d.will) }
+  };
+}
+
+/** 装备物品等级档位（RULES.equips[id] = [等级列表, 增强指向]）→「L3 8 13 18 23 28」。 */
+function equipLevelText(id) {
+  const row = id && RULES && RULES.equips ? RULES.equips[id] : null;
+  const levels = row && row[0] ? String(row[0]).trim() : "";
+  return levels ? "L" + levels : "";
+}
 
 // ---------- 小工具 ----------
 export function esc(s) {
@@ -535,7 +585,8 @@ function counter(label, value, act, title) {
     '<button type="button" class="gl4-step" data-act="' + act + '" data-d="1" aria-label="' + esc(label) + ' ＋1">＋</button></span>';
 }
 
-function renderHpBlock(d, ed) {
+function renderHpBlock(d, ed, temps) {
+  temps = temps || stateTemps(null);
   const dying = d.hpCur <= 0;
   const bloodied = !dying && d.hpCur <= d.bloodied;
   const state = dying ? "濒死" : bloodied ? "重伤" : "健康";
@@ -569,10 +620,19 @@ function renderHpBlock(d, ed) {
   const surgePct = Math.max(0, Math.min(100, (d.surgesCur / surgeMaxShow) * 100));
   const surgeBar = '<div class="gl4-surgebar" title="回复力 ' + esc(d.surgesCur) + " / " + esc(surgeMaxShow) + '">' +
     '<div class="gl4-surgefill" style="width:' + surgePct.toFixed(1) + '%"></div></div>';
+  const surgeHeal = Math.max(0, d.surgeValue + temps.surge);
+  /* v1.8.1：「使用回复力 +N」的 N 要把临时回复值算进去；旁边给 ± 控件改临时值。 */
+  const surgeTempCtrl = ed.hp
+    ? '<span class="gl4-surge-temp"><span class="gl4-pad-label">临时回复值</span>' +
+      '<button type="button" class="gl4-step" data-act="surge-temp" data-d="-1" aria-label="临时回复值 −1">−</button>' +
+      "<em>" + signed(temps.surge) + "</em>" +
+      '<button type="button" class="gl4-step" data-act="surge-temp" data-d="1" aria-label="临时回复值 ＋1">＋</button></span>'
+    : (temps.surge ? '<span class="gl4-surge-temp"><span class="gl4-pad-label">临时回复值</span><em>' + signed(temps.surge) + "</em></span>" : "");
   const surgeLine = '<div class="gl4-surge-line"><span class="gl4-pad-label">回复力</span>' +
     "<b>" + d.surgesCur + " / " + surgeMaxShow + "</b>" +
     pips(d.surgesCur, surgeMaxShow, ed.hp) +
-    (ed.hp ? '<button type="button" class="gl4-mini-btn" data-act="surge-use" title="消耗一次回复力：回复 ' + d.surgeValue + ' 点生命">使用回复力 ＋' + d.surgeValue + "</button>" : "") +
+    (ed.hp ? '<button type="button" class="gl4-mini-btn" data-act="surge-use" title="消耗一次回复力：回复 ' + surgeHeal + ' 点生命">使用回复力 ＋' + surgeHeal + "</button>" : "") +
+    surgeTempCtrl +
     "</div>";
 
   /* v1.6.2：删掉 HP 绿条下面那条「彩色四防箭头条」（.gl4-def-row / .gl4-def-chip）。
@@ -620,14 +680,22 @@ function renderPowerGroup(d, powerUsed, ed) {
     const key = d.key + "-" + x.i;
     const isUsed = !!powerUsed[key];
     const name = esc(zhName(x.id));
-    const title = d.track
+    /* v1.8.1：动作类型 / 攻击 / 命中来自 data/card-index.js（4E NEXT 的角色卡里只有 id）。 */
+    const info = CARD_INDEX && CARD_INDEX.powers ? CARD_INDEX.powers[x.id] : null;
+    const act = info && info[1] ? String(info[1]) : "";
+    const tips = [];
+    if (info && info[2]) tips.push("攻击：" + info[2]);
+    if (info && info[3]) tips.push("命中：" + info[3]);
+    const label = '<span class="gl4-chip-name">' + name + "</span>" +
+      (act ? '<em class="gl4-act">' + esc(act) + "</em>" : "");
+    const title = (d.track
       ? (isUsed ? "点击恢复：" : "点击标记已使用：") + x.id
-      : "随意威能，无需追踪消耗";
+      : "随意威能，无需追踪消耗") + (tips.length ? " ｜ " + tips.join(" ｜ ") : "");
     if (ed.track && d.track) {
       return '<button type="button" class="gl4-chip' + (isUsed ? " used" : "") + '" data-act="power" data-k="' + esc(key) +
-        '" aria-pressed="' + (isUsed ? "true" : "false") + '" title="' + esc(title) + '">' + name + "</button>";
+        '" aria-pressed="' + (isUsed ? "true" : "false") + '" title="' + esc(title) + '">' + label + "</button>";
     }
-    return '<span class="gl4-chip" title="' + esc(x.id) + '">' + name + "</span>";
+    return '<span class="gl4-chip" title="' + esc(title) + '">' + label + "</span>";
   }).join("");
   const count = d.track ? d.list.length - d.used + " / " + d.list.length : "无限";
   const reset = (ed.track && d.track && d.used > 0)
@@ -642,6 +710,9 @@ export function renderGlanceHTML(char, opts) {
   opts = opts || {};
   const live = opts.live || null;
   const d = deriveGlance(char, opts.rules, live);
+  /* v1.8.1：临时加值存在 track.js 的 state 里（缺字段 = 0），渲染层只读、不写卡。 */
+  const st = live && live.state ? live.state : null;
+  const temps = stateTemps(st);
   const ed = {
     hp: !!(opts.editable && opts.editable.hp),
     track: !!(opts.editable && opts.editable.track),
@@ -661,8 +732,18 @@ export function renderGlanceHTML(char, opts) {
     '<span class="gl4-q"><i>移动</i><b>' + (d.speed ? d.speed + " 格" : "—") + "</b></span></div>";
 
   const defGrid = '<section class="gl4-card gl4-defs">' + d.defenses.map(function (x) {
-    return '<div class="gl4-def" title="' + esc(partsText(x.parts)) + '"><span class="gl4-def-name">' +
-      esc(x.label) + '</span><span class="gl4-def-val">' + x.value + "</span></div>";
+    const t = temps.def[x.key] || 0;
+    const val = x.value + t;
+    /* v1.8.1：四防临时加值 ±（只写 live 状态；没权限时只展示、不给控件）。 */
+    const delta = ed.hp
+      ? '<span class="gl4-def-temp"><button type="button" class="gl4-step" data-act="def-temp" data-k="' + esc(x.key) +
+        '" data-d="-1" aria-label="' + esc(x.label) + ' 临时 −1">−</button><em>' + signed(t) +
+        '</em><button type="button" class="gl4-step" data-act="def-temp" data-k="' + esc(x.key) +
+        '" data-d="1" aria-label="' + esc(x.label) + ' 临时 ＋1">＋</button></span>'
+      : (t ? '<em class="gl4-def-delta">' + signed(t) + "</em>" : "");
+    const tip = partsText(x.parts) + (t ? "  临时 " + signed(t) : "");
+    return '<div class="gl4-def" title="' + esc(tip) + '"><span class="gl4-def-name">' +
+      esc(x.label) + '</span><span class="gl4-def-val">' + val + "</span>" + delta + "</div>";
   }).join("") + "</section>";
 
   const abiGrid = '<section class="gl4-card gl4-abis">' + ABILITIES.map(function (k) {
@@ -679,15 +760,23 @@ export function renderGlanceHTML(char, opts) {
   const attacks = (function () {
     const rows = Math.max(d.attacks.length, d.damages.length);
     if (!rows) return '<section class="gl4-card"><h3 class="gl4-h">攻击与伤害</h3><p class="gl4-empty">攻击面板没有可用行。</p></section>';
-    let html = '<section class="gl4-card gl4-atks"><h3 class="gl4-h">攻击与伤害</h3>' +
+    /* v1.8.1：全局「临时命中 / 临时伤害」（与 4E NEXT 速览页一致：所有行共用一对临时加值）。 */
+    const ctl = ed.hp
+      ? '<div class="gl4-atk-temp">' + counter("临时命中", temps.atk, "atk-temp", "所有攻击行共用的临时命中加值") +
+        counter("临时伤害", temps.dmg, "dmg-temp", "所有伤害行共用的临时伤害加值") + "</div>"
+      : (temps.atk || temps.dmg ? '<div class="gl4-atk-temp"><span class="gl4-pad-label">临时命中 ' + signed(temps.atk) +
+        " · 临时伤害 " + signed(temps.dmg) + "</span></div>" : "");
+    let html = '<section class="gl4-card gl4-atks"><h3 class="gl4-h">攻击与伤害</h3>' + ctl +
       '<div class="gl4-atk-head"><span>命中</span><span>伤害</span></div>';
     for (let i = 0; i < rows; i++) {
       const a = d.attacks[i];
       const dm = d.damages[i];
       const label = (a && a.label) || (dm && dm.label) || "";
+      const hit = a ? a.total + temps.atk : null;
+      const dmg = dm ? dm.total + temps.dmg : null;
       html += '<div class="gl4-atk-row"><span class="gl4-atk-name">' + esc(label || "第 " + (i + 1) + " 行") + "</span>" +
-        '<span class="gl4-atk-hit">' + (a ? signed(a.total) : "—") + "</span>" +
-        '<span class="gl4-atk-dmg">' + (dm ? esc(dm.dice || "—") + signed(dm.total) : "—") + "</span></div>";
+        '<span class="gl4-atk-hit">' + (a ? signed(hit) : "—") + "</span>" +
+        '<span class="gl4-atk-dmg">' + (dm ? esc(dm.dice || "—") + signed(dmg) : "—") + "</span></div>";
     }
     return html + "</section>";
   })();
@@ -695,8 +784,18 @@ export function renderGlanceHTML(char, opts) {
   const powers = (function () {
     const groups = d.powers.filter((g) => g.list.length > 0);
     if (!groups.length) return '<section class="gl4-card"><h3 class="gl4-h">威能</h3><p class="gl4-empty">这张卡还没有选威能。</p></section>';
+    /* v1.8.1：最外层「可用 N/N」= 所有可追踪威能（遭遇/每日/辅助/种族职业）的剩余/总数，
+     * 与 4E NEXT 速览页一致；随意威能不参与（无限次）。 */
+    let total = 0;
+    let used = 0;
+    d.powers.forEach(function (g) {
+      if (!g.track) return;
+      total += g.list.length;
+      used += g.used;
+    });
+    const avail = total > 0 ? '<em class="gl4-avail">可用 ' + (total - used) + "/" + total + "</em>" : "";
     /* v1.7.6：删掉标题右边的「点一下 = 已用 / 再用一次 = 恢复」小字（点一下就懂，不用写）。 */
-    return '<section class="gl4-card gl4-powers"><h3 class="gl4-h">威能</h3>' +
+    return '<section class="gl4-card gl4-powers"><h3 class="gl4-h">威能' + avail + "</h3>" +
       groups.map((g) => renderPowerGroup(g, d.powerUsed, ed)).join("") + "</section>";
   })();
 
@@ -706,8 +805,13 @@ export function renderGlanceHTML(char, opts) {
     if (!d.feats.length) return '<section class="gl4-card"><h3 class="gl4-h">专长</h3><p class="gl4-empty">这张卡还没有选专长。</p></section>';
     const body = d.feats.map(function (f) {
       const name = esc(zhName(f.id));
-      const extra = f.granted ? '<em class="gl4-tag">赠送</em>' : "";
-      return '<span class="gl4-chip feat" title="' + esc(f.id) + '">' + name + extra + "</span>";
+      /* v1.8.1：专长频率标记来自 data/card-index.js 的 feats（"d"=每日 / "e"=遭遇）；
+       * 职业赠送的专长继续标「赠送」。专长仍是纯展示（不生成可点按钮 / 不写专长动作）。 */
+      const freq = CARD_INDEX && CARD_INDEX.feats ? CARD_INDEX.feats[f.id] : "";
+      const tag = freq === "d" ? "每日" : freq === "e" ? "遭遇" : "";
+      const extra = (tag ? '<em class="gl4-tag">' + tag + "</em>" : "") +
+        (f.granted ? '<em class="gl4-tag">赠送</em>' : "");
+      return '<span class="gl4-chip feat" title="' + esc(f.id + (tag ? " ｜ " + tag : "")) + '">' + name + extra + "</span>";
     }).join("");
     /* v1.7.6：删掉「纯展示，不追踪使用」小字，只留总数。 */
     return '<section class="gl4-card gl4-feats"><h3 class="gl4-h">专长 <span class="gl4-count">' + d.feats.length +
@@ -720,9 +824,11 @@ export function renderGlanceHTML(char, opts) {
     const rows = d.equipRows.map(function (r) {
       const isUsed = !!d.equipmentUsed[r.key];
       const name = esc(zhName(r.id));
+      const lv = equipLevelText(r.id);
       const inner = '<span class="gl4-item-slot">' + esc(r.slot) + "</span>" +
         '<span class="gl4-item-name">' + name + "</span>" +
-        (r.enh ? '<span class="gl4-item-enh">增强 +' + r.enh + "</span>" : "");
+        (r.enh ? '<span class="gl4-item-enh">增强 +' + r.enh + "</span>" : "") +
+        (lv ? '<span class="gl4-lv">' + esc(lv) + "</span>" : "");
       if (ed.track) {
         /* v1.7.12：动作名改成 equipment（测试断言用这个名字）；track.js 仍兼容老的 item。 */
         return '<button type="button" class="gl4-item' + (isUsed ? " used" : "") + '" data-act="equipment" data-k="' + esc(r.key) +
@@ -740,7 +846,7 @@ export function renderGlanceHTML(char, opts) {
   })();
 
   const rest = ed.rest
-    ? '<div class="gl4-rest"><button type="button" class="gl4-rest-btn" data-act="rest-short" title="恢复遭遇威能">短休</button>' +
+    ? '<div class="gl4-rest"><button type="button" class="gl4-rest-btn" data-act="rest-short" title="短休：恢复遭遇威能 / 遭遇专长，并清空临时命中·伤害·四防·回复值；回复力不自动恢复（要手动使用）">短休</button>' +
       '<button type="button" class="gl4-rest-btn strong" data-act="rest-long" title="生命、回复力、威能、物品标记全部恢复；行动点回到 1">长休</button>' +
       '<span class="gl4-rest-hint">长休会同时清空全部「已用」标记并回满生命</span></div>'
     : "";
@@ -763,7 +869,7 @@ export function renderGlanceHTML(char, opts) {
     '<header class="gl4-head"><div class="gl4-id"><div class="gl4-name">' + esc(char.name || "未命名角色") +
     '</div><div class="gl4-sub">' + esc(sub) + "</div></div>" +
     '<div class="gl4-head-right">' + quick + share + "</div></header>" +
-    renderHpBlock(d, ed) +
+    renderHpBlock(d, ed, temps) +
     '<div class="gl4-grid2">' + defGrid + abiGrid + "</div>" +
     skills +
     attacks +

@@ -155,7 +155,7 @@ if (stripToggle) {
  * 房间数据（room metadata）有 16 KB 上限，超了之后**所有**写入都会被拒（加入先攻 / 改加值 /
  * 回合推进 / 骰子历史 / 资源追踪），而且真机上以前是静默失败。这一栏给用户两个「一键瘦身」按钮：
  *   ① 清理骰子历史（40 条 8 KB 左右，清掉最划算）
- *   ② 清空角色卡（导入的卡，装不下时本来就会降级到本机）
+ *   ② 清空角色卡（v1.8.0：房间装不下时先改存本场景的隐藏 item，再兜底本机）
  * 这一页仍然**不直接**写房间数据 / token 元数据：读写全部走 common.js 的
  * getRoomUsage / clearRoomRolls / clearRoomCards（dev/check.mjs 断言这一点没变）。 */
 const roomUsageEl = document.getElementById("room-usage");
@@ -184,7 +184,11 @@ async function renderRoom() {
   roomUsageEl.textContent = kb(info.bytes) + " / " + kb(info.max) + "（" + pct + "%）" +
     (info.bytes > info.max ? " · 已超预算，先攻 / 骰子会被拒绝写入" : "");
   if (roomCardsEl) {
-    roomCardsEl.textContent = info.cards + " 张（" + (info.cardScope === "local" ? "本机" : "房间") + "）";
+    /* v1.8.0 三态：room = 房间数据（全桌共享）；scene = 房间装不下后改存当前场景的隐藏 item
+     * （同样全桌可见、切场景不跟随）；local = 场景也写不进时的本机兜底。 */
+    const scopeText = info.cardScope === "scene" ? "本场景"
+      : info.cardScope === "local" ? "本机" : "全桌（房间）";
+    roomCardsEl.textContent = info.cards + " 张（" + scopeText + "）";
   }
   if (roomRollsEl) roomRollsEl.textContent = info.rows + " 条";
   if (roomInitEl) roomInitEl.textContent = info.entries + " 条";
