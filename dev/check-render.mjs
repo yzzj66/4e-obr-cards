@@ -61,3 +61,27 @@ for (const f of ["assets/glance.css", "assets/ui.css"]) {
 
 const html = g.renderGlanceHTML(save.pages.character);
 console.log("\n--- 片段 ---\n" + html.slice(0, 1200));
+/* v1.7.6：先攻条**外壳透明**的静态核对（用户第二次报「背景还是深色」）。
+ * 这里不启动浏览器，只核对「该透明的六层都写了 transparent !important」以及
+ * 「该留底色的两处（控制行 / 卡片）还有底色」—— 人工验证方法见 docs/initiative-v14.md §14.1。
+ * 失败时 exit 1，方便直接串进自测。 */
+let stripFail = 0;
+const stripBad = (m) => { stripFail++; console.log("  FAIL " + m); };
+const uiSrc = fs.readFileSync(path.join(ROOT, "assets", "ui.css"), "utf8");
+const blockStart = uiSrc.indexOf("v1.7.6：先攻条外壳");
+const blockEnd = uiSrc.indexOf("body.dragging, body.dragging .strip-grip");
+const stripBlock = blockStart >= 0 && blockEnd > blockStart ? uiSrc.slice(blockStart, blockEnd) : "";
+if (!stripBlock) stripBad("ui.css 里找不到 v1.7.6 的先攻条透明段");
+else {
+  const layers = ["#app", ".win", ".win-body", ".strip-root", ".strip", ".strip-items"];
+  const miss = layers.filter((sel) => stripBlock.indexOf("body.strip-page " + sel) < 0);
+  if (miss.length) stripBad("先攻条外壳这几层没有声明透明：" + miss.join(" / "));
+  else console.log("  ok   先攻条外壳六层（#app / .win / .win-body / .strip-root / .strip / .strip-items）都在透明规则里");
+  if (stripBlock.indexOf("background: transparent !important") < 0) stripBad("透明规则里没有 transparent !important");
+  else console.log("  ok   透明规则用的是 background: transparent !important（能盖掉 ui.css 顶部的 html{background:var(--bg)}）");
+}
+if (!/\.strip-ctl \{[\s\S]*?rgba\(11, 15, 20, \.72\)/.test(uiSrc)) stripBad("控制行 .strip-ctl 的半透明底丢了");
+else console.log("  ok   控制行 .strip-ctl 仍是半透明 rgba(11, 15, 20, .72)");
+if (!/\.initiative-item \{[^}]*#141b23/.test(uiSrc)) stripBad("卡片 .initiative-item 的深色底丢了");
+else console.log("  ok   卡片 .initiative-item 仍是不透明 #141b23");
+if (stripFail) process.exitCode = 1;

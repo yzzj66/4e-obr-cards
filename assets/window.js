@@ -15,7 +15,7 @@
 //      成功 / 失败 / 警告都有回音。
 import OBR from "../vendor/obr-sdk.js";
 import {
-  CH_HELLO, CH_WIN_DRAG, PLUGIN_VERSION, WIN_DRAG_THROTTLE_MS,
+  CH_HELLO, CH_WIN_DRAG, WIN_DRAG_THROTTLE_MS,
   notify, onReady, pingBackground
 } from "./common.js";
 
@@ -78,6 +78,9 @@ export function createWindow(opts) {
   const headEl = opts.head !== undefined ? opts.head : document.getElementById("head");
   const textEl = opts.text || document.getElementById("bg-text");
   const retryEl = opts.retry || document.getElementById("bg-retry");
+  /* v1.7.6：整条状态条（.bg-strip）。没有异常时**整条隐藏**（用户：正常时那行
+   * 「后台已连接 v1.7.5 · 工具栏✓ · 右键菜单✓」删掉，只留功能本身；错误提示必须保留）。 */
+  const stripEl = opts.strip || document.getElementById("bg-strip");
 
   let state = BG_CHECKING;
   let detail = {};
@@ -118,16 +121,15 @@ export function createWindow(opts) {
       retryEl.hidden = !bad;
       retryEl.textContent = "后台未连接，点这里重试";
     }
+    /* v1.7.6：正常（ok）/ 检测中（checking）→ 状态条整条不显示、不留任何「已连接」小字；
+     * 只有异常（bad）才出现，并且照旧带一句「哪个功能不会生效」。 */
+    if (stripEl) stripEl.hidden = !bad;
     if (textEl) {
-      if (state === BG_OK) {
-        textEl.textContent = "后台已连接 v" + (detail.version || PLUGIN_VERSION) +
-          (detail.status ? " · 工具栏" + (detail.status.tool ? "✓" : "✗") + " · 右键菜单" + (detail.status.menu ? "✓" : "✗") : "");
-        textEl.className = "bg-text good";
-      } else if (state === BG_BAD) {
+      if (state === BG_BAD) {
         textEl.textContent = "后台未连接：右键「加入先攻」、玩家「结束我的回合」都不会生效。";
         textEl.className = "bg-text bad";
       } else {
-        textEl.textContent = "正在确认后台脚本…";
+        textEl.textContent = "";
         textEl.className = "bg-text";
       }
     }
@@ -154,7 +156,8 @@ export function createWindow(opts) {
     }
     if (res) {
       setState(BG_OK, res);
-      if (withFeedback) feedback("后台已连接 v" + (detail.version || PLUGIN_VERSION), "SUCCESS");
+      /* 只有用户「点重试」才回一句结果；不带版本号 / 工具栏打勾那一串（v1.7.6 删小字）。 */
+      if (withFeedback) feedback("后台已恢复：可以继续操作了", "SUCCESS");
       return state;
     }
     setState(BG_BAD, {});

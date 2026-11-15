@@ -774,6 +774,35 @@ html.strip-html, html:has(body.strip-page) { background: transparent !important;
   color: #61707f; cursor: move; user-select: none; touch-action: none;
 }
 .strip-grip:hover { background: #1a222c; color: #93a1b0; }
+/* ---------- v1.7.6：先攻条外壳**真正透明**（用户第二次报：整条仍是不透明深底） ----------
+ * 排查结论：popover 参数里的 hidePaper 早就是 true（background.core.js 的 stripPopoverOptions），
+ * 所以剩下的深色只可能来自**页面自己的容器** —— html / body 之外，只要 #app / .win / .win-body /
+ * .strip-root 里有一层画了底色，整条看上去就是一个深色矩形。这里把它们一律 transparent !important：
+ *   ① html / body（本文件顶部那条 html{background:var(--bg)} 会整块盖住地图）；
+ *   ② #app / .win / .win-body（窗口外壳，条视图里是 hidden，但规则留着兜住别的入口）；
+ *   ③ .strip-root / .strip / .strip-items（条自己的容器）。
+ * **只保留两处底色**：控制行 .strip-ctl（rgba(11,15,20,.72) 半透明）与卡片 .initiative-item
+ * （#141b23 不透明）—— 这正是用户要的「只留卡片与控制行半透明底」。
+ * 作用域挂在 html.strip-html 上（initiative-page.js 只给条视图挂），列表窗口（?view=list）不受影响。
+ *
+ * 怎么验证透明（不必启动浏览器）：
+ *   · 静态：node dev/check.mjs（断言这几层都是 transparent !important，且 .strip-ctl /
+ *     .initiative-item 仍有底色）、node dev/check-render.mjs；
+ *   · 页面单独打开：直接开 initiative.html（**不带** ?view=list）→ 整页应当完全透出背后的地图，
+ *     开发者工具里 html / body / #app / .strip-root / .strip / .win / .win-body 的 computed
+ *     background-color 全是 rgba(0, 0, 0, 0)；只有 .strip-ctl 与 .initiative-item 有底色。 */
+html.strip-html,
+html.strip-html body.strip-page,
+html.strip-html body.strip-page #app,
+html.strip-html body.strip-page .strip-root,
+html.strip-html body.strip-page .win,
+html.strip-html body.strip-page .win-body,
+html.strip-html body.strip-page .strip,
+html.strip-html body.strip-page .strip-items {
+  background: transparent !important;
+  background-color: transparent !important;
+}
+
 body.dragging, body.dragging .strip-grip { cursor: grabbing; }
 body.sorting, body.sorting .initiative-item { cursor: grabbing; }
 

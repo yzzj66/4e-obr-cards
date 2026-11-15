@@ -379,7 +379,9 @@ run(OBR, stubBuilder("CURVE"), stubBuilder("SHAPE"), stubBuilder("TEXT"));
     ok("文本：HP「12/20 +3」（临时生命在右侧）+ 回复力「5/6」");
   }
   /* ---- v1.6.1：四防从「四角」改「一排」（强韧 / 反射 / 意志 从左到右 + AC 最右半透明白）
-   *      v1.7.5：**三防改成直径 22 的圆**、AC 仍是直径 30 的**半透明白盾**（只改样式，位置与顺序不变） ---- */
+   *      v1.7.5：三防改成**圆**；v1.7.6：四枚**统一直径 30**、整排**铺满 token 并均分** ----
+   *      token2 的包围盒是 150×150、dpi 150 → s=1：可用宽 = 150 − 2×4 = 142，四枚 4×30 = 120，
+   *      均分间距 = (142 − 120) / 3 ≈ 7.33 → 第一枚左缘 = 4（= token 左缘 + 4s）、最后一枚右缘 = 146。 ---- */
   const shieldKeyOf = (it) => (it.metadata && it.metadata[BAR_KEY] ? it.metadata[BAR_KEY].key : "");
   const shieldByKey = (key) => t2role("shield").filter((it) => shieldKeyOf(it) === key)[0] || null;
   /* 一枚四防的外接盒高度 = 折线里最大的 y（圆和盾都从 0 画到直径 D）→ 圆心 / 盾心 y = position.y + D/2。
@@ -397,9 +399,9 @@ run(OBR, stubBuilder("CURVE"), stubBuilder("SHAPE"), stubBuilder("TEXT"));
     const ac = shieldByKey("ac");
     const COLORS_3 = { fort: "#e3b341", reflex: "#56d364", will: "#a371f7" };
     const CIRCLE_SEG = 24;
-    /* 圆：外接盒 22、24 段折线、每个点都在半径 11 上（到中心 (11,11) 的距离） */
+    /* 圆：外接盒 30、24 段折线、每个点都在半径 15 上（到中心 (15,15) 的距离） */
     const circleOk = (it) => {
-      if (!it || Math.abs(shapeH(it) - 22) > 0.01) return false;
+      if (!it || Math.abs(shapeH(it) - 30) > 0.01) return false;
       if (!Array.isArray(it.points) || it.points.length !== CIRCLE_SEG) return false;
       const r = shapeH(it) / 2;
       return it.points.every((pt) => Math.abs(Math.hypot(pt.x - r, pt.y - r) - r) < 0.01);
@@ -418,7 +420,7 @@ run(OBR, stubBuilder("CURVE"), stubBuilder("SHAPE"), stubBuilder("TEXT"));
     else if (!incX) bad("四防的 x 不是从左到右递增：" + ordered.map((it) => Math.round(it.position.x * 100) / 100).join("/"));
     else if (!ac) bad("AC 那枚盾没画出来");
     else if (["fort", "reflex", "will"].some((k) => !circleOk(shieldByKey(k)))) {
-      bad("三防不是直径 22 的圆（24 段折线、点在半径 11 上）：" +
+      bad("三防不是直径 30 的圆（24 段折线、点在半径 15 上）：" +
         ["fort", "reflex", "will"].map((k) => k + "=" + (shieldByKey(k) ? shieldKeyOf(shieldByKey(k)) + "/d" + shapeH(shieldByKey(k)) + "/" + (shieldByKey(k).points || []).length + "点" : "无")).join(" "));
     } else if (!shieldShapeOk(ac)) {
       bad("AC 不是直径 30 的盾形（外接盒 " + shapeH(ac) + "、" + (ac.points || []).length + " 点）");
@@ -429,14 +431,26 @@ run(OBR, stubBuilder("CURVE"), stubBuilder("SHAPE"), stubBuilder("TEXT"));
       bad("三防不是橙 / 绿 / 紫：" + Object.keys(COLORS_3).map((k) => k + "=" + (shieldByKey(k) ? shieldByKey(k).fillColor : "无")).join(" "));
     } else if (!acText || !acText.text || acText.text.plainText !== "28") {
       bad("AC 的数字不是 28：" + JSON.stringify(acText && acText.text));
-    } else if (!acText.text.style || Math.abs(acText.text.style.fontSize - 22) > 0.01) {
-      bad("AC 的字号不是原来的 22（d−8s）：" + JSON.stringify(acText.text && acText.text.style));
-    } else if (!fortText || !fortText.text || !fortText.text.style || Math.abs(fortText.text.style.fontSize - 11) > 0.01) {
-      bad("圆的字号没有缩到 ≈11s：" + JSON.stringify(fortText && fortText.text && fortText.text.style));
+    } else if (!acText.text.style || Math.abs(acText.text.style.fontSize - 15) > 0.01) {
+      bad("AC 的字号不是 15（d×0.5，d=30）：" + JSON.stringify(acText.text && acText.text.style));
+    } else if (!fortText || !fortText.text || !fortText.text.style || Math.abs(fortText.text.style.fontSize - 15) > 0.01) {
+      bad("圆的字号没有放大到 ≈15s：" + JSON.stringify(fortText && fortText.text && fortText.text.style));
     } else {
-      ok("四防一排（v1.7.5）：3 个圆（直径 22、24 段、字号 11）+ 1 个盾（AC，直径 30、字号 22）；" +
-        "圆心 / 盾心同一 y=" + (Math.round(ys[0] * 100) / 100) + "、x 从左到右递增、AC 最右且半透明白色（fill #ffffff@" +
-        ac.fillOpacity + " + 白描边@" + ac.strokeOpacity + "）");
+      /* v1.7.6：整排**铺满 token 并均分** —— 左缘 = token 左缘 + 4s、右缘 = token 右缘 − 4s、间距相等。 */
+      const leftEdge = ordered[0].position.x;
+      const lastIt = ordered[ordered.length - 1];
+      const rightEdge = lastIt.position.x + shapeH(lastIt);
+      const gaps = ordered.slice(1).map((it, i) => it.position.x - (ordered[i].position.x + shapeH(ordered[i])));
+      const evenGaps = gaps.every((g) => Math.abs(g - gaps[0]) < 0.01);
+      if (Math.abs(leftEdge - 4) > 0.01) bad("整排没有左对齐到 token 左缘 + 4s（左缘 " + leftEdge + "）");
+      else if (Math.abs(rightEdge - 146) > 0.01) bad("整排没有右对齐到 token 右缘 − 4s（右缘 " + rightEdge + "）");
+      else if (!evenGaps) bad("四防之间的间距不均分：" + gaps.map((g) => Math.round(g * 100) / 100).join("/"));
+      else {
+        ok("四防一排（v1.7.6）：3 个圆（直径 30、24 段）+ 1 个盾（AC，直径 30）；字号都是 15（四枚一样大）；" +
+          "圆心 / 盾心同一 y=" + (Math.round(ys[0] * 100) / 100) + "、**左缘 4 / 右缘 146 铺满 token**、" +
+          "均分间距 " + (Math.round(gaps[0] * 100) / 100) + "、AC 最右且半透明白色（fill #ffffff@" +
+          ac.fillOpacity + " + 白描边@" + ac.strokeOpacity + "）");
+      }
     }
   }
   /* 这一排必须在 HP 红条上方（同一份几何：盾的下缘 < 条的上缘） */
@@ -478,9 +492,9 @@ run(OBR, stubBuilder("CURVE"), stubBuilder("SHAPE"), stubBuilder("TEXT"));
     if (shields.length !== 4) bad("Boss 形态四防不齐：" + shields.length + "（" + keys + "）");
     else if (!ys.every((y) => Math.abs(y - ys[0]) < 0.01)) bad("Boss 形态四防不在同一行：" + ys.join("/"));
     else if (keys !== "fort,reflex,will,ac") bad("Boss 形态四防顺序不对：" + keys);
-    else if (ds.join(",") !== "22,22,22,30") bad("Boss 形态四防的直径不对（应 22/22/22/30）：" + ds.join(","));
+    else if (ds.join(",") !== "30,30,30,30") bad("Boss 形态四防的直径不对（应 30/30/30/30）：" + ds.join(","));
     else ok("Boss 环形态下四防仍是一排（4 枚、圆心 / 盾心同一 y=" + (Math.round(ys[0] * 100) / 100) +
-      "、3 圆 22 + 1 盾 30、AC 最右）");
+      "、四枚都 30、AC 最右）");
   }
 
   token2.metadata[HP_KEY].boss = { enabled: true, segments: 3, phase: "阶段二" };
@@ -492,8 +506,8 @@ run(OBR, stubBuilder("CURVE"), stubBuilder("SHAPE"), stubBuilder("TEXT"));
   else ok("Boss 分段（3 段 → 2 条线）+ 阶段文案「阶段二」");
 
   /* ---- v1.6.1：窄 token 退化——四枚放不下时优先保留 AC（最右那枚）
-   *      v1.7.5：三防改成 22s 的圆之后，同一枚窄 token 能多放下一枚 ——
-   *      退化**顺序**没变（先丢意志 → 反射 → 强韧，AC 最后才丢），只是**阈值**按新直径重算。 ---- */
+   *      v1.7.6：判据 = 「枚数 × 30s ≤ 可用宽（token 宽 − 8s）」；退化**顺序**没变
+   *      （先丢意志 → 反射 → 强韧，AC 最后才丢），只是阈值按 30s 重算。 ---- */
   {
     const TOKEN3 = "tok-3";
     const token3 = {
@@ -515,8 +529,8 @@ run(OBR, stubBuilder("CURVE"), stubBuilder("SHAPE"), stubBuilder("TEXT"));
     sceneItems.push(token3);
     const t3keysNow = () => liveOf(TOKEN3).filter((it) => barRoleOf(it) === "shield").map(shieldKeyOf).join(",");
 
-    /* ① 20×20：s 夹到 0.2 → 4 枚要 4.4×3 + 6 + 1.2×3 = 22.8，可用只有 17.6
-     *    → 按 DEF_DROP **先丢意志**（22s 的圆之后只丢一枚就够）→ 剩「强韧 + 反射 + AC」 */
+    /* ① 20×20：s 夹到 0.2 → 四枚要 4×6 = 24，可用只有 18.4
+     *    → 按 DEF_DROP **先丢意志**（只丢一枚就够：18 ≤ 18.4）→ 剩「强韧 + 反射 + AC」 */
     boundsFor[TOKEN3] = { min: { x: 0, y: 0 }, max: { x: 20, y: 20 }, center: { x: 10, y: 10 }, width: 20, height: 20 };
     for (const cb of itemsChangeCbs) cb(sceneItems);
     await sleep(340);

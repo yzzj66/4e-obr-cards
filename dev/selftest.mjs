@@ -40,6 +40,14 @@
 //   ③ 先攻条外壳透明（html / .strip / .strip-items 透明，卡片仍不透明，控制行半透明）+
 //      常驻（进入房间按 4enext/strip-autostart 自动开、disableClickAway、「✕」记会话级关闭）。
 // test-initiative 断言行为（菜单 filter / 移出 / 清理 / 自动显示三态），check 断言静态接线与 CSS。
+// v1.7.6 再补：① **删掉 12 处提示 / 状态小字**（骰子窗口副标题 / 表达式 / 组合 / 预设区、「防御参考」整行、
+// 「投骰动画：开」、顶部「后台已连接 …」条、速览的 token 副标题 / 技能 / 威能 / 专长说明）—— 错误提示一律保留；
+// check 断言这 12 条在运行代码里都不存在（先剥注释），且 #bg-strip 默认 hidden、只在 bad 时出现；
+// ② **记录窗口改成按钮直接 popover.open**（不再等后台回执）+ getWidth 复核 + 按钮变「关闭记录窗口」+
+// 失败 ERROR 通知 + 后台 force-open / adopt；test-dice 断言整条链路（含 open 抛错）；
+// ③ **先攻条外壳真透明**（#app / .win / .win-body / .strip-root 也 transparent !important），check 与
+// dev/check-render.mjs 都断言；④ **四防重排**：四枚统一 30s、字号 15s、铺满 token 并均分，
+// test-background 断言「左缘 4 / 右缘 146 / 间距相等 / 退化不变」。
 // 每条都是独立进程（stdio 直接继承，不经管道，避免某些环境禁止子进程管道）。
 // 任何一条非 0 就整体返回 1，并在最后打印汇总表。
 import { spawnSync } from "node:child_process";

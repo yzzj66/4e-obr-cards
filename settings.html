@@ -21,8 +21,9 @@
     </div>
   </div>
 
-  <div class="bg-strip" id="bg-strip">
-    <span class="bg-text" id="bg-text">正在确认后台脚本…</span>
+  <!-- v1.7.6：状态条默认整条隐藏（没有异常就不显示）；只有「后台未连接」这类错误才由 window.js 放出来。 -->
+  <div class="bg-strip" id="bg-strip" hidden>
+    <span class="bg-text" id="bg-text"></span>
     <button class="btn small" id="bg-retry" hidden>后台未连接，点这里重试</button>
   </div>
 

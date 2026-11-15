@@ -17,7 +17,6 @@ let cardId = params.get("card") || "";
 
 const bodyEl = document.getElementById("body");
 const titleEl = document.getElementById("title-text");
-const subEl = document.getElementById("sub");
 const scopeEl = document.getElementById("scope");
 
 let card = null;
@@ -137,7 +136,6 @@ async function resolveCard() {
 
 function showEmpty(html) {
   titleEl.textContent = "4eNEXT to owlbear · 速览";
-  subEl.textContent = "未绑定角色卡";
   bodyEl.innerHTML = '<div class="pop-empty">' + html + "</div>";
   if (scopeEl) scopeEl.textContent = "";
   lastSig = "empty:" + html;
@@ -217,12 +215,8 @@ async function refresh(force) {
     scope = loaded.scope;
     if (force) lastSig = "";
     render();
-    /* 标题 */
-    const tokenName = token ? token.name || "" : "";
+    /* 标题：只留角色名（v1.7.6 删掉「token：xxx」这类副标题小字） */
     titleEl.textContent = card.name;
-    subEl.textContent = token
-      ? (tokenName && tokenName !== card.name ? "token：" + tokenName : (canHp ? "点数值可改，改动写回这枚 token" : "血量只读 · 资源可点"))
-      : "token 已不在场景里";
     if (!token && !bodyEl.querySelector(".gl4-warn")) {
       bodyEl.insertAdjacentHTML("afterbegin",
         '<div class="gl4-warn">这枚 token 已不在场景里（或血条被清掉了）：血条会自动重建；token 被删除时请重新绑定。</div>');

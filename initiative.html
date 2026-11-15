@@ -11,6 +11,16 @@
      （与 v1.7.1 修投骰动画黑屏同一个坑），所以 html 也要 transparent。
      只有先攻条视图会给 html 挂 .strip-html；列表窗口（?view=list）仍是正常的不透明窗口。 */
   html.strip-html, html.strip-html body.strip-page { background: transparent !important; }
+  /* v1.7.6：只透明 html / body 还不够 —— 页面自己的容器（#app / .win / .win-body / .strip-root）里
+     只要有一层画了底色，整条看上去仍是个深色矩形。这里跟 ui.css 的 v1.7.6 段一一对应地兜一遍，
+     作用域挂在 .strip-html 上：列表窗口（?view=list）不会挂这个类，仍是不透明窗口。 */
+  html.strip-html body.strip-page,
+  html.strip-html body.strip-page #app,
+  html.strip-html body.strip-page .strip-root,
+  html.strip-html body.strip-page .win,
+  html.strip-html body.strip-page .win-body,
+  html.strip-html body.strip-page .strip,
+  html.strip-html body.strip-page .strip-items { background: transparent !important; background-color: transparent !important; }
 </style>
 </head>
 <body class="win-page">
@@ -31,8 +41,9 @@
     </div>
   </div>
 
-  <div class="bg-strip" id="bg-strip">
-    <span class="bg-text" id="bg-text">正在确认后台脚本…</span>
+  <!-- v1.7.6：状态条默认整条隐藏（没有异常就不显示）；只有「后台未连接」这类错误才由 window.js 放出来。 -->
+  <div class="bg-strip" id="bg-strip" hidden>
+    <span class="bg-text" id="bg-text"></span>
     <button class="btn small" id="bg-retry" hidden>后台未连接，点这里重试</button>
   </div>
 

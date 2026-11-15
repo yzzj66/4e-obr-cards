@@ -1079,7 +1079,7 @@ console.log("== v1.7.3 先攻条常驻（进入房间自动显示 / 关掉不再
  * ------------------------------------------------------------------------- */
 console.log("== 静态检查");
 const man = JSON.parse(fs.readFileSync(path.join(ROOT, "manifest.json"), "utf8"));
-if (man.name === "4eNEXT to owlbear" && man.version === "1.7.5") ok("manifest 名称 / 版本 = 4eNEXT to owlbear 1.7.5");
+if (man.name === "4eNEXT to owlbear" && man.version === "1.7.6") ok("manifest 名称 / 版本 = 4eNEXT to owlbear 1.7.5");
 else bad("manifest 名称 / 版本不对：" + man.name + " " + man.version);
 if (!man.action) ok("manifest 仍然没有 action 字段（真机验证过无 action 能加载）");
 else bad("manifest 又加回了 action 字段");

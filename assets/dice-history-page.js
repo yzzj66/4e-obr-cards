@@ -13,8 +13,10 @@
 // 这里**只读**：不写房间数据、不写 token（清空仍然只在骰子窗口里由城主做）。
 //
 // v1.7.4：加载完先发一条 { op: "ready" } 握手给后台（CH_DICE_HIST_CMD）——
-//   万一是骰子窗口「等不到后台回执 → 自己 OBR.popover.open」兜底开的，后台的 winOpen 里
-//   并没有这一条；握手一来就把「开着」补上，之后点「记录窗口」才是**关闭**（不会又开一遍）。
+//   万一是骰子窗口自己 OBR.popover.open 开的，后台的 winOpen 里可能没有这一条；
+//   握手一来就把「开着」补上，之后点「记录窗口」才是**关闭**（不会又开一遍）。
+// v1.7.6：加载完还**自己**调 OBR.popover.getWidth(ID_DICE_HIST) 确认存活（见 confirmAlive）——
+//   骰子窗口那侧已经直开 + getWidth 复核，这边再独立复核一次，窗口不在就黄条说明。
 import OBR from "../vendor/obr-sdk.js";
 import { CH_DICE_HIST_CMD, CH_ROLL, CH_ROLL_CLEAR, CH_ROLL_SAVED, HIST_VISIBLE_ROWS, ID_DICE_HIST, KEY_ROLLS, LS_DICE_LOCAL, ROLL_MAX_ROWS, esc, onReady } from "./common.js";
 import { closeSelf, createWindow, feedback } from "./window.js";
@@ -148,6 +150,22 @@ function loadLocalStash() {
   } catch (e) { /* 忽略 */ }
 }
 
+/** v1.7.6：记录窗口页面加载完**自己**确认「真的活着」——
+ *  OBR.popover.getWidth(自己的 id) 对已经关掉的 popover 会 reject / 返回 0；
+ *  拿不到就说明这个 iframe 已经不在宿主里了（比如被别的窗口顶掉），在黄条里说清楚，
+ *  别让用户对着一个空列表猜。 */
+async function confirmAlive() {
+  var w = 0;
+  try {
+    w = await OBR.popover.getWidth(ID_DICE_HIST);
+  } catch (e) {
+    w = 0;
+  }
+  if (typeof w === "number" && w > 0) return true;
+  showWarn("这个记录窗口已经不在宿主里了（可能被其它窗口顶掉）：请从骰子窗口的「记录窗口」重新打开。", true);
+  return false;
+}
+
 /** v1.7.4：告诉后台「记录窗口的页面起来了」（握手，见文件头的说明）。 */
 function sayReady() {
   try {
@@ -180,6 +198,7 @@ onReady(function () {
   if (els.toggle) els.toggle.title = "在「最近 " + HIST_VISIBLE_ROWS + " 条」和全部记录之间切换";
   wireEvents();
   sayReady();
+  void confirmAlive();   /* v1.7.6：自己确认窗口还在（getWidth 不报错 / > 0） */
   renderRows();
 
   (async function init() {

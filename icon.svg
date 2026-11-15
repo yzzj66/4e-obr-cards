@@ -1,12 +1,7 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64">
-  <defs>
-    <linearGradient id="g" x1="0" y1="0" x2="1" y2="1">
-      <stop offset="0" stop-color="#2ea043"/>
-      <stop offset="1" stop-color="#0f2a1a"/>
-    </linearGradient>
-  </defs>
-  <rect x="2" y="2" width="60" height="60" rx="14" fill="url(#g)" stroke="#56d364" stroke-width="2"/>
-  <rect x="12" y="16" width="40" height="30" rx="4" fill="none" stroke="#d7ffe3" stroke-width="2.5" opacity="0.9"/>
-  <path d="M18 25h18M18 32h12M18 39h8" stroke="#d7ffe3" stroke-width="2.5" stroke-linecap="round" opacity="0.85"/>
-  <text x="32" y="58" font-family="system-ui,sans-serif" font-size="11" font-weight="700" fill="#d7ffe3" text-anchor="middle">4E</text>
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 1000">
+  <g fill="#00838f">
+    <path d="M244.66,641.04c21.31-27.53,36.59-53.96,47.51-78.16H0v194.93s156.63-3.06,244.66-116.77Z"/>
+    <path d="M836.03,436.12h163.97V0H0v436.06s156.63-3.06,244.66-116.77c86.28-111.44,73.7-204.91,73.7-204.91h129.82s-3.99,106.05-29.16,159.98c-38.31,82.08-77.29,143.8-106.05,161.77h163.97v126.76h-46.3c-3.26,12.14-7.09,23.53-11.62,33.22-38.31,82.08-77.29,143.8-106.05,161.77h163.97v126.76H0v115.37h1000v-437.12h-163.97c28.76,17.97,67.75,79.69,106.05,161.77,25.16,53.92,29.16,159.98,29.16,159.98h-129.82s12.58-93.47-73.7-204.91c-88.03-113.71-244.66-116.77-244.66-116.77v-126.89s156.63-3.06,244.66-116.77c86.28-111.44,73.7-204.91,73.7-204.91h129.82s-3.99,106.05-29.16,159.98c-38.31,82.08-77.29,143.8-106.05,161.77Z"/>
+  </g>
 </svg>

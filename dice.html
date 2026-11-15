@@ -19,19 +19,25 @@
        · 「本次结果」= **固定底栏**（.dice-result，flex:none + 上边框），
          上面的骰子 / 表达式 / 4E 预设 / 组合在 .dice-left 里自己滚 → 结果不随滚动消失；
        · 字号整体小一号（表达式输入 13px、说明 10px …）。
+     v1.7.6（用户：只留功能本身 + 记录窗口必须打得开）：
+       · 删掉标题下的副标题、表达式 / 组合 / 预设区右上的说明小字、「防御参考」整行、「投骰动画：开」；
+         顶部状态条改成**默认整条隐藏**，只有「后台未连接」时才出现（错误提示必须保留）；
+       · 「记录窗口」按钮改成**本页直接 OBR.popover.open**（不再先发命令等后台），
+         打开后按钮变「关闭记录窗口」，失败弹 ERROR 通知 + 让后台关掉骰子窗再补开。
      规则与掷骰在 assets/dice-core.js（纯函数），4E 预设在 assets/dice-4e.js（动态加载）。 -->
 <div class="win">
   <div class="win-head" id="head" title="按住这里拖动窗口（位置会记住）">
     <span class="grip" aria-hidden="true">⠿</span>
-    <div class="t"><b>骰子 · 4eNEXT to owlbear</b><small>表达式 · 优势 +2 · 重击取满 · 记录独立</small></div>
+    <div class="t"><b>骰子 · 4eNEXT to owlbear</b></div>
     <div class="sp">
       <button class="icon-btn" id="pin" title="回到默认位置（清除本窗口记住的位置）">⌖</button>
       <button class="icon-btn" id="close" title="关闭窗口">✕</button>
     </div>
   </div>
 
-  <div class="bg-strip" id="bg-strip">
-    <span class="bg-text" id="bg-text">正在确认后台脚本…</span>
+  <!-- v1.7.6：状态条默认整条隐藏（没有异常就不显示）；只有「后台未连接」这类错误才由 window.js 放出来。 -->
+  <div class="bg-strip" id="bg-strip" hidden>
+    <span class="bg-text" id="bg-text"></span>
     <button class="btn small" id="bg-retry" hidden>后台未连接，点这里重试</button>
   </div>
 
@@ -72,7 +78,6 @@
         <div class="dice-sec">
           <div class="sec-head">
             <h3>表达式</h3>
-            <span class="sec-hint">2d6+5 · adv(1d20)</span>
           </div>
           <div class="expr-row">
             <button class="btn step" type="button" id="btnModMinus" title="加值 −1">−</button>
@@ -97,18 +102,15 @@
         <div class="dice-sec">
           <div class="sec-head">
             <h3>4E 预设</h3>
-            <span class="sec-hint" id="presetMeta">选中已绑定角色卡的 token</span>
           </div>
           <div class="preset-box" id="presets">
-            <p class="muted small">选中一枚已绑定角色卡的 token，这里会出现攻击 / 伤害 / 技能预设（只填公式，不判定）。</p>
+            <p class="muted small">选中一枚已绑定角色卡的 token。</p>
           </div>
-          <div class="def-ref" id="defenseRef"></div>
         </div>
 
         <div class="dice-sec">
           <div class="sec-head">
             <h3>组合</h3>
-            <span class="sec-hint">只存本机</span>
           </div>
           <div class="combo-row">
             <input class="combo-name" id="comboName" autocomplete="off" maxlength="24" placeholder="组合名（可空）">
@@ -121,7 +123,6 @@
       <section class="dice-result" id="resultSec">
         <div class="res-head">
           <h3>本次结果</h3>
-          <span class="sec-hint" id="animMeta">投骰动画：开</span>
         </div>
         <div class="res-box" id="result">
           <div class="res-empty">还没掷过。点一颗骰子，再点「投掷」。</div>

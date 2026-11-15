@@ -451,6 +451,10 @@ const modalOpens = [];
 /* v1.7.4：记录窗口 —— 页面兜底会自己 OBR.popover.open，所以要记下来；
  * 还要能收到 CH_DICE_HIST_STATE（后台回执），以及看通知有没有真的弹出来。 */
 const popoverOpens = [];
+/* v1.7.6：记录窗口改成「本页直接 open」，还要能记 close 与 getWidth 的调用，
+ * 以及「open 抛错」这种失败路径（用户要求：open 抛错必须弹 ERROR 通知）。 */
+const popoverCloses = [];
+let popoverOpenFails = false;
 const histStateCbs = [];
 const notesShown = [];
 const readyCbs = [];
@@ -499,8 +503,14 @@ const fakeOBR = {
     }
   },
   popover: {
-    open: async (cfg) => { popoverOpens.push(cfg); },
-    close: async () => {}
+    open: async (cfg) => {
+      if (popoverOpenFails) throw new Error("popover.open 被宿主拒绝（同时开着的窗口太多）");
+      popoverOpens.push(cfg);
+    },
+    close: async (id) => { popoverCloses.push(id); },
+    /* v1.7.6：页面打开后用 getWidth 确认窗口真的活着（对已关掉的 popover 会 reject）。 */
+    getWidth: async () => 380,
+    getHeight: async () => 380
   },
   viewport: { getWidth: async () => 1200, getHeight: async () => 800, onChange() { return () => {}; } },
   tool: { create: async () => {}, remove: async () => {} },
@@ -587,63 +597,81 @@ else {
         ok("默认开动画：OBR.modal.open(effect.html, fullScreen + hideBackdrop + hidePaper + disablePointerEvents)");
       else bad("动画 modal 参数不对：" + JSON.stringify(first));
 
-      /* 记录窗口按钮（v1.7.4 扩充）：点一下发 CH_DICE_HIST_CMD（后台负责开 / 关，回 CH_DICE_HIST_STATE）；
-       * v1.7.4 的关键：**等不到回执就由本页自己 OBR.popover.open 同一个 id / 页面**（dice-page.js 的
-       * openHistoryDirect），不许「点了没反应」。 */
+      /* 记录窗口按钮（v1.7.6 重写）：**点一下就该真的开出一个窗口** —— 不再先发命令等后台回执，
+       * 而是本页直接 OBR.popover.open（openHistoryDirect），打开后 getWidth 确认存活，
+       * 按钮文字变「关闭记录窗口」；open 抛错 → ERROR 通知 + 请后台 force-open。
+       * 这里用一个假 OBR 把这条链路完整跑一遍（不启动浏览器）。 */
       const histClicks = (domMap.btnHist.listeners.click || []);
       if (!histClicks.length) bad("「记录窗口」按钮没有绑定 click");
       else {
-        const cmdBefore = sentCmds.length;
+        /* ① 直开：不需要任何后台回执，一次 popover.open + 一次 getWidth */
+        const opensBefore = popoverOpens.length;
+        const cmdsBefore = sentCmds.length;
         histClicks[0]({ preventDefault() {} });
-        const cmd = sentCmds[sentCmds.length - 1] || null;
-        if (sentCmds.length === cmdBefore + 1 && cmd && cmd.op === "toggle")
-          ok("「记录窗口」按钮广播 CH_DICE_HIST_CMD { op: \"toggle\" }（与骰子窗口各自开关）");
-        else bad("记录窗口按钮没有发 toggle 命令：" + JSON.stringify(cmd));
-        if (String(domMap.btnHist.textContent).indexOf("打开中") >= 0)
-          ok("点完先进「记录窗口 · 打开中…」（等后台回执，不再是一次点击毫无反馈）");
-        else bad("按钮没有「打开中」状态：" + domMap.btnHist.textContent);
+        await sleep(60);
+        const cfg = popoverOpens[popoverOpens.length - 1] || null;
+        if (popoverOpens.length === opensBefore + 1 && cfg &&
+          cfg.id === "com.4enext-owlbear/dice-history-window" &&
+          String(cfg.url).indexOf("dice-history.html") >= 0 &&
+          cfg.anchorReference === "POSITION" &&
+          cfg.anchorPosition && typeof cfg.anchorPosition.left === "number" && typeof cfg.anchorPosition.top === "number" &&
+          cfg.anchorOrigin && cfg.anchorOrigin.horizontal === "LEFT" && cfg.anchorOrigin.vertical === "TOP" &&
+          cfg.transformOrigin && cfg.transformOrigin.horizontal === "LEFT" && cfg.transformOrigin.vertical === "TOP" &&
+          cfg.hidePaper === false && cfg.disableClickAway === false &&
+          cfg.width === 380 && cfg.height === 380)
+          ok("点「记录窗口」→ **本页直接** OBR.popover.open(dice-history.html, 380×380, POSITION 左上角, hidePaper:false, disableClickAway:false)，不再等后台回执");
+        else bad("没有直接开记录窗口：" + JSON.stringify(cfg));
+        if (domMap.btnHist.textContent === "关闭记录窗口" && domMap.btnHist.classList.contains("on"))
+          ok("开出来之后按钮文字变「关闭记录窗口」（用户看得见的反馈）");
+        else bad("开窗后按钮没有变成「关闭记录窗口」：" + domMap.btnHist.textContent);
+        const okNotes = notesShown.filter((n) => String(n.msg).indexOf("记录窗口已打开") >= 0);
+        if (okNotes.length && okNotes[okNotes.length - 1].variant === "SUCCESS")
+          ok("开窗成功有 SUCCESS 通知（不是静默）");
+        else bad("开窗成功没有任何提示：" + JSON.stringify(notesShown.slice(-2)));
+        const adopt = sentCmds.slice(cmdsBefore).filter((c) => c && c.op === "adopt");
+        if (adopt.length === 1 && typeof adopt[0].left === "number" && adopt[0].width === 380)
+          ok("开窗成功后把几何 { op:\"adopt\", left, top, width, height } 发给后台（拖动 / 记位置照旧）");
+        else bad("开窗后没有 adopt 几何：" + JSON.stringify(sentCmds.slice(cmdsBefore)));
 
-        /* ① 后台回执 CH_DICE_HIST_STATE { open: true } → 按钮显示「记录窗口 · 开」，且**不再**兜底开窗 */
-        if (!histStateCbs.length) bad("骰子窗口没有订阅 CH_DICE_HIST_STATE（开 / 关状态回不来）");
+        /* ② 再点一下 = 关：popover.close + 按钮回到「记录窗口」+ 通知后台清状态 */
+        const closesBefore = popoverCloses.length;
+        const cmdsBefore2 = sentCmds.length;
+        histClicks[0]({ preventDefault() {} });
+        await sleep(60);
+        if (popoverCloses.length === closesBefore + 1 && popoverCloses[popoverCloses.length - 1] === "com.4enext-owlbear/dice-history-window" &&
+          domMap.btnHist.textContent === "记录窗口" && !domMap.btnHist.classList.contains("on"))
+          ok("开着的状态下再点 → OBR.popover.close(记录窗口)，按钮回到「记录窗口」");
+        else bad("关闭记录窗口失败：" + domMap.btnHist.textContent + " / closes+" + (popoverCloses.length - closesBefore));
+        if (sentCmds.slice(cmdsBefore2).some((c) => c && c.op === "close"))
+          ok("关闭时也通知后台（{ op:\"close\" }）→ 后台的 winOpen / 状态不会跟丢");
+        else bad("关闭时没有通知后台");
+
+        /* ③ 直开失败（宿主拒绝）→ ERROR 通知（用户要求「open 抛错必须看得见」）+ 请后台 force-open */
+        const cmdsBefore3 = sentCmds.length;
+        const notesBefore3 = notesShown.length;
+        popoverOpenFails = true;
+        histClicks[0]({ preventDefault() {} });
+        await sleep(60);
+        popoverOpenFails = false;
+        const errNote = notesShown.slice(notesBefore3).filter((n) => String(n.msg).indexOf("记录窗口打开失败：") >= 0);
+        if (errNote.length && errNote[errNote.length - 1].variant === "ERROR")
+          ok("open 抛错 → ERROR 通知「记录窗口打开失败：<原因>」，按钮回到「记录窗口」");
+        else bad("open 抛错没有 ERROR 通知：" + JSON.stringify(notesShown.slice(notesBefore3)));
+        if (sentCmds.slice(cmdsBefore3).some((c) => c && c.op === "force-open"))
+          ok("失败时请后台「先关掉骰子窗口、再开记录窗口」（{ op:\"force-open\" }）");
+        else bad("失败时没有让后台补开");
+        if (!domMap.btnHist.classList.contains("on") && domMap.btnHist.textContent === "记录窗口")
+          ok("失败后按钮没有假装「开着」");
+        else bad("失败后按钮状态不对：" + domMap.btnHist.textContent);
+
+        /* ④ 后台回执仍然认（后台补开成功 → STATE{open:true} 会把按钮补成「关闭记录窗口」） */
+        if (!histStateCbs.length) bad("骰子窗口没有订阅 CH_DICE_HIST_STATE（后台补开后状态回不来）");
         else {
-          const opensBeforeAck = popoverOpens.length;
           histStateCbs[0]({ data: { open: true } });
           await sleep(30);
-          if (domMap.btnHist.textContent === "记录窗口 · 开" && domMap.btnHist.classList.contains("on"))
-            ok("收到 CH_DICE_HIST_STATE { open:true } → 按钮显示「记录窗口 · 开」");
+          if (domMap.btnHist.textContent === "关闭记录窗口" && domMap.btnHist.classList.contains("on"))
+            ok("收到 CH_DICE_HIST_STATE { open:true } → 按钮同步成「关闭记录窗口」");
           else bad("收到回执后按钮没变：" + domMap.btnHist.textContent);
-          await sleep(1000);
-          if (popoverOpens.length === opensBeforeAck)
-            ok("有回执时不会再多开一次（兜底只在后台没回应时触发）");
-          else bad("有回执还兜底开了窗：" + JSON.stringify(popoverOpens.slice(opensBeforeAck)));
-
-          /* ② 想「关」但后台没回执 → 不重复开窗，按钮回到「记录窗口」并给出提醒 */
-          histClicks[0]({ preventDefault() {} });
-          await sleep(1000);
-          if (popoverOpens.length === opensBeforeAck && domMap.btnHist.textContent === "记录窗口")
-            ok("关闭没回执：不会开新窗，按钮回到「记录窗口」（只给提醒）");
-          else bad("关闭没回执时的处理不对：" + domMap.btnHist.textContent + " / opens+" + (popoverOpens.length - opensBeforeAck));
-
-          /* ③ 想「开」但后台没回执 → 页面在 HIST_ACK_MS（900 ms）后走 openHistoryDirect，
-         *    直接 OBR.popover.open（同一个 id / 页面）把窗口开出来 */
-          const opensBeforeFallback = popoverOpens.length;
-          histClicks[0]({ preventDefault() {} });
-          await sleep(1050);
-          const fallback = popoverOpens[popoverOpens.length - 1] || null;
-          if (popoverOpens.length === opensBeforeFallback + 1 && fallback &&
-            fallback.id === "com.4enext-owlbear/dice-history-window" &&
-            String(fallback.url).indexOf("dice-history.html") >= 0 &&
-            fallback.anchorReference === "POSITION" && fallback.hidePaper === true &&
-            fallback.width > 0 && fallback.height > 0)
-            ok("后台没回执 → 骰子窗口自己 OBR.popover.open(dice-history.html) 兜底（窗口真的会出来）");
-          else bad("没回执时没有兜底开窗：" + JSON.stringify(fallback));
-          if (popoverOpens.length === opensBeforeFallback + 1 && domMap.btnHist.textContent === "记录窗口 · 开")
-            ok("兜底开窗后按钮同步成「记录窗口 · 开」");
-          else bad("兜底开窗后按钮状态不对：" + domMap.btnHist.textContent);
-          const fbNote = notesShown.map((n) => String(n.msg)).filter((m) => m.indexOf("记录窗口") >= 0);
-          if (fbNote.length && notesShown.some((n) => String(n.msg).indexOf("记录窗口由骰子窗口直接打开") >= 0))
-            ok("兜底开窗有可见提示（通知中心：" + fbNote[fbNote.length - 1].slice(0, 40) + "…）");
-          else bad("兜底开窗没有任何通知：" + JSON.stringify(notesShown.slice(-3)));
         }
       }
 

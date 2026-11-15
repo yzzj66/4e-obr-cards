@@ -657,8 +657,9 @@ export function renderGlanceHTML(char, opts) {
       '<span class="gl4-abi-sub">' + d.abilities[k] + " · 检定 " + signed(d.mods[k] + d.half) + "</span></div>";
   }).join("") + "</section>";
 
-  const skills = '<section class="gl4-card gl4-skills"><h3 class="gl4-h">技能 <em>检定已含半等级 +' + d.half +
-    '</em></h3><div class="gl4-chips">' + d.skills.map(renderSkill).join("") + "</div></section>";
+  /* v1.7.6：删掉标题右边的「检定已含半等级 +15」小字（用户：只留功能本身）。 */
+  const skills = '<section class="gl4-card gl4-skills"><h3 class="gl4-h">技能</h3><div class="gl4-chips">' +
+    d.skills.map(renderSkill).join("") + "</div></section>";
 
   const attacks = (function () {
     const rows = Math.max(d.attacks.length, d.damages.length);
@@ -679,8 +680,8 @@ export function renderGlanceHTML(char, opts) {
   const powers = (function () {
     const groups = d.powers.filter((g) => g.list.length > 0);
     if (!groups.length) return '<section class="gl4-card"><h3 class="gl4-h">威能</h3><p class="gl4-empty">这张卡还没有选威能。</p></section>';
-    return '<section class="gl4-card gl4-powers"><h3 class="gl4-h">威能 <em>' +
-      (ed.track ? "点一下 = 已用 / 再用一次 = 恢复" : "灰色 = 导出时已标记使用") + "</em></h3>" +
+    /* v1.7.6：删掉标题右边的「点一下 = 已用 / 再用一次 = 恢复」小字（点一下就懂，不用写）。 */
+    return '<section class="gl4-card gl4-powers"><h3 class="gl4-h">威能</h3>' +
       groups.map((g) => renderPowerGroup(g, d.powerUsed, ed)).join("") + "</section>";
   })();
 
@@ -693,8 +694,9 @@ export function renderGlanceHTML(char, opts) {
       const extra = f.granted ? '<em class="gl4-tag">赠送</em>' : "";
       return '<span class="gl4-chip feat" title="' + esc(f.id) + '">' + name + extra + "</span>";
     }).join("");
+    /* v1.7.6：删掉「纯展示，不追踪使用」小字，只留总数。 */
     return '<section class="gl4-card gl4-feats"><h3 class="gl4-h">专长 <span class="gl4-count">' + d.feats.length +
-      '</span><em>纯展示，不追踪使用</em></h3><div class="gl4-chips">' + body + "</div></section>";
+      '</span></h3><div class="gl4-chips">' + body + "</div></section>";
   })();
 
   const equips = (function () {

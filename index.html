@@ -9,7 +9,7 @@
 </head>
 <body>
 <article class="doc">
-  <h1>4eNEXT to owlbear <span class="tag">Owlbear Rodeo 插件</span> <span class="tag">v1.7.5</span></h1>
+  <h1>4eNEXT to owlbear <span class="tag">Owlbear Rodeo 插件</span> <span class="tag">v1.7.6</span></h1>
   <p class="muted">在枭熊里看 4E NEXT 的「速览」页：右键 token 绑定角色卡，之后选中这枚 token 就会弹出速览。
     v1.2.0 起还能在弹窗里直接加减血量（token 上会画出血条），并把威能 / 装备点掉记成「已用」；
     v1.2.1 把速览弹窗加宽到 660×700；v1.2.2 弹窗可以按住标题栏拖动、位置按 token 记住。
@@ -62,6 +62,12 @@
     记录窗口默认贴着骰子窗口开，骰子窗口等不到回执时自己把窗口开出来。
     <b>v1.7.5</b> token 上四防一排的<b>样式</b>微调：<b>强韧 / 反射 / 意志 改成圆形</b>（直径 30s → <b>22s</b>，
     数字跟着小一号），<b>AC 仍是半透明白盾、直径 30s 不变</b>；顺序、居中、贴 HP 红条的位置都不变。
+    <b>v1.7.6</b> 四件事：① <b>记录窗口</b>点按钮<b>直接弹出来</b>（按钮随即变「关闭记录窗口」，打不开就 ERROR 通知并让后台
+    关掉骰子窗口再补开）；② <b>删掉 12 处提示 / 状态小字</b>（标题副标题、表达式 / 组合 / 预设区右上、防御参考整行、
+    「投骰动画：开」、顶部「后台已连接 …」条、速览的「token：xxx / 检定已含半等级 / 点一下=已用 / 纯展示」），
+    <b>错误提示一律保留</b>，状态条只在后台未连接时出现；③ <b>先攻条外壳真正透明</b>（连 <code>#app</code> /
+    <code>.win</code> / <code>.win-body</code> 也透明，只留卡片与控制行的半透明底）；④ token 上四防一排<b>重排</b>：
+    四枚统一 <b>30s</b>、字放大到 <b>15s</b>、整排<b>左右铺满 token 并均分</b>，<b>AC 半透明白盾仍在最右</b>。
     纯静态、免构建、不需要服务器。</p>
 
   <section class="diag-card" id="diag">

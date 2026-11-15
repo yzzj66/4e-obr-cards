@@ -1,4 +1,4 @@
-/*! 4eNEXT to owlbear · background.bundle.js  (v1.7.5)
+/*! 4eNEXT to owlbear · background.bundle.js  (v1.7.6)
  * ---------------------------------------------------------------------------
  * 这是后台页唯一加载的脚本：纯「经典脚本」，没有 type="module"，没有 import/export，
  * 不依赖任何 CDN。内容是：
@@ -7,7 +7,7 @@
  *
  * 不要手改本文件。改逻辑请改 assets/background.core.js，然后：
  *     node dev/build-background.mjs
- * 生成时间：2026-11-15T12:56:45.067Z
+ * 生成时间：2026-11-15T13:22:19.410Z
  * --------------------------------------------------------------------------- */
 (function () {
 "use strict";
@@ -114,6 +114,12 @@ if (!OBR || typeof OBR.onReady !== "function") {
  *   · 顺序（强韧 → 反射 → 意志 → AC，AC 永远最右）、整排居中、贴 HP 红条上方 gap 的位置都不变；
  *   · 一排变成**两种直径混排**（3 个 22s 圆 + 1 个 30s 盾）：宽度 = Σ 各枚直径 + (n−1)×DEF_GAP，
  *     圆心 / 盾心仍对齐同一个 rowCY；窄 token 的退化阈值随之按 22s 重算（仍先丢意志 → 反射 → 强韧，AC 最后才丢）。
+ * v1.7.6：四防一排按参考图 15 重排（只动这一排的直径 / 间距 / 字号）
+ *   · 三防圆 22s → **30s**，与 AC 盾**同直径**；数字统一放大到 **≈15s**（三位 ≈14s）；
+ *   · 整排**左右铺满 token**：左缘 = token 左缘 + 4s、右缘 = token 右缘 − 4s，
+ *     间距按 `(可用宽 − 枚数×直径) / (枚数−1)` **均分**（四枚时 = (可用宽 − 4d)/3），不再「挤在中间」；
+ *   · 退化顺序不变（先丢意志 → 反射 → 强韧，AC 最后）；判据改成「枚数 × 30s ≤ 可用宽」；
+ *   · 记录窗口改成**骰子窗口页面直接 popover.open**（后台新增 adopt / force-open 两个 op）。
  * v1.7.3：先攻条「移除 / 常驻 / 透明」三件事
  *   · 右键菜单**动态互斥**：这个 token 已在先攻里 → 只显示「移出先攻」（点了从 entries 删掉 + 刷新条 +
  *     通知「已移出」）；不在 → 显示「加入先攻」「隐形加入先攻」。
@@ -183,7 +189,7 @@ var TOOL_SETTINGS_ID = NS + "/settings-tool";
 var CH_HELLO = NS + "/diag-hello"; /* background → 各页面：我起来了 */
 var CH_PING = NS + "/diag-ping";   /* 页面 → background：在吗 */
 var CH_PONG = NS + "/diag-pong";   /* background → 页面：在，状态如下 */
-var PLUGIN_VERSION = "1.7.5";
+var PLUGIN_VERSION = "1.7.6";
 /* token 上的血量（与 assets/track.js 的 KEY_HP 必须一字不差）。 */
 var KEY_HP = NS + "/hp";
 /* v1.6.0：血条组件开关。**独立键**，不塞进 hp（hp 是数值容器，写开关会误触发判空）；
@@ -200,8 +206,9 @@ var KEY_PLAYER_THRESHOLD = NS + "/settings.playerThreshold";
  * s = min(token 渲染宽, 高) / 网格 dpi，并夹在 0.2~6（上界防止 4×4 巨图把条画到屏外）。
  *   · HP 条 20 高、回复力条 12 高、两行间距 3（规格 §6.4 A）
  *   · 四防离 token 内边 4；**v1.6.1 起是一排**（强韧 / 反射 / 意志 + AC 最右），
- *     相邻两枚之间的水平间距 6（DEF_GAP），整排在 HP 条上方 3（gap）处（规格 §6.4 B 的四角已被 v1.6.1 取代）；
- *     **v1.7.5 起两种直径混排**：强韧 / 反射 / 意志 是直径 22 的**圆**，AC 仍是直径 30 的**盾**
+ *     整排在 HP 条上方 3（gap）处（规格 §6.4 B 的四角已被 v1.6.1 取代）；
+ *     **v1.7.6 起四枚同直径 30**：强韧 / 反射 / 意志 是直径 30 的**圆**，AC 是直径 30 的**盾**，
+ *     整排铺满 token 宽（左右各留 4）并**均分**（v1.7.5 是 22 圆 + 30 盾、固定 6 间距、居中）
  *   · Boss 环厚 10、内缩 2、48 段；名牌 26 高、离 token 顶 6（规格 §6.4 C/D）
  * zIndex 全部固定并 disableAutoZIndex：盾 15000 / 填充 20000 / 数值 30000，向下加密到 9500~31050。
  * ------------------------------------------------------------------------- */
@@ -209,13 +216,15 @@ var BAR_HP_H = 20;
 var BAR_SURGE_H = 12;
 var BAR_GAP = 3;
 var BAR_PAD = 2;
-/* v1.7.5：AC 仍是**盾**（直径 30 不变），三防改成**圆** —— 一排里两种直径混排。 */
+/* v1.7.6（用户按参考图 15）：三防圆 22 → **30**，与 AC 盾**同直径**（参考图里四个肉眼一样大）。 */
 var SHIELD_DIAMETER = 30;
-var DEF_CIRCLE_DIAMETER = 22;
+var DEF_CIRCLE_DIAMETER = 30;
 /* 圆的折线段数：24 段在 token 尺寸下已经看不出多边形角，点数只有盾形（87 点）的 1/4。 */
 var DEF_CIRCLE_SEGMENTS = 24;
+/* 四防离 token 内边 4s：v1.7.6 起整排**左右也按这个 4s 贴 token 边缘**（左缘 + 4s / 右缘 − 4s）。 */
 var SHIELD_INSET = 4;
-/* v1.6.1：四防改「一排」——相邻两枚之间空出的水平间隙（圆心间距 = 两枚半径之和 + 这一段）。 */
+/* v1.6.1 的固定间距 6s。v1.7.6 起整排改成「按可用宽均分」（见 defRowGap），不再用固定值；
+ * 常量留着当参照线（docs/hpbar-boss-v16.md §3 与自测里仍拿 6s 对照「老版的间距」）。 */
 var DEF_GAP = 6;
 /* v1.6.1：AC 用半透明白色图标（强韧 / 反射 / 意志 仍是各自的实色）。 */
 var DEF_AC_FILL_OPACITY = 0.18;
@@ -909,6 +918,43 @@ function winWait(ms) {
   return new Promise(function (r) { setTimeout(r, ms); });
 }
 
+/** v1.7.6：记录窗口由**骰子窗口页面自己** popover.open 出来后，把几何补记到 winOpen ——
+ *  这样拖动（CH_WIN_DRAG）、「回到默认位置」、「视口变化重新夹紧」仍然走 WINS 那一套，
+ *  换下一个窗口时不会因为「后台不知道它开着」而拖不动 / 关不掉。 */
+async function adoptDiceHistory(data) {
+  var w = typeof data.width === "number" && data.width > 0 ? data.width : WINS.diceHistory.width;
+  var h = typeof data.height === "number" && data.height > 0 ? data.height : WINS.diceHistory.height;
+  var left = typeof data.left === "number" && isFinite(data.left) ? data.left : WIN_MARGIN;
+  var top = typeof data.top === "number" && isFinite(data.top) ? data.top : WIN_MARGIN;
+  var vp = await infoViewport();
+  winOpen["diceHistory"] = {
+    geom: {
+      left: left, top: top, width: w, height: h,
+      url: URL_DICE_HIST, vp: { width: vp.width, height: vp.height }
+    },
+    drag: null,
+    timer: null,
+    external: true
+  };
+  pageLog("ok", "骰子记录窗口：由骰子窗口直接打开（后台已接管拖动 / 位置记忆）");
+}
+
+/** v1.7.6：直开失败后的兜底 —— 先**关掉骰子窗口**（腾出一个 popover 名额），再由后台开记录窗口。
+ *  为什么由后台做：OBR.popover.close(骰子窗口) 会把这个页面一起卸载，页面自己没法「关完自己再开」。 */
+async function forceOpenDiceHistory() {
+  pageLog("info", "记录窗口未能由骰子窗口打开 → 先关掉骰子窗口，再由后台开一次");
+  if (winOpen["dice"]) {
+    try {
+      await closeWin("dice");
+    } catch (e) {
+      pageLog("err", "关掉骰子窗口失败：" + errText(e));
+    }
+  }
+  await winWait(160);   /* 宿主在关窗动画没结束时偶尔会拒绝 open */
+  if (diceHistoryIsOpen()) return true;
+  return openDiceHistory();
+}
+
 function broadcastDiceHistState() {
   var payload = { open: diceHistoryIsOpen(), at: Date.now() };
   try {
@@ -966,6 +1012,12 @@ async function onDiceHistCmd(ev) {
       await closeDiceHistory();
     } else if (op === "open") {
       await openDiceHistory();
+    } else if (op === "adopt") {
+      /* v1.7.6：骰子窗口直接 open 成功后把几何报上来（页面自己开，后台接管拖动 / 位置记忆）。 */
+      await adoptDiceHistory(data);
+    } else if (op === "force-open") {
+      /* v1.7.6：页面直开失败 → 先关掉骰子窗口，再由后台补开一次（失败会 ERROR 通知）。 */
+      await forceOpenDiceHistory();
     } else if (await diceHistoryAlive()) {
       await closeDiceHistory();
     } else {
@@ -2496,13 +2548,21 @@ function roundRectPoints(w, h, r, fill) {
   );
 }
 
-/** v1.7.5：一排的宽度 = 各枚直径之和 + (n−1)×间距。
- *  三防是 22s 的圆、AC 是 30s 的盾 —— **两种直径混排**，宽度不能再用「n × 一个直径」算
- *  （退化阈值也跟着这个函数走：放不下就按 DEF_DROP 丢）。 */
-function defRowWidth(keys, dAc, dDef, gap) {
-  var sum = 0;
-  for (var i = 0; i < keys.length; i++) sum += keys[i] === "ac" ? dAc : dDef;
-  return keys.length ? sum + (keys.length - 1) * gap : 0;
+/** v1.7.6：一排的**均分间距** = (可用宽 − 枚数×直径) / (枚数−1)。
+ *  用户按参考图 15 的要求：整排**左右铺满** token（左缘 + 4s / 右缘 − 4s），间距随 token 宽自适应，
+ *  不再像 v1.7.5 那样「四枚挤在中间」。
+ *  四枚时正好是 brief 的 `gap = (可用宽 − 4×d) / 3`；只剩一枚时没有间距（0）。
+ *  放不下（枚数×直径 > 可用宽）时由 barLayout 先按 DEF_DROP 丢，这个函数只负责「放得下之后怎么铺」。 */
+function defRowGap(count, d, availW) {
+  if (count <= 1) return 0;
+  return Math.max(0, (availW - count * d) / (count - 1));
+}
+
+/** v1.7.6：一排的总宽 = 枚数×直径 + (枚数−1)×均分间距。
+ *  放得下时它**恒等于可用宽**（= token 宽 − 两侧各 4s）→ 左缘贴左、右缘贴右。 */
+function defRowWidth(count, d, availW) {
+  if (count <= 0) return 0;
+  return count * d + (count - 1) * defRowGap(count, d, availW);
 }
 
 /** v1.7.5：一枚四防的外形 —— AC 是盾（shieldPoints），三防是圆（circlePoints）。
@@ -2552,25 +2612,27 @@ function barLayout(bounds, dpi, hp, viewer) {
     ? (String(surgeValue) + (hp.surgesMax !== null ? "/" + hp.surgesMax : "")) : "";
   var surgeFont = Math.max(5 * s, Math.min(hSurge * 0.95, (w / Math.max(3, surgeText.length || 3)) * 1.4));
 
-  /* B. v1.6.1：四防**一排**（原来四角的那套已删）；v1.7.5 只改样式（三防圆 / AC 盾）
+  /* B. v1.6.1：四防**一排**（原来四角的那套已删）；v1.7.5 三防改圆；v1.7.6 按参考图 15 重排
    *    顺序固定 强韧 → 反射 → 意志 → AC（AC 永远最右、半透明白色盾牌图标）；
-   *    整排贴在 HP 红条上方 gap 处（同一行，圆心 / 盾心 y 相同 = rowCY），按 s 缩放；
-   *    整排以 token 中线居中，右缘不会越过条的右缘（可用宽度就是条的宽 w 减两侧 inset）。
-   *    v1.7.5：一排变成**两种直径混排** —— 三防 22s 的圆、AC 30s 的盾：
-   *      · 宽度 = Σ 各枚直径 + (n−1)×DEF_GAP（见 defRowWidth，不能再用 n×一个直径）；
-   *      · rowCY 仍按**最高那枚**（AC 的 30s 盾）算，所以 AC 的**上下位置**与 v1.6.x 完全一样，
-   *        三枚圆只是比原来的盾小一圈、上下各往里收 4s（整排变窄后仍按 token 中线居中 → x 跟着重排）；
+   *    整排贴在 HP 红条上方 gap 处（同一行，圆心 / 盾心 y 相同 = rowCY），按 s 缩放。
+   *    v1.7.6（用户按参考图 15：「三个圆更大 → 整排左右铺满均分 → AC 半透明白盾在最右」）：
+   *      · 四枚**同直径 30s**（三防圆 22 → 30），数字跟着放大到 ≈15s（三位 ≈14s）；
+   *      · 整排**铺满 token 宽**：左缘 = token 左缘 + 4s、右缘 = token 右缘 − 4s；
+   *        间距 = (可用宽 − 枚数×直径) / (枚数−1)（见 defRowGap；四枚时就是 (可用宽 − 4×d)/3）；
+   *      · 不再「四枚挤在中间」：第一枚圆心 = 左缘 + 半径，最后一枚的右边缘正好落在右缘上。
    *    退化（写死规则，选「丢盾」而不是「整体缩小」）：
-   *      宽度放不下时，**AC 优先保留**，其余按 DEF_DROP 丢（先丢意志 → 再丢反射 → 再丢强韧）；
-   *      位置按剩下的枚数重新居中，不留空档；一枚都放不下、或这一排会顶出 token 上沿（矮 token）
+   *      枚数 × 直径放不进可用宽时，**AC 优先保留**，其余按 DEF_DROP 丢（先丢意志 → 再丢反射 → 再丢强韧）；
+   *      剩下的枚数按同一个公式重新铺满（不留空档）；一枚都放不下、或这一排会顶出 token 上沿（矮 token）
    *      → 整排不画，四防仍能在速览面板里看。 */
   var dAc = SHIELD_DIAMETER * s;
   var dDef = DEF_CIRCLE_DIAMETER * s;
-  var dRow = Math.max(dAc, dDef);        /* 最高那枚（AC 的盾）：整排的垂直基准 */
+  var dRow = Math.max(dAc, dDef);        /* v1.7.6：两枚一样大（都是 30s） */
   var inset = SHIELD_INSET * s;
-  var defGap = DEF_GAP * s;
   var rowCY = hpTop - gap - dRow / 2;
-  var availW = w - inset * 2;
+  /* v1.7.6：可用宽度取 **token 自己的宽**（不再是 HP 条的宽）—— 整排要铺满 token。 */
+  var rowLeft = bounds.min.x + inset;
+  var rowRight = bounds.max.x - inset;
+  var availW = Math.max(0, rowRight - rowLeft);
   var rowKeys = [];
   var i;
   if (hp.defenses) {
@@ -2580,8 +2642,9 @@ function barLayout(bounds, dpi, hp, viewer) {
       if (typeof hp.defenses[DEF_ROW[i]] === "number") rowKeys.push(DEF_ROW[i]);
     }
   }
-  var rowW = defRowWidth(rowKeys, dAc, dDef, defGap);
-  while (rowKeys.length > 1 && rowW > availW) {
+  /* v1.7.6：放不放得下只看「枚数 × 直径」—— 间距是剩下的宽度均分出来的，
+   * 所以不再像 v1.7.5 那样把 6s 固定间距也加进判据（否则同一枚 token 会白丢一枚盾）。 */
+  while (rowKeys.length > 1 && rowKeys.length * dRow > availW) {
     var dropped = false;
     for (i = 0; i < DEF_DROP.length; i++) {
       var at = rowKeys.indexOf(DEF_DROP[i]);
@@ -2591,34 +2654,34 @@ function barLayout(bounds, dpi, hp, viewer) {
       break;
     }
     if (!dropped) break;   /* 只剩 AC 了：AC 最后才丢（连它都放不下时下面整排不画） */
-    rowW = defRowWidth(rowKeys, dAc, dDef, defGap);
   }
   var showDefenses = !!hp.defenses && exact && rowKeys.length > 0 &&
-    rowW <= availW && rowCY - dRow / 2 >= bounds.min.y + inset;
+    rowKeys.length * dRow <= availW && rowCY - dRow / 2 >= bounds.min.y + inset;
+  /* 均分间距 / 整排宽度：放得下时 rowW === availW（左右各贴 4s）。 */
+  var shieldGap = defRowGap(rowKeys.length, dRow, availW);
+  var rowW = defRowWidth(rowKeys.length, dRow, availW);
   var shields = [];
   if (showDefenses) {
-    /* 从左到右按各自的直径累加（圆比盾窄，混排时不能再用等距公式）。 */
-    var cursor = bounds.center.x - rowW / 2;
+    /* 从左到右铺满：第一枚圆心 = 左缘 + 半径（左对齐），每枚前进「直径 + 均分间距」。 */
+    var cursor = rowLeft + dRow / 2;
     for (i = 0; i < rowKeys.length; i++) {
       var k = rowKeys[i];
       var val = hp.defenses[k];
       var txt = String(val);
-      /* AC = 半透明白色**盾**（fill 白 @0.18 + 白描边 @0.85）；三防 = 22s 的**圆**（实色 @0.9 + 淡白描边） */
+      /* AC = 半透明白色**盾**（fill 白 @0.18 + 白描边 @0.85）；三防 = 30s 的**圆**（实色 @0.9 + 淡白描边） */
       var ghost = k === "ac";
       var dk = ghost ? dAc : dDef;
       shields.push({
-        key: k, value: val, text: txt, x: cursor + dk / 2, y: rowCY, d: dk,
+        key: k, value: val, text: txt, x: cursor, y: rowCY, d: dk,
         circle: !ghost,
         color: DEF_COLORS[k], ghost: ghost,
         fillOpacity: ghost ? DEF_AC_FILL_OPACITY : DEF_FILL_OPACITY,
         strokeOpacity: ghost ? DEF_AC_STROKE_OPACITY : DEF_STROKE_OPACITY,
-        /* 字号：AC 仍是原来的 d−8s / d−15s（尺寸一个字没动）；
-         * 圆里的数字按直径取一半（d=22 → 两位 ≈ 11s，三位 ≈ 10s），比原来的盾小一号。 */
-        fontSize: ghost
-          ? Math.max(8 * s, txt.length > 2 ? dk - 15 * s : dk - 8 * s)
-          : Math.max(7 * s, dk * (txt.length > 2 ? 0.45 : 0.5))
+        /* v1.7.6：四枚同直径 → **同一个字号公式**（两位 ≈15s、三位 ≈14s），
+         * 与参考图 15 一致（四个数字肉眼一样大）。 */
+        fontSize: Math.max(8 * s, dk * (txt.length > 2 ? 0.46 : 0.5))
       });
-      cursor += dk + defGap;
+      cursor += dk + shieldGap;
     }
   }
 
@@ -2657,6 +2720,8 @@ function barLayout(bounds, dpi, hp, viewer) {
     hpText: hpText, hpFont: hpFont,
     showSurge: showSurge, surgeRatio: surgeRatio, surgeText: surgeText, surgeFont: surgeFont,
     showDefenses: showDefenses, shields: shields, d: dRow, dAc: dAc, dDef: dDef,
+    /* v1.7.6：整排的几何（左缘 / 右缘 / 均分间距 / 总宽）也放进布局结果，便于自测与文档对照。 */
+    rowLeft: rowLeft, rowRight: rowRight, rowGap: shieldGap, rowW: rowW, availW: availW,
     boss: bossL,
     /* Boss 模式压制普通 HP 条（bg / fill / text 三件保留但隐藏 → 关掉 Boss 时不用重建） */
     hpVisible: !bossOn,

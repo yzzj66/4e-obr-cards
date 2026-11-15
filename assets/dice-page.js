@@ -1,9 +1,11 @@
 // v1.7.0：骰子窗口的页面脚本（dice.html，**单列**）。
 // v1.7.4（用户：窗口窄成 ≈320×620、字号小一号、本次结果固定底部）：布局与字号全在 assets/ui.css
-//   （骰子 4+3 两排 / 按钮 2×2 换行 / .dice-result 是 flex:none 的固定底栏），本文件只改了一件事：
-//   **「记录窗口」按钮点了必须真的开出一个窗口** —— 发 CH_DICE_HIST_CMD 之后开一个
-//   HIST_ACK_MS 的回执计时器；后台没回 CH_DICE_HIST_STATE 就由本页直接 OBR.popover.open
-//   同一个 id / 页面兜底（后台只负责位置与拖动），再失败就 ERROR 通知，绝不让点击变成「没反应」。
+//   （骰子 4+3 两排 / 按钮 2×2 换行 / .dice-result 是 flex:none 的固定底栏）。
+// v1.7.6（用户第二次报「记录窗口还是打不开」+ 删提示小字）：
+//   · 「记录窗口」按钮改成**本页直接 OBR.popover.open**（不再先发命令等后台），
+//     打开后用 getWidth 确认存活、按钮变「关闭记录窗口」，失败 ERROR 通知 + 让后台关掉骰子窗再补开；
+//   · 删掉 4E 预设区的「防御参考」整行与「… · 只填公式，不判定」、表达式 / 组合区的说明小字、
+//     「本次结果」右上角的「投骰动画：开」、标题下的副标题（只留功能本身，错误提示保留）。
 // ---------------------------------------------------------------------------
 // 分工：
 //   · 规则 / 解析 / 掷骰 / 归一化全在 assets/dice-core.js（纯函数，node 可测）；
@@ -54,12 +56,9 @@ var els = {
   btnCrit: document.getElementById("btnCrit"),
   btnHist: document.getElementById("btnHist"),
   presets: document.getElementById("presets"),
-  presetMeta: document.getElementById("presetMeta"),
-  defenseRef: document.getElementById("defenseRef"),
   combos: document.getElementById("combos"),
   comboName: document.getElementById("comboName"),
-  result: document.getElementById("result"),
-  animMeta: document.getElementById("animMeta")
+  result: document.getElementById("result")
 };
 
 var MODE_LABEL = { attack: "攻击", damage: "伤害", save: "豁免", skill: "技能", init: "先攻", free: "投掷" };
@@ -119,10 +118,6 @@ function shake(el) {
   el.classList.add("shake");
   setTimeout(function () { el.classList.remove("shake"); }, 600);
 }
-function paintAnimMeta() {
-  if (els.animMeta) els.animMeta.textContent = "投骰动画：" + (readDiceAnim() ? "开" : "关");
-}
-
 /* ---------------------------------------------------------------------------
  * 1) 表达式框 / 骰子按钮 / 徽标
  * ------------------------------------------------------------------------- */
@@ -387,7 +382,6 @@ async function doRoll() {
     lsSet(LS_DICE_LAST, lastExpr);
 
     renderResult(payload);
-    paintAnimMeta();
 
     if (payload.critDegraded) {
       flash("重击未生效：公式里有包裹（adv / max 等），本次按普通投掷", "WARNING");
@@ -454,126 +448,146 @@ async function clearHistory() {
 }
 
 /* ---------------------------------------------------------------------------
- * 3.5) 记录窗口（独立 popover；本窗口发开关命令 + 显示开 / 关 + **打不开时兜底**）
+ * 3.5) 记录窗口（独立 popover；**v1.7.6 改成按钮在本页直接打开**）
  * ---------------------------------------------------------------------------
- * v1.7.4（用户真机：「记录窗口」按钮在，但点了没有独立记录窗口出现）：
- *   链路本来是对的（本页发 CH_DICE_HIST_CMD → 后台 openDiceHistory → CH_DICE_HIST_STATE），
- *   但**只要后台那一步没走通（没订阅上 / popover.open 被拒 / 后台页没起来），用户看到的就是
- *   「点了没反应」**。所以这里不再「发完就不管」：
- *     ① 发命令 → 按钮变「记录窗口 · 打开中…」+ 开一个 HIST_ACK_MS 的回执计时器；
- *     ② 收到 CH_DICE_HIST_STATE → 按 open 显示「记录窗口 · 开 / 记录窗口」，清计时器；
- *     ③ 计时器到点还是**没回执**（后台没接这条命令）→ 本页直接 OBR.popover.open 同一个
- *        popover id / 同一个页面（位置放视口右上），窗口照样出来，再给一条 WARNING 说明
- *        「拖动 / 记位置会失效」；
- *     ④ 连本页也开不出来 → ERROR 通知（不静默）。
- * 后台那边（assets/background.core.js 的 openDiceHistory）也加了「失败重试一次 + ERROR 通知」。
+ * 用户第二次报「记录窗口还是打不开」。v1.7.4 的做法是「先发命令给后台、等后台回执，
+ * 没回执才由本页兜底」—— 只要后台那一步慢一点 / 没订阅上，用户就得先干等 900 ms，
+ * 看到的仍然是「点了没反应」。v1.7.6 按用户要求改成**最短链路**：
+ *   ① 点按钮 → 本页**直接** OBR.popover.open({ id: 记录窗口 id, url: dice-history.html,
+ *      380×380, anchorReference: "POSITION", 锚点左上角, hidePaper: false, disableClickAway: false })；
+ *      不再先问后台（免得栽在「后台没回应」这条链路上）；
+ *   ② 打开后立刻用 OBR.popover.getWidth(ID_DICE_HIST) 确认**真的活着**，
+ *      按钮文字变成「关闭记录窗口」= 用户看得见的反馈；
+ *   ③ open 抛错（OBR 同时开着的 popover 太多时会拒）→
+ *      OBR.notification.show("记录窗口打开失败：…", "ERROR")，并请后台
+ *      「**先关掉骰子窗口、再开记录窗口**」（后台是另一个页面，本窗被关掉它照样活着）；
+ *   ④ 打开成功后把几何（left/top/width/height）发给后台（op:"adopt"），
+ *      于是拖动 / 记住位置 / 视口变化重新夹紧仍然走 background.core.js 的 WINS 那一套。
+ * 关闭：本页 OBR.popover.close + 通知后台清掉状态（op:"close"）。
+ * 记录窗口页面加载完还会自己 OBR.popover.getWidth(自己) 确认存活（assets/dice-history-page.js）。
  * ------------------------------------------------------------------------- */
-/** 等后台回执的上限：超过就由本页自己开（900 ms 比一次广播往返宽裕得多，又不会让人等太久）。 */
+/** 直开失败后「等后台关掉骰子窗口再补开」的回执上限（只有这条兜底路才用到）。 */
 var HIST_ACK_MS = 900;
-/** 已经发了命令、正在等后台回执（这期间再点无效，避免连点开 / 关打架）。 */
-var histPending = false;
-/** 这次命令想要的结果：true = 开，false = 关。 */
-var histWant = false;
-/** 回执计时器。 */
+/** 记录窗口尺寸（与 background.core.js 的 WINS.diceHistory 一致：380×380）。 */
+var HIST_W = 380;
+var HIST_H = 380;
+/** 开 / 关进行中（避免连点打架）。 */
+var histBusy = false;
+/** 等后台补齐的回执计时器。 */
 var histTimer = 0;
 
 function setHistButton(open) {
   histOpen = !!open;
   if (!els.btnHist) return;
   els.btnHist.classList.toggle("on", histOpen);
-  els.btnHist.textContent = histOpen ? "记录窗口 · 开" : "记录窗口";
-  els.btnHist.title = (histOpen ? "收起" : "打开") + "独立的骰子记录窗口（最近 4 条，可展开全部）";
+  /* 可见反馈：开着的时候按钮直接写着「关闭记录窗口」，不用猜窗口有没有出来。 */
+  els.btnHist.textContent = histOpen ? "关闭记录窗口" : "记录窗口";
+  els.btnHist.title = histOpen ? "关闭独立的骰子记录窗口" : "打开独立的骰子记录窗口（最近 4 条，可展开全部）";
 }
 
-/** 发一条记录窗口命令；连广播都发不出去时返回 false（调用方直接走兜底）。 */
-function sendHistCmd(op) {
+/** 发一条记录窗口命令给后台（只负责「接管几何 / 关窗 / 失败兜底」，开窗是页面自己做的）。 */
+function sendHistCmd(op, extra) {
+  var payload = { op: op, at: Date.now() };
+  if (extra) for (var k in extra) if (Object.prototype.hasOwnProperty.call(extra, k)) payload[k] = extra[k];
   try {
-    var p = OBR.broadcast.sendMessage(CH_DICE_HIST_CMD, { op: op, at: Date.now() }, { destination: "LOCAL" });
-    if (p && typeof p.catch === "function") p.catch(function () { /* 后台没起来：交给回执计时器兜底 */ });
+    var p = OBR.broadcast.sendMessage(CH_DICE_HIST_CMD, payload, { destination: "LOCAL" });
+    if (p && typeof p.catch === "function") p.catch(function () { /* 后台没起来：开窗已经成功了，不影响 */ });
     return true;
   } catch (e) {
     return false;
   }
 }
 
-/** 收尾「等回执」：清计时器 + 去掉按钮的 pending 外观。 */
+/** 收尾「等后台补齐」：清计时器 + 去掉按钮的 pending 外观。 */
 function endHistPending() {
-  histPending = false;
   if (histTimer) { clearTimeout(histTimer); histTimer = 0; }
   if (els.btnHist) els.btnHist.classList.remove("pending");
 }
 
-/** 本页直接开记录窗口（后台没回执时的兜底）：同一个 popover id / 页面，位置放视口右上。 */
+/** 记录窗口的落点：默认贴着视口右上（骰子窗口自己不知道宿主给的坐标，只能按视口算）。 */
+async function histPlace() {
+  var vw = 0;
+  var vh = 0;
+  try { vw = await OBR.viewport.getWidth(); } catch (e1) { vw = 0; }
+  try { vh = await OBR.viewport.getHeight(); } catch (e2) { vh = 0; }
+  var w = Math.round(Math.min(HIST_W, Math.max(240, (vw > 0 ? vw : HIST_W + 32) - 32)));
+  var h = Math.round(Math.min(HIST_H, Math.max(220, (vh > 0 ? vh : HIST_H + 32) - 32)));
+  var left = vw > 0 ? Math.max(16, vw - w - 24) : 16;
+  var top = vh > 0 ? Math.round(Math.max(16, Math.min(96, vh - h - 16))) : 96;
+  return { width: w, height: h, left: left, top: top };
+}
+
+/** 本页**直接**打开记录窗口；成功返回 true（按钮已经变成「关闭记录窗口」）。 */
 async function openHistoryDirect() {
+  endHistPending();
+  if (els.btnHist) {
+    els.btnHist.classList.add("pending");
+    els.btnHist.textContent = "记录窗口 · 打开中…";
+  }
+  var place = await histPlace();
   try {
-    var vw = 0;
-    var vh = 0;
-    try { vw = await OBR.viewport.getWidth(); } catch (e1) { vw = 0; }
-    try { vh = await OBR.viewport.getHeight(); } catch (e2) { vh = 0; }
-    var w = Math.round(Math.min(380, Math.max(240, (vw > 0 ? vw : 420) - 32)));
-    var h = Math.round(Math.min(380, Math.max(220, (vh > 0 ? vh : 420) - 32)));
-    var left = vw > 0 ? Math.max(16, vw - w - 24) : 16;
-    var top = 96;
-    if (vh > 0) top = Math.round(Math.max(16, Math.min(96, vh - h - 16)));
     await OBR.popover.open({
       id: ID_DICE_HIST,
       url: URL_DICE_HIST,
-      width: w,
-      height: h,
+      width: place.width,
+      height: place.height,
       anchorReference: "POSITION",
-      anchorPosition: { left: left, top: top },
+      anchorPosition: { left: place.left, top: place.top },
       anchorOrigin: { horizontal: "LEFT", vertical: "TOP" },
       transformOrigin: { horizontal: "LEFT", vertical: "TOP" },
-      hidePaper: true,
-      disableClickAway: true
+      hidePaper: false,
+      disableClickAway: false
     });
+    /* 「open 返回了」不等于「窗口还在」：再用 getWidth 确认一次（对已关掉的 popover 会 reject）。 */
+    var w = 0;
+    try { w = await OBR.popover.getWidth(ID_DICE_HIST); } catch (e0) { w = 0; }
+    if (!(typeof w === "number" && w > 0)) throw new Error("窗口打开了但 getWidth 返回 " + w);
+    if (els.btnHist) els.btnHist.classList.remove("pending");
     setHistButton(true);
-    feedback("记录窗口由骰子窗口直接打开（后台没有回应：拖动 / 记住位置会失效）", "WARNING");
+    feedback("记录窗口已打开（最近 4 条，可展开全部）", "SUCCESS");
+    /* 把几何告诉后台：拖动 / 记住位置 / 视口变化重新夹紧仍走 background.core.js 的 WINS 那一套。 */
+    sendHistCmd("adopt", {
+      left: place.left, top: place.top, width: place.width, height: place.height
+    });
     return true;
   } catch (e) {
+    if (els.btnHist) els.btnHist.classList.remove("pending");
     setHistButton(false);
-    feedback("记录窗口打不开：" + (e && e.message ? e.message : e) +
-      "（记录本身仍在房间数据里；可以先关掉骰子窗口再点一次）", "ERROR");
+    var why = e && e.message ? e.message : String(e);
+    /* 用户要求：open 抛错必须看得见（ERROR 通知，不静默）。 */
+    feedback("记录窗口打开失败：" + why + "（已请后台关掉骰子窗口后再开一次）", "ERROR");
+    histTimer = setTimeout(onHistTimeout, HIST_ACK_MS);
+    sendHistCmd("force-open");
     return false;
   }
 }
 
-/** 回执超时：后台没接这条命令 → 开就走本页兜底，关就如实说明。 */
-function onHistTimeout() {
-  histTimer = 0;
-  if (!histPending) return;
-  var want = histWant;
-  histPending = false;
-  if (els.btnHist) els.btnHist.classList.remove("pending");
-  if (!want) {
-    setHistButton(false);
-    flash("已发送关闭命令，但后台没有回执（窗口如果还在，点它自己的 ✕ 也能关）", "WARNING");
-    return;
-  }
-  if (els.btnHist) els.btnHist.textContent = "记录窗口 · 打开中…";
-  void openHistoryDirect();
+/** 本页关闭记录窗口（再通知后台把「开着」的状态清掉）。 */
+async function closeHistoryDirect() {
+  endHistPending();
+  try { await OBR.popover.close(ID_DICE_HIST); } catch (e) { /* 已经关了 */ }
+  setHistButton(false);
+  feedback("记录窗口已关闭", "INFO");
+  sendHistCmd("close");
 }
 
-function toggleHistory() {
-  if (histPending) {
-    flash("正在等记录窗口的回执…", "INFO");
-    return;
+/** 直开失败、后台也没能补开（没回执）时再补一条 ERROR：绝不让点击变成「没反应」。 */
+function onHistTimeout() {
+  histTimer = 0;
+  if (histOpen) return;
+  feedback("记录窗口打开失败：后台也没能打开（可以先点其它窗口的「✕」腾出 popover 名额，再点一次）", "ERROR");
+}
+
+/** 开 / 关都做完才放开 busy（不靠定时器：连点两下不会互相打架，也不会把第二下吞掉）。 */
+async function toggleHistory() {
+  if (histBusy) return;
+  histBusy = true;
+  try {
+    if (histOpen) await closeHistoryDirect();
+    else await openHistoryDirect();
+  } finally {
+    histBusy = false;
   }
-  histWant = !histOpen;
-  histPending = true;
-  if (els.btnHist) {
-    els.btnHist.classList.add("pending");
-    els.btnHist.textContent = histWant ? "记录窗口 · 打开中…" : "记录窗口 · 关闭中…";
-  }
-  var sent = sendHistCmd("toggle");
-  if (!sent) {
-    /* 连广播都发不出去（不在枭熊里 / 后台没起来）：不等了，直接兜底 */
-    endHistPending();
-    if (histWant) void openHistoryDirect();
-    else feedback("记录窗口关不掉：后台未连接", "WARNING");
-    return;
-  }
-  histTimer = setTimeout(onHistTimeout, HIST_ACK_MS);
 }
 
 /* ---------------------------------------------------------------------------
@@ -613,12 +627,9 @@ async function refreshPresets() {
 function renderPresets(data, cardName) {
   if (!els.presets) return;
   if (!data || !data.ok) {
-    els.presets.innerHTML = '<p class="muted small">选中一枚<b>已绑定角色卡</b>的 token，这里会出现攻击 / 伤害 / 技能预设（只填公式，不判定）。</p>';
-    if (els.defenseRef) els.defenseRef.innerHTML = "";
-    if (els.presetMeta) els.presetMeta.textContent = "未选中绑定卡";
+    els.presets.innerHTML = '<p class="muted small">选中一枚<b>已绑定角色卡</b>的 token。</p>';
     return;
   }
-  if (els.presetMeta) els.presetMeta.textContent = (cardName || data.name) + " · 只填公式，不判定";
 
   var html = "";
   for (var i = 0; i < data.groups.length; i++) {
@@ -634,19 +645,6 @@ function renderPresets(data, cardName) {
     html += "</div></div>";
   }
   els.presets.innerHTML = html || '<p class="muted small">这张卡没有可用的攻击 / 伤害数据。</p>';
-
-  if (els.defenseRef) {
-    var defs = data.defenses || [];
-    if (defs.length) {
-      var ref = '<span class="def-lab">防御参考</span>';
-      for (var k = 0; k < defs.length; k++) {
-        ref += '<span class="def-chip">' + esc(defs[k].label) + " " + esc(String(defs[k].value)) + "</span>";
-      }
-      els.defenseRef.innerHTML = ref;
-    } else {
-      els.defenseRef.innerHTML = "";
-    }
-  }
 }
 
 /* ---------------------------------------------------------------------------
@@ -675,7 +673,7 @@ function saveCombos() {
 function renderCombos() {
   if (!els.combos) return;
   if (!comboList.length) {
-    els.combos.innerHTML = '<p class="muted small">还没有组合。填好公式 → 点「保存组合」，下次一键填回来（只存本机）。</p>';
+    els.combos.innerHTML = '<p class="muted small">还没有组合：填好公式 → 点「保存组合」，下次一键点回来。</p>';
     return;
   }
   var html = "";
@@ -763,7 +761,7 @@ function wireEvents() {
   if (els.btnRoll) els.btnRoll.addEventListener("click", function () { void doRoll(); });
   if (els.btnSave) els.btnSave.addEventListener("click", onSaveCombo);
   if (els.btnClear) els.btnClear.addEventListener("click", function () { void clearHistory(); });
-  if (els.btnHist) els.btnHist.addEventListener("click", toggleHistory);
+  if (els.btnHist) els.btnHist.addEventListener("click", function () { void toggleHistory(); });
 
   if (els.btnLast) {
     els.btnLast.addEventListener("click", function () {
@@ -825,7 +823,6 @@ onReady(function () {
   if (els.btnAdvantage) els.btnAdvantage.title = "4E 战斗优势：公式 +2（再点一下撤回）";
   if (els.btnCrit) els.btnCrit.title = "4E 重击：所有伤害骰取最大值（d6→6），不是骰数翻倍";
   loadCombos();
-  paintAnimMeta();
   setHistButton(false);
 
   /* 身份：广播里的名字 / 颜色，以及「清空只有城主能做」 */
