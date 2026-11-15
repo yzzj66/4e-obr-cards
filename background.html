@@ -3,10 +3,41 @@
 <head>
 <meta charset="utf-8">
 <title>4E NEXT 角色卡 · 后台</title>
-<style>body{background:#0b0f14;color:#93a1b0;font:13px system-ui,"Microsoft YaHei",sans-serif;padding:16px}</style>
+<style>
+  :root { color-scheme: dark; }
+  body { background:#0b0f14; color:#93a1b0; font:13px/1.65 system-ui,"Microsoft YaHei",sans-serif; margin:0; padding:18px 20px 32px; }
+  h1 { font-size:15px; color:#d7e0e8; margin:0 0 6px; }
+  code { background:#141b23; padding:1px 5px; border-radius:4px; font-size:12px; word-break:break-all; }
+  .muted { color:#6b7a89; font-size:12px; }
+  #diag-state { margin:10px 0 6px; padding:8px 10px; border-radius:6px; background:#141b23; border-left:3px solid #2f3a45; color:#d7e0e8; }
+  #diag-state.good { border-left-color:#2ea043; }
+  #diag-state.bad { border-left-color:#d9534f; background:#2a1517; color:#ffb4b1; }
+  details { margin-top:14px; }
+  summary { cursor:pointer; color:#d7e0e8; }
+  ul#diag-log { list-style:none; margin:8px 0 0; padding:0; font:12px/1.6 ui-monospace,Consolas,monospace; }
+  ul#diag-log li { padding:1px 0 1px 8px; border-left:2px solid #2f3a45; white-space:pre-wrap; word-break:break-word; }
+  ul#diag-log li.k-ok { border-left-color:#2ea043; color:#9fd4a8; }
+  ul#diag-log li.k-err { border-left-color:#d9534f; color:#ffb4b1; }
+</style>
 </head>
 <body>
-<p>4E NEXT 角色卡扩展后台运行中。关闭这个页面会导致扩展停止工作。</p>
-<script type="module" src="assets/background.js"></script>
+<h1>4E NEXT 角色卡 · 后台页</h1>
+<p id="diag-state">正在初始化…</p>
+<p class="muted">本页由 Owlbear 在隐藏的 iframe 里加载，负责注册<b>右键菜单</b>、<b>工具栏按钮</b>和<b>右下角浮动按钮</b>。在房间里请勿关闭它。</p>
+
+<details open>
+  <summary>自检日志（房间里看不到按钮时，把这一页截图给作者）</summary>
+  <ul id="diag-log"></ul>
+</details>
+
+<p class="muted">本页地址：<code id="diag-href">…</code></p>
+<p class="muted">脚本地址：<code id="diag-src">assets/background.bundle.js</code></p>
+
+<script>
+  document.getElementById("diag-href").textContent = location.href;
+</script>
+<!-- 单文件经典脚本：没有 type="module"，没有 import/export。见 dev/build-background.mjs -->
+<script src="assets/background.bundle.js" onerror="(function(){var s=document.getElementById('diag-state');s.className='bad';s.textContent='background.bundle.js 加载失败：文件不存在或被拦截';})()"></script>
+<noscript><p class="muted">这个页面需要 JavaScript。</p></noscript>
 </body>
 </html>

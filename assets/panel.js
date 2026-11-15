@@ -2,7 +2,8 @@
 import OBR from "../vendor/obr-sdk.js";
 import {
   ID_PANEL, getCards, writeCards, mergeImports, parseExport, loadSample,
-  bindToken, selectedImageToken, notify, esc, fmtTime, onReady
+  bindToken, selectedImageToken, notify, esc, fmtTime, onReady,
+  pingBackground, CH_HELLO, PLUGIN_VERSION
 } from "./common.js";
 import { renderGlanceHTML, cardMeta } from "./glance.js";
 
@@ -222,7 +223,11 @@ document.getElementById("paste-ok").addEventListener("click", function () {
 });
 document.getElementById("sample").addEventListener("click", function () { void importSample(); });
 document.getElementById("close").addEventListener("click", function () {
-  OBR.modal.close(ID_PANEL).catch(function () { /* ignore */ });
+  // 面板既可能以 modal 打开（右下角按钮 / 工具栏），也可能以 action 弹窗打开（左上角图标）
+  OBR.modal.close(ID_PANEL).catch(function () { /* 不是 modal 时忽略 */ });
+  try {
+    OBR.action.close().catch(function () { /* 不是 action 弹窗时忽略 */ });
+  } catch (e) { /* 忽略 */ }
 });
 
 let dragDepth = 0;
@@ -244,12 +249,50 @@ document.addEventListener("drop", function (ev) {
   if (ev.dataTransfer && ev.dataTransfer.files && ev.dataTransfer.files.length) void importFiles(ev.dataTransfer.files);
 });
 
+/* ---------------- 后台自检条（不需要控制台） ---------------- */
+
+const diagEl = document.getElementById("diag-strip");
+
+function showDiag(cls, html) {
+  if (!diagEl) return;
+  diagEl.className = "diag-strip" + (cls ? " " + cls : "");
+  diagEl.innerHTML = html;
+}
+
+function applyBackgroundStatus(payload) {
+  const d = payload && payload.data !== undefined ? payload.data : payload;
+  if (!d) return;
+  const st = d.status || {};
+  const mark = (v) => (v ? "✓" : "✗");
+  showDiag("good", "<b>后台已连接</b> v" + esc(d.version || PLUGIN_VERSION) +
+    " · 工具栏" + mark(st.tool) + " · 右键菜单" + mark(st.menu) +
+    " · 浮动按钮" + (st.scene ? mark(st.button) : "等进地图"));
+}
+
+async function checkBackground() {
+  if (!diagEl) return;
+  let res = null;
+  try {
+    res = await pingBackground(1800);
+  } catch (e) {
+    res = null;
+  }
+  if (res) {
+    applyBackgroundStatus(res);
+    return;
+  }
+  showDiag("bad", "<b>后台脚本没有响应</b>：右键菜单和右下角 4E 按钮都会缺失。" +
+    '<span class="hint">处理办法：扩展列表里关掉再打开本扩展；仍然不行就打开插件根目录的 background.html 看自检日志（那里会写明哪一步失败）。</span>');
+}
+
 onReady(function () {
   try {
     OBR.player.onChange(function () { void refreshSelection(); });
     OBR.room.onMetadataChange(function () { void refresh(); });
+    OBR.broadcast.onMessage(CH_HELLO, applyBackgroundStatus);
   } catch (e) {
     console.error(e);
   }
+  void checkBackground();
   void refresh().then(refreshSelection, function (e) { console.error(e); });
 });

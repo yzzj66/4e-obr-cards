@@ -1,4 +1,4 @@
-﻿# 4E NEXT 角色卡 · Owlbear Rodeo 插件
+# 4E NEXT 角色卡 · Owlbear Rodeo 插件
 
 在 [Owlbear Rodeo](https://www.owlbear.rodeo/)（枭熊）里查看 **4E NEXT** 导出的角色卡「速览」页。
 核心是两件事：**右键 token 绑定角色卡**，以及**选中绑定的 token 就弹出速览**。
@@ -6,6 +6,8 @@
 - 纯静态：HTML + 原生 JS + CSS，**不需要 npm、不需要构建**，扔到任何静态托管就能用。
 - 零服务器：卡片存在 Owlbear 的**房间数据（room metadata）**里，全房间共享。
 - 只读：插件不改卡，改角色仍然在 4E NEXT 里做。
+- **三个入口**（左上角扩展图标 / 左侧工具栏 4E 工具 / 右下角浮动按钮）+ 右键菜单；前两个不依赖后台脚本，
+  所以"哪个入口出现"本身就能用来判断插件哪一层没加载 —— 详见 [`docs/owlbear-debug.md`](docs/owlbear-debug.md)。
 
 ---
 
@@ -69,25 +71,39 @@ Netlify / Vercel / Cloudflare Pages / 自己的 nginx 都行：把目录原样�
 
 ### 路径对不上怎么办（重要）
 
-`manifest.json` 里的路径写的是**相对路径**（`background.html`、`icon.svg`）：
+`manifest.json` 里的路径现在写的是**绝对地址**（v1.1.0 起）：
 
 ```json
 {
   "name": "4E NEXT 角色卡",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "manifest_version": 1,
   "author": "4E NEXT 玩家自制",
-  "description": "查看 4E NEXT 导出的角色卡速览；右键 token 绑定角色卡，选中即弹出速览。",
-  "icon": "icon.svg",
-  "background_url": "background.html"
+  "description": "在枭熊房间查看 4E NEXT 角色卡速览……",
+  "icon": "https://yzzj66.github.io/4e-obr-cards/icon.svg",
+  "action": {
+    "title": "4E NEXT 角色卡",
+    "icon": "https://yzzj66.github.io/4e-obr-cards/icon.svg",
+    "popover": "https://yzzj66.github.io/4e-obr-cards/panel.html",
+    "width": 980,
+    "height": 720
+  },
+  "background_url": "https://yzzj66.github.io/4e-obr-cards/background.html"
 }
 ```
 
-不同版本 / 不同入口的 Owlbear 解析方式不完全一样。如果添加扩展时报「加载失败 / 找不到 background」：
+**为什么改成绝对地址**：参考实现 `FullPeople/character-cards` 的 manifest 也是绝对路径，官方 Hello World 教程同样用 `/icon.svg`。
+相对路径一旦被 Owlbear 按"站点根"解析（GitHub Pages 项目页是子路径 `/仓库名/`），`background.html` 就是 404 ——
+表现是**扩展列表里有插件，但房间里没有按钮、也没有右键菜单**，而且不给任何提示。
 
-1. 用浏览器打开你部署的 `index.html`；
-2. 拉到「如果扩展加载失败」，那里会生成一份**绝对地址**版的 manifest（按当前域名算好）；
-3. 把那段 JSON 复制下来，覆盖你托管上的 `manifest.json`，回 Owlbear 删除扩展再重新添加。
+如果换了托管地址（换仓库名 / 换域名 / 用 jsDelivr）：
+
+1. 用浏览器打开**新地址**下的 `index.html`；
+2. 顶部「自检」会告诉你 manifest 里的绝对地址是不是还指着旧站点；
+3. 拉到「如果扩展加载失败」，把那里生成的**绝对地址版 manifest** 复制下来，覆盖托管上的 `manifest.json`；
+4. 回 Owlbear **删掉扩展再重新添加**（Owlbear 会缓存 manifest）。
+
+目录里另存了一份 `manifest.relative.json`（相对路径版），只在确认宿主能正确解析相对地址时用。
 
 ---
 
@@ -95,9 +111,15 @@ Netlify / Vercel / Cloudflare Pages / 自己的 nginx 都行：把目录原样�
 
 1. 打开 <https://www.owlbear.rodeo/extensions>（房间内也可以从右上角菜单进 **Extensions**）。
 2. 点 **Add Extension**（或「+」），把上一节得到的 **manifest 地址**粘进去，确认。
-3. 回到房间：
-   - 右下角出现绿色 **4E** 按钮（打开全屏面板）；
-   - 右键地图上的图片 token，菜单里多出「**绑定 4E NEXT 角色卡**」。
+3. 回到房间（v1.1.0 预期看到）：
+   - 弹出一条 INFO 通知：`4E 角色卡 v1.1.0 已加载：工具栏✓ · 右键✓ · 浮动按钮✓`（自诊断，可关）；
+   - **左上角**扩展图标：点开完整面板（由 manifest 的 `action` 渲染，不依赖后台脚本）；
+   - **左侧工具栏**的 4E 工具图标：点开完整面板；
+   - **右下角**绿色 **4E** 浮动按钮：点开完整面板；
+   - 右键地图上的图片 token（GM、单选），菜单里多出「**绑定 4E NEXT 角色卡**」。
+
+   > 只看到一部分入口？说明对应那一层没加载成功 —— 打开插件根目录的 `background.html` 能看到逐步日志，
+   > 面板左下角也会显示「后台已连接 / 后台脚本没有响应」。对照表见 [`docs/owlbear-debug.md`](docs/owlbear-debug.md)。
 
 > 扩展是**每个玩家各自安装**的：你装了，别人也得装一次才能看到速览面板；
 > 但**卡片数据在房间数据里**，所以别人装好后不用再导入。
@@ -147,23 +169,28 @@ Netlify / Vercel / Cloudflare Pages / 自己的 nginx 都行：把目录原样�
 ### 文件结构
 
 ```text
-manifest.json          扩展清单（Owlbear 加载的入口）
-background.html        后台页：右键菜单 / 浮动按钮 / 选中 token 时开关速览
+manifest.json          扩展清单（Owlbear 加载的入口；绝对地址 + action 左上角入口）
+manifest.relative.json 相对路径版清单（换宿主时备用，一般不用）
+background.html        后台页：只有一个 <script>，并带页内自检日志
 button.html            右下角 64×64 的 4E 浮动按钮
-panel.html             全屏面板：导入 / 列表 / 预览 / 绑定
+panel.html             全屏面板：导入 / 列表 / 预览 / 绑定（也是左上角 action 的弹窗页）
 info.html              选中 token 时弹出的速览小面板
 bind.html              右键「绑定」打开的选卡弹窗
-index.html             说明页（部署提示 + 示例渲染），也是托管根目录的落地页
-icon.svg               扩展图标（右键菜单也用它）
+index.html             说明页（顶部自检 + 部署提示 + 示例渲染），托管根目录的落地页
+icon.svg               扩展图标（清单 / action / 右键菜单都用它）
+icon-tool.svg          左侧工具栏工具图标（24×24 线性图标）
 assets/
-  background.js        右键菜单、popover 开关、选中逻辑
+  background.core.js   后台逻辑（可读版：右键菜单 / 工具栏 / 浮动按钮 / 自诊断 / 心跳）
+  background.bundle.js 后台实际加载的**单文件经典脚本**（SDK + core，由 dev/build-background.mjs 生成）
+  background.js        旧缓存兼容垫片（把上面那个 bundle 注入进来，避免旧 background.html 变哑巴）
   panel.js / info.js / bind.js / button.js / index.js
-  common.js            房间数据读写、导入解析、公共小工具
+  common.js            房间数据读写、导入解析、公共小工具、后台心跳探测
   glance.js            速览推导 + HTML 渲染（核心）
   glance.css / ui.css  样式
 data/rules.js          离线规则索引（自动生成）
 vendor/obr-sdk.js      @owlbear-rodeo/sdk 3.1.0（本地化，离线可用）
 samples/sample-card.json  示例卡（30 级游侠，可删）
+docs/owlbear-debug.md  排查记录：为什么没按钮、改了什么、怎么验证
 dev/                   开发期工具（普通用户用不到）
 ```
 
@@ -189,8 +216,10 @@ dev/                   开发期工具（普通用户用不到）
 5. **速览弹窗定位一次**：面板打开时锚在 token 上方，之后你平移地图它不会跟着漂（避免每次拖动都闪一下）；重新选中 token 会重新定位。
 6. **数据跟着房间走**：房间数据不跨房间、不跨账号同步；删除扩展不会清空数据（想清空可在面板里逐张删除）。
 7. **没有做真机联调**：开发环境无法启动 Owlbear 房间，也无法截取真实界面，所以**没有在真实房间中测试过**。
-   已做的检查是：JSON 合法、HTML 引用的文件都存在、ESM 语法与 import 路径可解析、示例卡的渲染结果标签配平、CSS 括号配平。
-   如果加载时报错，请打开浏览器控制台（F12）把报错贴出来。
+   已做的检查是：JSON 合法、HTML 引用的文件都存在、ESM 语法与 import 路径可解析、示例卡的渲染结果标签配平、CSS 括号配平，
+   外加 v1.1.0 的 **manifest/bundle 静态检查** 与 **假 OBR 的后台冒烟测试**。
+   如果房间里加载不正常：先看 index.html 顶部「自检」、面板左下角的连接状态条，或直接打开 `background.html` 看逐步日志，
+   都不行再把这三样截图贴出来（详见 `docs/owlbear-debug.md`）。
 8. **SDK 版本**：使用的是 `@owlbear-rodeo/sdk@3.1.0`（与同作者插件 `character-cards` 相同）。Owlbear 若改动 API，需要更新 `vendor/obr-sdk.js`。
 
 ---
@@ -203,8 +232,15 @@ dev/                   开发期工具（普通用户用不到）
 # 本地起静态服务器预览（默认 http://127.0.0.1:8123/）
 node dev/serve.mjs
 
-# 静态自检：JSON / HTML 引用 / import 路径
+# 静态自检：JSON / HTML 引用 / import 路径 / manifest 绝对地址 + action /
+#   bundle 无 import-export 且能按经典脚本解析 / bundle 与 core 是否同步
 node dev/check.mjs
+
+# 后台冒烟测试：假 OBR 跑一遍 background.core.js，断言三个入口 + 通知 + 心跳
+node dev/test-background.mjs
+
+# 改了 assets/background.core.js 之后重新生成 assets/background.bundle.js
+node dev/build-background.mjs
 
 # 渲染自检：用示例卡跑一遍推导，并检查渲染出的 HTML 标签配平与 CSS 括号
 node dev/check-render.mjs

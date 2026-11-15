@@ -237,3 +237,35 @@ body.info-body { padding: 6px; }
   display: inline-block; font-size: 11px; border: 1px solid rgba(86,211,100,.4);
   color: var(--green); border-radius: 999px; padding: 0 7px; margin-right: 6px;
 }
+
+/* 面板底部的「后台自检」条：不打开控制台也能看出后台脚本有没有跑起来 */
+.diag-strip {
+  margin: 8px 10px 0;
+  padding: 6px 8px;
+  border-radius: 7px;
+  border: 1px solid var(--line);
+  background: var(--bg2);
+  color: var(--muted);
+  font-size: 11.5px;
+  line-height: 1.5;
+  word-break: break-word;
+}
+.diag-strip b { color: var(--text); }
+.diag-strip.good { border-color: rgba(86, 211, 100, .45); color: #a8e6b0; }
+.diag-strip.bad { border-color: rgba(248, 81, 73, .5); background: #2a1517; color: #ffb4b1; }
+.diag-strip .hint { display: block; color: var(--muted); font-size: 11px; margin-top: 2px; }
+
+/* 说明页顶部的自检卡片 */
+.diag-card {
+  border: 1px solid var(--line); border-radius: 12px; padding: 12px 14px;
+  background: var(--bg2); margin: 12px 0 18px;
+}
+.diag-card h3 { margin: 0 0 8px; font-size: 13px; color: var(--text); letter-spacing: .02em; }
+.diag-card ul { list-style: none; margin: 0; padding: 0; font-size: 12.5px; }
+.diag-card li { display: flex; gap: 8px; padding: 3px 0; align-items: baseline; flex-wrap: wrap; }
+.diag-card li .k { color: var(--muted); min-width: 132px; }
+.diag-card li code { font-size: 11.5px; word-break: break-all; color: #c9d4e0; }
+.diag-card .pill-ok { color: var(--green); }
+.diag-card .pill-bad { color: var(--red); }
+.diag-card .pill-wait { color: var(--orange); }
+.diag-card p.foot { margin: 8px 0 0; font-size: 11.5px; color: var(--muted); }

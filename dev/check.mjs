@@ -2,6 +2,7 @@
 // 用法：node dev/check.mjs
 import fs from "node:fs";
 import path from "node:path";
+import vm from "node:vm";
 import { fileURLToPath } from "node:url";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
@@ -61,7 +62,7 @@ for (const f of files.filter((f) => f.endsWith(".js") && !f.includes("vendor")))
 }
 
 console.log("== 目录内容");
-for (const p of ["manifest.json", "background.html", "panel.html", "info.html", "bind.html", "button.html", "index.html", "icon.svg", "README.md", "assets/glance.js", "data/rules.js", "vendor/obr-sdk.js", "samples/sample-card.json"]) {
+for (const p of ["manifest.json", "manifest.relative.json", "background.html", "panel.html", "info.html", "bind.html", "button.html", "index.html", "icon.svg", "icon-tool.svg", "README.md", "assets/glance.js", "assets/background.core.js", "assets/background.bundle.js", "data/rules.js", "vendor/obr-sdk.js", "samples/sample-card.json", "docs/owlbear-debug.md"]) {
   if (exists(path.join(ROOT, p))) ok(p); else bad("缺少 " + p);
 }
 
@@ -87,6 +88,47 @@ for (const [html, js] of PAGES) {
     else bad(html + " 缺少脚本引用的 #" + id + "（" + js + "）");
   }
 }
+
+console.log("== manifest（绝对地址 + action）");
+const man = JSON.parse(fs.readFileSync(path.join(ROOT, "manifest.json"), "utf8"));
+const isAbs = (u) => typeof u === "string" && /^https:\/\//.test(u);
+const manUrls = [
+  ["icon", man.icon],
+  ["background_url", man.background_url],
+  ["action.icon", man.action && man.action.icon],
+  ["action.popover", man.action && man.action.popover]
+];
+for (const [label, url] of manUrls) {
+  if (isAbs(url)) ok(label + " → " + url);
+  else bad(label + " 不是绝对地址：" + url + "（Owlbear 可能按站点根解析相对路径）");
+}
+if (man.action && man.action.title) ok("action.title → " + man.action.title);
+else bad("manifest 缺少 action（左上角入口没了 → 后台脚本坏掉时就没有任何入口）");
+if (man.manifest_version === 1) ok("manifest_version = 1"); else bad("manifest_version 不是 1");
+ok("version = " + man.version);
+
+console.log("== background 单文件 bundle（经典脚本）");
+const bundlePath = path.join(ROOT, "assets", "background.bundle.js");
+const corePath = path.join(ROOT, "assets", "background.core.js");
+if (exists(bundlePath)) {
+  const src = fs.readFileSync(bundlePath, "utf8");
+  if (/(^|\n)\s*export\s/.test(src)) bad("background.bundle.js 里还有 export"); else ok("没有 export 语句");
+  if (/(^|\n)\s*import\s/.test(src)) bad("background.bundle.js 里还有 import"); else ok("没有 import 语句");
+  try { new vm.Script(src, { filename: "background.bundle.js" }); ok("能按「经典脚本」解析"); }
+  catch (e) { bad("经典脚本解析失败：" + e.message); }
+  if (/var OBR = [\w$]+;/.test(src)) ok("已把 SDK 的 default 导出接成 OBR"); else bad("找不到 var OBR = ...;");
+  if (exists(corePath)) {
+    const coreTail = fs.readFileSync(corePath, "utf8").trim().slice(-160);
+    if (src.indexOf(coreTail) >= 0) ok("bundle 与 background.core.js 同步");
+    else bad("bundle 落后于 background.core.js —— 跑 node dev/build-background.mjs");
+  }
+} else bad("缺少 assets/background.bundle.js（跑 node dev/build-background.mjs）");
+
+const bgHtml = fs.readFileSync(path.join(ROOT, "background.html"), "utf8");
+if (/<script[^>]*type="module"/.test(bgHtml)) bad('background.html 里还有 <script type="module">');
+else ok("background.html 没有 type=module，只加载一个脚本");
+if (bgHtml.indexOf("background.bundle.js") >= 0) ok("background.html 引用了 background.bundle.js");
+else bad("background.html 没有引用 background.bundle.js");
 
 console.log(fail ? "\n" + fail + " 个问题" : "\n全部通过");
 process.exit(fail ? 1 : 0);

@@ -1,9 +1,16 @@
 {
   "name": "4E NEXT 角色卡",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "manifest_version": 1,
   "author": "4E NEXT 玩家自制",
-  "description": "查看 4E NEXT 导出的角色卡速览；右键 token 绑定角色卡，选中即弹出速览。",
-  "icon": "icon.svg",
-  "background_url": "background.html"
+  "description": "在枭熊房间查看 4E NEXT 角色卡速览：右键 token 绑定，选中即弹出；左上角/工具栏/右下角均可打开面板。",
+  "icon": "https://yzzj66.github.io/4e-obr-cards/icon.svg",
+  "action": {
+    "title": "4E NEXT 角色卡",
+    "icon": "https://yzzj66.github.io/4e-obr-cards/icon.svg",
+    "popover": "https://yzzj66.github.io/4e-obr-cards/panel.html",
+    "width": 980,
+    "height": 720
+  },
+  "background_url": "https://yzzj66.github.io/4e-obr-cards/background.html"
 }

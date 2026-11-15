@@ -12,12 +12,68 @@ export const ID_INFO = NS + "/info";
 export const ID_PANEL = NS + "/panel";
 export const ID_BIND = NS + "/bind";
 
-export const URL_BASE = new URL("../", import.meta.url);
+export const PLUGIN_VERSION = "1.1.0";
+
+/**
+ * 站点根地址。
+ * 不再只依赖 import.meta.url：OBR 把页面放进 iframe 时，模块的 import.meta.url 不一定是
+ * 页面地址，而 location 永远是本 page 的地址（所有页面都在插件根目录，所以 "./" 就是根）。
+ * 参考实现 character-cards 干脆把手写死成绝对地址；我们保留一层相对兜底。
+ */
+export const URL_BASE = (function () {
+  try {
+    const u = new URL("./", location.href);
+    if (/^(https?:|file:)$/.test(u.protocol)) return u;
+  } catch (e) { /* 忽略，走兜底 */ }
+  return new URL("../", import.meta.url);
+})();
+export const URL_ORIGIN = URL_BASE.href;
 export const URL_PANEL = new URL("panel.html", URL_BASE).href;
 export const URL_INFO = new URL("info.html", URL_BASE).href;
 export const URL_BIND = new URL("bind.html", URL_BASE).href;
 export const URL_BUTTON = new URL("button.html", URL_BASE).href;
 export const URL_INDEX = new URL("index.html", URL_BASE).href;
+export const URL_ICON = new URL("icon.svg", URL_BASE).href;
+
+/** 后台心跳频道（与 assets/background.core.js 里的常量必须一致）。 */
+export const CH_HELLO = NS + "/diag-hello"; // 后台 → 页面：我起来了
+export const CH_PING = NS + "/diag-ping";   // 页面 → 后台：在吗
+export const CH_PONG = NS + "/diag-pong";   // 后台 → 页面：在，状态如下
+
+/**
+ * 自检：问后台「在吗」。
+ * 拿不到回应 = background.html 没跑起来（右键菜单和右下角按钮就会一起缺失）。
+ * 返回后台自报的状态对象，或 null（带原因说明由调用方决定）。
+ */
+export function pingBackground(timeoutMs) {
+  return new Promise(function (resolve) {
+    let done = false;
+    const offs = [];
+    let timer = null;
+    const finish = function (value) {
+      if (done) return;
+      done = true;
+      if (timer) clearTimeout(timer);
+      for (const off of offs) {
+        try { if (typeof off === "function") off(); } catch (e) { /* ignore */ }
+      }
+      resolve(value);
+    };
+    const onMsg = function (ev) {
+      const data = ev && ev.data !== undefined ? ev.data : ev;
+      finish({ source: "event", data: data });
+    };
+    try {
+      offs.push(OBR.broadcast.onMessage(CH_PONG, onMsg));
+      offs.push(OBR.broadcast.onMessage(CH_HELLO, onMsg));
+      timer = setTimeout(function () { finish(null); }, timeoutMs || 1600);
+      OBR.broadcast.sendMessage(CH_PING, { at: Date.now(), from: location.href }, { destination: "LOCAL" })
+        .catch(function () { /* 拿不到就等超时 */ });
+    } catch (e) {
+      finish(null);
+    }
+  });
+}
 
 // 房间数据越小越稳：立绘（原图 / 裁切图）一律不进房间数据，速览也用不到它。
 export const MAX_PORTRAIT = 0;
