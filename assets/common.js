@@ -6,13 +6,17 @@ export const NS = "com.4enext-owlbear";
 export const KEY_CARDS = NS + "/cards";
 /** Token（item）身上的绑定键：值为卡片 id。 */
 export const KEY_BIND = NS + "/cardId";
+/** Token（item）上的先攻加值（v1.3.0）：{ bonus, cardId, updatedAt }。 */
+export const KEY_INIT = NS + "/init";
+/** 房间数据里的先攻状态（v1.3.0）。 */
+export const KEY_INITIATIVE = NS + "/initiative";
 /** 面板与弹窗的 id。 */
 export const ID_BUTTON = NS + "/button";
 export const ID_INFO = NS + "/info";
 export const ID_PANEL = NS + "/panel";
 export const ID_BIND = NS + "/bind";
 
-export const PLUGIN_VERSION = "1.2.0";
+export const PLUGIN_VERSION = "1.3.0";
 
 /**
  * 站点根地址。
@@ -35,10 +39,21 @@ export const URL_BUTTON = new URL("button.html", URL_BASE).href;
 export const URL_INDEX = new URL("index.html", URL_BASE).href;
 export const URL_ICON = new URL("icon.svg", URL_BASE).href;
 
+/** 玩家「结束我的回合」请求频道（与 background.core.js 的 CH_INIT_REQUEST 必须一致）。 */
+export const CH_INIT_REQUEST = NS + "/init-request";
+
 /** 后台心跳频道（与 assets/background.core.js 里的常量必须一致）。 */
 export const CH_HELLO = NS + "/diag-hello"; // 后台 → 页面：我起来了
 export const CH_PING = NS + "/diag-ping";   // 页面 → 后台：在吗
 export const CH_PONG = NS + "/diag-pong";   // 后台 → 页面：在，状态如下
+
+/* ---- v1.2.2：速览弹窗拖动 ---- */
+/** 弹窗位置记忆的 localStorage 键（值是 { v:1, pos: { <tokenId>: {left,top} } }）。 */
+export const INFO_POS_KEY = "4enext/info-pos";
+/** 弹窗拖动的 broadcast 频道（与 assets/background.core.js 的 CH_INFO_DRAG 必须一致）。 */
+export const CH_INFO_DRAG = NS + "/info-drag";
+/** 拖动区 pointermove 的节流间隔（毫秒）：越小越跟手，越大越省。 */
+export const INFO_DRAG_THROTTLE_MS = 33;
 
 /**
  * 自检：问后台「在吗」。
@@ -222,12 +237,35 @@ export async function loadSample() {
   return await res.json();
 }
 
-/** 把卡片 id 写到 token 的 metadata 上；cardId 为空表示解绑。 */
+/**
+ * 把卡片 id 写到 token 的 metadata 上；cardId 为空表示解绑。
+ * v1.3.0：同时写 com.4enext-owlbear/init = { bonus, cardId, updatedAt }，
+ * 先攻加值取自角色卡的「先攻」（与速览 / 面板共用 glance.js 的 initiativeBonus）。
+ */
 export async function bindToken(itemId, cardId) {
+  let init = null;
+  if (cardId) {
+    let bonus = 0;
+    try {
+      const card = findCard(await getCards(), cardId);
+      /* 动态 import：common.js 也被右下角 64×64 浮动按钮加载，静态拉进
+       * glance.js + data/rules.js（约 190KB）只为算一个先攻加值不划算。 */
+      if (card) {
+        const glance = await import("./glance.js");
+        bonus = glance.initiativeBonus(card.char);
+      }
+    } catch (e) {
+      console.error("[4enext] 读取先攻加值失败，按 +0 处理", e);
+    }
+    init = { bonus: bonus, cardId: cardId, updatedAt: Date.now() };
+  }
   await OBR.scene.items.updateItems([itemId], function (items) {
     for (const it of items) {
+      if (!it.metadata || typeof it.metadata !== "object") it.metadata = {};
       if (cardId) it.metadata[KEY_BIND] = cardId;
       else delete it.metadata[KEY_BIND];
+      if (init) it.metadata[KEY_INIT] = init;
+      else delete it.metadata[KEY_INIT];
     }
   });
 }

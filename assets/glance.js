@@ -14,6 +14,12 @@
 //                                                 ← 房间数据 com.4enext-owlbear/state/<cardId>
 // 带 live 时才会出现可点的按钮；不带 live（index.html 的示例、check-render）就是原来的只读形态。
 // 交互语义照抄 4E NEXT：web/src/overview/GlanceVitals.tsx / GlanceResources.tsx。
+//
+// v1.2.1 的 UI 微调（数据键名一个都没动，旧数据照旧能读）：
+//   · 弹窗整体加宽（尺寸在 background.core.js 的 INFO_W / INFO_H，这里管的是内部排版）；
+//   · 「行动点」与「里程碑」固定并成一排（.gl4-resline，内部 nowrap）；
+//   · 「专长」改为纯展示：chips 不再可点、不再显示「已用 x/y」；
+//   · 装备栏去掉「每日威能」计数，装备 chip 的「已用 / 耗尽」追踪保留。
 
 import { RULES } from "../data/rules.js";
 
@@ -212,6 +218,22 @@ function proficiencyTokens(rules, char, cls) {
 
 // ---------- 推导 ----------
 /**
+ * 先攻加值（v1.3.0）：敏捷调整 + 半等级 + 自定义先攻加值。
+ * 口径与 4E NEXT 的速览页一致，绑定角色卡时写进 token 的 com.4enext-owlbear/init。
+ * 速览、面板、先攻 tab 都调用这一个函数，避免三处各算一遍算出不同结果。
+ */
+export function initiativeBonus(char, rules) {
+  rules = rules || RULES;
+  char = char || {};
+  const level = Math.max(1, n0(char.level) || 1);
+  const half = Math.floor(level / 2);
+  const race = raceRow(rules, char.raceId);
+  const bonus = racialBonus(race, char.raceAbility2Choice);
+  const dex = n0((char.abilities || {}).dex) + n0(bonus.dex);
+  return mod(dex) + half + sum((char.customBonuses || {}).init);
+}
+
+/**
  * 把导出的 Character 推成速览数值。
  * live（可选）：{ hp:{cur,max,temp,surges}, state:{powerUsed,featUsed,equipmentUsed,itemDailyUsed,actionPoints,milestones} }
  *   带 live 时用实时值覆盖导出快照里的对应字段；不带就是纯粹的只读推导（老行为）。
@@ -378,7 +400,7 @@ export function deriveGlance(char, rules, live) {
   const speed = (isNaN(speedBase) ? 0 : speedBase) + n0(speedMods.power) + n0(speedMods.feat) + n0(speedMods.item) +
     sum((char.customBonuses || {}).speed) + (armor && armor.kind === "armor" ? n0(armor.ref.s) : 0);
 
-  const initiative = mods.dex + half + sum((char.customBonuses || {}).init);
+  const initiative = initiativeBonus(char, rules);
   const perception = (char.customBonuses || {}).perception || {};
 
   // 使用状态：实时（房间数据）> 导出快照
@@ -512,6 +534,16 @@ function renderHpBlock(d, ed) {
     (ed.hp ? '<button type="button" class="gl4-mini-btn" data-act="surge-use" title="消耗一次回复力：回复 ' + d.surgeValue + ' 点生命">使用回复力 ＋' + d.surgeValue + "</button>" : "") +
     "</div>";
 
+  /* v1.2.1：行动点 + 里程碑并成一排；外层 .gl4-tags 可以折行，这一排内部不折。 */
+  const milestoneBit = ed.track
+    ? counter("里程碑", d.milestones, "milestone", "每达成一个里程碑：+1 行动点")
+    : (d.milestones ? "<span><i>里程碑</i><b>" + d.milestones + "</b></span>" : "");
+  const resourceLine = '<span class="gl4-resline">' +
+    (ed.track ? counter("行动点", d.actionPoints, "ap", "每次遭遇可用 1 点；长休后回到 1 点")
+      : "<span><i>行动点</i><b>" + d.actionPoints + "</b></span>") +
+    (milestoneBit ? '<span class="gl4-sep" aria-hidden="true"></span>' + milestoneBit : "") +
+    "</span>";
+
   return '<section class="gl4-card gl4-vitals">' +
     '<div class="gl4-hp-line"><span class="gl4-hp-cur">' + esc(d.hpCur) + "</span>" +
     '<span class="gl4-hp-max">/ ' + esc(d.hpMax) + "</span>" +
@@ -527,9 +559,8 @@ function renderHpBlock(d, ed) {
     '<div class="gl4-tags">' +
     "<span><i>血怒</i><b>" + d.bloodied + "</b></span>" +
     "<span><i>回复值</i><b>" + d.surgeValue + "</b></span>" +
-    (ed.track ? counter("行动点", d.actionPoints, "ap", "每次遭遇可用 1 点；长休后回到 1 点") : "<span><i>行动点</i><b>" + d.actionPoints + "</b></span>") +
-    (ed.track ? counter("里程碑", d.milestones, "milestone", "每达成一个里程碑：+1 行动点，且多一次魔法物品每日威能") : (d.milestones ? "<span><i>里程碑</i><b>" + d.milestones + "</b></span>" : "")) +
     (d.powerPoints ? "<span><i>灵能点</i><b>" + d.powerPoints + "</b></span>" : "") +
+    resourceLine +
     "</div></section>";
 }
 
@@ -616,24 +647,19 @@ export function renderGlanceHTML(char, opts) {
       groups.map((g) => renderPowerGroup(g, d.powerUsed, ed)).join("") + "</section>";
   })();
 
+  /* v1.2.1：专长改为纯展示 —— 不再生成可点的 button，也不再显示「已用 x / y」。
+     状态字段 featUsed 仍然保留在数据里（键名不变，老状态能读、长休照旧清空），只是界面不写它。 */
   const feats = (function () {
     if (!d.feats.length) return '<section class="gl4-card"><h3 class="gl4-h">专长</h3><p class="gl4-empty">这张卡还没有选专长。</p></section>';
-    const used = d.feats.filter((f) => d.featUsed[f.key]).length;
     const body = d.feats.map(function (f) {
-      const isUsed = d.featUsed[f.key] ? " used" : "";
       const name = esc(zhName(f.id));
       const extra = f.granted ? '<em class="gl4-tag">赠送</em>' : "";
-      if (ed.track) {
-        return '<button type="button" class="gl4-chip feat' + isUsed + '" data-act="feat" data-k="' + esc(f.key) +
-          '" title="' + esc((isUsed ? "点击恢复：" : "点击标记已使用：") + f.id) + '">' + name + extra + "</button>";
-      }
-      return '<span class="gl4-chip feat' + isUsed + '" title="' + esc(f.id) + '">' + name + extra + "</span>";
+      return '<span class="gl4-chip feat" title="' + esc(f.id) + '">' + name + extra + "</span>";
     }).join("");
     return '<section class="gl4-card gl4-feats"><h3 class="gl4-h">专长 <span class="gl4-count">' + d.feats.length +
-      '</span><em>' + (ed.track ? "已用 " + used + " / " + d.feats.length : "") + '</em></h3><div class="gl4-chips">' + body + "</div></section>";
+      '</span><em>纯展示，不追踪使用</em></h3><div class="gl4-chips">' + body + "</div></section>";
   })();
 
-  const dailyMax = magicItemDailyUses(d.level, d.milestones);
   const equips = (function () {
     if (!d.equipRows.length) return '<section class="gl4-card"><h3 class="gl4-h">装备与魔法物品</h3><p class="gl4-empty">这张卡还没有装备物品。</p></section>';
     const used = d.equipRows.filter((r) => d.equipmentUsed[r.key]).length;
@@ -649,17 +675,17 @@ export function renderGlanceHTML(char, opts) {
       }
       return '<div class="gl4-item' + isUsed + '" title="' + esc(r.id) + '">' + inner + "</div>";
     }).join("");
+    /* v1.2.1：去掉「每日威能 − N ＋」计数器；装备 chip 的「已用 / 耗尽」标记保留。 */
     const head = ed.track
       ? '<h3 class="gl4-h">装备与魔法物品 <span class="gl4-count">' + d.equipRows.length + "</span>" +
-        '<em>已用 ' + used + " / " + d.equipRows.length + "</em>" +
-        counter("每日威能", d.itemDailyUsed + " / " + dailyMax, "item-daily", "魔法物品每日威能：英雄层 1 次 / 典范层 2 次 / 传奇层 3 次，每个里程碑 +1") + "</h3>"
+        '<em>已用 ' + used + " / " + d.equipRows.length + "</em></h3>"
       : '<h3 class="gl4-h">装备与魔法物品 <span class="gl4-count">' + d.equipRows.length + "</span></h3>";
     return '<section class="gl4-card gl4-items">' + head + '<div class="gl4-item-list">' + rows + "</div></section>";
   })();
 
   const rest = ed.rest
-    ? '<div class="gl4-rest"><button type="button" class="gl4-rest-btn" data-act="rest-short" title="恢复遭遇威能（专长需手动恢复）">短休</button>' +
-      '<button type="button" class="gl4-rest-btn strong" data-act="rest-long" title="生命、回复力、威能、专长、物品标记全部恢复；行动点回到 1">长休</button>' +
+    ? '<div class="gl4-rest"><button type="button" class="gl4-rest-btn" data-act="rest-short" title="恢复遭遇威能">短休</button>' +
+      '<button type="button" class="gl4-rest-btn strong" data-act="rest-long" title="生命、回复力、威能、物品标记全部恢复；行动点回到 1">长休</button>' +
       '<span class="gl4-rest-hint">长休会同时清空全部「已用」标记并回满生命</span></div>'
     : "";
 

@@ -3,10 +3,15 @@ import OBR from "../vendor/obr-sdk.js";
 import {
   ID_PANEL, getCards, writeCards, mergeImports, parseExport, loadSample,
   bindToken, selectedImageToken, notify, esc, fmtTime, onReady,
-  pingBackground, CH_HELLO, PLUGIN_VERSION
+  pingBackground, CH_HELLO, CH_INIT_REQUEST, PLUGIN_VERSION
 } from "./common.js";
 import { renderGlanceHTML, cardMeta, deriveGlance, magicItemDailyUses } from "./glance.js";
 import { applyAction, loadState, scopeText } from "./track.js";
+import {
+  readInitiative, writeInitiative, renderInitiativeHTML, currentEntry,
+  advanceInitiative, moveEntry, removeEntry, setActiveEntry, rerollEntry,
+  rerollAll, syncInitBonuses, bonusOfItem, normalizeInitiative
+} from "./initiative.js";
 
 const listEl = document.getElementById("list");
 const countEl = document.getElementById("count");
@@ -16,10 +21,19 @@ const fileEl = document.getElementById("file");
 const pasteWrap = document.getElementById("paste-wrap");
 const pasteEl = document.getElementById("paste");
 const overlay = document.getElementById("overlay");
+const initEl = document.getElementById("init-view");
+const tabsEl = document.getElementById("tabs");
 
 let cards = [];
 let currentId = "";
 let selectedToken = null;
+/* v1.3.0：三 tab（速览 / 先攻 / 骰子）；tab 切换只切 display，不重载页面。 */
+let activeTab = "glance";
+let initiative = normalizeInitiative(null);
+let myRole = "PLAYER";
+let playerId = "";
+let backgroundOk = false;
+let initSynced = false;
 // 当前预览这张卡的资源状态（威能 / 专长 / 装备的使用标记、行动点等）
 let liveState = null;
 let liveScope = "room";
@@ -32,6 +46,196 @@ function metaOf(card) {
   } catch (e) {
     return { level: card.level || 1, race: "", cls: "", hp: "?", maxHp: "?" };
   }
+}
+
+/* ---------------- 三 tab（v1.3.0） ---------------- */
+
+const TAB_NAMES = { glance: 1, init: 1, dice: 1 };
+
+function initialTab() {
+  try {
+    const t = new URLSearchParams(location.search).get("tab");
+    return TAB_NAMES[t] ? t : "glance";
+  } catch (e) {
+    return "glance";
+  }
+}
+
+function setTab(name, announce) {
+  activeTab = TAB_NAMES[name] ? name : "glance";
+  if (tabsEl) {
+    Array.prototype.forEach.call(tabsEl.querySelectorAll("[data-tab]"), function (btn) {
+      const on = btn.getAttribute("data-tab") === activeTab;
+      btn.classList.toggle("on", on);
+      btn.setAttribute("aria-selected", on ? "true" : "false");
+    });
+  }
+  Array.prototype.forEach.call(document.querySelectorAll(".tab-pane"), function (pane) {
+    const on = pane.id === "tab-" + activeTab;
+    pane.classList.toggle("on", on);
+    pane.style.display = on ? "" : "none";
+  });
+  if (activeTab === "init") void enterInitTab(announce);
+}
+
+async function enterInitTab(announce) {
+  await loadInit();
+  if (myRole === "GM" && !initSynced) {
+    initSynced = true;
+    await syncInit(!!announce);
+  }
+}
+
+if (tabsEl) {
+  tabsEl.addEventListener("click", function (ev) {
+    const el = ev.target && ev.target.closest ? ev.target.closest("[data-tab]") : null;
+    if (!el) return;
+    ev.preventDefault();
+    setTab(el.getAttribute("data-tab"), false);
+  });
+}
+
+/* ---------------- 先攻（v1.3.0） ---------------- */
+
+async function loadInit() {
+  try { myRole = await OBR.player.getRole(); } catch (e) { myRole = "PLAYER"; }
+  try { playerId = (await OBR.player.getId()) || ""; } catch (e) { playerId = ""; }
+  initiative = await readInitiative();
+  renderInit();
+}
+
+function renderInit() {
+  if (!initEl) return;
+  initEl.innerHTML = renderInitiativeHTML(initiative, {
+    role: myRole,
+    playerId: playerId,
+    backgroundReady: backgroundOk
+  });
+}
+
+let initReloadTimer = null;
+function scheduleInitReload() {
+  if (initReloadTimer) return;
+  initReloadTimer = setTimeout(function () {
+    initReloadTimer = null;
+    if (activeTab !== "init") return;
+    void loadInit();
+  }, 120);
+}
+
+async function saveInit(next, message) {
+  try {
+    initiative = await writeInitiative(next);
+    renderInit();
+    if (message) notify(message, "SUCCESS");
+  } catch (e) {
+    console.error("[4enext] 写先攻失败", e);
+    notify("写不进房间数据：先攻通常只有城主能改（" + (e && e.message ? e.message : e) + "）", "ERROR");
+  }
+}
+
+async function syncInit(announce) {
+  if (myRole !== "GM") return;
+  let list = cards;
+  if (!Array.isArray(list) || !list.length) list = await getCards();
+  const count = await syncInitBonuses(list);
+  let items = [];
+  try { items = await OBR.scene.items.getItems(); } catch (e) { items = []; }
+  const byId = {};
+  for (const it of items) byId[it.id] = it;
+  let changed = false;
+  const next = JSON.parse(JSON.stringify(initiative));
+  for (const e of next.entries) {
+    const it = byId[e.tokenId];
+    if (!it) continue;
+    const b = bonusOfItem(it, list);
+    if (b !== e.bonus) {
+      e.bonus = b;
+      changed = true;
+    }
+  }
+  if (changed) {
+    try {
+      initiative = await writeInitiative(next);
+      renderInit();
+    } catch (e) { /* 写不进去时保留只读视图 */ }
+  }
+  if (announce) {
+    notify(count ? "已同步 " + count + " 枚 token 的先攻加值" : "先攻加值已是最新", count ? "SUCCESS" : "INFO");
+  }
+}
+
+async function requestEndTurn() {
+  const active = currentEntry(initiative);
+  if (!active) {
+    notify("先攻列表还是空的", "WARNING");
+    return;
+  }
+  if (!playerId || active.ownerId !== playerId) {
+    notify("现在不是你的回合", "WARNING");
+    return;
+  }
+  try {
+    await OBR.broadcast.sendMessage(CH_INIT_REQUEST, {
+      op: "end-turn",
+      playerId: playerId,
+      activeId: initiative.activeId,
+      round: initiative.round,
+      at: Date.now()
+    }, { destination: "ALL" });
+    notify("已请求结束回合，等待城主客户端推进", "INFO");
+  } catch (e) {
+    notify("发送结束回合请求失败：" + (e && e.message ? e.message : e), "ERROR");
+  }
+}
+
+function entryOf(tokenId) {
+  return initiative.entries.filter(function (e) { return e.tokenId === tokenId; })[0] || null;
+}
+
+async function onInitAction(act, tokenId) {
+  if (!act) return;
+  if (act === "end") {
+    await requestEndTurn();
+    return;
+  }
+  /* 除了「结束我的回合」，其余都是 GM 操作（玩家按钮根本不会被渲染）。 */
+  if (myRole !== "GM") {
+    notify("只有城主能操作先攻列表", "WARNING");
+    return;
+  }
+  if (act === "next") return saveInit(advanceInitiative(initiative, 1), "已推进到下一回合");
+  if (act === "prev") return saveInit(advanceInitiative(initiative, -1), "已回到上一回合");
+  if (act === "roll-all") return saveInit(rerollAll(initiative), "所有人都重新掷了先攻");
+  if (act === "clear") {
+    if (!window.confirm("清空先攻？token 与角色卡都不受影响，只是把先攻列表清掉。")) return;
+    return saveInit(normalizeInitiative({ v: 1, entries: [] }), "先攻已清空");
+  }
+  if (act === "sync") return syncInit(true);
+
+  const entry = entryOf(tokenId);
+  if (!entry) return;
+  if (act === "roll") {
+    const next = rerollEntry(initiative, tokenId);
+    const rolled = next.entries.filter(function (e) { return e.tokenId === tokenId; })[0];
+    return saveInit(next, "「" + entry.name + "」掷出 " + (rolled ? rolled.init : "?"));
+  }
+  if (act === "up") return saveInit(moveEntry(initiative, tokenId, -1));
+  if (act === "down") return saveInit(moveEntry(initiative, tokenId, 1));
+  if (act === "active") return saveInit(setActiveEntry(initiative, tokenId), "当前回合：「" + entry.name + "」");
+  if (act === "remove") {
+    if (!window.confirm("把「" + entry.name + "」从先攻里移除？")) return;
+    return saveInit(removeEntry(initiative, tokenId), "已从先攻移除");
+  }
+}
+
+if (initEl) {
+  initEl.addEventListener("click", function (ev) {
+    const el = ev.target && ev.target.closest ? ev.target.closest("[data-init-act]") : null;
+    if (!el) return;
+    ev.preventDefault();
+    void onInitAction(el.getAttribute("data-init-act"), el.getAttribute("data-token"));
+  });
 }
 
 function renderList() {
@@ -66,7 +270,7 @@ function renderList() {
 
 function emptyViewHtml() {
   return '<div class="empty-panel">' +
-    "<h2>4E NEXT 角色卡 · 速览</h2>" +
+    "<h2>4eNEXT to owlbear · 速览</h2>" +
     "<p>三步开始：<br>" +
     "① 在 4E NEXT 里「导出存档（JSON）」；<br>" +
     "② 把文件拖进这个面板（或点左侧「导入 JSON」）；<br>" +
@@ -244,7 +448,9 @@ async function bindCurrent() {
   if (!card) return;
   try {
     await bindToken(selectedToken.id, card.id);
-    notify("已把「" + card.name + "」绑定到该 token", "SUCCESS");
+    initSynced = false;
+    notify("已把「" + card.name + "」绑定到该 token（先攻加值已同步）", "SUCCESS");
+    if (activeTab === "init") void enterInitTab(false);
   } catch (e) {
     console.error(e);
     notify("绑定失败：可能没有这个 token 的修改权限", "ERROR");
@@ -310,6 +516,7 @@ function showDiag(cls, html) {
 function applyBackgroundStatus(payload) {
   const d = payload && payload.data !== undefined ? payload.data : payload;
   if (!d) return;
+  backgroundOk = true;
   const st = d.status || {};
   const mark = (v) => (v ? "✓" : "✗");
   showDiag("good", "<b>后台已连接</b> v" + esc(d.version || PLUGIN_VERSION) +
@@ -327,20 +534,33 @@ async function checkBackground() {
   }
   if (res) {
     applyBackgroundStatus(res);
+    if (activeTab === "init") renderInit();
     return;
   }
+  backgroundOk = false;
+  if (activeTab === "init") renderInit();
   showDiag("bad", "<b>后台脚本没有响应</b>：右键菜单和右下角 4E 按钮都会缺失。" +
     '<span class="hint">处理办法：扩展列表里关掉再打开本扩展；仍然不行就打开插件根目录的 background.html 看自检日志（那里会写明哪一步失败）。</span>');
 }
 
 onReady(function () {
   try {
-    OBR.player.onChange(function () { void refreshSelection(); });
-    OBR.room.onMetadataChange(function () { void refresh(); });
+    OBR.player.onChange(function () {
+      void refreshSelection();
+      scheduleInitReload();
+    });
+    OBR.room.onMetadataChange(function () {
+      void refresh();
+      scheduleInitReload();
+    });
+    OBR.scene.items.onChange(function () {
+      if (activeTab === "init") scheduleInitReload();
+    });
     OBR.broadcast.onMessage(CH_HELLO, applyBackgroundStatus);
   } catch (e) {
     console.error(e);
   }
   void checkBackground();
+  setTab(initialTab(), false);
   void refresh().then(refreshSelection, function (e) { console.error(e); });
 });

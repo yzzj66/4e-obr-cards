@@ -39,13 +39,13 @@ function pill(el, cls, text) {
 if (els.manifest) els.manifest.textContent = manifestUrl;
 
 const FALLBACK_MANIFEST = {
-  name: "4E NEXT 角色卡",
-  version: "1.2.0",
+  name: "4eNEXT to owlbear",
+  version: "1.3.0",
   manifest_version: 1,
   author: "4E NEXT 玩家自制",
-  description: "在枭熊房间查看 4E NEXT 角色卡速览。",
+  description: "4eNEXT to owlbear：速览 / 先攻 / 骰子（占位）。",
   icon: "icon.svg",
-  action: { title: "4E NEXT 角色卡", icon: "icon.svg", popover: "panel.html", width: 980, height: 720 },
+  action: { title: "4eNEXT to owlbear", icon: "icon.svg", popover: "panel.html?tab=init", width: 980, height: 720 },
   background_url: "background.html"
 };
 
@@ -55,8 +55,10 @@ function absolutize(m, baseUrl) {
   const out = JSON.parse(JSON.stringify(m || {}));
   const fix = function (u) {
     if (!u) return u;
-    const name = String(u).split(/[?#]/)[0].split("/").pop();
-    return new URL(name, baseUrl).href;
+    /* v1.3.0：action.popover 带 ?tab=init，重拼绝对地址时必须保留查询串 / 锚点。 */
+    const m = /^([^?#]*)([?#].*)?$/.exec(String(u));
+    const name = (m ? m[1] : String(u)).split("/").pop();
+    return new URL(name + (m && m[2] ? m[2] : ""), baseUrl).href;
   };
   out.icon = fix(out.icon);
   out.background_url = fix(out.background_url);

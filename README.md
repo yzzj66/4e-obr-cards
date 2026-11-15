@@ -1,7 +1,12 @@
-# 4E NEXT 角色卡 · Owlbear Rodeo 插件
+# 4eNEXT to owlbear · Owlbear Rodeo 插件
 
 > 在枭熊（Owlbear Rodeo）里查看 4E NEXT 导出的角色卡「速览」；**右键 token 绑定角色卡，选中即弹出速览**。
-> v1.2.0 起：弹窗里能**加减血量**（token 上会自动画血条），威能 / 专长 / 装备点一下变灰＝**已用**。
+> v1.2.0 起：弹窗里能**加减血量**（token 上会自动画血条），威能 / 装备点一下变灰＝**已用**。
+> v1.2.1：速览弹窗加宽到 660×700，行动点与里程碑并成一排；专长改为纯展示、装备栏去掉每日威能计数。
+> v1.2.2：速览弹窗可以**按住标题栏拖走**（位置按 token 记住，⌖ 一键回到 token 上方），不再固定挡住地图。
+> **v1.3.0**：改名 **4eNEXT to owlbear**；面板变成**速览 / 先攻 / 骰子**三个 tab（骰子先占位）；
+> 右键新增**加入先攻 / 隐形加入先攻**，绑定角色卡后**先攻加值自动取卡里的「先攻」**（如 +25）；
+> GM 可推进任意回合，玩家可「结束我的回合」。
 
 ## ⭐ 安装地址（复制这一行）
 
@@ -20,8 +25,9 @@ https://yzzj66.github.io/4e-obr-cards/manifest.json
 ---
 
 在 [Owlbear Rodeo](https://www.owlbear.rodeo/)（枭熊）里查看 **4E NEXT** 导出的角色卡「速览」页。
-核心是四件事：**右键 token 绑定角色卡**、**选中绑定的 token 就弹出速览**、
-**在弹窗里加减血量（token 上会画血条）**、**把威能 / 专长 / 装备点成「已用」**。
+核心是五件事：**右键 token 绑定角色卡**、**选中绑定的 token 就弹出速览**、
+**在弹窗里加减血量（token 上会画血条）**、**把威能 / 装备点成「已用」**、
+**右键加入先攻并按角色卡的先攻加值推进回合**。
 
 - 纯静态：HTML + 原生 JS + CSS，**不需要 npm、不需要构建**，扔到任何静态托管就能用。
 - 零服务器：卡片与追踪状态存在 Owlbear 的**房间数据（room metadata）**里，全房间共享；
@@ -39,9 +45,15 @@ https://yzzj66.github.io/4e-obr-cards/manifest.json
 | 速览面板 | 生命 / 血怒 / 回复值 / 回复力、AC 与三防、六属性、17 项技能、攻击与伤害、威能、专长、装备，外观贴近 4E NEXT 的速览页 |
 | 右键绑定 | GM 右键地图上的 **IMAGE token** →「绑定 4E NEXT 角色卡」→ 选一张卡 |
 | 选中即弹 | 任何人选中这枚 token，速览小面板就会从 token 上方弹出 |
+| **弹窗可拖动** | 按住速览弹窗顶部标题栏（或左侧 ⠿）就能把弹窗拖到不挡地图的地方；位置按 token 记住，右上角 **⌖** 回到 token 上方 |
 | **血量加减** | 弹窗里 `−1 / −5 / −10`、`＋1 / ＋5 / ＋10`，或填数字点「受伤 / 治疗」；临时生命 ±、回复力圆点、使用回复力 |
 | **token 血条** | 第一次在弹窗里加减过血量后，token 上会自动画「当前 / 上限」血条（含临时生命），受伤 / 治疗立刻变（不需要像参考插件那样右键「添加血条组件」） |
-| **资源追踪** | 威能 / 专长 / 装备点一下变灰＝已用，再点恢复；行动点、里程碑、魔法物品每日威能可加减；短休 / 长休一键恢复 |
+| **资源追踪** | 威能 / 装备点一下变灰＝已用，再点恢复；行动点与里程碑并成一排加减；短休 / 长休一键恢复（专长只展示，不追踪） |
+| **三 tab 面板** | 左上角 / 工具栏 / 右下角打开同一个面板：**速览 / 先攻 / 骰子**；tab 切换只切显示，不重载页面。左上角 4E 图标直接落在「先攻」 |
+| **先攻加值联动** | 绑定角色卡时把卡里的「先攻」写进 token 元数据（如 +25）；先攻合计 = d20 + 加值 |
+| **加入先攻** | GM 右键 token →「加入先攻」/「隐形加入先攻」（隐藏身份，只 GM 可见） |
+| **回合推进** | 先攻 tab：当前回合高亮；GM 可上一回合 / 下一回合 / 重掷 / 上下移动 / 删除 / 清空；玩家可「结束我的回合」 |
+| **骰子（占位）** | v1.3.0 只放 tab 与「即将推出」，v1.5.0 实现 4E 化骰子 |
 | 全屏面板 | 右下角绿色 **4E** 按钮打开：拖拽 / 选择文件 / 粘贴导入导出 JSON，管理房间里的卡，一键绑到当前选中的 token |
 | 同名覆盖 | 重新导入同名卡会就地更新（升级、改装备后重新导出即可），已绑定的 token 不丢 |
 
@@ -99,16 +111,16 @@ Netlify / Vercel / Cloudflare Pages / 自己的 nginx 都行：把目录原样�
 
 ```json
 {
-  "name": "4E NEXT 角色卡",
-  "version": "1.2.0",
+  "name": "4eNEXT to owlbear",
+  "version": "1.3.0",
   "manifest_version": 1,
   "author": "4E NEXT 玩家自制",
-  "description": "在枭熊房间查看 4E NEXT 角色卡速览……",
+  "description": "4eNEXT to owlbear：速览 / 先攻 / 骰子（占位）……",
   "icon": "https://yzzj66.github.io/4e-obr-cards/icon.svg",
   "action": {
-    "title": "4E NEXT 角色卡",
+    "title": "4eNEXT to owlbear",
     "icon": "https://yzzj66.github.io/4e-obr-cards/icon.svg",
-    "popover": "https://yzzj66.github.io/4e-obr-cards/panel.html",
+    "popover": "https://yzzj66.github.io/4e-obr-cards/panel.html?tab=init",
     "width": 980,
     "height": 720
   },
@@ -135,16 +147,18 @@ Netlify / Vercel / Cloudflare Pages / 自己的 nginx 都行：把目录原样�
 
 1. 打开 <https://www.owlbear.rodeo/extensions>（房间内也可以从右上角菜单进 **Extensions**）。
 2. 点 **Add Extension**（或「+」），把上一节得到的 **manifest 地址**粘进去，确认。
-3. 回到房间（v1.2.0 预期看到）：
-   - 弹出一条 INFO 通知：`4E 角色卡 v1.2.0 已加载：工具栏✓ · 右键✓ · 浮动按钮✓`（自诊断，可关）；
-   - **左上角**扩展图标：点开完整面板（由 manifest 的 `action` 渲染，不依赖后台脚本）；
-   - **左侧工具栏**的 4E 工具图标：点开完整面板；
-   - **右下角**绿色 **4E** 浮动按钮：点开完整面板；
-   - 右键地图上的图片 token（GM、单选），菜单里多出「**绑定 4E NEXT 角色卡**」。
+3. 回到房间（v1.3.0 预期看到）：
+   - 弹出一条 INFO 通知：`4eNEXT to owlbear v1.3.0 已加载：工具栏✓ · 右键✓ · 浮动按钮✓`（自诊断，可关）；
+   - **左上角**扩展图标：点开完整面板并落在「先攻」tab（由 manifest 的 `action` 渲染，不依赖后台脚本）；
+   - **左侧工具栏**的 4E 工具图标：点开完整面板（默认「速览」）；
+   - **右下角**绿色 **4E** 浮动按钮：点开完整面板（默认「速览」）；
+   - 右键地图上的图片 token（GM、单选），菜单里多出「**绑定 4E NEXT 角色卡**」「**加入先攻**」「**隐形加入先攻**」。
 
    > 只看到一部分入口？说明对应那一层没加载成功 —— 打开插件根目录的 `background.html` 能看到逐步日志，
    > 面板左下角也会显示「后台已连接 / 后台脚本没有响应」。对照表见 [`docs/owlbear-debug.md`](docs/owlbear-debug.md)。
-   > 血条与资源追踪的细节（字段、权限、已知限制）见 [`docs/hp-bar-and-tracking.md`](docs/hp-bar-and-tracking.md)。
+   > 血条与资源追踪的细节（字段、权限、已知限制）见 [`docs/hp-bar-and-tracking.md`](docs/hp-bar-and-tracking.md)；
+   > v1.2.1 的界面微调见 [`docs/ui-tweaks-v121.md`](docs/ui-tweaks-v121.md)；
+   > 弹窗拖动的实现、参数与已知限制见 [`docs/popover-drag.md`](docs/popover-drag.md)。
 
 > 扩展是**每个玩家各自安装**的：你装了，别人也得装一次才能看到速览面板；
 > 但**卡片数据在房间数据里**，所以别人装好后不用再导入。
@@ -158,10 +172,14 @@ Netlify / Vercel / Cloudflare Pages / 自己的 nginx 都行：把目录原样�
    - 把 `.json` 文件**拖进窗口**，或点「导入 JSON」选文件，或点「粘贴」把 JSON 全文贴进去；
    - 导入成功会提示「新增 X 张，更新 Y 张」。
 3. **绑定**：在地图上**右键**某个 token →「绑定 4E NEXT 角色卡」→ 在弹窗里点选一张卡（可以搜索）。
-4. **看速览**：**选中**这枚 token，速览面板从 token 上方弹出；点右上角 **⤢** 打开完整面板。
+4. **看速览**：**选中**这枚 token，速览面板从 token 上方弹出；按住弹窗顶部标题栏可以把它拖到不挡地图的位置，
+   位置会按这枚 token 记住（右上角 **⌖** 回到 token 上方）；点右上角 **⤢** 打开完整面板。
    想解绑：右键 →「绑定」→ 点「解除绑定」。
 5. **打起来**：在弹窗里点 `−5` 扣血 → token 上的血条立刻变短、数字跟着变；
    点威能 chip → 变灰加删除线（＝已用），再点恢复。打完了点「长休」一键还原。
+6. **先攻**：右键 token →「加入先攻」（或「隐形加入先攻」）→ 面板「先攻」tab。
+   加入时会自动掷 d20 + 角色卡的先攻加值；GM 用「上一回合 / 下一回合」推进，
+   玩家轮到自己时点「结束我的回合」（请求发给城主客户端落笔）。
 
 面板里还有：
 
@@ -176,15 +194,20 @@ Netlify / Vercel / Cloudflare Pages / 自己的 nginx 都行：把目录原样�
 | 位置 | 键 | 内容 |
 | --- | --- | --- |
 | 房间数据 `OBR.room.metadata` | `com.4enext-owlbear/cards` | `{ v, updatedAt, cards: [{ id, name, level, char, importedAt, exportedAt }] }` |
-| 房间数据 `OBR.room.metadata` | `com.4enext-owlbear/state/<cardId>` | `{ powerUsed, featUsed, equipmentUsed, itemDailyUsed, actionPoints, milestones, updatedAt }`（v1.2.0） |
+| 房间数据 `OBR.room.metadata` | `com.4enext-owlbear/state/<cardId>` | `{ powerUsed, featUsed, equipmentUsed, itemDailyUsed, actionPoints, milestones, updatedAt }`（v1.2.0 的键名；v1.2.1 起界面只写 powerUsed / equipmentUsed / actionPoints / milestones） |
 | Token 元数据 `item.metadata` | `com.4enext-owlbear/cardId` | 卡片 id（字符串） |
 | Token 元数据 `item.metadata` | `com.4enext-owlbear/hp` | `{ cur, max, temp, surges, updatedAt }`（v1.2.0，每枚 token 独立） |
+| Token 元数据 `item.metadata` | `com.4enext-owlbear/init` | `{ bonus, cardId, updatedAt }`（v1.3.0：先攻加值，绑定角色卡时写入） |
+| 房间数据 `OBR.room.metadata` | `com.4enext-owlbear/initiative` | `{ v, updatedAt, round, activeId, entries: [{ tokenId, name, init, bonus, hidden, ownerId, updatedAt }] }`（v1.3.0） |
+| 浏览器 `localStorage` | `4enext/info-pos` | `{ v: 1, pos: { "<tokenId>": { left, top } } }`（v1.2.2：速览弹窗位置，按 token 记，最多 40 枚；只在本机） |
 
 - 房间数据对**同房间所有人**可见（包括玩家），所以玩家装好扩展就能看到速览；写操作通常需要 GM。
 - 卡片里的立绘（原图 / 裁切图）会被丢弃——速览用不到它，房间数据越小越稳。
 - 卸载扩展不会删除房间数据；换房间需要重新导入。
 - **血条本身不存数据**：后台页按 `hp` 元数据用 `OBR.scene.local`（本地图形层）画，
   每台机器各画一份 —— 不需要场景写权限，也不会进别人的场景导出。
+- **v1.2.1 没有改键名**：`featUsed` / `itemDailyUsed` 仍留在数据里，旧状态照旧能读；
+  只是界面不再产生这两类标记（长休会把它们清空）。
 
 ### 权限差异（v1.2.0，务必知道）
 
@@ -193,6 +216,8 @@ Netlify / Vercel / Cloudflare Pages / 自己的 nginx 都行：把目录原样�
 | 导入卡片 / 绑定 token | **城主**（房间数据权限） | 玩家点导入会提示保存失败 |
 | 改某枚 token 的血量 | **城主**，或**这枚 token 的创建者**（Owlbear 的 item 权限） | 按钮还在，但点了会弹 ERROR 说明原因 |
 | 标记威能 / 装备已用 | 优先写房间数据（通常只有城主）；失败则写**本机 localStorage** | 弹窗底部从「资源：全桌」变成「资源：本机」，并弹一条 WARNING |
+| 加入先攻 / 隐形加入 / 推进回合 | **城主** | 玩家看得到先攻列表；「结束我的回合」会发给城主客户端，由城主代写 |
+| 隐形条目 | **只有城主**能看见 | 非 GM 的客户端连名字都收不到（当前回合显示「？？？」） |
 
 > 也就是说：**玩家自己标的「已用」不会同步给城主**（反过来，城主标的会同步给所有人）。
 > 想全桌统一，让城主来标。实现细节见 [`docs/hp-bar-and-tracking.md`](docs/hp-bar-and-tracking.md)。
@@ -208,6 +233,9 @@ Netlify / Vercel / Cloudflare Pages / 自己的 nginx 都行：把目录原样�
   用来离线推导 HP、防御、技能、攻击等数值。生成脚本是 `dev/gen-rules.mjs`，成品已经提交，**跑插件不需要它**。
 - **渲染层**：`assets/glance.js` 把导出的 `Character` 直接拼成 HTML 字符串（无框架、无虚拟 DOM）。
   带 `live` / `editable` 时才渲染成可点的按钮 —— 所以「弹窗」和「面板」用的是同一份渲染代码，语义不会分叉。
+- **先攻**：`assets/initiative.js` 管数据模型 / 掷骰 / 回合推进 / 渲染；`glance.js` 的 `initiativeBonus()` 是唯一的加值口径，
+  绑定角色卡时由 `common.js` 写进 token 元数据。右键菜单与玩家结束回合请求在 `background.core.js`（经典脚本，
+  不能 import，所以那边只读元数据、不重算加值）。数据与权限见 [`docs/initiative-v13.md`](docs/initiative-v13.md)。
 - **血量与资源追踪**：`assets/track.js` 是唯一的动作入口（`applyAction`）与读写层，
   语义照抄 4E NEXT 的速览页（`GlanceVitals.tsx` / `GlanceResources.tsx`）。
   页面里只挂一个 `[data-act]` 事件委托，点完重画。
@@ -224,19 +252,20 @@ manifest.json          扩展清单（Owlbear 加载的入口；绝对地址 + a
 manifest.relative.json 相对路径版清单（换宿主时备用，一般不用）
 background.html        后台页：只有一个 <script>，并带页内自检日志
 button.html            右下角 64×64 的 4E 浮动按钮
-panel.html             全屏面板：导入 / 列表 / 预览 / 绑定（也是左上角 action 的弹窗页）
+panel.html             全屏三 tab 面板：速览（导入 / 列表 / 预览 / 绑定）/ 先攻 / 骰子（占位）
 info.html              选中 token 时弹出的速览小面板
 bind.html              右键「绑定」打开的选卡弹窗
 index.html             说明页（顶部自检 + 部署提示 + 示例渲染），托管根目录的落地页
 icon.svg               扩展图标（清单 / action / 右键菜单都用它）
 icon-tool.svg          左侧工具栏工具图标（24×24 线性图标）
 assets/
-  background.core.js   后台逻辑（可读版：右键菜单 / 工具栏 / 浮动按钮 / token 血条 / 自诊断 / 心跳）
+  background.core.js   后台逻辑（可读版：右键菜单 / 工具栏 / 浮动按钮 / 速览弹窗定位与拖动 / token 血条 / 自诊断 / 心跳）
   background.bundle.js 后台实际加载的**单文件经典脚本**（SDK + core，由 dev/build-background.mjs 生成）
   background.js        旧缓存兼容垫片（把上面那个 bundle 注入进来，避免旧 background.html 变哑巴）
   panel.js / info.js / bind.js / button.js / index.js
   common.js            房间数据读写、导入解析、公共小工具、后台心跳探测
   track.js             血量（token 元数据）+ 资源状态（房间数据 / 本机）的语义与读写（v1.2.0）
+  initiative.js        先攻数据模型 / 掷骰 / 回合推进 / 渲染 / 加值同步（v1.3.0）
   glance.js            速览推导 + HTML 渲染（核心；带 live/editable 时可交互）
   glance.css / ui.css  样式（glance.css 末尾是 v1.2.0 的交互层）
 data/rules.js          离线规则索引（自动生成）
@@ -244,6 +273,9 @@ vendor/obr-sdk.js      @owlbear-rodeo/sdk 3.1.0（本地化，离线可用）
 samples/sample-card.json  示例卡（30 级游侠，可删）
 docs/owlbear-debug.md  排查记录：为什么没按钮、改了什么、怎么验证
 docs/hp-bar-and-tracking.md  血条与资源追踪：字段、权限差异、实现取舍、已知限制（v1.2.0）
+docs/ui-tweaks-v121.md  v1.2.1 的界面微调：弹窗尺寸、行动点/里程碑同排、去掉专长与每日威能追踪
+docs/popover-drag.md    v1.2.2 弹窗拖动：实现方式、拖动区、可调参数、已知限制
+docs/initiative-v13.md  v1.3.0 先攻：数据结构、权限、渲染、自测清单（新增）
 dev/                   开发期工具（普通用户用不到）
 ```
 
@@ -270,18 +302,29 @@ dev/                   开发期工具（普通用户用不到）
    改 token 血量需要是**城主**或**这枚 token 的创建者**，否则点了会弹 ERROR 说明原因。
    细节见 [`docs/hp-bar-and-tracking.md`](docs/hp-bar-and-tracking.md)。
 4. **右键菜单只对 IMAGE token 出现**，且只在**单个**选中时出现（多选不显示）；非 GM 看不到这个菜单项。
-5. **速览弹窗定位一次**：面板打开时锚在 token 上方，之后你平移地图它不会跟着漂（避免每次拖动都闪一下）；重新选中 token 会重新定位。
-6. **数据跟着房间走**：房间数据不跨房间、不跨账号同步；删除扩展不会清空数据（想清空可在面板里逐张删除）。
-7. **没有做真机联调**：开发环境无法启动 Owlbear 房间，也无法截取真实界面，所以**没有在真实房间中测试过**。
+5. **先攻首版是简单列表**：没有头像条、拖拽排序、横向先攻条与隐藏回合的镜头处理；只有名单 / 加值 / 合计 / 回合推进。
+   玩家「结束我的回合」需要 **GM 客户端在线**（由 GM 的 background 落笔），GM 不在时请求不会生效。
+   隐形加入只影响先攻列表，不隐藏地图上的 token。细节见 [`docs/initiative-v13.md`](docs/initiative-v13.md)。
+6. **速览弹窗可以拖，但不跟地图**：默认仍弹在 token 上方；按住标题栏拖走后，位置按这枚 token 记在**本机**
+   `localStorage`，平移 / 缩放地图不会跟着漂（避免每次拖动都闪一下）；点 ⌖ 回到 token 上方。
+   拖动依赖「同一个 popover id 重新 open 只更新位置、不重载页面」这一行为，**尚未真机验证**；
+   细节、可调参数与已知限制见 [`docs/popover-drag.md`](docs/popover-drag.md)。
+7. **数据跟着房间走**：房间数据不跨房间、不跨账号同步；删除扩展不会清空数据（想清空可在面板里逐张删除）。
+8. **没有做真机联调**：开发环境无法启动 Owlbear 房间，也无法截取真实界面，所以**没有在真实房间中测试过**。
    已做的检查是：JSON 合法、HTML 引用的文件都存在、ESM 语法与 import 路径可解析、示例卡的渲染结果标签配平、CSS 括号配平，
    外加 **manifest/bundle 静态检查** 与 **假 OBR 的后台冒烟测试**（v1.2.0 起还断言血条三件套真的被
-   `scene.local.addItems` 加进去、改血后走 `updateItems`、被删会重建、数据没了会清理）。
+   `scene.local.addItems` 加进去、改血后走 `updateItems`、被删会重建、数据没了会清理；
+   v1.2.1 起再断言弹窗宽高、行动点/里程碑同排样式，以及专长与每日威能不再生成可点元素；
+   v1.2.2 起再断言弹窗按左上角定位、拖动位移 / 视口夹取 / localStorage 记忆 / 回到 token；
+   v1.3.0 起再断言改名 / 版本、三 tab、骰子占位、右键两项、init 键名一致，以及先攻的绑定 / 加入 / 权限分支）。
+   **拖动的手感与「重开 popover 是否重载 iframe」没有真机验证**，真机若不对，先看 `docs/popover-drag.md` 的「已知限制」。
    **血条的像素级位置只在纸面上按参考实现的比例推过**，真机若偏了，改 `barLayout()` 里的常数即可。
    如果房间里加载不正常：先看 index.html 顶部「自检」、面板左下角的连接状态条，或直接打开 `background.html` 看逐步日志，
    都不行再把这三样截图贴出来（详见 `docs/owlbear-debug.md`）。
-8. **SDK 版本**：使用的是 `@owlbear-rodeo/sdk@3.1.0`（与同作者插件 `character-cards` 相同）。Owlbear 若改动 API，需要更新 `vendor/obr-sdk.js`。
-9. **短休不恢复「每次遭遇」专长**：4E NEXT 靠专长**正文**判断频率，插件里没有专长正文，所以短休只清遭遇威能。
-10. **血条是本地图形**：不进场景导出、别的插件读不到；它跟着 `hp` 元数据走，换机器 / 重开页面会自动重画。
+9. **SDK 版本**：使用的是 `@owlbear-rodeo/sdk@3.1.0`（与同作者插件 `character-cards` 相同）。Owlbear 若改动 API，需要更新 `vendor/obr-sdk.js`。
+10. **专长只展示、不追踪（v1.2.1）**：4E NEXT 靠专长**正文**判断「每次遭遇 / 每日」，插件里没有专长正文，
+   所以干脆不提供专长的「已用」标记（数据字段 `featUsed` 仍保留兼容），短休也因此只清遭遇威能。
+11. **血条是本地图形**：不进场景导出、别的插件读不到；它跟着 `hp` 元数据走，换机器 / 重开页面会自动重画。
 
 ---
 
@@ -296,11 +339,19 @@ node dev/serve.mjs
 # 静态自检：JSON / HTML 引用 / import 路径 / manifest 绝对地址 + action /
 #   bundle 无 import-export 且能按经典脚本解析 / bundle 与 core 是否同步 /
 #   v1.2.0：track.js 存在、KEY_HP 两边一致、bundle 里接入了 buildCurve 等具名导出
+#   v1.2.1：弹窗尺寸 620~680 × 640~760、行动点/里程碑同排样式、专长与每日威能不再可点
+#   v1.2.2：弹窗位置键 / 拖动频道两边一致、LEFT/TOP 定位、视口夹取、info.js 指针事件、ui.css 光标
+#   v1.3.0：名字 / 1.3.0、三 tab + 骰子占位、?tab=init、init / initiative / 请求频道键名一致、右键两项
 node dev/check.mjs
 
 # 后台冒烟测试：假 OBR 跑一遍 background.core.js，断言三个入口 + 通知 + 心跳
 #   + v1.2.0 的 token 血条（addItems / updateItems / 自愈 / 清理）
+#   + v1.2.2 的弹窗拖动（打开 → 位移 → 夹取 → localStorage → 重开 → 回到 token）
 node dev/test-background.mjs
+
+# 先攻 v1.3.0 自测：绑定写 init / 右键两项 / 加入先攻写房间数据 /
+#   GM 推进 / 玩家结束回合权限 / 隐形对非 GM 不可见
+node dev/test-initiative.mjs
 
 # 血量 / 资源追踪的语义自测：逐条核对 4E NEXT 的规则
 #   （先扣临时生命 / 负数先归零 / 回复力 / 已用标记 / 写不进去退本机）

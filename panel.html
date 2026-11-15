@@ -3,39 +3,65 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>4E NEXT 角色卡</title>
+<title>4eNEXT to owlbear</title>
 <link rel="stylesheet" href="assets/ui.css">
 <link rel="stylesheet" href="assets/glance.css">
 </head>
 <body>
 <div class="panel">
-  <aside class="panel-side">
-    <div class="panel-head">
-      <div class="panel-title">4E NEXT 角色卡<small id="count">0 张</small></div>
-      <button class="icon-btn" id="close" title="关闭面板" style="margin-left:auto">✕</button>
+  <header class="panel-top">
+    <div class="panel-title">4eNEXT to owlbear<small id="count">0 张卡</small></div>
+    <nav class="tabs" id="tabs" role="tablist" aria-label="面板分区">
+      <button type="button" class="tab on" data-tab="glance" role="tab" aria-selected="true">速览</button>
+      <button type="button" class="tab" data-tab="init" role="tab" aria-selected="false">先攻</button>
+      <button type="button" class="tab" data-tab="dice" role="tab" aria-selected="false">骰子</button>
+    </nav>
+    <div class="panel-top-right">
+      <span class="panel-sub">4E NEXT 角色卡</span>
+      <button class="icon-btn" id="close" title="关闭面板">✕</button>
     </div>
-    <div class="import-box">
-      <div class="row">
-        <button class="btn primary small" id="pick">导入 JSON</button>
-        <button class="btn small" id="paste-toggle">粘贴</button>
-        <button class="btn small ghost" id="sample">载入示例</button>
+  </header>
+
+  <div class="panel-body">
+    <section class="tab-pane on" id="tab-glance" role="tabpanel" aria-label="速览">
+      <aside class="panel-side">
+        <div class="import-box">
+          <div class="row">
+            <button class="btn primary small" id="pick">导入 JSON</button>
+            <button class="btn small" id="paste-toggle">粘贴</button>
+            <button class="btn small ghost" id="sample">载入示例</button>
+          </div>
+          <input type="file" id="file" accept=".json,application/json" multiple hidden>
+          <div id="paste-wrap" style="display:none;margin-top:8px">
+            <textarea id="paste" placeholder="把 4E NEXT「导出存档」得到的 JSON 全文粘贴到这里"></textarea>
+            <button class="btn small" id="paste-ok" style="margin-top:6px">导入这段 JSON</button>
+          </div>
+          <div class="drop-hint" style="margin-top:8px">也可以把 .json 文件直接拖进窗口</div>
+        </div>
+        <div class="sel-token" id="sel">未选中 token</div>
+        <div class="card-list" id="list"></div>
+        <div class="diag-strip" id="diag-strip" title="检查插件后台脚本是否在运行：右键菜单、先攻写入和右下角按钮都靠它">后台自检中…</div>
+        <div class="side-foot">
+          <p>数据保存在<b>房间数据</b>里：同一个房间的所有人（包括玩家）都能看到速览。</p>
+          <p>面板只读；改卡仍然在 4E NEXT 里做，改完重新导出导入即可覆盖同名卡。</p>
+        </div>
+      </aside>
+      <main class="panel-main"><div class="panel-main-inner" id="view"></div></main>
+    </section>
+
+    <section class="tab-pane" id="tab-init" role="tabpanel" aria-label="先攻">
+      <main class="init-main"><div id="init-view"><div class="init-empty">读取先攻…</div></div></main>
+    </section>
+
+    <section class="tab-pane" id="tab-dice" role="tabpanel" aria-label="骰子">
+      <div class="dice-placeholder">
+        <div class="dice-icon" aria-hidden="true">🎲</div>
+        <h2>骰子（即将推出）</h2>
+        <p>v1.5.0 会做成 4E 化的骰子面板：d20 攻击 / 豁免、伤害表达式、组合保存、历史记录与团队共享结果。</p>
+        <p class="muted">本版（v1.3.0）先放占位，先攻里的「掷先攻」已经可用。</p>
       </div>
-      <input type="file" id="file" accept=".json,application/json" multiple hidden>
-      <div id="paste-wrap" style="display:none;margin-top:8px">
-        <textarea id="paste" placeholder="把 4E NEXT「导出存档」得到的 JSON 全文粘贴到这里"></textarea>
-        <button class="btn small" id="paste-ok" style="margin-top:6px">导入这段 JSON</button>
-      </div>
-      <div class="drop-hint" style="margin-top:8px">也可以把 .json 文件直接拖进窗口</div>
-    </div>
-    <div class="sel-token" id="sel">未选中 token</div>
-    <div class="card-list" id="list"></div>
-    <div class="diag-strip" id="diag-strip" title="检查插件后台脚本是否在运行：右键菜单和右下角按钮都靠它">后台自检中…</div>
-    <div class="side-foot">
-      <p>数据保存在<b>房间数据</b>里：同一个房间的所有人（包括玩家）都能看到速览。</p>
-      <p>面板只读；改卡仍然在 4E NEXT 里做，改完重新导出导入即可覆盖同名卡。</p>
-    </div>
-  </aside>
-  <main class="panel-main"><div class="panel-main-inner" id="view"></div></main>
+    </section>
+  </div>
 </div>
 <div class="drag-overlay" id="overlay"><b>松手导入 4E NEXT 导出 JSON</b></div>
 <script type="module" src="assets/panel.js"></script>

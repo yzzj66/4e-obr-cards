@@ -1,9 +1,13 @@
 // 选中绑定的 token 时弹出的「速览」小面板。
 // v1.2.0：血量可直接加减（写回 token 元数据，token 上会跟着画血条），
-//         威能 / 专长 / 装备 / 行动点等消耗类资源可点击标记（写回房间数据，写不进去退回本机）。
+//         威能 / 装备 / 行动点等消耗类资源可点击标记（写回房间数据，写不进去退回本机）。
+// v1.2.1：弹窗整体加宽到 660×700（尺寸在 background.core.js 的 INFO_W / INFO_H，小屏自动夹到视口内）；
+//         专长改为纯展示、装备栏去掉「每日威能」计数（数据键名不变，老状态照旧能读）。
+// v1.2.2：顶部标题栏可以按住拖动整个弹窗（位置由后台重开 popover 实现，见 background.core.js），
+//         右上角「⌖」回到 token 上方。位置按 token 记在 localStorage["4enext/info-pos"]。
 // 交互语义照抄 4E NEXT 的速览页（GlanceVitals.tsx / GlanceResources.tsx）。
 import OBR from "../vendor/obr-sdk.js";
-import { ID_INFO, ID_PANEL, URL_PANEL, KEY_BIND, getCards, findCard, esc, onReady, notify } from "./common.js";
+import { CH_INFO_DRAG, ID_INFO, ID_PANEL, INFO_DRAG_THROTTLE_MS, URL_PANEL, KEY_BIND, getCards, findCard, esc, onReady, notify } from "./common.js";
 import { renderGlanceHTML, deriveGlance, magicItemDailyUses } from "./glance.js";
 import { KEY_HP, applyAction, hpView, loadState, mayEditItem, readItem, scopeText } from "./track.js";
 
@@ -25,6 +29,87 @@ let canHp = false;
 let derived = null;
 let lastSig = "";
 let busy = false;
+
+/* ---------------- 拖动弹窗（v1.2.2） ----------------
+ * OBR 的 popover 不能直接拖：这里只负责收指针、算出「相对按下点的累计位移」发给后台；
+ * 后台在同一个 id 上重新 open（只换 anchorPosition）→ 弹窗跟着走，页面不重载。
+ * 位置换算 / 视口夹取 / localStorage 记忆 / 节流间隔都在 background.core.js 与 common.js。
+ */
+const headEl = document.getElementById("head");
+const pinEl = document.getElementById("pin");
+/* 位移用 screenX/screenY 算，**不能用 clientX/clientY**：
+ * 弹窗会跟着指针一起移动，iframe 自己的坐标原点也在动，client 坐标的差值会被
+ * 弹窗位移抵消（一帧走 10px、下一帧又回到 0），拖起来会来回抖。屏幕坐标不受 iframe 位置影响。 */
+let drag = null; // { id, x0, y0, dx, dy, timer }
+
+function sendDrag(phase, dx, dy) {
+  try {
+    const p = OBR.broadcast.sendMessage(
+      CH_INFO_DRAG,
+      { phase: phase, dx: dx, dy: dy, at: Date.now() },
+      { destination: "LOCAL" }
+    );
+    if (p && typeof p.catch === "function") p.catch(function () { /* 后台没起来就算了 */ });
+  } catch (e) { /* 不在枭熊里、直接打开本页时会走到这 */ }
+}
+
+/** 标题栏上的按钮 / 输入框不触发拖动；正文区完全不参与。 */
+function draggableTarget(target) {
+  if (!target || typeof target.closest !== "function") return false;
+  return !target.closest("button, a, input, select, textarea, label, [contenteditable='true'], .sp");
+}
+
+function endDrag() {
+  if (!drag) return;
+  if (drag.timer) { clearTimeout(drag.timer); drag.timer = 0; }
+  sendDrag("end", Math.round(drag.dx), Math.round(drag.dy));
+  try {
+    if (headEl.hasPointerCapture && headEl.hasPointerCapture(drag.id)) headEl.releasePointerCapture(drag.id);
+  } catch (e) { /* 忽略 */ }
+  drag = null;
+  document.body.classList.remove("dragging");
+}
+
+if (headEl) {
+  headEl.addEventListener("pointerdown", function (ev) {
+    if (ev.pointerType === "mouse" && ev.button !== 0) return;
+    if (!draggableTarget(ev.target)) return;
+    ev.preventDefault();
+    drag = { id: ev.pointerId, x0: ev.screenX, y0: ev.screenY, dx: 0, dy: 0, timer: 0 };
+    try { headEl.setPointerCapture(ev.pointerId); } catch (e) { /* 老浏览器 */ }
+    document.body.classList.add("dragging");
+    sendDrag("start", 0, 0);
+  });
+
+  /* move / up 挂在 window 上：指针捕获生效时事件会重定向到标题栏再冒泡过来；
+     万一捕获失败，指针滑到弹窗正文上也能继续收到 move（拖动不会中途断掉）。 */
+  window.addEventListener("pointermove", function (ev) {
+    if (!drag || ev.pointerId !== drag.id) return;
+    drag.dx = ev.screenX - drag.x0;
+    drag.dy = ev.screenY - drag.y0;
+    if (drag.timer) return; // 节流：一个间隔最多发一次，发的永远是最新位移
+    drag.timer = setTimeout(function () {
+      drag.timer = 0;
+      if (!drag) return;
+      sendDrag("move", Math.round(drag.dx), Math.round(drag.dy));
+    }, INFO_DRAG_THROTTLE_MS);
+  });
+
+  window.addEventListener("pointerup", endDrag);
+  window.addEventListener("pointercancel", endDrag);
+  /* 指针跑出 iframe（弹窗被视口边界夹住）时可能收不到 pointerup：用 pointerleave 兜底；
+     再往外的极端情况交给后台 1.5 秒没消息自动收尾（不用 window.blur：
+     万一 OBR 重开弹窗时抢了焦点，blur 会把拖动在第一帧就结束掉）。 */
+  document.addEventListener("pointerleave", endDrag);
+
+  if (pinEl) {
+    pinEl.addEventListener("click", function (ev) {
+      ev.preventDefault();
+      ev.stopPropagation();
+      sendDrag("reset", 0, 0);
+    });
+  }
+}
 
 /* ---------------- 解析绑定 ---------------- */
 
@@ -51,7 +136,7 @@ async function resolveCard() {
 }
 
 function showEmpty(html) {
-  titleEl.textContent = "4E NEXT 速览";
+  titleEl.textContent = "4eNEXT to owlbear · 速览";
   subEl.textContent = "未绑定角色卡";
   bodyEl.innerHTML = '<div class="pop-empty">' + html + "</div>";
   if (scopeEl) scopeEl.textContent = "";

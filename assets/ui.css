@@ -79,20 +79,44 @@ button, input, textarea, select {
 .fab b { font-size: 20px; letter-spacing: .5px; }
 .fab span { font-size: 9.5px; opacity: .85; }
 
-/* ---------- 面板（全屏 modal） ---------- */
-.panel { display: grid; grid-template-columns: 300px 1fr; height: 100vh; }
+/* ---------- 面板（全屏 modal，v1.3.0 改为「标题栏 + 三 tab」） ---------- */
+.panel { display: flex; flex-direction: column; height: 100vh; }
+.panel-top {
+  flex: 0 0 auto;
+  display: flex; align-items: center; gap: 14px;
+  padding: 9px 14px; border-bottom: 1px solid var(--line);
+  background: var(--bg2);
+}
+.panel-title { font-size: 15px; font-weight: 800; color: var(--green); white-space: nowrap; }
+.panel-title small { font-size: 11px; color: var(--muted); font-weight: 400; margin-left: 8px; }
+.panel-top-right { margin-left: auto; display: flex; align-items: center; gap: 10px; }
+.panel-sub { font-size: 11px; color: var(--muted); }
+.tabs {
+  display: flex; gap: 3px; padding: 3px;
+  background: #0d1218; border: 1px solid var(--line); border-radius: 10px;
+}
+.tab {
+  border: 1px solid transparent; background: transparent; color: var(--muted);
+  border-radius: 7px; padding: 5px 14px; cursor: pointer; font-size: 12.5px;
+  transition: background .15s, color .15s, border-color .15s;
+}
+.tab:hover { color: var(--text); background: var(--bg3); }
+.tab.on {
+  color: var(--green); background: #17251b;
+  border-color: rgba(86, 211, 100, .45); font-weight: 700;
+}
+.panel-body { flex: 1 1 auto; min-height: 0; display: flex; }
+.tab-pane { display: none; width: 100%; height: 100%; min-height: 0; }
+.tab-pane.on { display: flex; }
+#tab-glance.on { display: grid; grid-template-columns: 300px 1fr; }
+#tab-init.on, #tab-dice.on { display: block; overflow: hidden; }
 .panel-side {
   background: var(--bg2); border-right: 1px solid var(--line);
-  display: flex; flex-direction: column; min-height: 0;
+  display: flex; flex-direction: column; min-height: 0; height: 100%;
 }
-.panel-head {
-  display: flex; align-items: center; gap: 8px;
-  padding: 12px 14px; border-bottom: 1px solid var(--line);
-}
-.panel-title { font-size: 15px; font-weight: 800; }
-.panel-title small { display: block; font-size: 11px; color: var(--muted); font-weight: 400; margin-top: 1px; }
-.panel-main { overflow: auto; padding: 16px 20px 40px; }
-.panel-main-inner { max-width: 980px; margin: 0 auto; }
+.panel-main { overflow: auto; padding: 16px 20px 40px; height: 100%; }
+/* v1.2.1：速览弹窗加宽后，面板里的预览也跟着放宽一点（仍是居中单列，不影响左边列表） */
+.panel-main-inner { max-width: 1080px; margin: 0 auto; }
 .side-actions { display: flex; gap: 6px; padding: 10px 12px; border-bottom: 1px solid var(--line); flex-wrap: wrap; }
 .card-list { overflow: auto; flex: 1 1 auto; padding: 6px; }
 .card-row {
@@ -163,6 +187,12 @@ body.info-body { padding: 6px; }
 .pop-head .t { font-size: 12.5px; font-weight: 700; }
 .pop-head .t small { display: block; font-size: 10.5px; color: var(--muted); font-weight: 400; }
 .pop-head .sp { margin-left: auto; display: flex; gap: 4px; }
+/* v1.2.2：速览弹窗的标题栏就是拖动区（按住标题栏 / 左侧 ⠿ 拖走，位置按 token 记住） */
+.pop-head { cursor: move; user-select: none; touch-action: none; }
+.pop-head:hover { background: #16202a; }
+.pop-head .grip { color: #61707f; font-size: 13px; line-height: 1; margin-right: -2px; }
+body.dragging, body.dragging .pop-head { cursor: grabbing; }
+body.dragging .pop-head { background: #17212b; }
 .pop-body { overflow: auto; padding: 9px 10px 14px; flex: 1 1 auto; }
 .pop-empty { padding: 24px 16px; color: var(--muted); text-align: center; line-height: 1.7; font-size: 13px; }
 .icon-btn {
@@ -269,3 +299,77 @@ body.info-body { padding: 6px; }
 .diag-card .pill-bad { color: var(--red); }
 .diag-card .pill-wait { color: var(--orange); }
 .diag-card p.foot { margin: 8px 0 0; font-size: 11.5px; color: var(--muted); }
+
+/* ---------- v1.3.0：先攻 tab ---------- */
+.init-main { height: 100%; overflow: auto; padding: 16px 20px 40px; }
+.init-wrap { max-width: 980px; margin: 0 auto; display: flex; flex-direction: column; gap: 12px; }
+.init-head { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+.init-title { font-size: 20px; font-weight: 800; color: var(--text); }
+.init-status { font-size: 12px; color: var(--muted); margin-top: 2px; }
+.init-round {
+  font-family: ui-monospace, "Cascadia Code", Consolas, monospace;
+  font-size: 12px; color: var(--green);
+  border: 1px solid rgba(86, 211, 100, .4); background: #17251b;
+  border-radius: 999px; padding: 3px 10px; white-space: nowrap;
+}
+.init-actions { margin-left: auto; display: flex; gap: 6px; flex-wrap: wrap; justify-content: flex-end; }
+.init-list-head, .init-row {
+  display: grid; grid-template-columns: 34px minmax(120px, 1fr) 64px 78px 190px;
+  align-items: center; gap: 10px;
+}
+.init-list-head { font-size: 11px; color: var(--muted); padding: 0 12px 2px; }
+.init-list-head span:first-child { text-align: center; }
+.init-list-head span:nth-child(3), .init-list-head span:nth-child(4) { text-align: right; }
+.init-list { display: flex; flex-direction: column; gap: 6px; }
+.init-row {
+  background: var(--bg2); border: 1px solid var(--line); border-radius: 10px;
+  padding: 8px 12px; min-height: 44px;
+}
+.init-row.on { border-color: rgba(86, 211, 100, .6); background: #142018; box-shadow: inset 0 0 0 1px rgba(86, 211, 100, .15); }
+.init-row.hidden { border-style: dashed; }
+.init-idx { text-align: center; color: var(--muted); font-size: 12px; font-family: ui-monospace, Consolas, monospace; }
+.init-name { font-size: 13.5px; font-weight: 700; display: flex; align-items: center; gap: 6px; flex-wrap: wrap; min-width: 0; }
+.init-name em { font-style: normal; font-size: 10px; font-weight: 600; border-radius: 999px; padding: 0 6px; border: 1px solid var(--line); }
+.init-name .init-badge { color: #c9a7ff; border-color: rgba(163, 113, 247, .45); background: rgba(163, 113, 247, .1); }
+.init-name .init-mine { color: var(--blue); border-color: rgba(88, 166, 255, .4); }
+.init-name .init-cur { color: var(--green); border-color: rgba(86, 211, 100, .5); background: rgba(46, 160, 67, .14); }
+.init-bonus, .init-total {
+  font-family: ui-monospace, "Cascadia Code", Consolas, monospace;
+  text-align: right; font-variant-numeric: tabular-nums;
+}
+.init-bonus { color: var(--muted); font-size: 12.5px; }
+.init-total { font-size: 20px; font-weight: 800; color: var(--green); }
+.init-acts { display: flex; gap: 3px; justify-content: flex-end; }
+.init-act {
+  width: 26px; height: 26px; padding: 0; line-height: 1;
+  border: 1px solid var(--line); background: var(--bg3); color: var(--muted);
+  border-radius: 7px; cursor: pointer; font-size: 12px;
+}
+.init-act:hover { color: var(--text); border-color: #3b4a5a; background: #22303f; }
+.init-act.danger:hover { color: var(--red); border-color: rgba(248, 81, 73, .5); background: rgba(248, 81, 73, .12); }
+.init-empty {
+  padding: 26px 16px; text-align: center; color: var(--muted); font-size: 13px; line-height: 1.8;
+  border: 1px dashed var(--line); border-radius: 12px; background: var(--bg2);
+}
+.init-hint { margin: 2px 2px 0; font-size: 11.5px; line-height: 1.6; color: var(--muted); }
+.init-warn {
+  margin: 2px 0 0; font-size: 12px; line-height: 1.6; color: #ffb4b1;
+  border: 1px solid rgba(248, 81, 73, .45); background: rgba(248, 81, 73, .1);
+  border-radius: 9px; padding: 7px 10px;
+}
+
+/* ---------- v1.3.0：骰子 tab（占位） ---------- */
+.dice-placeholder {
+  height: 100%; min-height: 420px;
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  gap: 10px; text-align: center; padding: 40px;
+}
+.dice-placeholder .dice-icon { font-size: 54px; line-height: 1; filter: grayscale(.15); }
+.dice-placeholder h2 { margin: 0; font-size: 20px; color: var(--text); }
+.dice-placeholder p { margin: 0; max-width: 520px; color: var(--muted); font-size: 13px; line-height: 1.75; }
+
+@media (max-width: 760px) {
+  .init-list-head, .init-row { grid-template-columns: 26px minmax(90px, 1fr) 54px 62px auto; gap: 6px; }
+  .init-acts { flex-wrap: wrap; }
+  .panel-sub { display: none; }
+}

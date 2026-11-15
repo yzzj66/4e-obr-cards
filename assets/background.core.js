@@ -1,4 +1,4 @@
-/* 4E NEXT 角色卡 · 后台逻辑（单文件「经典脚本」，没有任何 import / export）
+/* 4eNEXT to owlbear · 后台逻辑（单文件「经典脚本」，没有任何 import / export）
  * ---------------------------------------------------------------------------
  * 这个文件不直接给浏览器加载：dev/build-background.mjs 会把它和
  * vendor/obr-sdk.js（去掉末尾 export{}）拼成 assets/background.bundle.js，
@@ -10,7 +10,8 @@
  *   1) manifest.action  → 房间左上角的扩展图标（由 manifest 提供，不依赖本文件）
  *   2) OBR.tool.create   → 左侧工具栏里的 4E 工具按钮
  *   3) OBR.popover.open  → 右下角浮动 4E 按钮（与参考实现 character-cards 相同写法）
- * 外加：右键 IMAGE token 的「绑定 4E NEXT 角色卡」（仅 GM）。
+ * 外加：右键 IMAGE token 的「绑定 4E NEXT 角色卡」/「加入先攻」/「隐形加入先攻」（仅 GM），
+ *       以及玩家「结束我的回合」请求（只由 GM 客户端落笔）。
  *
  * 自诊断：每一步失败都 OBR.notification.show(..., "ERROR")，成功则在启动后汇总一条
  *        INFO 通知（可用 localStorage["4enext/diag"]="0" 关掉）。
@@ -28,16 +29,38 @@ var TOOL_ID = NS + "/panel-tool";
 var CH_HELLO = NS + "/diag-hello"; /* background → 各页面：我起来了 */
 var CH_PING = NS + "/diag-ping";   /* 页面 → background：在吗 */
 var CH_PONG = NS + "/diag-pong";   /* background → 页面：在，状态如下 */
-var PLUGIN_VERSION = "1.2.0";
+var PLUGIN_VERSION = "1.3.0";
 /* token 上的血量（与 assets/track.js 的 KEY_HP 必须一字不差）。 */
 var KEY_HP = NS + "/hp";
+/* v1.3.0：token 上的先攻加值 / 房间数据里的先攻状态 / 玩家结束回合请求频道
+ * （与 assets/common.js、assets/initiative.js 里的同名常量必须一字不差）。 */
+var KEY_INIT = NS + "/init";
+var KEY_INITIATIVE = NS + "/initiative";
+var CH_INIT_REQUEST = NS + "/init-request";
 
 var BUTTON_SIZE = 64;
 var RIGHT_OFFSET = 12;
 var BOTTOM_OFFSET = 92;
-/* v1.2.0：速览弹窗里多了血量加减与资源追踪，宽高各放大一点。 */
-var INFO_W = 400;
-var INFO_H = 560;
+/* v1.2.1：速览弹窗整体加宽（400 宽时 HP 行 / 数值行 / 属性三列都挤），并保证小屏不超出视口。 */
+var INFO_W = 660;
+var INFO_H = 700;
+var INFO_MIN_W = 360;
+
+/* v1.2.2：速览弹窗「可自由拖动」。手感 / 边界都在这几个常量里（说明：docs/popover-drag.md）。
+ *   INFO_TOKEN_GAP     自动定位时，弹窗底边与 token 顶边的间距
+ *   INFO_VIEW_MARGIN   拖动 / 夹取时离视口边缘的最小距离（取 16：与 MUI Popover 的默认
+ *                      marginThreshold 对齐，避免贴边时 OBR 又替我们挪 8px、拖动跟着跳）
+ *   INFO_DRAG_IDLE_MS  拖动中这么久没收到消息就当结束（兜住丢失的 pointerup）
+ *   INFO_POS_MAX       最多记住多少枚 token 的弹窗位置
+ * INFO_POS_KEY / CH_INFO_DRAG 与 assets/common.js 里的同名常量必须一字不差
+ * （后台是经典脚本，不能 import）。
+ */
+var INFO_TOKEN_GAP = 8;
+var INFO_VIEW_MARGIN = 16;
+var INFO_DRAG_IDLE_MS = 1500;
+var INFO_POS_MAX = 40;
+var INFO_POS_KEY = "4enext/info-pos";
+var CH_INFO_DRAG = NS + "/info-drag";
 
 /* ---------------------------------------------------------------------------
  * 0) 站点根地址
@@ -201,7 +224,7 @@ async function registerTool() {
   }
   var def = {
     id: TOOL_ID,
-    icons: [{ icon: TOOL_ICON_URL, label: "4E NEXT 角色卡：打开面板" }],
+    icons: [{ icon: TOOL_ICON_URL, label: "4eNEXT to owlbear：打开面板" }],
     /* 返回 false = 不切换成激活状态，只执行我们的回调 */
     onClick: function () {
       void openPanel("工具栏按钮");
@@ -220,11 +243,23 @@ async function registerTool() {
 /* ---------------------------------------------------------------------------
  * 5) 右键菜单：GM + 单个 IMAGE token（与参考实现 background.ts 第 231~258 行一致）
  * ------------------------------------------------------------------------- */
+async function createContextMenu(def) {
+  try {
+    await OBR.contextMenu.create(def);
+  } catch (e) {
+    // 后台重载后同 id 可能还在，先删再建
+    await OBR.contextMenu.remove(def.id);
+    await OBR.contextMenu.create(def);
+  }
+}
+
 async function registerContextMenu() {
   if (!OBR.contextMenu || typeof OBR.contextMenu.create !== "function") {
     throw new Error("SDK 没有 OBR.contextMenu.create");
   }
-  var def = {
+
+  /* 1) 绑定角色卡（v1.1.0 起就有，id 不变） */
+  await createContextMenu({
     id: NS + "/bind-menu",
     icons: [{
       icon: ICON_URL,
@@ -253,22 +288,61 @@ async function registerContextMenu() {
         stepFail("打开绑定弹窗", e);
       }
     }
-  };
-  try {
-    await OBR.contextMenu.create(def);
-  } catch (e) {
-    // 同上：后台重载后同 id 可能还在，先删再建
-    await OBR.contextMenu.remove(def.id);
-    await OBR.contextMenu.create(def);
-  }
+  });
+
+  /* 2) 加入先攻 / 隐形加入先攻（v1.3.0，Full Suite 同款命名）
+   * 分开注册而不是塞进同一个 icons 数组：filter 不同（隐形只给 GM），
+   * 回调也不用去猜 elementId 是第几个图标。 */
+  await createContextMenu({
+    id: NS + "/init-add",
+    icons: [{
+      icon: ICON_URL,
+      label: "加入先攻",
+      filter: {
+        roles: ["GM"],
+        every: [{ key: "type", value: "IMAGE" }],
+        max: 1
+      }
+    }],
+    onClick: function (context) { return onInitMenuClick(context, false); }
+  });
+  await createContextMenu({
+    id: NS + "/init-add-hidden",
+    icons: [{
+      icon: ICON_URL,
+      label: "隐形加入先攻",
+      filter: {
+        roles: ["GM"],
+        every: [{ key: "type", value: "IMAGE" }],
+        max: 1
+      }
+    }],
+    onClick: function (context) { return onInitMenuClick(context, true); }
+  });
 }
 
 /* ---------------------------------------------------------------------------
  * 6) 速览弹窗（选中绑定的 token 就弹）
+ * ---------------------------------------------------------------------------
+ * v1.2.2：弹窗可自由拖动
+ *   · OBR 的 popover 没有拖动能力，但可以在同一个 id 上重新 open —— 只改
+ *     anchorPosition，弹窗页面不会重载（与 v1.1.0 浮动按钮同一套字段写法）。
+ *   · 拖动时统一按「左上角」定位：anchorOrigin / transformOrigin 都是 LEFT/TOP，
+ *     anchorPosition 就是弹窗左上角在 Owlbear 视口里的坐标。这样后台只记一个点：
+ *     拖动 = 起点 + 指针位移，不用反推 OBR 的锚点 / 变换规则。
+ *   · 指针事件在 info.js（弹窗页）里收，经 broadcast 发到这里；这里负责节流合并、
+ *     视口边界夹取、localStorage 位置记忆（按 token id 各记一份）。
  * ------------------------------------------------------------------------- */
 var infoOpen = false;
 var infoItemId = null;
 var infoCardId = null;
+/* 弹窗当前几何：{ left, top, width, height, url, vp: { width, height } } */
+var infoGeom = null;
+/* 拖动状态：infoDrag = { base:{left,top}, itemId, moved }；dragWanted 是待应用的最后位置。 */
+var infoDrag = null;
+var infoDragTimer = null;
+var dragWanted = null;
+var dragBusy = false;
 
 async function getCards() {
   try {
@@ -287,51 +361,273 @@ function findCard(cards, id) {
   return null;
 }
 
+/** 选中 token 在屏幕上的「上边中点」（Owlbear 视口坐标）。 */
 async function anchorOf(itemId) {
   try {
     var bounds = await OBR.scene.items.getItemBounds([itemId]);
     var scale = await OBR.viewport.getScale();
     var p = await OBR.viewport.transformPoint(bounds.center);
-    return { left: p.x, top: Math.max(8, p.y - (bounds.height * scale) / 2 - 8) };
+    return { left: p.x, top: p.y - (bounds.height * scale) / 2 };
   } catch (e) {
     return null;
   }
 }
 
-async function openInfo(itemId, cardId) {
-  var params = "?item=" + encodeURIComponent(itemId) + "&card=" + encodeURIComponent(cardId);
-  var anchor = await anchorOf(itemId);
-  var vh = 0;
-  try { vh = await OBR.viewport.getHeight(); } catch (e) { vh = 0; }
-  var opts = {
+async function infoViewport() {
+  var vp = { width: 0, height: 0 };
+  try { vp.width = await OBR.viewport.getWidth(); } catch (e) { vp.width = 0; }
+  try { vp.height = await OBR.viewport.getHeight(); } catch (e) { vp.height = 0; }
+  return vp;
+}
+
+/* 小屏（13 寸笔记本 1920×1080 / 缩窄的窗口）不能超出视口：宽高都按视口留边再夹一次。 */
+function infoSize(vp) {
+  return {
+    width: Math.max(INFO_MIN_W, Math.min(INFO_W, (vp.width || INFO_W + 40) - 32)),
+    height: Math.min(INFO_H, Math.max(260, (vp.height || INFO_H + 40) - 40))
+  };
+}
+
+/** 把弹窗左上角夹进视口（视口未知时不夹）。 */
+function clampInfoPos(left, top, size, vp) {
+  var m = INFO_VIEW_MARGIN;
+  var out = { left: Math.round(left), top: Math.round(top) };
+  if (vp && vp.width > 0) out.left = Math.round(Math.min(Math.max(out.left, m), Math.max(m, vp.width - size.width - m)));
+  if (vp && vp.height > 0) out.top = Math.round(Math.min(Math.max(out.top, m), Math.max(m, vp.height - size.height - m)));
+  return out;
+}
+
+/* ---- 位置记忆 ------------------------------------------------------------
+ * localStorage["4enext/info-pos"] = { v: 1, pos: { "<tokenId>": { left, top } } }
+ * 按 token 记：同一枚 token 下次打开回到原处，换一枚 token 不会串位置。
+ * 读的时候容忍旧格式 / 脏数据：坏了就整份忽略，退回「token 上方」。
+ * ------------------------------------------------------------------------- */
+function readInfoPosMap() {
+  try {
+    var raw = localStorage.getItem(INFO_POS_KEY);
+    if (!raw) return {};
+    var box = JSON.parse(raw);
+    if (!box || typeof box !== "object") return {};
+    var src = box.pos && typeof box.pos === "object" ? box.pos : box;
+    var out = {};
+    for (var k in src) {
+      if (!Object.prototype.hasOwnProperty.call(src, k)) continue;
+      var one = src[k];
+      if (!one || typeof one !== "object") continue;
+      if (typeof one.left !== "number" || typeof one.top !== "number") continue;
+      if (!isFinite(one.left) || !isFinite(one.top)) continue;
+      out[k] = { left: one.left, top: one.top };
+    }
+    return out;
+  } catch (e) {
+    return {};
+  }
+}
+
+function readInfoPos(itemId) {
+  if (!itemId) return null;
+  return readInfoPosMap()[itemId] || null;
+}
+
+function writeInfoPos(itemId, pos) {
+  if (!itemId || !pos) return;
+  try {
+    var map = readInfoPosMap();
+    delete map[itemId]; /* 先删再插 → 这枚 token 变成「最近使用」，裁剪时最后才轮到它 */
+    map[itemId] = { left: Math.round(pos.left), top: Math.round(pos.top) };
+    var keys = Object.keys(map);
+    for (var i = 0; i < keys.length - INFO_POS_MAX; i++) delete map[keys[i]];
+    localStorage.setItem(INFO_POS_KEY, JSON.stringify({ v: 1, pos: map }));
+  } catch (e) { /* 隐私模式 / 空间满：记不住位置不影响用 */ }
+}
+
+/** 只清这一枚 token 的位置（不会误清别人的）。 */
+function clearInfoPos(itemId) {
+  if (!itemId) return;
+  try {
+    var map = readInfoPosMap();
+    delete map[itemId];
+    if (!Object.keys(map).length) localStorage.removeItem(INFO_POS_KEY);
+    else localStorage.setItem(INFO_POS_KEY, JSON.stringify({ v: 1, pos: map }));
+  } catch (e) { /* 忽略 */ }
+}
+
+/** 弹窗参数：位置一律按「左上角」解释，拖动时只换 anchorPosition。 */
+function infoPopoverOptions(pos, size, url) {
+  return {
     id: ID_INFO,
-    url: URL_INFO + params,
-    width: INFO_W,
-    height: Math.min(INFO_H, Math.max(260, (vh || INFO_H + 40) - 40)),
-    anchorOrigin: { horizontal: "CENTER", vertical: "BOTTOM" },
-    transformOrigin: { horizontal: "CENTER", vertical: "BOTTOM" },
+    url: url,
+    width: size.width,
+    height: size.height,
+    anchorReference: "POSITION",
+    anchorPosition: { left: pos.left, top: pos.top },
+    anchorOrigin: { horizontal: "LEFT", vertical: "TOP" },
+    transformOrigin: { horizontal: "LEFT", vertical: "TOP" },
     hidePaper: true,
     disableClickAway: true
   };
-  if (anchor) {
-    opts.anchorReference = "POSITION";
-    opts.anchorPosition = anchor;
-  } else {
-    opts.anchorReference = "ELEMENT";
-    opts.anchorElementId = itemId;
-  }
-  await OBR.popover.open(opts);
+}
+
+/** 打开 / 移动速览弹窗。url 不变时 OBR 只更新位置，不会重载弹窗页面。 */
+async function showInfoAt(pos, size, url, itemId, cardId, vp) {
+  await OBR.popover.open(infoPopoverOptions(pos, size, url));
   infoOpen = true;
   infoItemId = itemId;
   infoCardId = cardId;
+  infoGeom = {
+    left: pos.left,
+    top: pos.top,
+    width: size.width,
+    height: size.height,
+    url: url,
+    vp: { width: vp.width, height: vp.height }
+  };
+}
+
+/** 自动定位点：优先用这枚 token 记住的位置，否则摆在 token 正上方。 */
+async function infoAutoPos(itemId, size, vp) {
+  var saved = readInfoPos(itemId);
+  if (saved) return clampInfoPos(saved.left, saved.top, size, vp);
+  var anchor = await anchorOf(itemId);
+  if (anchor) {
+    return clampInfoPos(anchor.left - size.width / 2, anchor.top - INFO_TOKEN_GAP - size.height, size, vp);
+  }
+  /* 拿不到 token 包围盒（极少见）：落在视口左上角，至少还能拖走 */
+  return clampInfoPos((vp.width || 0) / 2 - size.width / 2, INFO_VIEW_MARGIN, size, vp);
+}
+
+async function openInfo(itemId, cardId) {
+  var vp = await infoViewport();
+  var size = infoSize(vp);
+  var pos = await infoAutoPos(itemId, size, vp);
+  var url = URL_INFO + "?item=" + encodeURIComponent(itemId) + "&card=" + encodeURIComponent(cardId);
+  await showInfoAt(pos, size, url, itemId, cardId, vp);
 }
 
 async function closeInfo() {
+  if (infoDragTimer) { clearTimeout(infoDragTimer); infoDragTimer = null; }
+  infoDrag = null;
+  infoGeom = null;
   if (!infoOpen) return;
   try { await OBR.popover.close(ID_INFO); } catch (e) { /* 已关闭 */ }
   infoOpen = false;
   infoItemId = null;
   infoCardId = null;
+}
+
+/* ---- 拖动：info.js 只发「起点 + 累计位移」，位置换算 / 夹取 / 记忆都在这里 ---- */
+
+/** 把最新目标位置排进队列；上一帧还没 open 完就只留最后一个（节流合并）。 */
+function queueInfoDrag(pos) {
+  if (!infoGeom) return;
+  dragWanted = {
+    pos: { left: pos.left, top: pos.top },
+    size: { width: infoGeom.width, height: infoGeom.height },
+    url: infoGeom.url
+  };
+  void pumpInfoDrag();
+}
+
+async function pumpInfoDrag() {
+  if (dragBusy) return;
+  dragBusy = true;
+  try {
+    while (dragWanted) {
+      var job = dragWanted;
+      dragWanted = null;
+      try {
+        await OBR.popover.open(infoPopoverOptions(job.pos, job.size, job.url));
+        if (infoGeom) {
+          infoGeom.left = job.pos.left;
+          infoGeom.top = job.pos.top;
+        }
+      } catch (e) {
+        pageLog("err", "拖动速览弹窗失败：" + errText(e));
+        break;
+      }
+    }
+  } finally {
+    dragBusy = false;
+    /* 上一次 open 失败时可能刚好又排进一个新位置：补跑一次，别把最后一帧丢了。 */
+    if (dragWanted) void pumpInfoDrag();
+  }
+}
+
+/** 拖动中 1.5 秒没消息就当结束：兜住指针跑出 iframe、页面被重载导致的丢 pointerup。 */
+function touchInfoDragTimer() {
+  if (infoDragTimer) clearTimeout(infoDragTimer);
+  infoDragTimer = setTimeout(function () {
+    infoDragTimer = null;
+    if (!infoDrag) return;
+    if (infoDrag.moved && infoGeom) writeInfoPos(infoDrag.itemId, infoGeom);
+    infoDrag = null;
+    pageLog("info", "速览弹窗拖动超时，已按最后位置收尾");
+  }, INFO_DRAG_IDLE_MS);
+}
+
+/** 频道：com.4enext-owlbear/info-drag，phase = start / move / end / reset。 */
+function onInfoDrag(ev) {
+  var data = ev && ev.data !== undefined ? ev.data : ev;
+  if (!data || typeof data.phase !== "string") return;
+
+  if (data.phase === "reset") {
+    clearInfoPos(infoItemId);
+    infoDrag = null;
+    if (infoDragTimer) { clearTimeout(infoDragTimer); infoDragTimer = null; }
+    void resetInfoToToken();
+    return;
+  }
+  if (!infoOpen || !infoGeom) return;
+
+  var dx = typeof data.dx === "number" && isFinite(data.dx) ? data.dx : 0;
+  var dy = typeof data.dy === "number" && isFinite(data.dy) ? data.dy : 0;
+
+  if (data.phase === "start" || !infoDrag) {
+    /* 起点 = 弹窗现在的位置；move 一律按「起点 + 累计位移」算，不会越拖越偏。 */
+    infoDrag = { base: { left: infoGeom.left, top: infoGeom.top }, itemId: infoItemId, moved: false };
+    touchInfoDragTimer();
+    if (data.phase === "start") return;
+  }
+
+  if (Math.abs(dx) > 1 || Math.abs(dy) > 1) infoDrag.moved = true;
+
+  /* 只是点了一下标题栏（没真的移动）就什么也不做：避免多余的重开。 */
+  if (!infoDrag.moved) {
+    if (data.phase === "end") {
+      if (infoDragTimer) { clearTimeout(infoDragTimer); infoDragTimer = null; }
+      infoDrag = null;
+    }
+    return;
+  }
+
+  var target = clampInfoPos(infoDrag.base.left + dx, infoDrag.base.top + dy, infoGeom, infoGeom.vp);
+  queueInfoDrag(target);
+  touchInfoDragTimer();
+
+  if (data.phase === "end") {
+    if (infoDragTimer) { clearTimeout(infoDragTimer); infoDragTimer = null; }
+    writeInfoPos(infoDrag.itemId, target);
+    infoDrag = null;
+  }
+}
+
+/** 「回到 token」：清掉这枚 token 记住的位置，重新按 token 正上方摆。 */
+async function resetInfoToToken() {
+  if (!infoOpen || !infoItemId) return;
+  var itemId = infoItemId;
+  var cardId = infoCardId;
+  var vp = await infoViewport();
+  var size = infoSize(vp);
+  var pos = await infoAutoPos(itemId, size, vp);
+  var url = infoGeom ? infoGeom.url : URL_INFO + "?item=" + encodeURIComponent(itemId) + "&card=" + encodeURIComponent(cardId || "");
+  /* 算位置期间可能已经换了选中 token / 关了弹窗：别把过期的弹窗又开回来。 */
+  if (!infoOpen || infoItemId !== itemId) return;
+  try {
+    await showInfoAt(pos, size, url, itemId, cardId, vp);
+    pageLog("info", "速览弹窗已回到 token 上方");
+  } catch (e) {
+    stepFail("把速览弹窗移回 token", e);
+  }
 }
 
 var infoErrorShown = false;
@@ -721,6 +1017,215 @@ async function watchLocalBars() {
 }
 
 /* ---------------------------------------------------------------------------
+ * 7.5) 先攻（v1.3.0）
+ * ---------------------------------------------------------------------------
+ * 右键「加入先攻 / 隐形加入先攻」直接写房间数据：
+ *   room.metadata["com.4enext-owlbear/initiative"] =
+ *     { v:1, updatedAt, round, activeId, entries:[{tokenId,name,init,bonus,hidden,ownerId,updatedAt}] }
+ * 先攻加值取 token 上的 com.4enext-owlbear/init（绑定角色卡时由 common.js 写入），
+ * 后台是经典脚本，不能 import glance.js 的推导函数 —— 所以这里只读元数据，不重算。
+ *
+ * 面板里的 GM 操作由面板自己写房间数据（同一套 initiative.js 逻辑）。
+ * 玩家点「结束我的回合」时不能写房间数据，改成 broadcast 请求；只有 GM 客户端
+ * 收到后校验「当前条目确实是这个玩家的 token」才推进。
+ * ------------------------------------------------------------------------- */
+var INIT_MAX_ENTRIES = 200;
+
+function initInt(v, d) {
+  return typeof v === "number" && isFinite(v) ? Math.round(v) : d;
+}
+function initClamp(v, lo, hi) {
+  return Math.max(lo, Math.min(hi, v));
+}
+function initNorm(raw) {
+  var out = { v: 1, updatedAt: 0, round: 1, activeId: "", entries: [] };
+  if (!raw || typeof raw !== "object") return out;
+  out.updatedAt = initInt(raw.updatedAt, 0);
+  out.round = Math.max(1, initInt(raw.round, 1));
+  var src = Array.isArray(raw.entries) ? raw.entries.slice(0, INIT_MAX_ENTRIES) : [];
+  var seen = {};
+  for (var i = 0; i < src.length; i++) {
+    var e = src[i];
+    if (!e || typeof e !== "object") continue;
+    var tokenId = String(e.tokenId == null ? "" : e.tokenId).trim();
+    if (!tokenId || seen[tokenId]) continue;
+    seen[tokenId] = true;
+    var name = String(e.name == null ? "" : e.name).trim().slice(0, 80) || "未命名";
+    out.entries.push({
+      tokenId: tokenId,
+      name: name,
+      init: initClamp(initInt(e.init, 0), -99, 999),
+      bonus: initClamp(initInt(e.bonus, 0), -99, 999),
+      hidden: !!e.hidden,
+      ownerId: String(e.ownerId == null ? "" : e.ownerId),
+      updatedAt: initInt(e.updatedAt, 0)
+    });
+  }
+  var wanted = String(raw.activeId == null ? "" : raw.activeId);
+  var hit = null;
+  for (var j = 0; j < out.entries.length; j++) if (out.entries[j].tokenId === wanted) hit = out.entries[j];
+  out.activeId = hit ? hit.tokenId : (out.entries[0] ? out.entries[0].tokenId : "");
+  if (!out.entries.length) out.round = 1;
+  return out;
+}
+function initSortEntries(list) {
+  return list.slice().sort(function (a, b) {
+    return (b.init - a.init) || (b.bonus - a.bonus) ||
+      String(a.name).localeCompare(String(b.name), "zh-CN") || (a.updatedAt - b.updatedAt);
+  });
+}
+async function initRead() {
+  try {
+    var meta = await OBR.room.getMetadata();
+    return initNorm(meta ? meta[KEY_INITIATIVE] : null);
+  } catch (e) {
+    pageLog("err", "读取先攻失败：" + errText(e));
+    return initNorm(null);
+  }
+}
+async function initWrite(state) {
+  var next = initNorm(state);
+  next.updatedAt = Date.now();
+  await OBR.room.setMetadata({ [KEY_INITIATIVE]: next });
+  return next;
+}
+function initRollD20() {
+  return Math.floor(Math.random() * 20) + 1;
+}
+/** 只读 token 元数据里的加值；缺失时 +0（面板打开先攻 tab 会补写）。 */
+function initBonusOf(item) {
+  var m = item && item.metadata ? item.metadata[KEY_INIT] : null;
+  if (m && typeof m === "object" && typeof m.bonus === "number" && isFinite(m.bonus)) {
+    return initClamp(Math.round(m.bonus), -99, 999);
+  }
+  return 0;
+}
+/** 加进先攻（已在列表里就只更新名字 / 加值 / 隐形标记，不重掷）。 */
+async function initAdd(item, hidden) {
+  if (!item || !item.id) return null;
+  var state = await initRead();
+  var cards = await getCards();
+  var cardId = item.metadata ? item.metadata[KEY_BIND] : null;
+  var card = typeof cardId === "string" ? findCard(cards, cardId) : null;
+  var name = String(item.name || (card && card.name) || "未命名").trim().slice(0, 80) || "未命名";
+  var bonus = initBonusOf(item);
+  var ownerId = String(item.createdUserId || "");
+  var idx = -1;
+  for (var i = 0; i < state.entries.length; i++) {
+    if (state.entries[i].tokenId === item.id) { idx = i; break; }
+  }
+  var entry = null;
+  if (idx >= 0) {
+    var old = state.entries[idx];
+    entry = {
+      tokenId: old.tokenId,
+      name: name || old.name,
+      init: old.init,
+      bonus: bonus,
+      hidden: !!(old.hidden || hidden),
+      ownerId: ownerId || old.ownerId,
+      updatedAt: Date.now()
+    };
+    state.entries[idx] = entry;
+  } else {
+    entry = {
+      tokenId: item.id,
+      name: name,
+      init: initRollD20() + bonus,
+      bonus: bonus,
+      hidden: !!hidden,
+      ownerId: ownerId,
+      updatedAt: Date.now()
+    };
+    state.entries.push(entry);
+    state.entries = initSortEntries(state.entries);
+  }
+  if (!state.activeId && state.entries.length) state.activeId = state.entries[0].tokenId;
+  var next = await initWrite(state);
+  return { state: next, entry: entry };
+}
+
+async function onInitMenuClick(context, hidden) {
+  try {
+    var role = await OBR.player.getRole();
+    if (role !== "GM") {
+      notify("加入先攻需要城主权限（房间数据只有城主能写）", "WARNING");
+      return;
+    }
+    var picked = context && context.items && context.items[0] ? context.items[0] : null;
+    if (!picked) {
+      notify("没有读到选中的 token，右键请对着一个图片 token 再试", "WARNING");
+      return;
+    }
+    /* context 里的 item 可能是右键那一刻的快照：重新取一次，保证 init 元数据是最新的。 */
+    var fresh = null;
+    try { fresh = (await OBR.scene.items.getItems([picked.id]))[0] || null; } catch (e) { fresh = null; }
+    var res = await initAdd(fresh || picked, hidden);
+    if (!res) return;
+    stepOk("加入先攻：" + res.entry.name + (hidden ? "（隐形）" : ""));
+    notify("「" + res.entry.name + "」" + (hidden ? "已隐形加入先攻" : "已加入先攻") +
+      "（先攻 " + res.entry.init + "）", "SUCCESS");
+  } catch (e) {
+    stepFail("加入先攻", e);
+  }
+}
+
+function initAdvance(state, dir) {
+  var out = initNorm(JSON.parse(JSON.stringify(state || {})));
+  if (!out.entries.length) {
+    out.activeId = "";
+    out.round = 1;
+    return out;
+  }
+  var step = dir < 0 ? -1 : 1;
+  var idx = -1;
+  for (var i = 0; i < out.entries.length; i++) {
+    if (out.entries[i].tokenId === out.activeId) { idx = i; break; }
+  }
+  if (idx < 0) idx = 0;
+  var next = idx + step;
+  if (next >= out.entries.length) {
+    next = 0;
+    out.round = Math.max(1, out.round + 1);
+  } else if (next < 0) {
+    next = out.entries.length - 1;
+    out.round = Math.max(1, out.round - 1);
+  }
+  out.activeId = out.entries[next].tokenId;
+  out.updatedAt = Date.now();
+  return out;
+}
+
+/** 玩家「结束我的回合」：广播到所有客户端，只有 GM 客户端会真正写入。 */
+async function onInitRequest(ev) {
+  var data = ev && ev.data !== undefined ? ev.data : ev;
+  if (!data || data.op !== "end-turn") return;
+  try {
+    var role = await OBR.player.getRole();
+    if (role !== "GM") return;
+    var state = await initRead();
+    var active = null;
+    for (var i = 0; i < state.entries.length; i++) {
+      if (state.entries[i].tokenId === state.activeId) { active = state.entries[i]; break; }
+    }
+    if (!active) return;
+    if (data.activeId && data.activeId !== state.activeId) {
+      notify("回合已经变了，结束回合请求已忽略", "WARNING");
+      return;
+    }
+    if (!data.playerId || active.ownerId !== data.playerId) {
+      notify("只能结束自己的回合", "WARNING");
+      return;
+    }
+    var next = initAdvance(state, 1);
+    await initWrite(next);
+    notify("「" + active.name + "」结束回合 → 第 " + next.round + " 轮", "INFO");
+  } catch (e) {
+    pageLog("err", "处理结束回合请求失败：" + errText(e));
+  }
+}
+
+/* ---------------------------------------------------------------------------
  * 8) 启动
  * ------------------------------------------------------------------------- */
 var booted = false;
@@ -797,6 +1302,12 @@ async function boot() {
   await attempt("订阅 room.onMetadataChange", function () {
     OBR.room.onMetadataChange(scheduleRefresh);
   });
+  await attempt("订阅 " + CH_INFO_DRAG + "（速览弹窗拖动）", function () {
+    OBR.broadcast.onMessage(CH_INFO_DRAG, onInfoDrag);
+  });
+  await attempt("订阅 " + CH_INIT_REQUEST + "（玩家结束回合）", function () {
+    OBR.broadcast.onMessage(CH_INIT_REQUEST, onInitRequest);
+  });
   await attempt("订阅 viewport.onChange", function () {
     if (!OBR.viewport || typeof OBR.viewport.onChange !== "function") return; /* 旧版 SDK 没有 */
     var timer = null;
@@ -817,7 +1328,7 @@ async function boot() {
 
   /* 7.6 汇总一条通知：一眼看出哪个入口没注册上 */
   var mark = function (v) { return v ? "✓" : "✗"; };
-  var okLine = "4E 角色卡 v" + PLUGIN_VERSION + " 已加载：工具栏" + mark(bootStatus.tool) +
+  var okLine = "4eNEXT to owlbear v" + PLUGIN_VERSION + " 已加载：工具栏" + mark(bootStatus.tool) +
     " · 右键" + mark(bootStatus.menu) +
     " · 浮动按钮" + (bootStatus.scene ? mark(bootStatus.button) : "（等进地图）");
   var allOk = bootStatus.tool && bootStatus.menu;
@@ -849,22 +1360,3 @@ try {
     pageLog("err", "未处理的 Promise 拒绝：" + msg);
     if (booted) notify("4E插件出错（异步异常）：" + msg, "ERROR");
   });
-} catch (e) { /* 忽略 */ }
-
-/* OBR 环境自检 */
-if (typeof OBR === "undefined" || !OBR) {
-  pageLog("err", "没有拿到 OBR 对象：vendor/obr-sdk.js 可能没加载成功");
-} else if (OBR.isAvailable === false) {
-  pageLog("err", "OBR.isAvailable=false：这个页面不是被 Owlbear 打开的（直接开 background.html 时会这样）");
-} else {
-  try {
-    OBR.onReady(function () {
-      Promise.resolve(boot()).catch(function (e) {
-        stepFail("后台启动", e);
-      });
-    });
-    pageLog("info", "已注册 OBR.onReady，等待房间握手…");
-  } catch (e) {
-    pageLog("err", "OBR.onReady 注册失败：" + errText(e));
-  }
-}

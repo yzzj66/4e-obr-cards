@@ -41,6 +41,12 @@ let sceneItems = [token];
 let localItems = [{ id: "stale-bar-1", type: "CURVE", metadata: { "com.4enext-owlbear/bar": { owner: "old-token", role: "bg" } } }];
 const itemsChangeCbs = [];
 const localChangeCbs = [];
+const playerChangeCbs = [];
+const broadcastCbs = {};
+const lsStore = {};
+/* 一张卡：让 refreshInfo 认为 token 绑定有效，才能把速览弹窗开起来。 */
+const CARD = { id: "c-1", name: "示例勇者", level: 1, char: {} };
+let selection = [];
 
 function stubBuilder(type) {
   let seq = 0;
@@ -85,10 +91,10 @@ const OBR = {
     onChange(fn) { record("viewport.onChange", true); return noopUnsub(); }
   },
   player: {
-    getSelection: async () => [],
+    getSelection: async () => selection.slice(),
     getRole: async () => "GM",
     getId: async () => "user-gm",
-    onChange(fn) { record("player.onChange", true); return noopUnsub(); }
+    onChange(fn) { record("player.onChange", true); playerChangeCbs.push(fn); return noopUnsub(); }
   },
   party: {},
   scene: {
@@ -132,13 +138,17 @@ const OBR = {
   action: { open: async () => { record("action.open", true); } },
   room: {
     id: "room-1",
-    getMetadata: async () => ({}),
+    getMetadata: async () => ({ "com.4enext-owlbear/cards": { v: 1, cards: [CARD] } }),
     setMetadata(update) { record("room.setMetadata", update); return Promise.resolve(); },
     onMetadataChange(fn) { record("room.onMetadataChange", true); return noopUnsub(); }
   },
   broadcast: {
     sendMessage(channel, data, opts) { record("broadcast.sendMessage", { channel, data, opts }); return Promise.resolve(); },
-    onMessage(channel, cb) { record("broadcast.onMessage", channel); return noopUnsub(); }
+    onMessage(channel, cb) {
+      record("broadcast.onMessage", channel);
+      (broadcastCbs[channel] = broadcastCbs[channel] || []).push(cb);
+      return noopUnsub();
+    }
   }
 };
 
@@ -154,7 +164,11 @@ const documentStub = {
 globalThis.location = { href: "https://yzzj66.github.io/4e-obr-cards/background.html", protocol: "https:" };
 globalThis.document = documentStub;
 globalThis.window = { addEventListener() {} };
-globalThis.localStorage = { getItem: () => null, setItem() {} };
+globalThis.localStorage = {
+  getItem: (k) => (k in lsStore ? lsStore[k] : null),
+  setItem: (k, v) => { lsStore[k] = String(v); },
+  removeItem: (k) => { delete lsStore[k]; }
+};
 
 // --- 跑起来 ---
 // 注意：buildCurve/buildShape/buildText 正常由 bundle 提供（dev/build-background.mjs 从 SDK 具名导出接过来）。
@@ -246,6 +260,90 @@ run(OBR, stubBuilder("CURVE"), stubBuilder("SHAPE"), stubBuilder("TEXT"));
   await sleep(240);
   if (!all("local.deleteItems").length) bad("血量数据被删掉后没有清理本地血条 item");
   else ok("血量数据被删掉后清理了本地血条 item");
+
+  /* ---- v1.2.2：速览弹窗可拖动（左上角定位 / 视口夹取 / 位置记忆 / 回到 token） ---- */
+  const INFO_ID = "com.4enext-owlbear/info";
+  const INFO_CH = "com.4enext-owlbear/info-drag";
+  const POS_KEY = "4enext/info-pos";
+  const lastInfoOpen = () => all("popover.open").map((c) => c[1]).filter((cfg) => cfg.id === INFO_ID).pop();
+  const dragCb = (broadcastCbs[INFO_CH] || [])[0];
+  if (!dragCb) bad("没有订阅速览弹窗拖动频道 " + INFO_CH);
+  else ok("订阅了速览弹窗拖动频道 " + INFO_CH);
+
+  // 选中绑定的 token → 弹窗按「左上角」定位（token 在视口上沿，所以先被夹到 16,16）
+  selection = [TOKEN_ID];
+  for (const cb of playerChangeCbs) cb();
+  await sleep(240);
+  let info = lastInfoOpen();
+  if (!info) bad("选中绑定的 token 后没有打开速览弹窗");
+  else if (info.anchorReference !== "POSITION") bad("速览弹窗没有用 anchorReference: POSITION（拖动无法定位）");
+  else if (info.anchorOrigin.horizontal !== "LEFT" || info.anchorOrigin.vertical !== "TOP" ||
+    info.transformOrigin.horizontal !== "LEFT" || info.transformOrigin.vertical !== "TOP")
+    bad("速览弹窗的锚点 / 变换原点不是 LEFT/TOP：" + JSON.stringify([info.anchorOrigin, info.transformOrigin]));
+  else if (info.anchorPosition.left !== 16 || info.anchorPosition.top !== 16)
+    bad("速览弹窗初始位置不对（应夹到 16,16）：" + JSON.stringify(info.anchorPosition));
+  else if (!/\/info\.html\?item=tok-1&card=c-1$/.test(info.url)) bad("速览弹窗 url 不对：" + info.url);
+  else ok("速览弹窗按左上角定位（初始 16,16，url 带 item/card）");
+
+  const infoUrl = info ? info.url : "";
+  const infoSize = info ? { w: info.width, h: info.height } : { w: 660, h: 700 };
+
+  if (dragCb && info) {
+    // 只点一下标题栏、没有位移 → 不能白白重开一次弹窗
+    const opensBefore = all("popover.open").filter((c) => c[1].id === INFO_ID).length;
+    dragCb({ phase: "start", dx: 0, dy: 0 });
+    dragCb({ phase: "end", dx: 0, dy: 0 });
+    await sleep(70);
+    const opensAfter = all("popover.open").filter((c) => c[1].id === INFO_ID).length;
+    if (opensAfter !== opensBefore) bad("只点标题栏（没有位移）却重开了弹窗：" + opensBefore + " → " + opensAfter);
+    else ok("没有位移时不重开弹窗");
+
+    dragCb({ phase: "start", dx: 0, dy: 0 });
+    dragCb({ phase: "move", dx: 100, dy: 50 });
+    await sleep(90);
+    let moved = lastInfoOpen();
+    if (!moved || moved.anchorPosition.left !== 116 || moved.anchorPosition.top !== 66)
+      bad("拖动没有把弹窗移到 (116,66)：" + JSON.stringify(moved && moved.anchorPosition));
+    else if (moved.url !== infoUrl) bad("拖动时 url 变了（会导致弹窗重载）：" + moved.url);
+    else if (moved.width !== infoSize.w || moved.height !== infoSize.h) bad("拖动时弹窗尺寸变了：" +
+      moved.width + "x" + moved.height + " vs " + infoSize.w + "x" + infoSize.h);
+    else ok("拖动 100/50 → 弹窗移到 (116,66)，url / 尺寸不变");
+
+    // 拖出视口 → 夹在边界内（1200 - 660 - 16 = 524，800 - 700 - 16 = 84）
+    dragCb({ phase: "move", dx: 5000, dy: 5000 });
+    dragCb({ phase: "end", dx: 5000, dy: 5000 });
+    await sleep(90);
+    moved = lastInfoOpen();
+    if (!moved || moved.anchorPosition.left !== 524 || moved.anchorPosition.top !== 84)
+      bad("拖动超出视口时没有夹到 (524,84)：" + JSON.stringify(moved && moved.anchorPosition));
+    else ok("拖出视口时夹在边界内 → (524,84)");
+
+    const saved = JSON.parse(lsStore[POS_KEY] || "{}");
+    const one = saved && saved.pos ? saved.pos[TOKEN_ID] : null;
+    if (!one || one.left !== 524 || one.top !== 84) bad("拖动结束后没有记住位置：" + JSON.stringify(saved));
+    else ok("拖动结束后位置写进 localStorage（按 token id）");
+
+    // 关掉再选中同一枚 token → 回到上次拖到的位置
+    selection = [];
+    for (const cb of playerChangeCbs) cb();
+    await sleep(200);
+    selection = [TOKEN_ID];
+    for (const cb of playerChangeCbs) cb();
+    await sleep(280);
+    moved = lastInfoOpen();
+    if (!moved || moved.anchorPosition.left !== 524 || moved.anchorPosition.top !== 84)
+      bad("重新选中同一枚 token 时没有回到记住的位置：" + JSON.stringify(moved && moved.anchorPosition));
+    else ok("重新选中同一枚 token → 回到上次位置 (524,84)");
+
+    // 「回到 token」：清掉位置，重新按 token 上方摆
+    dragCb({ phase: "reset" });
+    await sleep(160);
+    moved = lastInfoOpen();
+    if (!moved || moved.anchorPosition.left !== 16 || moved.anchorPosition.top !== 16)
+      bad("「回到 token」没有重新按 token 定位：" + JSON.stringify(moved && moved.anchorPosition));
+    else if (lsStore[POS_KEY]) bad("「回到 token」没有清掉记住的位置：" + lsStore[POS_KEY]);
+    else ok("「回到 token」清掉位置并回到 (16,16)");
+  }
 
   finish();
 })();

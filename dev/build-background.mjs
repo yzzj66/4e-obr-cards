@@ -63,7 +63,7 @@ if (/^\s*(import|export)\s/m.test(core)) die("assets/background.core.js 里不�
 const pkg = JSON.parse(fs.readFileSync(path.join(ROOT, "manifest.json"), "utf8"));
 const note = "esm.sh 用 export{ " + defaultName + " as default } 导出 SDK 本体；上面已剥掉 export 语句，\n * 这里把同一个变量接成 OBR。换 SDK 后若变量名变了，dev/build-background.mjs 会直接报错。";
 const header = [
-  "/*! 4E NEXT 角色卡 · background.bundle.js  (v" + pkg.version + ")",
+  "/*! 4eNEXT to owlbear · background.bundle.js  (v" + pkg.version + ")",
   " * ---------------------------------------------------------------------------",
   " * 这是后台页唯一加载的脚本：纯「经典脚本」，没有 type=\"module\"，没有 import/export，",
   " * 不依赖任何 CDN。内容是：",

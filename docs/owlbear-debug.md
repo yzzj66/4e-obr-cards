@@ -2,7 +2,9 @@
 
 > 本文是 v1.1.0 的排查记录，里面的版本号、截图步骤都停留在当时。
 > v1.2.0 新增的血条 / 资源追踪（以及它们的权限差异与已知限制）见
-> [`hp-bar-and-tracking.md`](hp-bar-and-tracking.md)。
+> [`hp-bar-and-tracking.md`](hp-bar-and-tracking.md)；
+> v1.2.1 的界面微调（弹窗加宽 / 行动点与里程碑同排 / 去掉专长与每日威能追踪）见
+> [`ui-tweaks-v121.md`](ui-tweaks-v121.md)。
 
 > 现象：扩展列表里能看到「4E NEXT 角色卡 v1.0.0」，能开关；直接打开托管上的 \`index.html\` 也正常；
 > 但进了枭熊房间后 **右下角没有 4E 按钮**，**右键 token 没有「绑定 4E NEXT 角色卡」**，用户也没提供控制台报错。

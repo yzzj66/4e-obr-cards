@@ -3,15 +3,19 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>4E NEXT 角色卡 · Owlbear Rodeo 插件</title>
+<title>4eNEXT to owlbear · Owlbear Rodeo 插件</title>
 <link rel="stylesheet" href="assets/ui.css">
 <link rel="stylesheet" href="assets/glance.css">
 </head>
 <body>
 <article class="doc">
-  <h1>4E NEXT 角色卡 <span class="tag">Owlbear Rodeo 插件</span> <span class="tag">v1.2.0</span></h1>
+  <h1>4eNEXT to owlbear <span class="tag">Owlbear Rodeo 插件</span> <span class="tag">v1.3.0</span></h1>
   <p class="muted">在枭熊里看 4E NEXT 的「速览」页：右键 token 绑定角色卡，之后选中这枚 token 就会弹出速览。
-    v1.2.0 起还能在弹窗里直接加减血量（token 上会画出血条），并把威能 / 专长 / 装备点掉记成「已用」。纯静态、免构建、不需要服务器。</p>
+    v1.2.0 起还能在弹窗里直接加减血量（token 上会画出血条），并把威能 / 装备点掉记成「已用」；
+    v1.2.1 把速览弹窗加宽到 660×700；v1.2.2 弹窗可以按住标题栏拖动、位置按 token 记住。
+    <b>v1.3.0</b> 改名「4eNEXT to owlbear」：面板变成「速览 / 先攻 / 骰子」三个 tab（骰子先占位），
+    右键新增「加入先攻 / 隐形加入先攻」，绑定角色卡后先攻加值自动取卡里的「先攻」。
+    纯静态、免构建、不需要服务器。</p>
 
   <section class="diag-card" id="diag">
     <h3>自检 · 打开本页时会自动检查这几项</h3>
@@ -33,7 +37,10 @@
     <li><b>Token 绑定</b>：GM 右键地图上的 IMAGE token →「绑定 4E NEXT 角色卡」，选中卡之后，<b>任何人</b>选中这枚 token 都会看到速览。</li>
     <li><b>数据存房间</b>：卡片存在 Owlbear 的 room metadata 里，全房间共享，没有自建服务器，也不需要账号。</li>
     <li><b>血量与资源追踪</b>：速览弹窗里能 −1/−5/−10、＋1/＋5/＋10 或填数字改血，token 上会画出「当前/上限」血条；
-      威能 / 专长 / 装备点一下变灰 = 已用，再点恢复；行动点、里程碑、魔法物品每日威能都能点。</li>
+      威能 / 装备点一下变灰 = 已用，再点恢复；行动点与里程碑并成一排加减（专长只展示，不追踪使用）。</li>
+    <li><b>三 tab 面板</b>：速览 / 先攻 / 骰子；tab 切换只切显示，不重载页面。左上角 4E 图标直接打开「先攻」tab。</li>
+    <li><b>先攻</b>：右键 token →「加入先攻」或「隐形加入先攻」；先攻加值取绑定角色卡的「先攻」（如 +25），合计 = d20 + 加值。GM 可推进任意回合，玩家可「结束我的回合」（请求由城主客户端落笔）。隐形条目只有 GM 看得到。</li>
+    <li><b>骰子（占位）</b>：v1.5.0 才实现；本版 tab 里写明「即将推出」。</li>
     <li><b>改卡还是要回 4E NEXT</b>：插件不改角色卡本身（威能选择、属性、装备都不动），只记录本场战斗的消耗。</li>
   </ul>
 
@@ -64,8 +71,9 @@
   <ol class="steps">
     <li><b>导出</b>：在 4E NEXT 里打开角色卡 →「导出存档（JSON）」，得到一个 <code>.json</code> 文件。</li>
     <li><b>导入</b>：Owlbear 里打开面板（左上角 4E 图标 / 左侧工具栏 4E 工具 / 右下角 4E 按钮任选其一）→ 把 json 拖进去（或点「导入 JSON」/「粘贴」）。同名卡会被就地更新，绑定关系不丢。</li>
-    <li><b>绑定</b>：右键地图上的角色 token →「绑定 4E NEXT 角色卡」→ 选一张卡。</li>
+    <li><b>绑定</b>：右键地图上的角色 token →「绑定 4E NEXT 角色卡」→ 选一张卡（同时写入先攻加值）。</li>
     <li><b>看速览</b>：选中这枚 token，速览小面板就从 token 上方弹出来；点 ⤢ 可以打开完整面板。</li>
+    <li><b>打先攻</b>：右键 token →「加入先攻」/「隐形加入先攻」；到面板「先攻」tab 推进回合。</li>
   </ol>
 
   <h2>示例</h2>
@@ -90,19 +98,20 @@
     <li>数值是插件离线推导的：职业特性自动加值（如信仰甲胄、蛮族机敏）和少数专长效果无法离线还原，可能和 4E NEXT 差 1~2 点，以 4E NEXT 为准。</li>
     <li>房间数据只有 GM 能写：玩家装好扩展能看，但导入/绑定要 GM 操作（Owlbear 对房间数据的权限限制）。</li>
     <li>卡片存在房间数据里：删掉扩展不会删数据；换房间要重新导入。</li>
+    <li>先攻首版是<b>简单列表</b>：没有头像条、拖拽排序、隐藏条的镜头处理；只有名单 / 加值 / 合计 / 回合推进。</li>
     <li>没有在真实 Owlbear 房间里做联机测试（开发环境无法起 GUI）：只做了静态检查、假 OBR 的后台冒烟测试与本地渲染验证。
-      血条按参考实现（FullPeople/obr-suite）的本地图形 API 写法实现，真机效果仍需验证。</li>
+      血条与先攻的交互都按参考实现（FullPeople/obr-suite）的 API 写法实现，真机效果仍需验证。</li>
   </ul>
 
   <h2>目录结构</h2>
   <pre><code>manifest.json        扩展清单（Owlbear 加载的入口）
-background.html      后台页：右键菜单 / 浮动按钮 / 选中 token 弹窗 / token 血条
+background.html      后台页：右键菜单 / 加入先攻 / 浮动按钮 / 选中 token 弹窗 / token 血条
 button.html          右下角 4E 浮动按钮
-panel.html           全屏面板：导入、列表、预览、绑定
+panel.html           全屏三 tab 面板：速览 / 先攻 / 骰子（占位）
 info.html            选中 token 时弹出的速览小面板
 bind.html            右键「绑定」打开的选卡弹窗
 index.html           本页（说明 + 示例）
-assets/              渲染层与页面脚本、样式（glance.js 渲染、track.js 血量与资源读写）
+assets/              渲染层与页面脚本、样式（glance.js 渲染、track.js 血量与资源读写、initiative.js 先攻）
 data/rules.js        职业/种族/基础物品/装备等级索引（离线数据）
 vendor/obr-sdk.js    @owlbear-rodeo/sdk 3.1.0 的 ESM 打包（本地化，离线可用）
 samples/             示例卡（可删）
