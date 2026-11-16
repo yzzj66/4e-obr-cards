@@ -19,7 +19,7 @@ const NOTES_PATH = path.join(ROOT, "docs", "NOTES.md");
 const NOTES = exists(NOTES_PATH) ? fs.readFileSync(NOTES_PATH, "utf8") : "";
 const notesHas = (s) => NOTES.indexOf(s) >= 0;
 /* 当前版本号：所有「版本全链路」断言都读它，升版本只改这一处（+ 各文件里的真实版本号）。 */
-const VER = "1.8.6";
+const VER = "1.8.7";
 
 function walk(dir, out = []) {
   for (const name of fs.readdirSync(dir)) {
@@ -2278,7 +2278,7 @@ console.log("== v1.7.7 选中 token 就弹血条编辑窗（三分支 / 不重�
   else bad("hasHpBarData 没检查 hp-bar/enabled=false（移除组件后选中仍会弹编辑窗）");
   /* v1.8.5：手动 ✕ 关掉速览后不再被 onChange 自动弹回（infoAutoPopped，与 hpAutoPopped 对称） */
   if (has(coreV177, "var infoAutoPopped = {};") &&
-    /if \(infoAutoPopped\[item\.id\]\) return;/.test(coreV177) &&
+    /if \(infoAutoPopped\[item\.id\]\) \{[\s\S]{0,160}?return; \}/.test(coreV177) &&
     /infoAutoPopped\[item\.id\] = true;/.test(coreV177) &&
     /if \(infoItemId\) infoAutoPopped\[infoItemId\] = true;/.test(coreV177) &&
     /infoAutoPopped = \{\};/.test(coreV177))
@@ -2293,7 +2293,7 @@ console.log("== v1.7.7 选中 token 就弹血条编辑窗（三分支 / 不重�
     /if \(hpAutoPopped\[item\.id\]\) return;/.test(coreV177) && /hpAutoPopped\[itemId\] = true;/.test(coreV177)) {
     ok("「只弹一次」：hpAutoSel 换 token / 取消选中就清空，hpAutoPopped 记住弹过的 token（开窗时也置位）");
   } else bad("缺「只弹一次」的记忆（关掉后会被下一次 selection 事件弹回来）");
-  if (/var cardId = await boundCardId\(item\);\s*\n\s*if \(cardId\) \{[\s\S]{0,400}?await openInfo\(item\.id, cardId\)/.test(coreV177)) {
+  if (/var cardId = await boundCardId\(item\);[\s\S]{0,120}?if \(cardId\) \{[\s\S]{0,1600}?await openInfo\(item\.id, cardId\)/.test(coreV177)) {
     ok("分支①：已绑定角色卡 → openInfo（v1.2 的老行为）");
   } else bad("分支①（已绑定卡 → openInfo）不见了");
   if (/await closeInfo\(\);\s*\n\s*if \(!hasHpBarData\(item\)\) return;\s*\n\s*if \(hpAutoPopped\[item\.id\]\) return;\s*\n\s*try \{\s*\n\s*await openHpEdit\(item\.id\);/.test(coreV177)) {

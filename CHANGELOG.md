@@ -2,6 +2,15 @@
 
 > 这份文件是历史更新记录。安装与使用请看 [README](README.md)。
 
+**v1.8.7：临时性能日志（速览打开耗时定位）**（2026-11-16）——
+只加 `console.log`，**无行为改动、不弹通知**：
+① `background.core.js`：自动开速览与工具栏手动入口各打一行
+`[4enext-perf] bg select=…ms card=…ms open=…ms total=…ms`（select=选中读取、card=绑定解析、open=开窗、
+total=整段；手动入口带 `bg-manual`）；
+② `assets/info.js`：`[4enext-perf] info boot=…ms card=…ms render1=…ms`（首帧）、
+`[4enext-perf] info index=…ms render2=…ms`（索引加载 + 二次渲染）、`[4enext-perf] info iframe-load=…ms`（iframe 资源加载完）。
+用于用户真机点一次后定位「慢 / 黑屏」卡在哪一段；确认后可整段删除。
+
 **v1.8.6：速览首屏提速（不再等 1.25MB 索引）**（2026-11-16）——
 真机反馈「速览弹窗打开后长时间停在『加载中…』」：根因是 `info.js` 先 `await loadCardIndex()`（旧索引 1.25MB）
 再首帧渲染，GitHub Pages 冷缓存时首屏被下载 + 解析阻塞。修复：

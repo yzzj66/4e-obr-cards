@@ -58,7 +58,7 @@ var TOOL_SETTINGS_ID = NS + "/settings-tool";
 var CH_HELLO = NS + "/diag-hello";
 var CH_PING = NS + "/diag-ping";
 var CH_PONG = NS + "/diag-pong";
-var PLUGIN_VERSION = "1.8.6";
+var PLUGIN_VERSION = "1.8.7";
 
 var KEY_HP = NS + "/hp";
 
@@ -1998,10 +1998,31 @@ async function boundCardId(item) {
   return hit.cardId;
 }
 
-async function selectedBinding() {
+/* v1.8.7：临时性能计时日志（只 console.log，不改行为、不弹通知；定位「速览打开慢 / 黑屏」，
+ * 用户真机点一次拿到数字后即可整段删除）。 */
+function perfNowMs() {
+  try { return (typeof performance !== "undefined" && performance.now) ? performance.now() : Date.now(); }
+  catch (e) { return Date.now(); }
+}
+function perfLogBg(label, t0, t1, t2, t3) {
+  try {
+    console.log("[4enext-perf] bg" + (label ? "-" + label : "") +
+      " select=" + Math.round(t1 - t0) + "ms card=" + Math.round(t2 - t1) +
+      "ms open=" + Math.round(t3 - t2) + "ms total=" + Math.round(t3 - t0) + "ms");
+  } catch (e) { /* 日志失败不影响逻辑 */ }
+}
+
+async function selectedBinding(timing) {
+  var __t0 = perfNowMs();
   var item = await selectedItem();
-  if (!item) return null;
+  var __t1 = perfNowMs();
+  if (!item) {
+    if (timing) { timing.select = __t1 - __t0; timing.card = 0; }
+    return null;
+  }
   var hit = await resolveBinding(item);
+  var __t2 = perfNowMs();
+  if (timing) { timing.select = __t1 - __t0; timing.card = __t2 - __t1; }
   if (!hit) return null;
   if (hit.via === "name" && hit.stale) void healBinding(item.id, hit.cardId);
   return { itemId: item.id, cardId: hit.cardId };
@@ -2009,8 +2030,12 @@ async function selectedBinding() {
 
 async function openGlance(where) {
   var label = where || "工具栏「速览」";
-  var bind = await selectedBinding();
+  var __t0 = perfNowMs();
+  var __timing = {};
+  var bind = await selectedBinding(__timing);
+  var __t1 = perfNowMs();
   if (!bind) {
+    perfLogBg("manual", __t0, __t0 + (__timing.select || 0), __t0 + (__timing.select || 0) + (__timing.card || 0), perfNowMs());
     notify("速览：" + label + " 打开的是「当前选中的 token」。先选中一枚已绑定角色卡的 token" +
       "（右键 token 可「绑定 4E NEXT 角色卡」），再点一次。", "WARNING");
     pageLog("info", label + "：当前选中的不是「已绑定角色卡的单个 token」，已提示用户先选一个");
@@ -2018,9 +2043,11 @@ async function openGlance(where) {
   }
   try {
     await openInfo(bind.itemId, bind.cardId);
+    perfLogBg("manual", __t0, __t0 + (__timing.select || 0), __t0 + (__timing.select || 0) + (__timing.card || 0), perfNowMs());
     stepOk(label + "：已打开速览（token " + bind.itemId + "）");
     return true;
   } catch (e) {
+    perfLogBg("manual", __t0, __t0 + (__timing.select || 0), __t0 + (__timing.select || 0) + (__timing.card || 0), perfNowMs());
     stepFail("打开速览弹窗（" + label + "）", e);
     return false;
   }
@@ -2032,7 +2059,9 @@ var infoErrorShown = false;
 var suppressGlanceUntil = 0;
 
 async function refreshInfo() {
+  var __t0 = perfNowMs();
   var item = await selectedItem();
+  var __t1 = perfNowMs();
   var selId = item && item.id ? item.id : null;
   if (selId !== hpAutoSel) {
     hpAutoSel = selId;
@@ -2047,10 +2076,11 @@ async function refreshInfo() {
   if (Date.now() < suppressGlanceUntil) return;
 
   var cardId = await boundCardId(item);
+  var __t2 = perfNowMs();
   if (cardId) {
     /* v1.8.5：用户手动 ✕ 关过这枚 token 的速览 → 选中不变之前不再自动弹回（先于「已开则返回」判断）。 */
-    if (infoAutoPopped[item.id]) return;
-    if (infoOpen && infoItemId === item.id && infoCardId === cardId) return;
+    if (infoAutoPopped[item.id]) { perfLogBg("", __t0, __t1, __t2, perfNowMs()); return; }
+    if (infoOpen && infoItemId === item.id && infoCardId === cardId) { perfLogBg("", __t0, __t1, __t2, perfNowMs()); return; }
     if (infoOpen) await closeInfo();
     /* 打开之前先置位：即使 openInfo 抛错也不在后续 onChange 里重试刷屏。 */
     infoAutoPopped[item.id] = true;
@@ -2062,6 +2092,8 @@ async function refreshInfo() {
         stepFail("打开速览弹窗", e);
       }
     }
+    /* v1.8.7：临时性能日志（select=选中读取 / card=绑定解析 / open=开窗 / total=整段）。 */
+    perfLogBg("", __t0, __t1, __t2, perfNowMs());
     return;
   }
 

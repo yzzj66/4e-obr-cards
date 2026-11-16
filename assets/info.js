@@ -17,10 +17,22 @@ import OBR from "../vendor/obr-sdk.js";
 import { CH_INFO_DRAG, ID_INFO, ID_PANEL, INFO_DRAG_THROTTLE_MS, URL_PANEL, KEY_BIND, getCards, findCard, esc, onReady, notify } from "./common.js";
 /* v1.7.13：带版本查询串 —— 旧缓存的 glance.js / track.js 正是「chip 点不动」的另一种可能，
  * 更新后必须让浏览器重新取这两个文件（info.html 的入口也带了 ?v=）。 */
-import { renderGlanceHTML, deriveGlance, magicItemDailyUses, loadCardIndex } from "./glance.js?v=1.8.6";
+import { renderGlanceHTML, deriveGlance, magicItemDailyUses, loadCardIndex } from "./glance.js?v=1.8.7";
 /* v1.7.10：✕ 统一走「OBR.popover.close(正确 id) + OBR.modal.close + 后台 {op:"close-win"}」双保险。 */
 import { closeSelf } from "./window.js";
-import { KEY_HP, applyAction, hpView, loadState, mayEditItem, readItem, scopeText, syncTokenStats } from "./track.js?v=1.8.6";
+import { KEY_HP, applyAction, hpView, loadState, mayEditItem, readItem, scopeText, syncTokenStats } from "./track.js?v=1.8.7";
+
+/* v1.8.7：临时性能计时（只 console.log，不改行为、不弹通知；定位「速览打开慢 / 黑屏」，
+ * 用户真机点一次拿到数字后即可整段删除）。时间基准 = iframe 内 performance.now()（导航起点）。 */
+const PERF_T0 = (typeof performance !== "undefined" && performance.now) ? performance.now() : Date.now();
+let perfFirstLogged = false;
+function perfNow() {
+  try { return (typeof performance !== "undefined" && performance.now) ? performance.now() : Date.now(); }
+  catch (e) { return Date.now(); }
+}
+function perfLog(msg) {
+  try { console.log("[4enext-perf] info " + msg); } catch (e) { /* 日志失败不影响逻辑 */ }
+}
 
 const params = new URLSearchParams(location.search);
 let itemId = params.get("item") || "";
@@ -190,6 +202,8 @@ function render() {
 async function refresh(force) {
   if (busy) return;
   busy = true;
+  var __p0 = perfNow();
+  var __cardMs = 0;
   try {
     if (!itemId) {
       try {
@@ -198,6 +212,7 @@ async function refresh(force) {
       } catch (e) { /* 场景未就绪 */ }
     }
     card = await resolveCard();
+    __cardMs = perfNow() - __p0;
     if (!card) {
       showEmpty("这枚 token 没有绑定角色卡。<br>右键 token 重新绑定，或在角色卡面板里重新导入。");
       return;
@@ -228,6 +243,12 @@ async function refresh(force) {
     scope = loaded.scope;
     if (force) lastSig = "";
     render();
+    /* v1.8.7：首帧计时（boot=脚本开始到首帧 refresh 启动；card=解析角色卡；render1=首帧 refresh 到 render 完成）。 */
+    if (!perfFirstLogged) {
+      perfFirstLogged = true;
+      perfLog("boot=" + Math.round(__p0 - PERF_T0) + "ms card=" + Math.round(__cardMs) +
+        "ms render1=" + Math.round(perfNow() - __p0) + "ms");
+    }
     /* 标题：只留角色名（v1.7.6 删掉「token：xxx」这类副标题小字） */
     titleEl.textContent = card.name;
     if (!token && !bodyEl.querySelector(".gl4-warn")) {
@@ -296,6 +317,13 @@ function onActChange(ev) {
 document.addEventListener("click", onActClick, true);
 document.addEventListener("change", onActChange, true);
 
+/* v1.8.7：页面资源加载完的时间 —— 用来区分「iframe 启动慢」还是「脚本执行慢」。 */
+if (typeof window !== "undefined" && typeof window.addEventListener === "function") {
+  window.addEventListener("load", function () {
+    perfLog("iframe-load=" + Math.round(perfNow()) + "ms");
+  });
+}
+
 /* ---------------- 事件 ---------------- */
 
 document.getElementById("close").addEventListener("click", async function () {
@@ -320,14 +348,16 @@ function schedule(force) {
   }, 120);
 }
 
-/** v1.8.6：索引到位后补一次渲染；首帧 refresh 还 busy 时短等重试，避免二次渲染被 busy 吞掉。 */
-function refreshWithIndex(tries) {
+/** v1.8.6：索引到位后补一次渲染；首帧 refresh 还 busy 时短等重试，避免二次渲染被 busy 吞掉。
+ *  v1.8.7：可选 done 回调（性能日志用），refresh 是 async，补完渲染再回调。 */
+function refreshWithIndex(tries, done) {
   if (busy && tries > 0) {
-    setTimeout(function () { refreshWithIndex(tries - 1); }, 60);
+    setTimeout(function () { refreshWithIndex(tries - 1, done); }, 60);
     return;
   }
   lastSig = "";
-  void refresh(true);
+  var p = refresh(true);
+  if (typeof done === "function") void Promise.resolve(p).then(done);
 }
 
 onReady(function () {
@@ -347,8 +377,13 @@ onReady(function () {
   /* v1.8.6：首帧不阻塞 —— 立刻先渲染（此时没有动作标签，冷缓存也能几帧内出内容），
    * 再异步加载精简索引（~305KB）→ 二次渲染补动作标签；加载失败静默（缺标签，数值 / 点击不受影响）。 */
   void refresh(true);
+  var __idxT0 = perfNow();
   void loadCardIndex().then(function () {
-    refreshWithIndex(8);
+    var __loadMs = perfNow() - __idxT0;
+    refreshWithIndex(8, function () {
+      /* v1.8.7：index=索引加载耗时；render2=从脚本开始到二次渲染完成的总耗时。 */
+      perfLog("index=" + Math.round(__loadMs) + "ms render2=" + Math.round(perfNow() - PERF_T0) + "ms");
+    });
   }, function () {
     /* 静默：首帧已经渲染，索引失败只是少动作标签 */
   });
