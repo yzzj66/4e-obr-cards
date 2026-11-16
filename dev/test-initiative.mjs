@@ -1344,7 +1344,7 @@ console.log("== v1.7.10 先攻加值可编辑 + 无卡 token 加入先攻");
 
 console.log("== 静态检查");
 const man = JSON.parse(fs.readFileSync(path.join(ROOT, "manifest.json"), "utf8"));
-if (man.name === "4eNEXT to owlbear" && man.version === "1.8.7") ok("manifest 名称 / 版本 = 4eNEXT to owlbear 1.8.7");
+if (man.name === "4eNEXT to owlbear" && man.version === "1.8.8") ok("manifest 名称 / 版本 = 4eNEXT to owlbear 1.8.8");
 else bad("manifest 名称 / 版本不对：" + man.name + " " + man.version);
 if (!man.action) ok("manifest 仍然没有 action 字段（真机验证过无 action 能加载）");
 else bad("manifest 又加回了 action 字段");

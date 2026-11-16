@@ -2,6 +2,13 @@
 
 > 这份文件是历史更新记录。安装与使用请看 [README](README.md)。
 
+**v1.8.8：性能日志改为后台中转 + 细分 info 阶段**（2026-11-16）——
+v1.8.7 用户只看到后台的 `bg select/card/open`（open 仅 3~6ms），info iframe 内部的日志没出现；本版：
+① 新增 `CH_PERF` 频道：`info.js` 的计时除本 iframe 控制台外，还经 `OBR.broadcast`（LOCAL）发给后台，
+后台订阅后统一打印 `[4enext-perf] …` —— 用户只看后台控制台也能看到 iframe 内部耗时；
+② info 内部新增细分阶段行 `info stage ready=… card=… token=… state=… render=…`，保留
+`info boot/card/render1`、`info index/render2`、`info iframe-load`。仍**无行为改动、不弹通知**。
+
 **v1.8.7：临时性能日志（速览打开耗时定位）**（2026-11-16）——
 只加 `console.log`，**无行为改动、不弹通知**：
 ① `background.core.js`：自动开速览与工具栏手动入口各打一行

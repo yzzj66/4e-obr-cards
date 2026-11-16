@@ -19,7 +19,7 @@ const NOTES_PATH = path.join(ROOT, "docs", "NOTES.md");
 const NOTES = exists(NOTES_PATH) ? fs.readFileSync(NOTES_PATH, "utf8") : "";
 const notesHas = (s) => NOTES.indexOf(s) >= 0;
 /* 当前版本号：所有「版本全链路」断言都读它，升版本只改这一处（+ 各文件里的真实版本号）。 */
-const VER = "1.8.7";
+const VER = "1.8.8";
 
 function walk(dir, out = []) {
   for (const name of fs.readdirSync(dir)) {
@@ -3289,6 +3289,27 @@ console.log("== v1.8.2 先攻条：点卡片不弹速览（CH_GLANCE_SUPPRESS）
   if (sendIdx >= 0 && selIdx >= 0 && sendIdx < selIdx)
     ok("先攻条页面：先发 CH_GLANCE_SUPPRESS 再 select（避免速览抢在抑制之前弹）");
   else bad("先攻条页面没有「先发抑制再 select」");
+}
+
+/* ===========================================================================
+ * v1.8.8：性能日志后台中转（CH_PERF）+ info 细分阶段
+ * ======================================================================== */
+console.log("== v1.8.8 性能日志后台中转（CH_PERF）");
+{
+  const commonSrcV188 = fs.readFileSync(path.join(ROOT, "assets", "common.js"), "utf8");
+  const coreSrcV188 = fs.readFileSync(path.join(ROOT, "assets", "background.core.js"), "utf8");
+  const infoSrcV188 = fs.readFileSync(path.join(ROOT, "assets", "info.js"), "utf8");
+  const chCommon = (/export const CH_PERF = NS \+ "([^"]+)";/.exec(commonSrcV188) || [])[1] || "";
+  const chCore = (/var CH_PERF = NS \+ "([^"]+)";/.exec(coreSrcV188) || [])[1] || "";
+  if (chCommon && chCommon === chCore) ok("性能日志频道一致：CH_PERF = " + chCommon);
+  else bad("CH_PERF 不一致：common=" + chCommon + " core=" + chCore);
+  if (/onMessage\(CH_PERF/.test(coreSrcV188) && /\[4enext-perf\] " \+/.test(coreSrcV188))
+    ok("后台订阅 CH_PERF 并把 info iframe 的日志打印成 [4enext-perf] …");
+  else bad("后台没有订阅 CH_PERF / 没有中转打印");
+  if (/sendMessage\(CH_PERF/.test(infoSrcV188) && /info " \+ msg/.test(infoSrcV188) &&
+    /perfLog\("stage ready=/.test(infoSrcV188) && /boot=/.test(infoSrcV188) && /index=/.test(infoSrcV188))
+    ok("info.js：perfLog 经 CH_PERF 中转 + 细分 stage（ready/card/token/state/render）+ 汇总行");
+  else bad("info.js 性能日志没有走 CH_PERF / 缺细分阶段");
 }
 
 /* ===========================================================================

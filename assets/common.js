@@ -51,7 +51,7 @@ export const ID_SETTINGS_WIN = NS + "/settings-window";
  * id 与其它窗口都不同 → 可以和速览 / 先攻条同时开着；位置按窗口名 "hpEdit" 单独记。 */
 export const ID_HP_EDIT = NS + "/hp-edit";
 
-export const PLUGIN_VERSION = "1.8.7";
+export const PLUGIN_VERSION = "1.8.8";
 
 /**
  * 站点根地址。
@@ -89,6 +89,9 @@ export const CH_INIT_REQUEST = NS + "/init-request";
 /** v1.8.2：先攻条点卡片时先广播这个频道，后台 1.5 秒内不自动弹速览
  *  （选中 token 的后台副作用 —— 地图高亮保留，只是别弹窗）。与 background.core.js 常量必须一致。 */
 export const CH_GLANCE_SUPPRESS = NS + "/glance-suppress";
+/** v1.8.8：临时性能日志中转频道 —— info iframe 的计时通过它发给后台打印，
+ *  用户只看后台控制台也能看到 iframe 内部耗时。与 background.core.js 逐字一致。 */
+export const CH_PERF = NS + "/perf";
 
 /* ---- v1.5.0：骰子（团队共享）----
  * CH_ROLL        任何人 → 全桌：一次投掷（LOCAL + REMOTE；投掷者自己也听 LOCAL）

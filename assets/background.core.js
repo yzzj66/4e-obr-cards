@@ -58,7 +58,7 @@ var TOOL_SETTINGS_ID = NS + "/settings-tool";
 var CH_HELLO = NS + "/diag-hello";
 var CH_PING = NS + "/diag-ping";
 var CH_PONG = NS + "/diag-pong";
-var PLUGIN_VERSION = "1.8.7";
+var PLUGIN_VERSION = "1.8.8";
 
 var KEY_HP = NS + "/hp";
 
@@ -230,6 +230,8 @@ var CH_STRIP_CMD = NS + "/strip-cmd";
 var CH_WIN_CLOSE = NS + "/win-close";
 /* v1.8.2：先攻条点卡片时页面先广播这个频道，后台 1.5s 内不自动弹速览（与 common.js 逐字一致）。 */
 var CH_GLANCE_SUPPRESS = NS + "/glance-suppress";
+/* v1.8.8：info iframe 的性能计时经此频道中转，后台统一打印到自己的控制台（与 common.js 逐字一致）。 */
+var CH_PERF = NS + "/perf";
 
 var CH_ROLL = NS + "/roll";
 var CH_ROLL_CLEAR = NS + "/roll-clear";
@@ -3522,6 +3524,15 @@ async function boot() {
   await attempt("订阅 " + CH_GLANCE_SUPPRESS + "（先攻条点卡片：暂不弹速览）", function () {
     OBR.broadcast.onMessage(CH_GLANCE_SUPPRESS, function () {
       suppressGlanceUntil = Date.now() + 1500;
+    });
+  });
+  /* v1.8.8：info iframe 的性能日志中转 → 打在本控制台，方便用户只看后台日志。 */
+  await attempt("订阅 " + CH_PERF + "（info 性能日志中转）", function () {
+    OBR.broadcast.onMessage(CH_PERF, function (ev) {
+      var data = ev && ev.data !== undefined ? ev.data : ev;
+      try {
+        console.log("[4enext-perf] " + (typeof data === "string" ? data : JSON.stringify(data)));
+      } catch (e) { /* 日志失败不影响逻辑 */ }
     });
   });
   await attempt("订阅 " + CH_ROLL + "（骰子落库：仅城主处理）", function () {

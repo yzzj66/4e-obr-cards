@@ -14,24 +14,32 @@
 //         子元素 stopPropagation、甚至正文外层被包一层都不会丢点击）；④ 渲染层 / 读写层带 ?v=1.7.14，
 //         避免浏览器 / 宿主继续用旧缓存的 glance.js（旧版威能 chip 根本不是 button）。
 import OBR from "../vendor/obr-sdk.js";
-import { CH_INFO_DRAG, ID_INFO, ID_PANEL, INFO_DRAG_THROTTLE_MS, URL_PANEL, KEY_BIND, getCards, findCard, esc, onReady, notify } from "./common.js";
+import { CH_INFO_DRAG, CH_PERF, ID_INFO, ID_PANEL, INFO_DRAG_THROTTLE_MS, URL_PANEL, KEY_BIND, getCards, findCard, esc, onReady, notify } from "./common.js";
 /* v1.7.13：带版本查询串 —— 旧缓存的 glance.js / track.js 正是「chip 点不动」的另一种可能，
  * 更新后必须让浏览器重新取这两个文件（info.html 的入口也带了 ?v=）。 */
-import { renderGlanceHTML, deriveGlance, magicItemDailyUses, loadCardIndex } from "./glance.js?v=1.8.7";
+import { renderGlanceHTML, deriveGlance, magicItemDailyUses, loadCardIndex } from "./glance.js?v=1.8.8";
 /* v1.7.10：✕ 统一走「OBR.popover.close(正确 id) + OBR.modal.close + 后台 {op:"close-win"}」双保险。 */
 import { closeSelf } from "./window.js";
-import { KEY_HP, applyAction, hpView, loadState, mayEditItem, readItem, scopeText, syncTokenStats } from "./track.js?v=1.8.7";
+import { KEY_HP, applyAction, hpView, loadState, mayEditItem, readItem, scopeText, syncTokenStats } from "./track.js?v=1.8.8";
 
 /* v1.8.7：临时性能计时（只 console.log，不改行为、不弹通知；定位「速览打开慢 / 黑屏」，
  * 用户真机点一次拿到数字后即可整段删除）。时间基准 = iframe 内 performance.now()（导航起点）。 */
 const PERF_T0 = (typeof performance !== "undefined" && performance.now) ? performance.now() : Date.now();
 let perfFirstLogged = false;
+let perfReadyMs = 0;
 function perfNow() {
   try { return (typeof performance !== "undefined" && performance.now) ? performance.now() : Date.now(); }
   catch (e) { return Date.now(); }
 }
+/** v1.8.8：info 里的计时既打本 iframe 控制台，也经 CH_PERF 发给后台打印（用户可能只看后台控制台）。 */
 function perfLog(msg) {
   try { console.log("[4enext-perf] info " + msg); } catch (e) { /* 日志失败不影响逻辑 */ }
+  try {
+    if (typeof OBR !== "undefined" && OBR.broadcast && typeof OBR.broadcast.sendMessage === "function") {
+      var p = OBR.broadcast.sendMessage(CH_PERF, String(msg), { destination: "LOCAL" });
+      if (p && typeof p.catch === "function") p.catch(function () { /* 后台没起来的日志丢失不影响功能 */ });
+    }
+  } catch (e2) { /* 不在枭熊里打开本页时忽略 */ }
 }
 
 const params = new URLSearchParams(location.search);
@@ -204,6 +212,7 @@ async function refresh(force) {
   busy = true;
   var __p0 = perfNow();
   var __cardMs = 0;
+  var __cardDone = 0, __tokStart = 0, __tokDone = 0, __stateStart = 0, __stateDone = 0, __renderStart = 0, __renderDone = 0;
   try {
     if (!itemId) {
       try {
@@ -212,11 +221,13 @@ async function refresh(force) {
       } catch (e) { /* 场景未就绪 */ }
     }
     card = await resolveCard();
-    __cardMs = perfNow() - __p0;
+    __cardDone = perfNow();
+    __cardMs = __cardDone - __p0;
     if (!card) {
       showEmpty("这枚 token 没有绑定角色卡。<br>右键 token 重新绑定，或在角色卡面板里重新导入。");
       return;
     }
+    __tokStart = perfNow();
     token = await readItem(itemId);
     const cardBound = token && token.metadata ? token.metadata[KEY_BIND] : null;
     if (token && typeof cardBound === "string" && cardBound && cardBound !== card.id) {
@@ -238,16 +249,26 @@ async function refresh(force) {
         }
       } catch (e) { /* 写不进去（玩家 / 只读 token）就算了，血条仍按已有字段画 */ }
     }
+    __tokDone = perfNow();
+    __stateStart = perfNow();
     const loaded = await loadState(card.id);
     state = loaded.state;
     scope = loaded.scope;
+    __stateDone = perfNow();
     if (force) lastSig = "";
+    __renderStart = perfNow();
     render();
+    __renderDone = perfNow();
     /* v1.8.7：首帧计时（boot=脚本开始到首帧 refresh 启动；card=解析角色卡；render1=首帧 refresh 到 render 完成）。 */
     if (!perfFirstLogged) {
       perfFirstLogged = true;
+      /* v1.8.8：细分阶段（ready=onReady 触发；card=resolveCard；token=读 token+权限+sync；
+       * state=loadState；render=render() 本身），与后台日志用同一前缀。 */
+      perfLog("stage ready=" + Math.round(perfReadyMs) + "ms card=" + Math.round(__cardDone - __p0) +
+        "ms token=" + Math.round(__tokDone - __tokStart) + "ms state=" + Math.round(__stateDone - __stateStart) +
+        "ms render=" + Math.round(__renderDone - __renderStart) + "ms");
       perfLog("boot=" + Math.round(__p0 - PERF_T0) + "ms card=" + Math.round(__cardMs) +
-        "ms render1=" + Math.round(perfNow() - __p0) + "ms");
+        "ms render1=" + Math.round(__renderDone - __p0) + "ms");
     }
     /* 标题：只留角色名（v1.7.6 删掉「token：xxx」这类副标题小字） */
     titleEl.textContent = card.name;
@@ -361,6 +382,7 @@ function refreshWithIndex(tries, done) {
 }
 
 onReady(function () {
+  perfReadyMs = perfNow() - PERF_T0;
   try {
     OBR.room.onMetadataChange(function () {
       schedule(false);
