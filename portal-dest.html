@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>4eNEXT to owlbear · 传送目的地</title>
+<link rel="stylesheet" href="assets/ui.css?v=2.1.0">
+<style>
+  body.pd-page { padding: 10px; overflow: hidden; height: 100vh; }
+  .pd { height: calc(100vh - 20px); display: flex; flex-direction: column; gap: 7px; }
+  .pd h3 { margin: 0; font-size: 13px; color: #e6edf3; }
+  .pd .list { flex: 1 1 auto; overflow: auto; display: flex; flex-direction: column; gap: 6px; }
+  .pd button.dest {
+    display: flex; justify-content: space-between; align-items: center; gap: 8px;
+    padding: 7px 9px; border: 1px solid var(--line); border-radius: 8px;
+    background: #101820; color: #e6edf3; cursor: pointer; text-align: left; font-size: 12px;
+  }
+  .pd button.dest:hover { border-color: #3f8bff; background: #14202b; }
+  .pd .tag { font-size: 10px; color: #93a1b0; }
+  .pd .hint { font-size: 10.5px; color: #93a1b0; line-height: 1.5; }
+  .pd .foot { display: flex; justify-content: flex-end; }
+</style>
+</head>
+<body class="pd-page">
+<div class="pd">
+  <h3>选择传送目的地</h3>
+  <div class="list" id="pd-list"></div>
+  <p class="hint" id="pd-hint">同一标签的其它传送门会出现在这里。</p>
+  <div class="foot"><button class="btn" id="pd-close" type="button" data-bg-soft>取消</button></div>
+</div>
+<script type="module" src="assets/portal-dest-page.js?v=2.1.0"></script>
+</body>
+</html>

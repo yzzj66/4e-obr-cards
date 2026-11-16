@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>4eNEXT to owlbear · 传送门编辑</title>
+<link rel="stylesheet" href="assets/ui.css?v=2.1.0">
+<style>
+  body.pe-page .win { height: 100vh; max-height: 100vh; }
+  .pe-body { padding: 8px 10px 10px; display: flex; flex-direction: column; gap: 8px; overflow: auto; }
+  .pe-body h3 { margin: 0; font-size: 12.5px; color: #e6edf3; }
+  .pe-body label { display: flex; flex-direction: column; gap: 3px; font-size: 11px; color: #93a1b0; }
+  .pe-body input[type=text], .pe-body input[type=number] {
+    height: 26px; padding: 0 7px; border: 1px solid var(--line); border-radius: 7px;
+    background: #0e141b; color: var(--text); font: 600 12px/1 ui-monospace, Consolas, monospace;
+  }
+  .pe-body .row { display: flex; gap: 8px; }
+  .pe-body .row label { flex: 1 1 0; }
+  .pe-body .checks { display: flex; gap: 14px; font-size: 12px; color: #cfd9e3; flex-wrap: wrap; }
+  .pe-body .checks label { flex-direction: row; align-items: center; gap: 5px; }
+  .pe-body .foot { margin-top: auto; display: flex; gap: 8px; justify-content: flex-end; }
+  .pe-body .hint { font-size: 10.5px; color: #93a1b0; line-height: 1.5; }
+  .pe-close { font-size: 14px; line-height: 1; }
+</style>
+</head>
+<body class="win-page pe-page">
+<div class="win pe">
+  <div class="win-head" id="head" title="按住这里拖动窗口（位置会记住）">
+    <span class="grip" aria-hidden="true" title="拖动柄">⣿</span>
+    <div class="t"><b>编辑传送门</b></div>
+    <div class="sp"><button class="icon-btn pe-close" id="pe-close-x" type="button" title="关闭（Esc）">✕</button></div>
+  </div>
+  <div class="win-body pe-body">
+    <h3>传送门</h3>
+    <label>名称 <input id="pe-name" type="text" maxlength="40" autocomplete="off"></label>
+    <label>标签（同 tag 互联） <input id="pe-tag" type="text" maxlength="40" autocomplete="off"></label>
+    <div class="checks">
+      <label><input id="pe-show-name" type="checkbox"> 显示名字</label>
+      <label><input id="pe-visible" type="checkbox"> 玩家可见</label>
+      <label><input id="pe-locked" type="checkbox"> 锁定</label>
+    </div>
+    <p class="hint">同标签的传送门互为目的地。隐形门（玩家不可见）本版仅保存字段，未实现单向传送。</p>
+    <div class="foot">
+      <button class="btn" id="pe-close" type="button" data-bg-soft>取消</button>
+      <button class="btn" id="pe-save" type="button" data-bg-soft>保存</button>
+    </div>
+  </div>
+</div>
+<script type="module" src="assets/portal-page.js?v=2.1.0"></script>
+</body>
+</html>
