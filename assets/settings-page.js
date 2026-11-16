@@ -19,7 +19,8 @@
 //      所以「重置」不可能误删全桌共享的东西。
 // 窗口壳（拖动 / 位置记忆 / 后台在线检测 / 统一 feedback）与先攻、骰子共用 window.js。
 import {
-  ID_SETTINGS_WIN, PLUGIN_VERSION, onReady, readDiceAnim, readStripAutostart, writeDiceAnim, writeStripAutostart,
+  ID_SETTINGS_WIN, PLUGIN_VERSION, onReady, readDiceAnim, readDiceHistAutostart, readStripAutostart,
+  writeDiceAnim, writeDiceHistAutostart, writeStripAutostart,
   getRoomUsage, clearRoomRolls, clearRoomCards
 } from "./common.js";
 import { createWindow, feedback, closeSelf } from "./window.js";
@@ -151,10 +152,34 @@ if (stripToggle) {
   });
 }
 
+/* ---------------- v1.9.2：骰子记录窗口进入房间自动打开（默认开，本机开关） ---------------- */
+const diceHistToggle = document.getElementById("dice-hist-auto-toggle");
+const diceHistState = document.getElementById("dice-hist-auto-state");
+
+function paintDiceHistAuto() {
+  const on = readDiceHistAutostart();
+  if (diceHistState) diceHistState.textContent = on ? "进入房间自动打开：开" : "进入房间自动打开：关";
+  if (diceHistToggle) {
+    diceHistToggle.textContent = on ? "关闭自动打开记录窗口" : "打开自动打开记录窗口";
+    diceHistToggle.classList.toggle("on", on);
+  }
+}
+
+if (diceHistToggle) {
+  diceHistToggle.addEventListener("click", function () {
+    const next = !readDiceHistAutostart();
+    const saved = writeDiceHistAutostart(next);
+    paintDiceHistAuto();
+    if (!saved) {
+      feedback("这台机器存不下这个设置（隐私模式 / 存储被禁用？），本次仍按原设置", "WARNING");
+    }
+  });
+}
+
 /* ---------------- v1.7.15：清理房间数据 ----------------
  * 房间数据（room metadata）有 16 KB 上限，超了之后**所有**写入都会被拒（加入先攻 / 改加值 /
  * 回合推进 / 骰子历史 / 资源追踪），而且真机上以前是静默失败。这一栏给用户两个「一键瘦身」按钮：
- *   ① 清理骰子历史（40 条 8 KB 左右，清掉最划算）
+ *   ① 清理骰子历史（v1.9.2 起历史在本机：清本机 + GM 顺带清房间旧残留）
  *   ② 清空角色卡（v1.8.0：房间装不下时先改存本场景的隐藏 item，再兜底本机）
  * 这一页仍然**不直接**写房间数据 / token 元数据：读写全部走 common.js 的
  * getRoomUsage / clearRoomRolls / clearRoomCards（dev/check.mjs 断言这一点没变）。 */
@@ -366,6 +391,7 @@ onReady(function () {
   renderLocal();
   paintAnim();
   paintStripAuto();
+  paintDiceHistAuto();
   void renderRoom();
   /* 后台很慢时先把窗口状态画一次（状态条本身由 window.js 画） */
   win.onStatus(function () { /* 这里只留挂点 */ });

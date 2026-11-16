@@ -5,10 +5,10 @@
 //   于是它有自己的 popover id（com.4enext-owlbear/dice-history-window）、自己记位置、自己开关；
 //   骰子窗口只发 CH_DICE_HIST_CMD 让后台开 / 关它。
 //
-// 数据来源（与 v1.5.0 完全相同，没有新协议）：
-//   · 房间数据 com.4enext-owlbear/rolls（城主客户端落笔，rows 20 条封顶、超出删最旧）
-//   · 本机暂存 4enext/dice/local（城主不在线时自己掷的那几条）
-//   · 广播 CH_ROLL（本机乐观插入）/ CH_ROLL_SAVED（重读）/ CH_ROLL_CLEAR（清空）
+// 数据来源（v1.9.2：全部来自本机）：
+//   · localStorage 4enext/dice-history/<roomId>（按房间隔离，20 条封顶、按 rollId 去重）
+//   · 旧版本机暂存 4enext/dice/local 启动时合并进来
+//   · 广播 CH_ROLL（收到即追加）/ CH_ROLL_CLEAR（清空）
 // 显示：默认**最近 4 条**（.dh-list.compact 隐藏第 5 条起），点「展开全部」看全部（列表内滚动）。
 // 这里**只读**：不写房间数据、不写 token（清空仍然只在骰子窗口里由城主做）。
 //
@@ -18,7 +18,10 @@
 // v1.7.6：加载完还**自己**调 OBR.popover.getWidth(ID_DICE_HIST) 确认存活（见 confirmAlive）——
 //   骰子窗口那侧已经直开 + getWidth 复核，这边再独立复核一次，窗口不在就黄条说明。
 import OBR from "../vendor/obr-sdk.js";
-import { CH_DICE_HIST_CMD, CH_ROLL, CH_ROLL_CLEAR, CH_ROLL_SAVED, HIST_VISIBLE_ROWS, ID_DICE_HIST, KEY_ROLLS, LS_DICE_LOCAL, ROLL_MAX_ROWS, esc, onReady } from "./common.js";
+import {
+  CH_DICE_HIST_CMD, CH_ROLL, CH_ROLL_CLEAR, HIST_VISIBLE_ROWS, ID_DICE_HIST, LS_DICE_LOCAL, ROLL_MAX_ROWS,
+  appendDiceHistoryRow, clearDiceHistory, esc, onReady, readDiceHistoryRows, writeDiceHistoryRows
+} from "./common.js";
 import { closeSelf, createWindow, feedback } from "./window.js";
 import { mergeRollRows, rowsFromRaw, sidesOf } from "./dice-core.js";
 
@@ -93,11 +96,11 @@ function paintToggle() {
 
 function renderRows() {
   if (!els.list) return;
-  if (els.meta) els.meta.textContent = "共 " + rows.length + " / " + ROLL_MAX_ROWS + " 条";
+  if (els.meta) els.meta.textContent = "本机共 " + rows.length + " / " + ROLL_MAX_ROWS + " 条";
   els.list.classList.toggle("compact", !expanded);
   paintToggle();
   if (!rows.length) {
-    els.list.innerHTML = '<div class="hist-empty">还没有人掷过骰子。掷一次就会出现在这里（全桌共享）。</div>';
+    els.list.innerHTML = '<div class="hist-empty">这台机器还没有骰子记录。掷一次就会出现在这里（本机保存，换房间 / 换机器不跟随）。</div>';
     return;
   }
   var html = "";
@@ -118,38 +121,26 @@ function renderRows() {
   els.list.innerHTML = html;
 }
 
-/** 房间数据 + 本机暂存合起来（同 rollId 只留一条，按 ts 倒序，40 封顶）。 */
-function mergeLocal(remote) {
-  var out = remote.slice();
-  for (var i = 0; i < rows.length; i++) {
-    var r = rows[i];
-    var dup = false;
-    for (var j = 0; j < out.length; j++) if (out[j].rollId === r.rollId) { dup = true; break; }
-    if (!dup) out.push(r);
-  }
-  out.sort(function (a, b) { return (b.ts || 0) - (a.ts || 0); });
-  return out.slice(0, ROLL_MAX_ROWS);
-}
-
-async function readRows() {
-  var remote = [];
-  try {
-    var meta = await OBR.room.getMetadata();
-    remote = rowsFromRaw(meta ? meta[KEY_ROLLS] : null);
-  } catch (e) { /* 读不到就只显示本机暂存 */ }
-  rows = mergeLocal(remote);
+/** v1.9.2：历史全部来自**本机**（localStorage，按房间隔离）；不再读房间数据。 */
+function readRows() {
+  rows = rowsFromRaw(readDiceHistoryRows());
   renderRows();
 }
 
-/** 启动时把本机暂存（城主离线时掷的）也显示出来，别让人以为丢了。 */
-function loadLocalStash() {
+/** 把旧版「城主离线时本机暂存」(LS_DICE_LOCAL) 并进新本机历史，然后删掉旧键。 */
+function migrateLegacyLocal() {
   try {
     var raw = lsGet(LS_DICE_LOCAL);
-    var list = raw ? JSON.parse(raw) : [];
-    if (!Array.isArray(list) || !list.length) return;
-    rows = mergeLocal(rowsFromRaw(list));
-    renderRows();
-    showWarn("本机暂存了 " + list.length + " 条城主离线时的投掷（只在这台机器上）。", true);
+    if (!raw) return;
+    var list = JSON.parse(raw);
+    if (!Array.isArray(list) || !list.length) { localStorage.removeItem(LS_DICE_LOCAL); return; }
+    var merged = rows.slice();
+    var legacy = rowsFromRaw(list);
+    for (var i = 0; i < legacy.length; i++) merged = mergeRollRows(merged, legacy[i], ROLL_MAX_ROWS);
+    rows = merged;
+    writeDiceHistoryRows(rows);
+    localStorage.removeItem(LS_DICE_LOCAL);
+    if (legacy.length) showWarn("已把旧版本机暂存的 " + legacy.length + " 条记录并入本机历史。", false);
   } catch (e) { /* 忽略 */ }
 }
 
@@ -210,27 +201,27 @@ onReady(function () {
   void confirmAlive();   /* v1.7.6：自己确认窗口还在（getWidth 不报错 / > 0） */
   renderRows();
 
-  (async function init() {
-    await readRows();
-    loadLocalStash();
+  (function init() {
+    readRows();
+    migrateLegacyLocal();
+    readRows();
   })();
 
-  /* 有人投掷：本机立刻插一条（不等城主落库）；别的玩家靠 room.onMetadataChange 同步 */
+  /* 有人投掷（含自己的 LOCAL 回声 / 别人的 REMOTE）：写进本机历史并重画。 */
   try {
     OBR.broadcast.onMessage(CH_ROLL, function (ev) {
       var data = ev && ev.data !== undefined ? ev.data : ev;
       if (!data || !data.rollId) return;
-      rows = mergeRollRows(rows, data, ROLL_MAX_ROWS);
+      var one = rowsFromRaw([data])[0];
+      if (!one) return;
+      rows = rowsFromRaw(appendDiceHistoryRow(one));
       renderRows();
     });
   } catch (e) { /* 忽略 */ }
 
   try {
-    OBR.broadcast.onMessage(CH_ROLL_SAVED, function () { void readRows(); });
-  } catch (e2) { /* 忽略 */ }
-
-  try {
     OBR.broadcast.onMessage(CH_ROLL_CLEAR, function () {
+      clearDiceHistory();
       rows = [];
       renderRows();
       showWarn("");
@@ -238,12 +229,8 @@ onReady(function () {
     });
   } catch (e3) { /* 忽略 */ }
 
-  try {
-    OBR.room.onMetadataChange(function () { void readRows(); });
-  } catch (e4) { /* 忽略 */ }
-
   win.onStatus(function (state) {
-    if (state === "bad") showWarn("后台未连接：这里显示的是房间数据里的旧记录，新投掷要等后台恢复。");
+    if (state === "bad") showWarn("后台未连接：本机记录仍可查看；新投掷可能同步不到其它人。");
     else if (state === "ok" && !warnSticky) showWarn("");
   });
 });

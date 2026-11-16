@@ -1344,10 +1344,11 @@ console.log("== v1.7.10 先攻加值可编辑 + 无卡 token 加入先攻");
 
 console.log("== 静态检查");
 const man = JSON.parse(fs.readFileSync(path.join(ROOT, "manifest.json"), "utf8"));
-if (man.name === "4eNEXT to owlbear" && man.version === "1.9.1") ok("manifest 名称 / 版本 = 4eNEXT to owlbear 1.9.1");
+if (man.name === "4eNEXT to owlbear" && man.version === "1.9.2") ok("manifest 名称 / 版本 = 4eNEXT to owlbear 1.9.2");
 else bad("manifest 名称 / 版本不对：" + man.name + " " + man.version);
-if (!man.action) ok("manifest 仍然没有 action 字段（真机验证过无 action 能加载）");
-else bad("manifest 又加回了 action 字段");
+if (man.action && /^https:\/\//.test(man.action.popover) && /\/dice\.html$/.test(man.action.popover))
+  ok("manifest.action = 骰子左上角入口（dice.html，绝对 URL，v1.9.2）");
+else bad("manifest.action 缺失 / 未指向 dice.html");
 
 const panelHtml = fs.readFileSync(path.join(ROOT, "panel.html"), "utf8");
 if (panelHtml.indexOf('data-tab="') < 0 && panelHtml.indexOf("tab-pane") < 0 && panelHtml.indexOf('class="tabs"') < 0)

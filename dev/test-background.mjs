@@ -55,7 +55,16 @@ const lsStore = {};
 const CARD = { id: "c-1", name: "示例勇者", level: 1, char: {} };
 let selection = [];
 /* v1.5.0：房间数据要能「写进去再读出来」，骰子落库的合并 / 去重 / 封顶断言全靠它。 */
+/* 测试默认关掉「骰子记录窗口自动打开」，避免 800ms 定时器干扰其它用例；自动打开本身在下面单独测。 */
+lsStore["4enext/dice-hist-autostart"] = "0";
 const roomMeta = { "com.4enext-owlbear/cards": { v: 1, cards: [CARD] } };
+/* v1.9.2：启动时应把房间里的旧骰子历史迁移到本机（并清空房间 KEY_ROLLS）。 */
+roomMeta["com.4enext-owlbear/rolls"] = {
+  v: 1, updatedAt: 1, seq: 3, rows: [
+    { rollId: "mig-1", ts: 100, rollerName: "旧1", dice: [{ type: "d20", value: 5 }], total: 5 },
+    { rollId: "mig-2", ts: 200, rollerName: "旧2", dice: [{ type: "d20", value: 15 }], total: 15 }
+  ]
+};
 /* v1.5.0：角色可变（验证「玩家不写房间数据」） */
 let role = "GM";
 
@@ -210,7 +219,7 @@ globalThis.localStorage = {
 // 这里传打桩版本，才能在不装 SDK 的情况下验证血条代码真的在跑。
 let readyCb = null;
 let sceneReadyCb = null;
-const run = new Function("OBR", "buildCurve", "buildShape", "buildText", CORE + "\nreturn { boot: typeof boot === 'function' ? boot : null, hasHpBarData: typeof hasHpBarData === 'function' ? hasHpBarData : null, openGlance: typeof openGlance === 'function' ? openGlance : null };");
+const run = new Function("OBR", "buildCurve", "buildShape", "buildText", CORE + "\nreturn { boot: typeof boot === 'function' ? boot : null, hasHpBarData: typeof hasHpBarData === 'function' ? hasHpBarData : null, openGlance: typeof openGlance === 'function' ? openGlance : null, maybeAutoOpenDiceHistory: typeof maybeAutoOpenDiceHistory === 'function' ? maybeAutoOpenDiceHistory : null, openWin: typeof openWin === 'function' ? openWin : null };");
 const BG = run(OBR, stubBuilder("CURVE"), stubBuilder("SHAPE"), stubBuilder("TEXT"));
 
 (async () => {
@@ -218,19 +227,26 @@ const BG = run(OBR, stubBuilder("CURVE"), stubBuilder("SHAPE"), stubBuilder("TEX
   ok("注册了 OBR.onReady");
   await readyCb();
   await sleep(240);
+  /* v1.9.2：骰子不再有工具栏按钮；窗口几何仍由 WINS.dice 管（action popover 由 OBR 直接开 dice.html）。 */
+  async function openDiceWindow() {
+    const before = all("popover.open").length;
+    if (BG.openWin) await BG.openWin("dice");
+    await sleep(140);
+    return all("popover.open").map((c) => c[1]).slice(before)
+      .filter((c) => /\/dice\.html$/.test(String(c.url))).pop() || null;
+  }
 
   /* v1.3.1：工具栏上三个并列入口（角色卡 / 先攻 / 骰子），各开各的窗口 */
   const tools = all("tool.create").map((c) => c[1]);
   const toolById = (re) => tools.filter((t) => re.test(t.id))[0] || null;
   const toolPanel = toolById(/\/panel-tool$/);
   const toolInit = toolById(/\/initiative-tool$/);
-  const toolDice = toolById(/\/dice-tool$/);
   if (!tools.length) bad("没有调用 OBR.tool.create（工具栏入口）");
-  else if (!toolPanel || !toolInit || !toolDice) bad("工具栏入口不齐：panel=" + !!toolPanel + " initiative=" + !!toolInit + " dice=" + !!toolDice);
+  else if (!toolPanel || !toolInit) bad("工具栏入口不齐：panel=" + !!toolPanel + " initiative=" + !!toolInit);
+  else if (toolById(/\/dice-tool$/)) bad("骰子入口还在工具栏（v1.9.2 起应改 manifest action）");
   else if (!/^https:\/\/.+icon-tool(-initiative)?\.svg$/.test(toolPanel.icons[0].icon) ||
-    !/^https:\/\/.+icon-tool-initiative\.svg$/.test(toolInit.icons[0].icon) ||
-    !/^https:\/\/.+icon-tool-dice\.svg$/.test(toolDice.icons[0].icon)) bad("tool.create 的图标不是绝对地址 / 不是各自的小徽标");
-  else ok("OBR.tool.create ×3（角色卡 / 先攻 / 骰子 三个并列入口）已注册");
+    !/^https:\/\/.+icon-tool-initiative\.svg$/.test(toolInit.icons[0].icon)) bad("tool.create 的图标不是绝对地址 / 不是各自的小徽标");
+  else ok("OBR.tool.create（角色卡 / 先攻 两个入口）已注册；骰子不再注册工具（改 manifest action）");
 
   /* v1.3.2：工具栏补齐成一排（速览 / 角色卡 / 先攻 / 骰子 / 设置） */
   const toolGlance = toolById(/\/glance-tool$/);
@@ -238,8 +254,8 @@ const BG = run(OBR, stubBuilder("CURVE"), stubBuilder("SHAPE"), stubBuilder("TEX
   if (!toolGlance || !toolSettings) bad("工具栏没有补齐「速览 / 设置」入口：glance=" + !!toolGlance + " settings=" + !!toolSettings);
   else if (!/^https:\/\/.+icon-tool-glance\.svg$/.test(toolGlance.icons[0].icon) ||
     !/^https:\/\/.+icon-tool-settings\.svg$/.test(toolSettings.icons[0].icon)) bad("速览 / 设置的图标不是各自的绝对地址");
-  else if (tools.length !== 5) bad("工具栏入口不是五个，而是 " + tools.length + " 个");
-  else ok("OBR.tool.create ×5（速览 / 角色卡 / 先攻 / 骰子 / 设置 一排入口）已注册");
+  else if (tools.length !== 4) bad("工具栏入口不是四个，而是 " + tools.length + " 个");
+  else ok("OBR.tool.create ×4（速览 / 角色卡 / 先攻 / 设置）；骰子改 manifest action（左上角）");
 
   const menu = last("contextMenu.create");
   if (!menu) bad("没有调用 OBR.contextMenu.create（右键菜单）");
@@ -755,7 +771,7 @@ const BG = run(OBR, stubBuilder("CURVE"), stubBuilder("SHAPE"), stubBuilder("TEX
     .filter((c) => /\/initiative\.html$/.test(String(c.url))).pop() || null;
   if (stripRet !== false) bad("工具栏「先攻条」的 onClick 没有返回 false（会把工具切成激活态）");
   if (!stripCfg) bad("点工具栏「先攻条」没有打开 /\/initiative\.html$/ popover");
-  const diceWin = await openByTool(toolDice, /\/dice\.html$/, "骰子");
+  const diceWin = await openDiceWindow();
   const panelWin = await openByTool(toolPanel, /\/panel\.html$/, "角色卡");
 
   if (!stripCfg || !diceWin || !panelWin) {
@@ -1005,63 +1021,72 @@ const BG = run(OBR, stubBuilder("CURVE"), stubBuilder("SHAPE"), stubBuilder("TEX
   }
 
   /* ---------------------------------------------------------------------------
-   * v1.5.0：骰子落库（只有城主客户端写房间数据 com.4enext-owlbear/rolls）
+   * v1.9.2：骰子历史改为「本机 + 广播」，后台不再写房间 rolls（只做迁移与清残留）
    * ------------------------------------------------------------------------- */
   const CH_ROLL = "com.4enext-owlbear/roll";
   const CH_ROLL_CLEAR = "com.4enext-owlbear/roll-clear";
-  const CH_ROLL_SAVED = "com.4enext-owlbear/roll-saved";
   const KEY_ROLLS = "com.4enext-owlbear/rolls";
   const rollCbs = broadcastCbs[CH_ROLL] || [];
   const clearCbs = broadcastCbs[CH_ROLL_CLEAR] || [];
-  if (!rollCbs.length || !clearCbs.length) bad("没有订阅骰子频道（CH_ROLL / CH_ROLL_CLEAR）");
-  else ok("订阅了骰子频道（" + CH_ROLL + " / " + CH_ROLL_CLEAR + "）");
+  if (rollCbs.length) bad("后台还在订阅 CH_ROLL（骰子历史应只由各端本机累积）");
+  else ok("后台不再订阅 CH_ROLL（历史改为本机 localStorage + 广播，房间数据不写 rolls）");
+  if (!clearCbs.length) bad("后台没有订阅 CH_ROLL_CLEAR（清房间残留下不去）");
+  else ok("订阅了清空频道 CH_ROLL_CLEAR（GM 清房间残留）");
+  await sleep(140);
+  const histKey = "4enext/dice-history/" + ((OBR.room && OBR.room.id) || "default");
+  let localRows = [];
+  try { localRows = (JSON.parse(lsStore[histKey] || "{}") || {}).rows || []; } catch (e) { localRows = []; }
+  if (localRows.length === 2 && localRows[0].rollId === "mig-2" && localRows[1].rollId === "mig-1")
+    ok("启动迁移：房间旧 rolls 2 条已按 ts 倒序迁进本机（" + histKey + "）");
+  else bad("房间骰子历史没有迁进本机：" + JSON.stringify(localRows.map((r) => r.rollId)));
+  const roomAfterMig = roomMeta[KEY_ROLLS];
+  if (!roomAfterMig || !Array.isArray(roomAfterMig.rows) || roomAfterMig.rows.length)
+    bad("迁移后房间 KEY_ROLLS 没有清空：" + JSON.stringify(roomAfterMig && roomAfterMig.rows.length));
+  else ok("迁移后房间 KEY_ROLLS 已清空（只减不增，不再占 16KB 预算）");
+  /* 清空请求：GM 顺带清房间残留 */
+  roomMeta[KEY_ROLLS] = { v: 1, updatedAt: Date.now(), seq: 9, rows: [{ rollId: "old-1", ts: 1, dice: [{ type: "d20", value: 1 }], total: 1 }] };
+  for (const cb of clearCbs) await cb({ data: { by: "user-gm" } });
+  await sleep(120);
+  const roomAfterClear = roomMeta[KEY_ROLLS];
+  if (roomAfterClear && Array.isArray(roomAfterClear.rows) && roomAfterClear.rows.length === 0)
+    ok("清空记录：GM 后台把房间残留 rolls 清成 []");
+  else bad("清空记录没有清房间残留：" + JSON.stringify(roomAfterClear && roomAfterClear.rows.length));
 
-  const sendRoll = async (payload) => {
-    for (const cb of rollCbs) await cb({ data: payload });
-    await sleep(30);
-  };
-
-  if (rollCbs.length) {
-    await sendRoll({ rollId: "r-1", ts: 1000, rollerId: "u1", rollerName: "甲", expression: "1d20 + 12", label: "攻击", mode: "attack", dice: [{ type: "d20", value: 14 }], modifier: 12, total: 26 });
-    await sendRoll({ rollId: "r-1", ts: 1000, rollerName: "甲", dice: [{ type: "d20", value: 14 }], modifier: 12, total: 26 }); /* 重复：必须幂等 */
-    await sendRoll({ rollId: "r-2", ts: 2000, rollerName: "乙", dice: [{ type: "d600", value: 601 }], modifier: 0, total: 601 });
-    await sendRoll({ dice: [{ type: "d20", value: 5 }], total: 5 }); /* 没 rollId：丢弃 */
-    const box = roomMeta[KEY_ROLLS];
-    if (!box || !Array.isArray(box.rows)) bad("骰子没有写进房间数据：" + JSON.stringify(box));
-    else if (box.rows.length !== 2) bad("骰子合并结果不是 2 条（去重 / 丢弃坏行）：" + JSON.stringify(box.rows.map((r) => r.rollId)));
-    else if (box.rows[0].rollId !== "r-2" || box.rows[1].rollId !== "r-1") bad("骰子没有按 ts 倒序：" + box.rows.map((r) => r.rollId).join(","));
-    else if (box.rows[0].dice[0].value !== 600) bad("d600 没有被夹到 600：" + box.rows[0].dice[0].value);
-    else if (box.rows[1].total !== 26 || box.rows[1].modifier !== 12) bad("骰子 total 重算不对：" + box.rows[1].total);
-    else ok("城主落库：幂等去重 + ts 倒序 + 数值夹取 + total 重算（2 条）");
-
-    const savedMsgs = calls.filter((c) => c[0] === "broadcast.sendMessage" && c[1].channel === CH_ROLL_SAVED);
-    if (!savedMsgs.length) bad("落库后没有广播 CH_ROLL_SAVED");
-    else ok("落库后广播 CH_ROLL_SAVED（" + savedMsgs.length + " 次）");
-
-    /* 20 条封顶（v1.8.0：40 → 20） */
-    for (let i = 0; i < 25; i++) {
-      await sendRoll({ rollId: "cap-" + i, ts: 3000 + i, rollerName: "甲", dice: [{ type: "d20", value: 10 }], modifier: 0, total: 10 });
-    }
-    await sleep(200);
-    const capped = roomMeta[KEY_ROLLS];
-    if (!capped || capped.rows.length !== 20) bad("骰子历史没有封顶到 20：" + (capped && capped.rows.length));
-    else if (capped.rows[0].rollId !== "cap-24") bad("封顶后最新的没有排最前：" + capped.rows[0].rollId);
-    else ok("骰子历史封顶 20 条（最新在前）");
-
-    /* 玩家客户端只广播、不写 */
-    const beforePlayer = JSON.stringify(roomMeta[KEY_ROLLS]);
-    role = "PLAYER";
-    await sendRoll({ rollId: "player-1", ts: 9000, rollerName: "玩家", dice: [{ type: "d20", value: 3 }], modifier: 0, total: 3 });
-    role = "GM";
-    if (JSON.stringify(roomMeta[KEY_ROLLS]) !== beforePlayer) bad("玩家客户端也写了房间数据（不该）");
-    else ok("玩家客户端只广播、不写房间数据");
-
-    /* 城主清空 */
-    for (const cb of clearCbs) await cb({ data: { by: "user-gm" } });
+  /* v1.9.2：骰子记录窗口「进入房间自动打开」（默认开 / 设置关 / 本次会话 ✕ 过就不再开） */
+  {
+    const winCloseCb4 = (broadcastCbs["com.4enext-owlbear/win-close"] || [])[0];
+    const histOpens = () => all("popover.open").map((c) => c[1]).filter((c) => String(c.url).indexOf("dice-history.html") >= 0).length;
+    if (winCloseCb4) { winCloseCb4({ data: { op: "close-win", name: "diceHistory" } }); await sleep(100); }
+    lsStore["4enext/dice-hist-closed"] = "1"; /* 先记成「关过」，避免影响下面默认开的前置 */
+    /* 默认开：清掉偏好键 + 会话标记 → 调一次应打开 */
+    delete lsStore["4enext/dice-hist-autostart"];
+    delete lsStore["4enext/dice-hist-closed"];
+    let before = histOpens();
+    let opened = BG.maybeAutoOpenDiceHistory ? await BG.maybeAutoOpenDiceHistory() : false;
+    await sleep(160);
+    if (opened && histOpens() === before + 1) ok("v1.9.2：骰子记录窗口默认开 —— 启动自动打开一次");
+    else bad("v1.9.2：默认没有自动打开骰子记录窗口：" + JSON.stringify({ opened, before, after: histOpens() }));
+    /* 本次会话 ✕ 过 → 不再自动开 */
+    const closesBefore = all("popover.close").length;
+    if (winCloseCb4) winCloseCb4({ data: { op: "close-win", name: "diceHistory" } });
+    await sleep(140);
+    if (lsStore["4enext/dice-hist-closed"] !== "1") bad("✕ 关掉记录窗口没有写会话标记");
+    before = histOpens();
+    opened = BG.maybeAutoOpenDiceHistory ? await BG.maybeAutoOpenDiceHistory() : false;
     await sleep(120);
-    const cleared = roomMeta[KEY_ROLLS];
-    if (!cleared || !Array.isArray(cleared.rows) || cleared.rows.length !== 0) bad("城主清空没有写空 rows：" + JSON.stringify(cleared && cleared.rows.length));
-    else ok("城主清空 → rows = []（并再次广播 CH_ROLL_SAVED）");
+    if (!opened && histOpens() === before) ok("v1.9.2：本次会话 ✕ 过关过 → 不再自动打开");
+    else bad("v1.9.2：本次会话关过后仍然自动打开了");
+    /* 设置里关掉偏好 → 不开 */
+    delete lsStore["4enext/dice-hist-closed"];
+    lsStore["4enext/dice-hist-autostart"] = "0";
+    before = histOpens();
+    opened = BG.maybeAutoOpenDiceHistory ? await BG.maybeAutoOpenDiceHistory() : false;
+    await sleep(120);
+    if (!opened && histOpens() === before) ok("v1.9.2：设置里关掉「自动打开」偏好 → 不自动开");
+    else bad("v1.9.2：偏好关闭后仍然自动打开");
+    lsStore["4enext/dice-hist-autostart"] = "0"; /* 后续用例保持关闭 */
+    if (winCloseCb4) { winCloseCb4({ data: { op: "close-win", name: "diceHistory" } }); await sleep(80); }
+    delete lsStore["4enext/dice-hist-closed"];
   }
 
   /* =======================================================================
@@ -1398,7 +1423,7 @@ const BG = run(OBR, stubBuilder("CURVE"), stubBuilder("SHAPE"), stubBuilder("TEX
     const lastHistClose = () => all("popover.close").map((c) => c[1]).filter((x) => x === HIST_ID).pop();
 
     /* 先把骰子窗口按 v1.7.4 的尺寸开一遍（320×620），记录窗口要贴着它摆 */
-    const diceNow = await openByTool(toolDice, /\/dice\.html$/, "骰子（v1.7.4 尺寸）");
+    const diceNow = await openDiceWindow();
     if (!diceNow) bad("v1.7.4：骰子窗口打不开");
     else if (diceNow.width !== 320 || diceNow.height !== 620)
       bad("v1.7.4：骰子窗口不是 320×620：" + diceNow.width + "×" + diceNow.height);
@@ -1435,11 +1460,26 @@ const BG = run(OBR, stubBuilder("CURVE"), stubBuilder("SHAPE"), stubBuilder("TEX
       if (!st1 || st1.open !== true) bad("打开后没有广播 CH_DICE_HIST_STATE { open:true }：" + JSON.stringify(st1));
       else ok("打开后广播 CH_DICE_HIST_STATE { open:true }（骰子窗口的按钮据此显示「记录窗口 · 开」）");
 
+      /* ①b v1.9.2：页面直开位置若和骰子窗口重叠 >30%，后台 adopt 时应挪到骰子窗口左侧 */
+      const diceRect = { left: diceNow.anchorPosition.left, top: diceNow.anchorPosition.top, width: diceNow.width, height: diceNow.height };
+      const overlapRatio = (a) => {
+        const iw = Math.max(0, Math.min(a.left + a.width, diceRect.left + diceRect.width) - Math.max(a.left, diceRect.left));
+        const ih = Math.max(0, Math.min(a.top + a.height, diceRect.top + diceRect.height) - Math.max(a.top, diceRect.top));
+        return (iw * ih) / Math.max(1, a.width * a.height);
+      };
+      histCmdCb({ data: { op: "adopt", left: diceRect.left + 8, top: diceRect.top + 8, width: 300, height: 240 } });
+      await sleep(160);
+      const adopted = lastHistOpen();
+      if (!adopted) bad("adopt 没有重开记录窗口");
+      else if (overlapRatio({ left: adopted.anchorPosition.left, top: adopted.anchorPosition.top, width: adopted.width, height: adopted.height }) > 0.3) bad("adopt 后记录窗口仍与骰子窗口重叠 >30%：" + JSON.stringify(adopted.anchorPosition));
+      else ok("adopt：直开位置与骰子窗口重叠 >30% → 后台挪到旁边重开（重叠 " +
+        Math.round(overlapRatio({ left: adopted.anchorPosition.left, top: adopted.anchorPosition.top, width: adopted.width, height: adopted.height }) * 100) + "%）");
+
       /* ② 再 toggle 一次 → 关掉（同一个 id）+ 广播 open:false */
-      const closedBefore = lastHistClose();
+      const closeCountBefore = all("popover.close").filter((c) => c[1] === HIST_ID).length;
       histCmdCb({ data: { op: "toggle" } });
       await sleep(160);
-      if (lastHistClose() === closedBefore) bad("第二次 toggle 没有 OBR.popover.close 记录窗口");
+      if (all("popover.close").filter((c) => c[1] === HIST_ID).length === closeCountBefore) bad("第二次 toggle 没有 OBR.popover.close 记录窗口");
       else if (lastHistClose() !== HIST_ID) bad("关掉的 popover id 不对：" + lastHistClose());
       else {
         const st2 = stateOf();

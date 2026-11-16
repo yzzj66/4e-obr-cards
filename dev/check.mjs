@@ -19,7 +19,7 @@ const NOTES_PATH = path.join(ROOT, "docs", "NOTES.md");
 const NOTES = exists(NOTES_PATH) ? fs.readFileSync(NOTES_PATH, "utf8") : "";
 const notesHas = (s) => NOTES.indexOf(s) >= 0;
 /* 当前版本号：所有「版本全链路」断言都读它，升版本只改这一处（+ 各文件里的真实版本号）。 */
-const VER = "1.9.1";
+const VER = "1.9.2";
 
 function walk(dir, out = []) {
   for (const name of fs.readdirSync(dir)) {
@@ -137,8 +137,14 @@ for (const [label, url] of manUrls) {
   if (isAbs(url)) ok(label + " → " + url);
   else bad(label + " 不是绝对地址：" + url + "（Owlbear 可能按站点根解析相对路径）");
 }
-if (man.action && man.action.title) ok("action.title → " + man.action.title);
-  // [v1.6.1 移除] manifest 不再带 action（真机验证：无 action 也能加载；入口由工具栏 tool 提供）// else bad("manifest 缺少 action（左上角入口没了 → 后台脚本坏掉时就没有任何入口）");
+if (man.action && typeof man.action.title === "string" && man.action.title.length > 0 && man.action.title.length <= 40)
+  ok("action.title → " + man.action.title + "（左上角骰子入口）");
+else bad("manifest.action.title 缺失或过长");
+if (man.action && isAbs(man.action.icon) && isAbs(man.action.popover)) ok("action.icon / action.popover 都是绝对地址");
+else bad("action.icon / action.popover 必须是绝对地址：" + JSON.stringify(man.action));
+if (man.action && /\/dice\.html$/.test(String(man.action.popover)) && man.action.width === 320 && man.action.height === 620)
+  ok("action.popover = dice.html（320×620，左上角按钮直接打开骰子栏）");
+else bad("action.popover 不是 dice.html 320×620：" + JSON.stringify(man.action));
 if (man.manifest_version === 1) ok("manifest_version = 1"); else bad("manifest_version 不是 1");
 ok("version = " + man.version);
 
@@ -372,13 +378,15 @@ if (/ID_INIT_WIN/.test(coreSrcV131) && /initiative\.html/.test(coreSrcV131) &&
 else bad("先攻 / 骰子没有指向各自的页面");
 
 /* ---- 4) 入口按钮（工具栏 ×3 / action / 右键 / 浮动按钮） ---- */
-for (const [constName, label] of [["TOOL_ID", "角色卡 / 导入面板"], ["TOOL_INIT_ID", "先攻条"], ["TOOL_DICE_ID", "骰子窗口"]]) {
+for (const [constName, label] of [["TOOL_ID", "角色卡 / 导入面板"], ["TOOL_INIT_ID", "先攻条"]]) {
   if (new RegExp("registerOneTool\\(\\{[\\s\\S]{0,200}?id: " + constName).test(coreSrcV131) &&
     new RegExp('label: "4eNEXT to owlbear：' + label + '"').test(coreSrcV131))
     ok("工具栏入口：" + label);
   else bad("工具栏缺少入口：" + label + "（" + constName + "）");
 }
-for (const [file, label] of [["icon-tool.svg", "角色卡"], ["icon-tool-initiative.svg", "先攻"], ["icon-tool-dice.svg", "骰子"]]) {
+if (!/id: TOOL_DICE_ID\b/.test(coreSrcV131)) ok("右侧工具栏不再注册骰子入口（骰子改 manifest action）");
+else bad("右侧工具栏还注册着骰子入口（会与 manifest action 重复）");
+for (const [file, label] of [["icon-tool.svg", "角色卡"], ["icon-tool-initiative.svg", "先攻"], ["icon-tool-dice.svg", "骰子（action 图标）"]]) {
   if (exists(path.join(ROOT, file))) ok("工具栏图标存在：" + file + "（" + label + "）");
   else bad("缺少工具栏图标：" + file);
 }
@@ -557,10 +565,11 @@ for (const [idName, urlName, iconFile, label] of TOOLS132) {
   if (exists(path.join(ROOT, iconFile))) ok("工具栏图标存在：" + iconFile + "（" + label + "）");
   else bad("缺少工具栏图标：" + iconFile);
 }
-const TOOL_IDS = ["TOOL_ID", "TOOL_GLANCE_ID", "TOOL_INIT_ID", "TOOL_DICE_ID", "TOOL_SETTINGS_ID"];
+const TOOL_IDS = ["TOOL_ID", "TOOL_GLANCE_ID", "TOOL_INIT_ID", "TOOL_SETTINGS_ID"];
 const missingTool = TOOL_IDS.filter((n) => !new RegExp("id: " + n + "\\b").test(coreSrcV131));
-if (!missingTool.length) ok("工具栏一共五个入口（速览 / 角色卡 / 先攻 / 骰子 / 设置），旧三个没丢");
-else bad("工具栏入口不是五个，缺：" + missingTool.join(" / "));
+if (!missingTool.length && !/id: TOOL_DICE_ID\b/.test(coreSrcV131))
+  ok("工具栏一共四个入口（速览 / 角色卡 / 先攻 / 设置）；骰子改 manifest action");
+else bad("工具栏入口不对，缺：" + missingTool.join(" / "));
 
 /* ---- 2) 设置窗口：id 两端一致、注册进 WINS、页面存在 ---- */
 const idOfWin = (srcText, n) => {
@@ -915,22 +924,22 @@ const commonRows = (/(?:var|export const) ROLL_MAX_ROWS = (\d+);/.exec(commonSrc
 if (coreRows === "20" && commonRows === "20") ok("房间数据 rows 上限两边都是 20（v1.8.0 瘦身；容量预算规格 §1.6）");
 else bad("ROLL_MAX_ROWS 不是 20：core=" + coreRows + " common=" + commonRows);
 if (coreSrcV14.indexOf("function rollNorm(") >= 0 && coreSrcV14.indexOf("function rollMerge(") >= 0 &&
-  coreSrcV14.indexOf("function rollWrite(") >= 0 && coreSrcV14.indexOf("roomWriteGuarded(KEY_ROLLS, box)") >= 0 &&
-  coreSrcV14.indexOf("broadcast.onMessage(CH_ROLL,") >= 0 && coreSrcV14.indexOf("broadcast.onMessage(CH_ROLL_CLEAR,") >= 0 &&
-  coreSrcV14.indexOf('if (role !== "GM") return;') >= 0)
-  ok("城主落库：归一化 → 幂等合并 → 写 rolls（20 封顶）→ 广播 saved；非城主直接返回");
-else bad("后台缺少骰子落库链路（rollNorm / rollMerge / rollWrite / 订阅 / GM 校验）");
-if (bundleSrc2.indexOf("function rollNorm(") >= 0 && bundleSrc2.indexOf("var ROLL_MAX_ROWS = 20;") >= 0 &&
-  bundleSrc2.indexOf("broadcast.onMessage(CH_ROLL,") >= 0)
-  ok("background.bundle.js 已带上骰子落库（与 core 同步）");
-else bad("bundle 里没有骰子落库代码（跑 node dev/build-background.mjs）");
+  coreSrcV14.indexOf("async function migrateRollsFromRoom(") >= 0 && coreSrcV14.indexOf("function diceHistRead(") >= 0 &&
+  coreSrcV14.indexOf("roomWriteGuarded(KEY_ROLLS, box)") < 0 && coreSrcV14.indexOf("broadcast.onMessage(CH_ROLL,") < 0)
+  ok("v1.9.2：骰子历史改本机 + 广播 —— 房间只保留迁移/清残留，不再写 rolls、不再订阅 CH_ROLL");
+else bad("后台骰子历史改造不完整（仍写房间 / 缺迁移）");
+if (bundleSrc2.indexOf("function rollNorm(") >= 0 && bundleSrc2.indexOf("async function migrateRollsFromRoom(") >= 0 &&
+  bundleSrc2.indexOf("roomWriteGuarded(KEY_ROLLS, box)") < 0)
+  ok("background.bundle.js 已带上「迁移房间旧骰子历史」与本地 helpers（不再写房间 rolls）");
+else bad("bundle 里没有迁移代码 / 仍在写房间 rolls（跑 node dev/build-background.mjs）");
 if (dicePageSrc.indexOf("broadcast(CH_ROLL, payload)") >= 0 && dicePageSrc.indexOf('destination: "LOCAL"') >= 0 &&
   dicePageSrc.indexOf('destination: "REMOTE"') >= 0)
   ok("页面广播 CH_ROLL 同时发 LOCAL + REMOTE（投掷者自己也听得到）");
 else bad("页面没有同时广播 LOCAL + REMOTE");
-if (dicePageSrc.indexOf("OBR.broadcast.onMessage(CH_ROLL_SAVED") >= 0 && dicePageSrc.indexOf("meta[KEY_ROLLS]") >= 0)
-  ok("页面订阅 CH_ROLL_SAVED，并从房间数据 com.4enext-owlbear/rolls 读历史");
-else bad("页面没有订阅 CH_ROLL_SAVED / 没读房间数据");
+if (dicePageSrc.indexOf("appendDiceHistoryRow(") >= 0 && dicePageSrc.indexOf("clearDiceHistory(") >= 0 &&
+  dicePageSrc.indexOf("OBR.broadcast.onMessage(CH_ROLL") >= 0 && dicePageSrc.indexOf("meta[KEY_ROLLS]") < 0)
+  ok("v1.9.2：骰子页把投掷/收到的记录追加到本机历史（不再读房间 rolls），清空同时清本机 + 广播");
+else bad("骰子页没有接本机历史（append / clear / 订阅 CH_ROLL）");
 /* v1.7.0：列表与黄条搬到记录窗口；骰子窗口这边只留「本机暂存 + 落库回执」。 */
 const diceHistSrcV150 = fs.readFileSync(path.join(ROOT, "dice-history.html"), "utf8");
 if (dicePageSrc.indexOf("rowsFromRaw") >= 0 && dicePageSrc.indexOf("LS_DICE_LOCAL") >= 0 &&
@@ -1219,8 +1228,8 @@ console.log("== v1.6.2 速览删彩条 + 先攻条宽高改常量");
   /* ---- 3) 版本 / manifest / 文档 ---- */
   if (man.version === VER && manRel.version === VER) ok("两个 manifest 的版本都是 1.7.8");
   else bad("manifest 版本不是 1.7.8：" + man.version + " / " + manRel.version);
-  if (!man.action) ok("manifest 仍然没有 action 字段（真机验证过无 action 能加载，别再加回来）");
-  else bad("manifest 又加回了 action 字段（v1.6.1 已确认不需要）");
+  if (man.action && /\/dice\.html$/.test(String(man.action.popover))) ok("manifest 仍然没有 action 字段（真机验证过无 action 能加载，别再加回来） → manifest action 指向 dice.html");
+  else bad("manifest 又加回了 action 字段（v1.6.1 已确认不需要） → manifest action 缺失 / 未指向 dice.html");
   if (verOf(commonSrc) === VER && verOf(coreV162) === VER) ok("PLUGIN_VERSION = 1.7.8");
   else bad("PLUGIN_VERSION 不是 1.7.8：" + verOf(commonSrc) + " / " + verOf(coreV162));
   /* [v1.7.7] docs 合并：v1.6.2 的说明并进 docs/NOTES.md（先攻条尺寸那一行） */
@@ -1502,8 +1511,8 @@ console.log("== v1.7.1 投骰动画：完全透明背景 + 3000 ms 兜底关闭"
   if (bundleSrc2.indexOf("(v" + VER + ")") >= 0 && bundleSrc2.indexOf('var PLUGIN_VERSION = "' + VER + '";') >= 0)
     ok("background.bundle.js 已重建（头部 v1.7.5 + PLUGIN_VERSION 1.7.5）");
   else bad("bundle 没跟上 1.7.5（跑 node dev/build-background.mjs）");
-  if (!man.action) ok("manifest 仍然没有 action 字段（保持无 action）");
-  else bad("manifest 又加回了 action");
+  if (man.action && /\/dice\.html$/.test(String(man.action.popover))) ok("manifest 仍然没有 action 字段（保持无 action） → manifest action 指向 dice.html");
+  else bad("manifest 又加回了 action → manifest action 缺失 / 未指向 dice.html");
 
   /* ---- 4) 文档 / 自测 ----
    * [v1.7.7] docs 合并：透明背景 / 关闭三级只在代码与 CHANGELOG 里，NOTES.md 只保留常数在哪。 */
@@ -1665,8 +1674,8 @@ console.log("== v1.7.2 血条组件编辑小窗（HP / 四防 / 回复力）");
   if (has(editCoreV172, "data-bg-soft") || has(editHtmlV172, "data-bg-soft"))
     ok("编辑窗标了 data-bg-soft（后台离线只弱化外观；保存是页面直写 token，不靠后台）");
   else bad("编辑窗没有标后台依赖等级");
-  if (!man.action) ok("manifest 仍然没有 action 字段（v1.7.2 没动它）");
-  else bad("manifest 又加回了 action");
+  if (man.action && /\/dice\.html$/.test(String(man.action.popover))) ok("manifest 仍然没有 action 字段（v1.7.2 没动它） → manifest action 指向 dice.html");
+  else bad("manifest 又加回了 action → manifest action 缺失 / 未指向 dice.html");
   if (man.version === VER && manRel.version === VER && verOf(commonV172) === VER &&
     verOf(coreV172) === VER && bgHtml.indexOf("background.bundle.js?v=" + VER + "") >= 0 &&
     indexHtmlSrc.indexOf("v" + VER) >= 0)
@@ -1822,8 +1831,8 @@ console.log("== v1.7.3 先攻：移出 / token 删除自动清理 / 外壳透明
     has(testInitV173, "maybeAutoOpenStrip") && has(testInitV173, "disablePointerEvents"))
     ok("dev/test-initiative.mjs 扩了 v1.7.3 的断言（动态菜单 / 移出 / 自动清理 / 自动显示）");
   else bad("dev/test-initiative.mjs 没有扩 v1.7.3 的断言");
-  if (!man.action) ok("manifest 仍然没有 action 字段（v1.7.3 没动它）");
-  else bad("manifest 又加回了 action");
+  if (man.action && /\/dice\.html$/.test(String(man.action.popover))) ok("manifest 仍然没有 action 字段（v1.7.3 没动它） → manifest action 指向 dice.html");
+  else bad("manifest 又加回了 action → manifest action 缺失 / 未指向 dice.html");
 }
 
 console.log("== v1.7.4 骰子窗口收窄（≈320×620）+ 本次结果固定底部 + 记录窗口修复");
@@ -1975,8 +1984,8 @@ console.log("== v1.7.4 骰子窗口收窄（≈320×620）+ 本次结果固定�
     has(bundleV174, "width: 320, height: 620"))
     ok("background.bundle.js 已重建（320×620 + diceHistoryAlive / 重试；页面侧的兜底不进 bundle）");
   else bad("bundle 没跟上 v1.7.5（跑 node dev/build-background.mjs）");
-  if (!man.action) ok("manifest 仍然没有 action 字段（v1.7.5 没动它）");
-  else bad("manifest 又加回了 action");
+  if (man.action && /\/dice\.html$/.test(String(man.action.popover))) ok("manifest 仍然没有 action 字段（v1.7.5 没动它） → manifest action 指向 dice.html");
+  else bad("manifest 又加回了 action → manifest action 缺失 / 未指向 dice.html");
   /* [v1.7.6 改] 断言换成新链路：按钮直开 → 按钮变「关闭记录窗口」→ 再点 close → open 抛错时 ERROR。 */
   if (has(testDiceV174, "关闭记录窗口") && has(testDiceV174, "force-open") &&
     has(testDiceV174, "记录窗口打开失败：") && has(testDiceV174, "CH_DICE_HIST_STATE"))
@@ -2063,8 +2072,8 @@ console.log("== v1.7.5 四防一排改样式（3 个圆 + 1 个 AC 盾；只改�
     bundleV175.indexOf("function circlePoints(") >= 0 && bundleV175.indexOf("defShapePoints(") >= 0)
     ok("background.bundle.js 已重建（头部 v1.7.5 + circlePoints / defShapePoints 都在）");
   else bad("bundle 没跟上 v1.7.5（跑 node dev/build-background.mjs）");
-  if (!man.action) ok("manifest 仍然没有 action 字段（v1.7.5 没动它）");
-  else bad("manifest 又加回了 action");
+  if (man.action && /\/dice\.html$/.test(String(man.action.popover))) ok("manifest 仍然没有 action 字段（v1.7.5 没动它） → manifest action 指向 dice.html");
+  else bad("manifest 又加回了 action → manifest action 缺失 / 未指向 dice.html");
   /* [v1.7.7] docs 合并：hpbar-boss-v16.md（含 §0.6 / §0.7 的常数表）并进 docs/NOTES.md，
    * 这里改查「四防常数去哪调」的那一行（DEF_* / barLayout），常数本身由上面的 numV175 断言。 */
   if (notesHas("token 血条/四防的位置与尺寸") && notesHas("DEF_*") && notesHas("barLayout"))
@@ -2236,8 +2245,8 @@ console.log("== v1.7.6 删提示小字 + 记录窗直开 + 先攻条真透明 + 
     bundleV176.indexOf("function barLayout(") >= 0 && bundleV176.indexOf("HP_RING_THICK") >= 0)
     ok("background.bundle.js 已重建（头部版本 + 环形血条常数 HP_RING_THICK 都在）");
   else bad("bundle 没跟上（跑 node dev/build-background.mjs）");
-  if (!man.action) ok("manifest 仍然没有 action 字段（v1.7.6 没动它）");
-  else bad("manifest 又加回了 action");
+  if (man.action && /\/dice\.html$/.test(String(man.action.popover))) ok("manifest 仍然没有 action 字段（v1.7.6 没动它） → manifest action 指向 dice.html");
+  else bad("manifest 又加回了 action → manifest action 缺失 / 未指向 dice.html");
   /* [v1.7.7] docs 合并：v1.7.6 的三处实现说明都并进 docs/NOTES.md（按「改哪」组织，不按版本）。 */
   if (notesHas("先攻条尺寸") && notesHas("骰子动画手感") && notesHas("token 血条/四防的位置与尺寸"))
     ok("docs/NOTES.md 仍有先攻条 / 动画 / 四防三处常数的维护口径（v1.7.6 说明的去处）");
@@ -2337,8 +2346,8 @@ console.log("== v1.7.7 选中 token 就弹血条编辑窗（三分支 / 不重�
     bundleV177.indexOf("hpAutoPopped") >= 0) {
     ok("background.bundle.js 已重建（头部 v1.7.8 + hasHpBarData / onHpBarEdit / hpAutoPopped 都在）");
   } else bad("bundle 没跟上 v1.7.8（跑 node dev/build-background.mjs）");
-  if (!man.action) ok("manifest 仍然没有 action 字段（v1.7.8 没动它）");
-  else bad("manifest 又加回了 action");
+  if (man.action && /\/dice\.html$/.test(String(man.action.popover))) ok("manifest 仍然没有 action 字段（v1.7.8 没动它） → manifest action 指向 dice.html");
+  else bad("manifest 又加回了 action → manifest action 缺失 / 未指向 dice.html");
   if (has(changelogV177, "v1.7.7") && has(changelogV177, "选中 token 直接弹血条编辑窗"))
     ok("CHANGELOG.md 补了 v1.7.7 一条（选中即弹 / 只弹一次 / 右键编辑血条 / 锁只读）");
   else bad("CHANGELOG.md 没有补 v1.7.7");
@@ -2497,8 +2506,8 @@ console.log("== v1.7.8 减少打扰：成功类通知 = 0，只保留 ERROR / WA
   if (bundleV178.indexOf("(v" + VER + ")") >= 0 && bundleV178.indexOf('var PLUGIN_VERSION = "' + VER + '";') >= 0)
     ok("background.bundle.js 已按 1.7.8 重建（头部版本 + PLUGIN_VERSION 都在）");
   else bad("bundle 没跟上 1.7.8（跑 node dev/build-background.mjs）");
-  if (!man.action) ok("manifest 仍然没有 action 字段（v1.7.8 没动它）");
-  else bad("manifest 又加回了 action");
+  if (man.action && /\/dice\.html$/.test(String(man.action.popover))) ok("manifest 仍然没有 action 字段（v1.7.8 没动它） → manifest action 指向 dice.html");
+  else bad("manifest 又加回了 action → manifest action 缺失 / 未指向 dice.html");
   if (has(changelogV178, "v1.7.8") && has(changelogV178, "减少打扰") && has(changelogV178, "只保留错误提示"))
     ok("CHANGELOG.md 补了 v1.7.8 一条（减少打扰：只保留错误提示）");
   else bad("CHANGELOG.md 没有补 v1.7.8");
@@ -2603,8 +2612,8 @@ console.log("== v1.7.9 血条改环形 + 去掉 Boss 模式 / 蓝条 + 四防回
     bundleV179.indexOf("HP_RING_THICK") >= 0 && bundleV179.indexOf('"lock-shackle"') < 0) {
     ok("background.bundle.js 已重建（头部 " + VER + " + 环形常数在、锁的 role 不在）");
   } else bad("bundle 没跟上 " + VER + "（跑 node dev/build-background.mjs）");
-  if (!man.action) ok("manifest 仍然没有 action 字段（v1.7.9 没动它）");
-  else bad("manifest 又加回了 action");
+  if (man.action && /\/dice\.html$/.test(String(man.action.popover))) ok("manifest 仍然没有 action 字段（v1.7.9 没动它） → manifest action 指向 dice.html");
+  else bad("manifest 又加回了 action → manifest action 缺失 / 未指向 dice.html");
   if (has(changelogV179, "v1.7.9") && has(changelogV179, "环形") && has(changelogV179, "去掉 Boss 模式") &&
     has(changelogV179, "四角")) {
     ok("CHANGELOG.md 补了 v1.7.9 一条（环形 / 去 Boss / 四角 / 去蓝条）");
@@ -2881,8 +2890,8 @@ console.log("== v1.7.12 速览资源追踪补全（威能 / 装备全部可点�
   if (has(bundleV1712, "(v" + VER + ")") && has(bundleV1712, 'var PLUGIN_VERSION = "' + VER + '";')) {
     ok("⑥ background.bundle.js 已重建（头部 " + VER + " + PLUGIN_VERSION）");
   } else bad("⑥ bundle 没跟上 " + VER + "（跑 node dev/build-background.mjs）");
-  if (!man.action) ok("⑥ manifest 仍然没有 action");
-  else bad("⑥ manifest 又加回了 action");
+  if (man.action && /\/dice\.html$/.test(String(man.action.popover))) ok("⑥ manifest 仍然没有 action → manifest action 指向 dice.html");
+  else bad("⑥ manifest 又加回了 action → manifest action 缺失 / 未指向 dice.html");
   if (has(readmeV1712, "v1.7.12") && has(readmeV1712, "共享数据") &&
     has(changelogV1712, "v1.7.12") && has(changelogV1712, "共享数据") && has(changelogV1712, "装备")) {
     ok("⑥ README / CHANGELOG 补了 v1.7.12（四组威能 / 装备 / 共享数据）");
@@ -3163,16 +3172,18 @@ console.log("== v1.7.15 房间数据超限（16 kB）真修复：卡片精简 / 
     ok("③ 资源（track.js）：commitState 走 writeRoomKey，超限弹 ERROR");
   } else bad("track.js 的 commitState 没有接预算");
   if (/roomWriteGuarded\(KEY_INITIATIVE, next\)/.test(coreV1715) &&
-    /roomWriteGuarded\(KEY_ROLLS, box\)/.test(coreV1715)) {
-    ok("③ 后台（background.core.js）：先攻 / 骰子落库都走 roomWriteGuarded");
-  } else bad("background.core.js 的先攻 / 骰子写入没有接预算");
+    /roomWriteGuarded\(KEY_ROLLS, box\)/.test(coreV1715) === false &&
+    /async function migrateRollsFromRoom\(/.test(coreV1715)) {
+    ok("③ 后台：先攻走 roomWriteGuarded；骰子历史改本机，房间只做迁移 / 清残留（不再占预算）");
+  } else bad("background.core.js 的先攻预算 / 骰子历史迁移不对");
   if (/var ROOM_MAX_BYTES = 14 \* 1024;/.test(coreV1715) && /var ROOM_HARD_BYTES = 16 \* 1024;/.test(coreV1715) &&
     has(coreV1715, 'var ROOM_FULL_MESSAGE = "' + MSG1715 + '";') && /var LS_CARDS = "4enext\/cards-local";/.test(coreV1715)) {
     ok("③ 后台的常量 / 文案 / 本机键与 cards-core.js 一字不差（经典脚本不能 import）");
   } else bad("background.core.js 的常量 / 文案 / 本机键与 cards-core.js 不一致");
-  if (!/await OBR\.room\.setMetadata\(\{ \[(KEY_INITIATIVE|KEY_ROLLS)\]/.test(coreV1715)) {
-    ok("③ 后台没有绕过预算的裸 setMetadata（先攻 / 骰子都改走 guard）");
-  } else bad("background.core.js 里还有裸 setMetadata 写先攻 / 骰子");
+  if (!/await OBR\.room\.setMetadata\(\{ \[KEY_INITIATIVE\]/.test(coreV1715) &&
+    /rows: \[\] \}/.test(coreV1715)) {
+    ok("③ 后台没有绕过预算的裸 setMetadata 写先攻；骰子只在迁移 / 清残留时直接写空 rows");
+  } else bad("background.core.js 里还有裸 setMetadata 写先攻 / 骰子（或迁移清空路径缺失）");
   if (/localCardsFallback\(\)/.test(coreV1715) && /sceneCardsFallback\(\)/.test(coreV1715)) {
     ok("③ 后台 getCards 依次读 房间 → 场景 item → 本机副本（绑定关系不会因为降级而失效）");
   } else bad("background.core.js 的 getCards 没读场景兜底 / 本机副本");
@@ -3399,6 +3410,38 @@ console.log("== v1.8.6 速览首屏提速：索引瘦身 / 首帧不阻塞 / 后
   } else bad("④ background.core.js 没有后台预热 info 静态资源（缺列表 / force-cache / 1.5s 延迟）");
   if (!/await\s+fetch\(prewarm/.test(coreV186)) ok("④ 预热不 await、不影响启动");
   else bad("④ 预热被 await 了（会拖慢启动）");
+}
+
+/* ===========================================================================
+ * v1.9.2：骰子 action 入口 + 记录窗口自动打开
+ * ======================================================================== */
+console.log("== v1.9.2 骰子 action 入口 / 记录窗口自动打开");
+{
+  const coreV192 = fs.readFileSync(path.join(ROOT, "assets", "background.core.js"), "utf8");
+  const dicePageV192 = fs.readFileSync(path.join(ROOT, "assets", "dice-page.js"), "utf8");
+  const settingsHtmlV192 = fs.readFileSync(path.join(ROOT, "settings.html"), "utf8");
+  const settingsPageV192 = fs.readFileSync(path.join(ROOT, "assets", "settings-page.js"), "utf8");
+  const manV192 = JSON.parse(fs.readFileSync(path.join(ROOT, "manifest.json"), "utf8"));
+  const manRelV192 = JSON.parse(fs.readFileSync(path.join(ROOT, "manifest.relative.json"), "utf8"));
+  if (manV192.action && /^https:/.test(manV192.action.icon) && /^https:/.test(manV192.action.popover) &&
+    manRelV192.action && manRelV192.action.icon === "icon-tool-dice.svg" && manRelV192.action.popover === "dice.html")
+    ok("manifest.action 骰子入口：绝对 URL（线上）/ 相对 URL（relative）都对");
+  else bad("manifest.action 骰子入口不完整：" + JSON.stringify(manV192.action) + " / " + JSON.stringify(manRelV192.action));
+  if (/OBR\.action\.isOpen/.test(dicePageV192) && /OBR\.action\.close\(\)/.test(dicePageV192) &&
+    /createWindow\(\{ name: "dice", head: null \}\)/.test(dicePageV192))
+    ok("dice-page：action.isOpen 判断 + ✕ 用 action.close + action 模式不绑定标题栏拖动");
+  else bad("dice-page 没有适配 action popover 模式");
+  if (coreV192.indexOf('DICE_HIST_AUTOSTART_KEY = "4enext/dice-hist-autostart"') >= 0 &&
+    coreV192.indexOf('DICE_HIST_CLOSED_KEY = "4enext/dice-hist-closed"') >= 0 &&
+    /async function maybeAutoOpenDiceHistory\(/.test(coreV192) &&
+    /setTimeout\(function \(\) \{ void maybeAutoOpenDiceHistory\(\); \}, 800\);/.test(coreV192) &&
+    /if \(name === "diceHistory"\) markDiceHistClosed\(true\);/.test(coreV192))
+    ok("后台：骰子记录窗口默认自动打开（800ms）+ 本次会话 ✕ 记忆 + 偏好键");
+  else bad("后台骰子记录窗口自动打开链路不完整");
+  if (settingsHtmlV192.indexOf("dice-hist-auto-state") >= 0 && settingsHtmlV192.indexOf("dice-hist-auto-toggle") >= 0 &&
+    settingsPageV192.indexOf("readDiceHistAutostart") >= 0 && settingsPageV192.indexOf("writeDiceHistAutostart") >= 0)
+    ok("设置页：骰子记录窗口自动打开开关（读写本机偏好）");
+  else bad("设置页缺少骰子记录窗口自动打开开关");
 }
 
 console.log(fail ? "\n" + fail + " 个问题" : "\n全部通过");

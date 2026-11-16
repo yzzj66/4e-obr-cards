@@ -4,12 +4,12 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>4eNEXT to owlbear · Owlbear Rodeo 插件</title>
-<link rel="stylesheet" href="assets/ui.css?v=1.9.1">
-<link rel="stylesheet" href="assets/glance.css?v=1.9.1">
+<link rel="stylesheet" href="assets/ui.css?v=1.9.2">
+<link rel="stylesheet" href="assets/glance.css?v=1.9.2">
 </head>
 <body>
 <article class="doc">
-  <h1>4eNEXT to owlbear <span class="tag">Owlbear Rodeo 插件</span> <span class="tag">v1.9.1</span></h1>
+  <h1>4eNEXT to owlbear <span class="tag">Owlbear Rodeo 插件</span> <span class="tag">v1.9.2</span></h1>
   <p class="muted">在枭熊里看 4E NEXT 的「速览」页：右键 token 绑定角色卡，之后选中这枚 token 就会弹出速览。
     v1.2.0 起还能在弹窗里直接加减血量（token 上会画出血条），并把威能 / 装备点掉记成「已用」；
     v1.2.1 把速览弹窗加宽到 660×700；v1.2.2 弹窗可以按住标题栏拖动、位置按 token 记住。
@@ -131,7 +131,7 @@
       威能 / 装备点一下变灰 = 已用，再点恢复；行动点与里程碑并成一排加减（专长只展示，不追踪使用）。</li>
     <li><b>各自独立的窗口</b>（v1.3.1 起没有 tab）：<b>速览</b>（选中 token 弹出的小窗）、<b>先攻</b>、<b>骰子</b>、
       <b>角色卡 / 导入面板</b>、<b>设置 / 关于</b>（v1.3.2）；各自一个 popover id，可以同时打开、互不嵌套，位置各记各的（localStorage）。</li>
-    <li><b>入口</b>：左上角 4E 图标（角色卡 / 导入面板）、左侧工具栏<b>五个</b>图标（速览 / 角色卡 / 先攻 / 骰子 / 设置，v1.3.2）、右下角 4E 浮动按钮、右键菜单。</li>
+    <li><b>入口</b>：左上角 4E 图标（角色卡 / 导入面板）、左侧工具栏<b>四个</b>图标（速览 / 角色卡 / 先攻 / 设置，v1.9.2）+ <b>左上角骰子 action 按钮</b>、右下角 4E 浮动按钮、右键菜单。</li>
     <li><b>先攻条（v1.4.0）</b>：工具栏「先攻」打开屏幕顶部的横向先攻条（56×80 头像卡，当前回合卡高 100 并高亮）；
       左端「战斗准备 / 突袭 / 一键清空」（清空要点两次），战斗态「上一回合 / 下一回合 / 结束战斗」；
       卡片可拖拽排序（合计降序、同分看 tiebreak）；GM 能推进任意回合，玩家轮到自己时点「结束」，
@@ -140,7 +140,7 @@
     <li><b>先攻条（v1.7.3）</b>：<b>常驻</b>在屏幕顶部（进入房间自动出现，点地图不消失）、<b>外壳透明</b>
       （卡片仍是深色底）；右键菜单随名单动态变：已在先攻里只显示「移出先攻」，不在才显示两项「加入先攻」；
       GM 的卡片右上角 <b>✕</b> 直接移出；<b>token 被删除</b>后条目自动清理、游标顺移到下一条。</li>
-    <li><b>骰子（v1.5.0 / v1.7.0 / v1.7.4）</b>：工具栏「骰子」打开 <b>320×620 的窄竖条</b>（v1.7.4 收窄），
+    <li><b>骰子（v1.5.0 / v1.7.0 / v1.7.4 / v1.9.2）</b>：<b>左上角 manifest action</b>（骰子 / Dice）打开 <b>320×620 的窄竖条</b>（v1.7.4 收窄），
       组公式（七颗骰子按钮 <b>4 + 3 两排</b> / 表达式 / <b>战斗优势 +2</b> / <b>重击 · 伤害取满</b> /
       4E 预设「攻击 · 伤害 · 技能」/ 组合），<b>「本次结果」固定在窗口底部</b>（上边框分隔，上面的内容自己滚，结果不随滚动消失）。
       <b>记录是独立窗口</b>（v1.7.0）：可拖动、记位置，默认显示<b>最近 4 条</b>、可展开全部，与骰子窗口各自开关；
@@ -245,6 +245,6 @@ dev/                 开发期工具（普通用户用不到）</code></pre>
 
   <p class="muted" style="margin-top:28px;font-size:12px">非官方作品，与 Owlbear Rodeo、4E NEXT 均无隶属关系。角色卡数据只在你自己的房间与浏览器里流转。</p>
 </article>
-<script type="module" src="assets/index.js?v=1.9.1"></script>
+<script type="module" src="assets/index.js?v=1.9.2"></script>
 </body>
 </html>

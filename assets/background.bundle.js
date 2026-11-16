@@ -1,4 +1,4 @@
-/*! 4eNEXT to owlbear · background.bundle.js  (v1.9.1)
+/*! 4eNEXT to owlbear · background.bundle.js  (v1.9.2)
  * ---------------------------------------------------------------------------
  * 这是后台页唯一加载的脚本：纯「经典脚本」，没有 type="module"，没有 import/export，
  * 不依赖任何 CDN。内容是：
@@ -7,7 +7,7 @@
  *
  * 不要手改本文件。改逻辑请改 assets/background.core.js，然后：
  *     node dev/build-background.mjs
- * 生成时间：2026-11-16T06:10:03.263Z
+ * 生成时间：2026-11-16T06:43:29.152Z
  * --------------------------------------------------------------------------- */
 (function () {
 "use strict";
@@ -92,14 +92,13 @@ var ID_SETTINGS_WIN = NS + "/settings-window";
 var ID_STRIP = NS + "/initiative-strip";
 var TOOL_ID = NS + "/panel-tool";
 var TOOL_INIT_ID = NS + "/initiative-tool";
-var TOOL_DICE_ID = NS + "/dice-tool";
 
 var TOOL_GLANCE_ID = NS + "/glance-tool";
 var TOOL_SETTINGS_ID = NS + "/settings-tool";
 var CH_HELLO = NS + "/diag-hello";
 var CH_PING = NS + "/diag-ping";
 var CH_PONG = NS + "/diag-pong";
-var PLUGIN_VERSION = "1.9.1";
+var PLUGIN_VERSION = "1.9.2";
 
 var KEY_HP = NS + "/hp";
 
@@ -268,6 +267,9 @@ var STRIP_POS_KEY = "4enext/strip-pos";
 
 var STRIP_AUTOSTART_KEY = "4enext/strip-autostart";
 var STRIP_CLOSED_KEY = "4enext/strip-closed-this-session";
+/* v1.9.2：骰子记录窗口默认进入房间自动打开（可在设置关掉；本次会话 ✕ 后不再自动开）。 */
+var DICE_HIST_AUTOSTART_KEY = "4enext/dice-hist-autostart";
+var DICE_HIST_CLOSED_KEY = "4enext/dice-hist-closed";
 
 var STRIP_COLLAPSED_KEY = "4enext/strip-collapsed";
 var CH_STRIP_DRAG = NS + "/strip-drag";
@@ -303,7 +305,6 @@ var ICON_URL = pageUrl("icon.svg");
 var TOOL_ICON_URL = pageUrl("icon-tool.svg");
 
 var TOOL_INIT_ICON_URL = pageUrl("icon-tool-initiative.svg");
-var TOOL_DICE_ICON_URL = pageUrl("icon-tool-dice.svg");
 
 var TOOL_GLANCE_ICON_URL = pageUrl("icon-tool-glance.svg");
 var TOOL_SETTINGS_ICON_URL = pageUrl("icon-tool-settings.svg");
@@ -566,6 +567,8 @@ async function closeWinById(name) {
     delete winOpen[name];
     /* v1.8.1：手动 ✕ 关掉血条编辑窗后，别再对同一个选中 token 自动弹（要再改就右键「编辑血条」）。 */
     if (name === "hpEdit" && hpEditTarget.itemId) hpAutoPopped[hpEditTarget.itemId] = true;
+    /* v1.9.2：用户 ✕ 关掉骰子记录窗口 → 本次会话不再自动打开。 */
+    if (name === "diceHistory") markDiceHistClosed(true);
   }
   try { await OBR.popover.close(def.id); } catch (e) {  }
   try { if (OBR.modal && typeof OBR.modal.close === "function") await OBR.modal.close(def.id); } catch (e2) {  }
@@ -788,12 +791,53 @@ function winWait(ms) {
   return new Promise(function (r) { setTimeout(r, ms); });
 }
 
+function rectOverlapRatio(a, b) {
+  if (!a || !b) return 0;
+  var x1 = Math.max(a.left, b.left);
+  var y1 = Math.max(a.top, b.top);
+  var x2 = Math.min(a.left + a.width, b.left + b.width);
+  var y2 = Math.min(a.top + a.height, b.top + b.height);
+  var iw = Math.max(0, x2 - x1);
+  var ih = Math.max(0, y2 - y1);
+  var area = Math.max(1, a.width * a.height);
+  return (iw * ih) / area;
+}
+
 async function adoptDiceHistory(data) {
   var w = typeof data.width === "number" && data.width > 0 ? data.width : WINS.diceHistory.width;
   var h = typeof data.height === "number" && data.height > 0 ? data.height : WINS.diceHistory.height;
   var left = typeof data.left === "number" && isFinite(data.left) ? data.left : WIN_MARGIN;
   var top = typeof data.top === "number" && isFinite(data.top) ? data.top : WIN_MARGIN;
   var vp = await infoViewport();
+  var size = { width: w, height: h };
+  var rect = { left: left, top: top, width: w, height: h };
+  /* v1.9.2：记录窗口「点了没反应」——如果和骰子窗口重叠超过 30%，挪到骰子窗口旁边再打开。 */
+  var diceGeom = winOpen["dice"] && winOpen["dice"].geom ? winOpen["dice"].geom : null;
+  var moved = false;
+  if (diceGeom && rectOverlapRatio(rect, diceGeom) > 0.3) {
+    var gap = 12;
+    var candidates = [
+      { left: diceGeom.left - w - gap, top: diceGeom.top },
+      { left: diceGeom.left, top: diceGeom.top + diceGeom.height + gap },
+      { left: diceGeom.left, top: diceGeom.top - h - gap },
+      { left: WIN_MARGIN, top: WIN_MARGIN }
+    ];
+    for (var i = 0; i < candidates.length; i++) {
+      var one = candidates[i];
+      var clamped = clampInfoPos(one.left, one.top, size, vp);
+      if (rectOverlapRatio({ left: clamped.left, top: clamped.top, width: w, height: h }, diceGeom) <= 0.3) {
+        left = clamped.left;
+        top = clamped.top;
+        moved = true;
+        break;
+      }
+      if (i === candidates.length - 1) {
+        left = clamped.left;
+        top = clamped.top;
+        moved = true;
+      }
+    }
+  }
   winOpen["diceHistory"] = {
     geom: {
       left: left, top: top, width: w, height: h,
@@ -803,7 +847,15 @@ async function adoptDiceHistory(data) {
     timer: null,
     external: true
   };
-  pageLog("ok", "骰子记录窗口：由骰子窗口直接打开（后台已接管拖动 / 位置记忆）");
+  if (moved) {
+    try {
+      await OBR.popover.open(winPopoverOptions(WINS.diceHistory, { left: left, top: top }, size, URL_DICE_HIST));
+    } catch (e) {
+      pageLog("err", "记录窗口挪位后重开失败：" + errText(e));
+    }
+  }
+  pageLog("info", "hist 直开 at " + Math.round(left) + "," + Math.round(top) + " " + w + "x" + h +
+    (moved ? "（与骰子窗口重叠，已挪开）" : ""));
 }
 
 async function forceOpenDiceHistory() {
@@ -1127,6 +1179,29 @@ async function maybeAutoOpenStrip(where) {
   return openStripOrNotify(where || "进入房间自动打开先攻条");
 }
 
+/* v1.9.2：骰子记录窗口的自动打开（与先攻条同一套口径：偏好默认开、本次会话关过就不再开）。 */
+function diceHistAutostartOn() {
+  try { return localStorage.getItem(DICE_HIST_AUTOSTART_KEY) !== "0"; } catch (e) { return true; }
+}
+function diceHistClosedThisSession() {
+  try { return localStorage.getItem(DICE_HIST_CLOSED_KEY) === "1"; } catch (e) { return false; }
+}
+function markDiceHistClosed(on) {
+  try {
+    if (on) localStorage.setItem(DICE_HIST_CLOSED_KEY, "1");
+    else localStorage.removeItem(DICE_HIST_CLOSED_KEY);
+  } catch (e) {  }
+}
+async function maybeAutoOpenDiceHistory() {
+  if (diceHistoryIsOpen()) return false;
+  if (!diceHistAutostartOn()) return false;
+  if (diceHistClosedThisSession()) return false;
+  if (!(await sceneReady())) return false;
+  var ok = await openDiceHistory();
+  if (ok) pageLog("info", "进入房间自动打开骰子记录窗口");
+  return ok;
+}
+
 async function resetStrip() {
   if (!stripOpen || !stripGeom) return;
   clearStripOffset();
@@ -1349,15 +1424,6 @@ async function registerTools() {
       return false;
     }
   });
-  await registerOneTool({
-    id: TOOL_DICE_ID,
-    icons: [{ icon: TOOL_DICE_ICON_URL, label: "4eNEXT to owlbear：骰子窗口" }],
-    onClick: function () {
-      void openWinOrNotify("dice", "工具栏「骰子」");
-      return false;
-    }
-  });
-
   await registerOneTool({
     id: TOOL_GLANCE_ID,
     icons: [{ icon: TOOL_GLANCE_ICON_URL, label: "4eNEXT to owlbear：速览（当前选中的 token）" }],
@@ -3430,103 +3496,79 @@ function rollRowsOf(box) {
   return out.slice(0, ROLL_MAX_ROWS);
 }
 
-async function rollWrite(rows, seq) {
-  var box = {
-    v: 1,
-    updatedAt: Date.now(),
-    seq: Math.max(0, rollInt(seq, 0, 999999, 0)),
-    rows: (rows || []).slice(0, ROLL_MAX_ROWS)
-  };
-  while (JSON.stringify(box).length > ROLL_ROOM_BYTES && box.rows.length > 1) {
-    box.rows = box.rows.slice(0, Math.ceil(box.rows.length / 2));
-  }
-  var res = await roomWriteGuarded(KEY_ROLLS, box);
-  if (res.ok) return true;
-  notify(res.reason === "full"
-    ? ROOM_FULL_MESSAGE
-    : "骰子记录没能写进房间数据（" + errText(res.error) + "）：最多保留 " + ROLL_MAX_ROWS + " 条，旧行会自动裁掉。", "ERROR");
-  pageLog("err", "骰子落库失败（" + (res.reason || "error") + "，" + res.bytes + " 字符）");
-  return false;
-}
-function rollBroadcastSaved(payload) {
-  try {
-    var p1 = OBR.broadcast.sendMessage(CH_ROLL_SAVED, payload, { destination: "LOCAL" });
-    if (p1 && typeof p1.catch === "function") p1.catch(function () {  });
-  } catch (e) {  }
-  try {
-    var p2 = OBR.broadcast.sendMessage(CH_ROLL_SAVED, payload, { destination: "REMOTE" });
-    if (p2 && typeof p2.catch === "function") p2.catch(function () {  });
-  } catch (e2) {  }
-}
+/* v1.9.2：骰子历史改**本机 + 广播**，不再写房间数据。后台只保留两件收尾：
+ *   ① GM 首次启动把房间残留 KEY_ROLLS 迁进本机并清空房间键（只减不增，不需预算检查）；
+ *   ② 清空请求时 GM 顺带清房间残留（本机记录由各端页面自己清）。
+ * 本机键 = 4enext/dice-history/<roomId>，结构 { v:1, rows:[...] }，与 dice-history 页面共用。 */
+var LS_DICE_HISTORY_PREFIX = "4enext/dice-history/";
 
-var rollQueue = [];
-var rollBusy = false;
+function diceHistRoomId() {
+  try {
+    if (OBR.room && typeof OBR.room.id === "string" && OBR.room.id) return OBR.room.id;
+  } catch (e) {  }
+  return "default";
+}
+function diceHistKey() { return LS_DICE_HISTORY_PREFIX + diceHistRoomId(); }
+function diceHistRead() {
+  try {
+    var raw = localStorage.getItem(diceHistKey());
+    if (!raw) return [];
+    var box = JSON.parse(raw);
+    var src = Array.isArray(box) ? box : box && Array.isArray(box.rows) ? box.rows : [];
+    var out = [];
+    var seen = {};
+    for (var i = 0; i < src.length; i++) {
+      var row = rollNorm(src[i]);
+      if (!row || seen[row.rollId]) continue;
+      seen[row.rollId] = true;
+      out.push(row);
+    }
+    out.sort(function (a, b) { return (b.ts || 0) - (a.ts || 0); });
+    return out.slice(0, ROLL_MAX_ROWS);
+  } catch (e) { return []; }
+}
+function diceHistWrite(rows) {
+  try { localStorage.setItem(diceHistKey(), JSON.stringify({ v: 1, rows: (rows || []).slice(0, ROLL_MAX_ROWS) })); }
+  catch (e) { /* 本机也存不下就算了 */ }
+}
 
 async function rollRole() {
   try { return await OBR.player.getRole(); } catch (e) { return ""; }
 }
 
-async function rollApply(job) {
-  if (job && job.clear) {
-    var box0 = await rollReadBox();
-    var seq0 = box0 && typeof box0.seq === "number" && isFinite(box0.seq) ? Math.round(box0.seq) : 0;
-    var okClear = await rollWrite([], seq0 + 1);
-    if (!okClear) return;
-    rollBroadcastSaved({ seq: seq0 + 1, rollId: "", cleared: true, by: job.by, at: Date.now() });
-    pageLog("info", "骰子记录已清空（城主）");
-    return;
-  }
-  var incoming = rollNorm(job);
-  if (!incoming) {
-    pageLog("info", "收到一条不合法的投掷（缺 rollId / 骰值越界），已丢弃");
-    return;
-  }
-  var box = await rollReadBox();
-  var seq = box && typeof box.seq === "number" && isFinite(box.seq) ? Math.round(box.seq) : 0;
-  var existing = rollRowsOf(box);
-
-  for (var i = 0; i < existing.length; i++) {
-    if (existing[i].rollId === incoming.rollId) {
-      rollBroadcastSaved({ seq: seq, rollId: incoming.rollId, duplicate: true, at: Date.now() });
-      pageLog("info", "重复的投掷（同 rollId）已忽略：" + incoming.rollId);
-      return;
-    }
-  }
-  var rows = rollMerge(existing, incoming);
-  var ok = await rollWrite(rows, seq + 1);
-  if (!ok) return;
-  rollBroadcastSaved({ seq: seq + 1, rollId: incoming.rollId, at: Date.now() });
-  pageLog("info", "骰子落库：" + (incoming.rollerName || "某人") + " " + (incoming.expression || "") + " = " + incoming.total);
-}
-
-async function pumpRolls() {
-  if (rollBusy) return;
-  rollBusy = true;
+async function migrateRollsFromRoom() {
   try {
-    while (rollQueue.length) {
-      var job = rollQueue.shift();
-      try { await rollApply(job); } catch (e) { pageLog("err", "骰子落库失败：" + errText(e)); }
+    if ((await rollRole()) !== "GM") return;
+    var box = await rollReadBox();
+    var oldRows = rollRowsOf(box);
+    if (!oldRows.length) return;
+    var merged = diceHistRead();
+    for (var i = 0; i < oldRows.length; i++) merged = rollMerge(merged, oldRows[i]);
+    diceHistWrite(merged);
+    var seq = box && typeof box.seq === "number" && isFinite(box.seq) ? Math.round(box.seq) : 0;
+    try {
+      await OBR.room.setMetadata({ [KEY_ROLLS]: { v: 1, updatedAt: Date.now(), seq: seq + 1, rows: [] } });
+    } catch (e) {
+      pageLog("err", "清空房间骰子残留失败：" + errText(e));
     }
-  } finally {
-    rollBusy = false;
+    pageLog("info", "骰子历史已迁移到本机：" + oldRows.length + " 条（房间数据已清空，不再占 16KB 预算）");
+  } catch (e2) {
+    pageLog("err", "迁移房间骰子历史失败：" + errText(e2));
   }
 }
 
-async function onRoll(ev) {
-  var data = ev && ev.data !== undefined ? ev.data : ev;
-  if (!data || typeof data !== "object") return;
-  var role = await rollRole();
-  if (role !== "GM") return;
-  rollQueue.push(data);
-  void pumpRolls();
-}
-
-async function onRollClear(ev) {
-  var data = ev && ev.data !== undefined ? ev.data : ev;
-  var role = await rollRole();
-  if (role !== "GM") return;
-  rollQueue.push({ clear: true, by: data && data.by });
-  void pumpRolls();
+async function onRollClear() {
+  if ((await rollRole()) !== "GM") return;
+  try {
+    var box = await rollReadBox();
+    var oldRows = rollRowsOf(box);
+    if (!oldRows.length) return;
+    var seq = box && typeof box.seq === "number" && isFinite(box.seq) ? Math.round(box.seq) : 0;
+    await OBR.room.setMetadata({ [KEY_ROLLS]: { v: 1, updatedAt: Date.now(), seq: seq + 1, rows: [] } });
+    pageLog("info", "房间里的旧骰子记录已清空（本机记录由各端自己清）");
+  } catch (e) {
+    pageLog("err", "清空房间骰子残留失败：" + errText(e));
+  }
 }
 
 var booted = false;
@@ -3566,7 +3608,7 @@ async function boot() {
   pageLog("info", "OBR.onReady 触发；插件 v" + PLUGIN_VERSION + "；BASE=" + BASE);
   pageLog("info", "OBR.isAvailable=" + String(OBR.isAvailable) + "；isReady=" + String(OBR.isReady));
 
-  bootStatus.tool = await attempt("注册工具栏按钮 (OBR.tool.create ×5)", registerTools);
+  bootStatus.tool = await attempt("注册工具栏按钮 (OBR.tool.create ×4)", registerTools);
 
   bootStatus.menu = await attempt("注册右键菜单 (OBR.contextMenu.create)", registerContextMenu);
 
@@ -3576,9 +3618,12 @@ async function boot() {
   else if (!bootStatus.scene) stepOk("场景还没就绪，浮动按钮等进入地图后再开");
 
   markStripClosed(false);
+  markDiceHistClosed(false);
   await refreshInitKnownTokens();
 
   await syncInitFlags();
+  /* v1.9.2：延迟 800ms 自动开骰子记录窗口（别和 1.5s 的静态资源预热抢）。 */
+  setTimeout(function () { void maybeAutoOpenDiceHistory(); }, 800);
 
   await attempt("订阅 scene.onReadyChange", function () {
     OBR.scene.onReadyChange(function (ready) {
@@ -3589,6 +3634,7 @@ async function boot() {
       if (ready !== false) {
         void syncInitFlags();
         void maybeAutoOpenStrip("进入房间自动显示先攻条");
+        setTimeout(function () { void maybeAutoOpenDiceHistory(); }, 800);
       }
     });
   });
@@ -3642,8 +3688,9 @@ async function boot() {
       suppressGlanceUntil = Date.now() + 1500;
     });
   });
-  await attempt("订阅 " + CH_ROLL + "（骰子落库：仅城主处理）", function () {
-    OBR.broadcast.onMessage(CH_ROLL, onRoll);
+  /* v1.9.2：骰子历史不再落房间数据；GM 启动时把旧 KEY_ROLLS 迁移到本机并清空房间残留。 */
+  await attempt("迁移房间旧骰子历史到本机（GM）", function () {
+    return migrateRollsFromRoom();
   });
   await attempt("订阅 " + CH_ROLL_CLEAR + "（清空骰子记录）", function () {
     OBR.broadcast.onMessage(CH_ROLL_CLEAR, onRollClear);

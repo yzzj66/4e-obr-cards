@@ -340,9 +340,17 @@ if (rowsCore === "20" && rowsCommon === "20" && D.ROLL_MAX_ROWS === 20)
   ok("ROLL_MAX_ROWS 三处都是 20（dice-core / common / background.core；v1.8.0：40 → 20）");
 else bad("ROLL_MAX_ROWS 不一致：" + D.ROLL_MAX_ROWS + " / " + rowsCommon + " / " + rowsCore);
 if (coreSrc.indexOf("function rollNorm(") >= 0 && coreSrc.indexOf("function rollMerge(") >= 0 &&
-  coreSrc.indexOf("broadcast.onMessage(CH_ROLL,") >= 0)
-  ok("后台有骰子落库（rollNorm / rollMerge / 订阅 CH_ROLL）");
-else bad("后台缺少骰子落库");
+  coreSrc.indexOf("async function migrateRollsFromRoom(") >= 0 && coreSrc.indexOf("function diceHistRead(") >= 0 &&
+  coreSrc.indexOf("roomWriteGuarded(KEY_ROLLS, box)") < 0)
+  ok("后台不再写房间 rolls：只保留迁移（migrateRollsFromRoom）与本机历史 helper（rollNorm / rollMerge 复用）");
+else bad("后台骰子历史改造不完整（仍写房间 / 缺迁移）");
+if (commonSrc.indexOf('LS_DICE_HISTORY_PREFIX = "4enext/dice-history/"') >= 0 &&
+  commonSrc.indexOf("export function diceHistoryRoomId(") >= 0 &&
+  commonSrc.indexOf("export function readDiceHistoryRows(") >= 0 &&
+  commonSrc.indexOf("export function appendDiceHistoryRow(") >= 0 &&
+  commonSrc.indexOf("export function clearDiceHistory(") >= 0)
+  ok("common.js：本机骰子历史 API 齐全（按房间 key / 读 / 追加 / 清空）");
+else bad("common.js 缺少本机骰子历史 API");
 const diceCoreSrc = fs.readFileSync(path.join(ROOT, "assets", "dice-core.js"), "utf8");
 if (diceCoreSrc.indexOf("obr-sdk") < 0 && diceCoreSrc.indexOf("./common.js") < 0)
   ok("dice-core.js 不依赖 OBR / common（本文件能直接 import 就是证明）");
@@ -513,6 +521,7 @@ const fakeOBR = {
     local: { addItems: async () => {}, updateItems: async () => {}, deleteItems: async () => {}, onChange() { return () => {}; } }
   },
   room: {
+    id: "room-test",
     getMetadata: async () => fakeRoom,
     setMetadata: async () => {},
     onMetadataChange() { return () => {}; }
@@ -930,7 +939,8 @@ for (let i = 1; i <= 6; i++) {
   histRows.push({ rollId: "h" + i, ts: 1000 + i, rollerId: "u1", rollerName: "甲" + i, rollerColor: "#7fe07f",
     label: "攻击", expression: "1d20 + 5", dice: [{ type: "d20", value: 10 + i }], modifier: 5, total: 15 + i });
 }
-fakeRoom["com.4enext-owlbear/rolls"] = { v: 1, updatedAt: Date.now(), seq: 6, rows: histRows };
+lsStore["4enext/dice-history/" + (fakeOBR.room && fakeOBR.room.id ? fakeOBR.room.id : "default")] =
+  JSON.stringify({ v: 1, rows: histRows });
 copyPageWithStub("dice-history-page.js");
 const readyBeforeHist = readyCbs.length;
 let histErr = null;
@@ -943,11 +953,11 @@ for (const cb of readyCbs.slice(readyBeforeHist)) cb();
 await sleep(50);
 const listEl = histDom["dh-list"];
 if (listEl.innerHTML.indexOf("hist-row") >= 0 && listEl.innerHTML.indexOf("甲6") >= 0 && listEl.innerHTML.indexOf("21") >= 0)
-  ok("记录窗口把房间数据画成了历史行（掷骰者 / 总点数都在）");
+  ok("记录窗口把**本机历史**画成了历史行（掷骰者 / 总点数都在）");
 else bad("记录窗口没有画出历史行：" + listEl.innerHTML.slice(0, 160));
 if (listEl.classList.contains("compact")) ok("默认是 compact（只显示最近 4 条）");
 else bad("记录窗口默认不是 compact");
-if (histDom["dh-meta"].textContent.indexOf("6") >= 0) ok("顶部计数：共 6 / 20 条");
+if (histDom["dh-meta"].textContent.indexOf("6") >= 0 && histDom["dh-meta"].textContent.indexOf("本机") >= 0) ok("顶部计数：本机共 6 / 20 条");
 else bad("计数不对：" + histDom["dh-meta"].textContent);
 const toggleFn = (histDom["dh-toggle"].listeners.click || [])[0];
 if (!toggleFn) bad("展开按钮没有绑定 click");
@@ -957,7 +967,36 @@ else {
   else bad("展开后仍然是 compact");
 }
 
-/* 还原全局计时器（后面的 sleep 还要用真定时器） */
+/* ---- 10.3 v1.9.2：本机骰子历史原语（按房间隔离 / 去重 / 上限 20 / 容错） ---- */
+{
+  const C = await import(pathToFileURL(path.join(tmp, "assets", "common.js")).href);
+  const RA = "room-A", RB = "room-B";
+  C.clearDiceHistory(RA); C.clearDiceHistory(RB);
+  const rowOf = (id, ts) => ({ rollId: id, ts: ts, rollerName: "甲", dice: [{ type: "d20", value: 10 }], total: 10 });
+  C.appendDiceHistoryRow(rowOf("x1", 1), RA);
+  C.appendDiceHistoryRow(rowOf("x2", 2), RA);
+  C.appendDiceHistoryRow(rowOf("x1", 1), RA); /* 同 rollId 幂等 */
+  const listA = C.readDiceHistoryRows(RA);
+  if (listA.length === 2 && listA[0].rollId === "x2" && listA[1].rollId === "x1")
+    ok("v1.9.2：appendDiceHistoryRow 去重 + 按 ts 倒序（同 rollId 不重复插）");
+  else bad("appendDiceHistoryRow 去重 / 排序不对：" + JSON.stringify(listA.map((r) => r.rollId)));
+  for (let i = 1; i <= 25; i++) C.appendDiceHistoryRow(rowOf("cap" + i, 100 + i), RA);
+  const capped = C.readDiceHistoryRows(RA);
+  if (capped.length === 20 && capped[0].rollId === "cap25" && capped[19].rollId === "cap6")
+    ok("v1.9.2：本机历史上限 20，超出丢最旧（最新的排最前）");
+  else bad("本机历史上限不对：" + capped.length + " / " + (capped[0] && capped[0].rollId));
+  if (C.readDiceHistoryRows(RB).length === 0)
+    ok("v1.9.2：本机历史按房间 key 隔离（room-B 看不到 room-A 的记录）");
+  else bad("本机历史没有按房间隔离");
+  lsStore[C.diceHistoryKey(RA)] = "{坏的 JSON";
+  if (C.readDiceHistoryRows(RA).length === 0)
+    ok("v1.9.2：本机历史 JSON 损坏时容错为空列表（不抛错）");
+  else bad("本机历史坏 JSON 没有容错");
+  C.clearDiceHistory(RA);
+  if (C.readDiceHistoryRows(RA).length === 0) ok("v1.9.2：clearDiceHistory 清空本机历史");
+  else bad("clearDiceHistory 没清空");
+}
+
 globalThis.setTimeout = savedTimers.setTimeout;
 globalThis.setInterval = savedTimers.setInterval;
 globalThis.requestAnimationFrame = savedTimers.raf;

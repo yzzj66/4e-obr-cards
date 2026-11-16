@@ -22,15 +22,15 @@
 //      动画打不开 / 关掉时什么都不影响，本次结果照样显示在本窗口的「本次结果」里；
 //   3) 预设去掉「豁免」「先攻」（4E 里前者就是一个 d20，后者先攻条自带）。
 //
-// 团队共享（不变）：投掷 → CH_ROLL（LOCAL + REMOTE）→ 城主客户端后台校验合并 →
-// 写房间数据 com.4enext-owlbear/rolls（40 条封顶，超出删最旧）→ 广播 CH_ROLL_SAVED。
+// v1.9.2：骰子历史改为**本机保存 + 广播**（不再写房间数据）：投掷 → 本机 append → CH_ROLL（LOCAL + REMOTE）→
+// 其它端收到后各自追加到本机历史（后进房间看不到旧历史，与 Full Suite 一致）。
 // 城主不在线：本机暂存 + 提示（玩家只读，清空只有城主能做）。
 import OBR from "../vendor/obr-sdk.js";
 import {
-  CH_DICE_HIST_CMD, CH_DICE_HIST_STATE, CH_ROLL, CH_ROLL_CLEAR, CH_ROLL_SAVED,
-  ID_DICE_HIST, ID_DICE_WIN, KEY_BIND, KEY_ROLLS, LS_DICE_COMBOS, LS_DICE_LAST, LS_DICE_LOCAL,
+  CH_DICE_HIST_CMD, CH_DICE_HIST_STATE, CH_ROLL, CH_ROLL_CLEAR,
+  ID_DICE_HIST, ID_DICE_WIN, KEY_BIND, LS_DICE_COMBOS, LS_DICE_LAST, LS_DICE_LOCAL,
   NS, URL_DICE_HIST, URL_EFFECT,
-  esc, findCard, getCards, onReady, readDiceAnim
+  appendDiceHistoryRow, clearDiceHistory, esc, findCard, getCards, onReady, readDiceAnim
 } from "./common.js";
 import { closeSelf, createWindow, feedback } from "./window.js";
 import {
@@ -39,7 +39,22 @@ import {
   rowTotals, rowsFromRaw, sidesOf
 } from "./dice-core.js";
 
-var win = createWindow({ name: "dice" });
+/* v1.9.2：骰子入口改为 manifest action（左上角按钮，参照 Full Suite）——
+ * action popover 模式与旧「工具栏 tool + popover」模式共用本页面：
+ *   · 用 OBR.action.isOpen() 判断当前是不是 action 弹窗（异步；拿不到就当 false）；
+ *   · action 模式：✕ → OBR.action.close()；位置由 OBR 固定，标题栏拖动不再绑定；
+ *   · 尺寸由 manifest action 的 width/height（320×620）决定，页面自身 100% 铺满。 */
+var ACTION_MODE = false;
+async function actionModeNow() {
+  try {
+    if (!OBR.action || typeof OBR.action.isOpen !== "function") return false;
+    return !!(await OBR.action.isOpen());
+  } catch (e) { return false; }
+}
+
+// v1.9.2：新版只有 manifest action 入口（右侧工具栏不再有骰子图标），因此不再绑定标题栏拖动；
+// 旧 popover 路径保留兼容（位置由后台 WINS 管，不依赖本页拖动）。
+var win = createWindow({ name: "dice", head: null });
 
 var els = {
   head: document.getElementById("head"),
@@ -76,8 +91,6 @@ var lastExpr = "";
 var pendingMode = "free";
 var pendingLabel = "";
 var comboList = [];
-var savedIds = {};
-var pendingSaves = {};
 var presetBusy = false;
 var histOpen = false;
 /** 当前开着的动画 modal id（换新投掷前先关掉上一个，避免叠一层又一层）。 */
@@ -233,46 +246,6 @@ function renderResult(row) {
     rowLine + note;
 }
 
-function rollSaved(rollId) {
-  return !!(rollId && savedIds[rollId]);
-}
-
-function markSaved(rollId) {
-  if (!rollId) return;
-  savedIds[rollId] = Date.now();
-  if (pendingSaves[rollId]) {
-    clearTimeout(pendingSaves[rollId]);
-    delete pendingSaves[rollId];
-  }
-}
-
-function stashLocal(row) {
-  try {
-    var raw = lsGet(LS_DICE_LOCAL);
-    var list = raw ? JSON.parse(raw) : [];
-    if (!Array.isArray(list)) list = [];
-    list.unshift(row);
-    lsSet(LS_DICE_LOCAL, JSON.stringify(list.slice(0, 20)));
-  } catch (e) { /* 本机也存不下就算了，结果面板还在 */ }
-}
-
-/** 等 1.2 秒看有没有落库：没有就是城主不在线 / 后台没起来。 */
-function watchSave(row) {
-  if (pendingSaves[row.rollId]) clearTimeout(pendingSaves[row.rollId]);
-  pendingSaves[row.rollId] = setTimeout(function () {
-    delete pendingSaves[row.rollId];
-    if (rollSaved(row.rollId)) return;
-    if (win.state === "bad") {
-      flash("后台未连接：这次结果没能写进房间数据（只有本机看得到）。", "WARNING");
-    } else if (!isGM) {
-      stashLocal(row);
-      flash("城主不在线：本次结果只在本机（暂存最多 20 条），不会再同步给别人。", "WARNING");
-    } else {
-      flash("没能写进房间数据：这次结果只有本机看得到（房间数据可能已满）。", "WARNING");
-    }
-  }, 1200);
-}
-
 async function broadcast(channel, data) {
   var sent = false;
   try {
@@ -391,8 +364,9 @@ async function doRoll() {
     }
 
     var sent = await broadcast(CH_ROLL, payload);
-    if (!sent) flash("广播没发出去：后台未连接，这次结果只有本机看得到。", "WARNING");
-    watchSave(payload);
+    if (!sent) flash("广播没发出去：本机记录已保存，但这次结果同步不到其它人。", "WARNING");
+    /* v1.9.2：骰子历史改为本机保存 —— 投掷方自己先落一条（广播 LOCAL 不一定回环到自己）。 */
+    appendDiceHistoryRow(payload);
 
     /* 结果已经算完 / 已经广播，最后才开动画（失败也不影响上面任何一步） */
     if (readDiceAnim()) {
@@ -407,29 +381,15 @@ async function doRoll() {
 }
 
 /* ---------------------------------------------------------------------------
- * 3) 房间数据（只用来判断「我这条落库了没」+ 清空；列表在记录窗口里画）
+ * 3) 骰子历史（v1.9.2 起本机保存 + 广播同步；列表在记录窗口里画）
  * ------------------------------------------------------------------------- */
-async function readSavedFlags() {
-  try {
-    var meta = await OBR.room.getMetadata();
-    var box = meta ? meta[KEY_ROLLS] : null;
-    var remote = rowsFromRaw(box);
-    for (var i = 0; i < remote.length; i++) markSaved(remote[i].rollId);
-  } catch (e) {
-    /* 读不到就算了：watchSave 会按「没落库」提示 */
-  }
-}
-
 async function clearHistory() {
-  if (!isGM) {
-    feedback("只有城主能清空全桌记录（房间数据只有城主能写）", "WARNING");
-    return;
-  }
   if (els.btnClear && els.btnClear.getAttribute("data-armed") === "1") {
     els.btnClear.setAttribute("data-armed", "0");
     els.btnClear.textContent = "清空记录";
-    await broadcast(CH_ROLL_CLEAR, { by: myId, at: Date.now() });
+    clearDiceHistory();
     lsDel(LS_DICE_LOCAL);
+    await broadcast(CH_ROLL_CLEAR, { by: myId, at: Date.now() });
     /* v1.7.8：「已请求清空全桌记录」不再弹（按钮当场回到「清空记录」，记录窗口也会清空）。 */
     return;
   }
@@ -476,6 +436,9 @@ var HIST_W = 300;
 var HIST_H = 240;
 /** 开 / 关进行中（避免连点打架）。 */
 var histBusy = false;
+/** v1.9.2：最近一次成功打开记录窗口的时间 —— 900ms 内又点按钮视为「窗口不可见」兜底。 */
+var lastHistOpenAt = 0;
+var histRepeatWarned = false;
 /** 等后台补齐的回执计时器。 */
 var histTimer = 0;
 
@@ -549,6 +512,8 @@ async function openHistoryDirect() {
     if (!(typeof w === "number" && w > 0)) throw new Error("窗口打开了但 getWidth 返回 " + w);
     if (els.btnHist) els.btnHist.classList.remove("pending");
     setHistButton(true);
+    lastHistOpenAt = Date.now();
+    histRepeatWarned = false;
     /* v1.7.8：不再弹「记录窗口已打开」（窗口就在眼前，按钮文字也变成「关闭记录窗口」）。 */
     /* 把几何告诉后台：拖动 / 记住位置 / 视口变化重新夹紧仍走 background.core.js 的 WINS 那一套。 */
     sendHistCmd("adopt", {
@@ -586,6 +551,21 @@ function onHistTimeout() {
 /** 开 / 关都做完才放开 busy（不靠定时器：连点两下不会互相打架，也不会把第二下吞掉）。 */
 async function toggleHistory() {
   if (histBusy) return;
+  /* v1.9.2 兜底：刚打开 900ms 内用户又点 → 大概率窗口被挡住 / 落在不可见处。
+   * 先关掉（不重复打开），并提示再点一次会换位置打开（只提醒一次）。 */
+  if (histOpen && Date.now() - lastHistOpenAt < 900) {
+    histBusy = true;
+    try {
+      await closeHistoryDirect();
+      if (!histRepeatWarned) {
+        histRepeatWarned = true;
+        feedback("记录窗口可能被其它窗口挡住了，已关闭；再点一次会换位置打开", "WARNING");
+      }
+    } finally {
+      histBusy = false;
+    }
+    return;
+  }
   histBusy = true;
   try {
     if (histOpen) await closeHistoryDirect();
@@ -743,7 +723,15 @@ function onComboClick(ev) {
  * ------------------------------------------------------------------------- */
 function wireEvents() {
   /* v1.7.10：✕ = OBR.popover.close(本窗 id) + 后台 {op:"close-win"} 双保险。 */
-  if (els.close) els.close.addEventListener("click", function () { closeSelf(ID_DICE_WIN, "dice"); });
+  if (els.close) els.close.addEventListener("click", function () {
+    void (async function () {
+      var action = await actionModeNow();
+      if (action) {
+        try { OBR.action.close(); return; } catch (e) { /* 降级走旧逻辑 */ }
+      }
+      closeSelf(ID_DICE_WIN, "dice");
+    })();
+  });
 
   if (els.diceRow) {
     els.diceRow.addEventListener("click", function (ev) {
@@ -818,6 +806,11 @@ function wireEvents() {
  * ------------------------------------------------------------------------- */
 onReady(function () {
   wireEvents();
+  /* v1.9.2：异步确认是不是 action 弹窗（用于 CSS / ✕ 行为；拿不到就当 false）。 */
+  void actionModeNow().then(function (open) {
+    ACTION_MODE = !!open;
+    if (ACTION_MODE) document.body.classList.add("dice-action");
+  }, function () { /* 忽略 */ });
 
   var saved = lsGet(LS_DICE_LAST);
   if (saved) {
@@ -840,26 +833,19 @@ onReady(function () {
     try { myColor = (await OBR.player.getColor()) || "#5dade2"; } catch (e3) { myColor = "#5dade2"; }
     try { isGM = (await OBR.player.getRole()) === "GM"; } catch (e4) { isGM = false; }
     if (els.btnClear) {
-      els.btnClear.title = isGM ? "清空全桌记录（要点两次）" : "只有城主能清空全桌记录";
-      els.btnClear.classList.toggle("ghost", !isGM);
+      els.btnClear.title = "清空本机骰子记录（并通知其它人清空）";
+      els.btnClear.classList.remove("ghost");
     }
-    await readSavedFlags();
     await refreshPresets();
   })();
 
-  /* 房间数据变化 = 有人投掷 / 城主清空 → 只更新「已落库」标记（列表在记录窗口里画） */
+  /* v1.9.2：别人掷的骰子（REMOTE / LOCAL）也落进本机历史，记录窗口随后打开就能看到。 */
   try {
-    OBR.room.onMetadataChange(function () { void readSavedFlags(); });
-  } catch (e) { /* 忽略 */ }
-
-  /* 城主写完房间数据会广播 saved：清掉「未落库」计时器 */
-  try {
-    OBR.broadcast.onMessage(CH_ROLL_SAVED, function (ev) {
+    OBR.broadcast.onMessage(CH_ROLL, function (ev) {
       var data = ev && ev.data !== undefined ? ev.data : ev;
-      if (data && data.rollId) markSaved(String(data.rollId));
-      void readSavedFlags();
+      if (data && data.rollId) appendDiceHistoryRow(data);
     });
-  } catch (e2) { /* 忽略 */ }
+  } catch (e) { /* 忽略 */ }
 
   /* 记录窗口的开 / 关状态（后台执行完命令后广播回来）—— v1.7.4：回执一到就收掉计时器，
    * 不会再多此一举地「本页兜底开一次」。 */

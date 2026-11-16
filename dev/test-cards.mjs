@@ -474,6 +474,8 @@ else bad("设置页里出现了直接写房间数据 / token 元数据 / 本机�
 /* 9a. 用量：房间没有卡时，getRoomUsage 要能报出场景里的张数（本机残留副本不算重复） */
 roomMeta = {};
 roomMeta[C.ROOM_NS + "/rolls"] = { v: 1, updatedAt: 1, seq: 40, rows: rows };
+/* v1.9.2：骰子历史改本机；用量里的 rows 读本机历史（房间 rolls 只算迁移残留）。 */
+store[C.LS_DICE_HISTORY_PREFIX + "default"] = JSON.stringify({ v: 1, rows: rows });
 roomMeta[C.ROOM_NS + "/initiative"] = { v: 1, updatedAt: 1, phase: "idle", round: 1, activeId: "",
   entries: [{ tokenId: "t1", name: "甲", bonus: 5, init: 20, d20: 15, tb: 0.5, hidden: false, ownerId: "u1", updatedAt: 1 }] };
 resetScene();
@@ -484,7 +486,7 @@ let usage0 = await C.getRoomUsage();
 if (usage0.roomCards === 0 && usage0.sceneCards === 2 && usage0.cards === 2 && usage0.cardScope === "scene")
   ok("getRoomUsage 报出场景兜底：2 张（来源 = scene）");
 else bad("getRoomUsage 没报场景兜底：" + JSON.stringify(usage0));
-if (usage0.rows === 40 && usage0.entries === 1)
+if (usage0.rows === 20 && usage0.entries === 1)
   ok("getRoomUsage 同时报出「" + usage0.rows + " 条骰子 / " + usage0.entries + " 条先攻」");
 else bad("getRoomUsage 的骰子 / 先攻数字不对：" + JSON.stringify(usage0));
 
@@ -509,7 +511,7 @@ let usageBefore = await C.getRoomUsage();
 clean = await C.clearRoomRolls();
 let usageAfter = await C.getRoomUsage();
 if (clean.ok && usageAfter.rows === 0 && usageAfter.bytes < usageBefore.bytes)
-  ok("清骰子历史：40 → 0 条，房间数据 " + usageBefore.bytes + " → " + usageAfter.bytes + " 字符");
+  ok("清骰子历史：本机 20 → 0 条，房间数据 " + usageBefore.bytes + " → " + usageAfter.bytes + " 字符");
 else bad("清骰子历史没生效：" + JSON.stringify({ clean, rows: usageAfter.rows }));
 if (usageAfter.bytes <= CC.ROOM_MAX_BYTES) ok("清理后房间数据 " + usageAfter.bytes + " 字符（≤ 14 KB）");
 else bad("清理后仍然超预算：" + usageAfter.bytes);

@@ -51,7 +51,7 @@ export const ID_SETTINGS_WIN = NS + "/settings-window";
  * id 与其它窗口都不同 → 可以和速览 / 先攻条同时开着；位置按窗口名 "hpEdit" 单独记。 */
 export const ID_HP_EDIT = NS + "/hp-edit";
 
-export const PLUGIN_VERSION = "1.9.1";
+export const PLUGIN_VERSION = "1.9.2";
 
 /**
  * 站点根地址。
@@ -113,6 +113,72 @@ export const ROLL_MAX_ROWS = 20;
 export const LS_DICE_COMBOS = "4enext/dice/combos";
 export const LS_DICE_LAST = "4enext/dice/last";
 export const LS_DICE_LOCAL = "4enext/dice/local";
+/* v1.9.2：骰子历史改为**本机**存储（按房间隔离，与 Full Suite 一致）。
+ * 结构 { v:1, rows:[...] }，最多 ROLL_MAX_ROWS 条；房间数据不再保存历史（只留旧的迁移残留）。 */
+export const LS_DICE_HISTORY_PREFIX = "4enext/dice-history/";
+
+/** 当前房间 id（用于本机历史按房间隔离）；拿不到就用 default。 */
+export function diceHistoryRoomId() {
+  try {
+    if (typeof OBR !== "undefined" && OBR.room && typeof OBR.room.id === "string" && OBR.room.id) return OBR.room.id;
+  } catch (e) { /* 忽略 */ }
+  try {
+    const u = new URL(location.href);
+    const q = u.searchParams.get("room") || u.searchParams.get("roomId");
+    if (q) return q;
+  } catch (e2) { /* 忽略 */ }
+  return "default";
+}
+
+export function diceHistoryKey(roomId) {
+  return LS_DICE_HISTORY_PREFIX + (roomId || "default");
+}
+
+/** 读本机骰子历史（容错：坏 JSON / 非数组 / 缺 rollId 都跳过；按 ts 倒序、MAX 条）。 */
+export function readDiceHistoryRows(roomId) {
+  try {
+    const raw = localStorage.getItem(diceHistoryKey(roomId || diceHistoryRoomId()));
+    if (!raw) return [];
+    const box = JSON.parse(raw);
+    const src = Array.isArray(box) ? box : box && Array.isArray(box.rows) ? box.rows : [];
+    const out = [];
+    const seen = {};
+    for (let i = 0; i < src.length; i++) {
+      const r = src[i];
+      if (!r || typeof r !== "object") continue;
+      const id = typeof r.rollId === "string" ? r.rollId : "";
+      if (!id || seen[id]) continue;
+      seen[id] = true;
+      out.push(r);
+    }
+    out.sort(function (a, b) { return (b.ts || 0) - (a.ts || 0); });
+    return out.slice(0, ROLL_MAX_ROWS);
+  } catch (e) {
+    return [];
+  }
+}
+
+export function writeDiceHistoryRows(rows, roomId) {
+  const list = (rows || []).slice(0, ROLL_MAX_ROWS);
+  try { localStorage.setItem(diceHistoryKey(roomId || diceHistoryRoomId()), JSON.stringify({ v: 1, rows: list })); }
+  catch (e) { /* 本机也存不下就算了 */ }
+  return list;
+}
+
+/** 追加一条本机历史：同 rollId 幂等、按 ts 倒序、超 20 丢最旧。返回当前列表。 */
+export function appendDiceHistoryRow(row, roomId) {
+  const list = readDiceHistoryRows(roomId);
+  const id = row && typeof row.rollId === "string" ? row.rollId : "";
+  if (!id) return list;
+  for (let i = 0; i < list.length; i++) if (list[i].rollId === id) return list;
+  list.push(row);
+  list.sort(function (a, b) { return (b.ts || 0) - (a.ts || 0); });
+  return writeDiceHistoryRows(list, roomId);
+}
+
+export function clearDiceHistory(roomId) {
+  try { localStorage.removeItem(diceHistoryKey(roomId || diceHistoryRoomId())); } catch (e) { /* 忽略 */ }
+}
 
 /* ---- v1.7.0：独立记录窗口 + 投骰动画 ----
  * CH_DICE_HIST_CMD   骰子窗口 → 后台：{ op: "toggle" | "open" | "close" }（记录窗口开关）
@@ -170,6 +236,18 @@ export function readStripAutostart() {
 /** 写自动显示开关（设置窗口用；写失败只影响记忆，不影响打开条）。 */
 export function writeStripAutostart(on) {
   try { localStorage.setItem(LS_STRIP_AUTOSTART, on ? "1" : "0"); return true; } catch (e) { return false; }
+}
+
+/* v1.9.2：骰子记录窗口「进入房间自动打开」本机偏好（默认开）+ 会话级「本次 ✕ 关过」标记。 */
+export const LS_DICE_HIST_AUTOSTART = "4enext/dice-hist-autostart";
+export const LS_DICE_HIST_CLOSED = "4enext/dice-hist-closed";
+
+export function readDiceHistAutostart() {
+  try { return localStorage.getItem(LS_DICE_HIST_AUTOSTART) !== "0"; } catch (e) { return true; }
+}
+
+export function writeDiceHistAutostart(on) {
+  try { localStorage.setItem(LS_DICE_HIST_AUTOSTART, on ? "1" : "0"); return true; } catch (e) { return false; }
 }
 
 /** 后台心跳频道（与 assets/background.core.js 里的常量必须一致）。 */
@@ -459,7 +537,6 @@ export async function writeCards(cards) {
 export async function getRoomUsage() {
   const meta = await readRoomMeta();
   const cardsBox = meta[KEY_CARDS];
-  const rollsBox = meta[KEY_ROLLS];
   const initBox = meta[KEY_INITIATIVE];
   const local = readLocalCards();
   const roomCards = cardsBox && Array.isArray(cardsBox.cards) ? cardsBox.cards : null;
@@ -483,24 +560,26 @@ export async function getRoomUsage() {
     sceneCards: sceneCards.length,
     localCards: local ? local.cards.length : 0,
     cardScope: cardScope,
-    rows: rollsBox && Array.isArray(rollsBox.rows) ? rollsBox.rows.length : 0,
+    rows: readDiceHistoryRows().length,
     entries: initBox && Array.isArray(initBox.entries) ? initBox.entries.length : 0
   };
 }
 
-/** 清空房间里的骰子历史（设置窗口的「清理房间数据」按钮；通常只有城主能成功）。
- *  只减不增，所以**不需要**体积预算检查（超限时清空反而正是唯一的出路）。 */
+/** 清空骰子历史（v1.9.2 起：清**本机**历史；GM 顺带清房间里的旧残留）。
+ *  只减不增，所以**不需要**体积预算检查。 */
 export async function clearRoomRolls() {
-  const meta = await readRoomMeta();
-  const box = meta[KEY_ROLLS];
-  const seq = box && typeof box.seq === "number" && isFinite(box.seq) ? Math.round(box.seq) : 0;
+  clearDiceHistory();
   try {
-    await OBR.room.setMetadata({ [KEY_ROLLS]: { v: 1, updatedAt: Date.now(), seq: seq + 1, rows: [] } });
-    return { ok: true };
+    const meta = await readRoomMeta();
+    const box = meta[KEY_ROLLS];
+    if (box && Array.isArray(box.rows) && box.rows.length) {
+      const seq = typeof box.seq === "number" && isFinite(box.seq) ? Math.round(box.seq) : 0;
+      await OBR.room.setMetadata({ [KEY_ROLLS]: { v: 1, updatedAt: Date.now(), seq: seq + 1, rows: [] } });
+    }
   } catch (e) {
-    notify("清空骰子历史失败：" + msgOf(e) + "（房间数据通常只有城主能改）", "ERROR");
-    return { ok: false, error: e };
+    notify("清理房间里的旧骰子记录失败：" + msgOf(e) + "（不影响本机记录）", "WARNING");
   }
+  return { ok: true };
 }
 
 /** 清空角色卡（房间数据里的那一份 + 场景兜底副本 + 本机副本）。同理只减不增，不做预算检查。 */

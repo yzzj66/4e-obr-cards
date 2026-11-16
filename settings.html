@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>4eNEXT to owlbear · 设置 / 关于</title>
-<link rel="stylesheet" href="assets/ui.css?v=1.9.1">
+<link rel="stylesheet" href="assets/ui.css?v=1.9.2">
 </head>
 <body class="win-page">
 <!-- v1.3.2：设置 / 关于窗口（独立 popover，入口 = 左侧工具栏「设置」）。
@@ -149,6 +149,15 @@
             <b>「✕」</b>才是真正关掉 —— 关掉后<b>本次会话</b>不再自动弹，重新打开一次就恢复。</p>
         </div>
         <div class="set-sec">
+          <h4>骰子记录窗口</h4>
+          <div class="set-kv">
+            <span class="k">当前状态</span><span><b id="dice-hist-auto-state">—</b></span>
+          </div>
+          <p class="set-muted"><button class="btn" id="dice-hist-auto-toggle" type="button" data-bg-soft>关闭自动打开记录窗口</button></p>
+          <p class="set-hint">v1.9.2：<b>本机</b>设置，默认<b>开</b>。进入房间后约 0.8 秒自动打开骰子记录窗口；
+            记录窗口的 <b>✕</b> 关掉后<b>本次会话</b>不再自动开（刷新 / 重新进房间自然恢复）。骰子窗本身由 OBR 左上角按钮管理，不受这里影响。</p>
+        </div>
+        <div class="set-sec">
           <h4>从先攻里移出</h4>
           <ul class="set-list">
             <li>右键已在先攻里的 token →「<b>移出先攻</b>」（菜单是动态的：不在先攻里时显示「加入先攻 / 隐形加入先攻」）。</li>
@@ -215,9 +224,12 @@
             <span><code>4enext/cards-local</code></span><span>场景也写不进时的最后兜底副本（v1.8.0；面板上写「角色卡：本机」）</span>
             <span><code>4enext/dice/combos</code></span><span>骰子组合（最多 30 条）</span>
             <span><code>4enext/dice/last</code></span><span>上一次掷过的骰子公式</span>
-            <span><code>4enext/dice/local</code></span><span>城主离线时的骰子暂存（最多 20 条）</span>
+            <span><code>4enext/dice/local</code></span><span>旧版「城主离线时的骰子暂存」（v1.9.2 起并入本机历史，启动时迁移）</span>
+            <span><code>4enext/dice-history/&lt;roomId&gt;</code></span><span>骰子历史（v1.9.2：本机保存、按房间隔离、最多 20 条；不再写房间数据）</span>
             <span><code>4enext/strip-autostart</code></span><span>进入房间是否自动显示先攻条（v1.7.3，<code>"0"</code> = 不自动显示，缺省开）</span>
             <span><code>4enext/strip-closed-this-session</code></span><span>本次会话是否手动关过先攻条（v1.7.3，关掉后本次不再自动弹）</span>
+            <span><code>4enext/dice-hist-autostart</code></span><span>进入房间是否自动打开骰子记录窗口（v1.9.2，<code>"0"</code> = 不自动打开，缺省开）</span>
+            <span><code>4enext/dice-hist-closed</code></span><span>本次会话是否手动关过骰子记录窗口（v1.9.2，关掉后本次不再自动开）</span>
           </div>
         </div>
         <div class="set-sec">
@@ -311,6 +323,6 @@
     <span class="win-hint">按住标题栏可拖动 · 每个窗口各自记住位置</span>
   </div>
 </div>
-<script type="module" src="assets/settings-page.js?v=1.9.1"></script>
+<script type="module" src="assets/settings-page.js?v=1.9.2"></script>
 </body>
 </html>
