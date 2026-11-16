@@ -1,4 +1,4 @@
-/*! 4eNEXT to owlbear · background.bundle.js  (v1.8.3)
+/*! 4eNEXT to owlbear · background.bundle.js  (v1.8.4)
  * ---------------------------------------------------------------------------
  * 这是后台页唯一加载的脚本：纯「经典脚本」，没有 type="module"，没有 import/export，
  * 不依赖任何 CDN。内容是：
@@ -7,7 +7,7 @@
  *
  * 不要手改本文件。改逻辑请改 assets/background.core.js，然后：
  *     node dev/build-background.mjs
- * 生成时间：2026-11-15T18:00:56.809Z
+ * 生成时间：2026-11-16T04:33:09.714Z
  * --------------------------------------------------------------------------- */
 (function () {
 "use strict";
@@ -99,7 +99,7 @@ var TOOL_SETTINGS_ID = NS + "/settings-tool";
 var CH_HELLO = NS + "/diag-hello";
 var CH_PING = NS + "/diag-ping";
 var CH_PONG = NS + "/diag-pong";
-var PLUGIN_VERSION = "1.8.3";
+var PLUGIN_VERSION = "1.8.4";
 
 var KEY_HP = NS + "/hp";
 
@@ -2174,6 +2174,9 @@ function hpBarEnabled(item) {
 }
 
 function hasHpBarData(item) {
+  /* v1.8.4：用户显式「移除血条组件」后（enabled === false），即使 hp 数据还留着也不再算「有血条」，
+     否则选中 token 又会自动弹编辑窗（真机 bug）。右键「编辑血条」仍走 onHpBarEdit，不经过这里。 */
+  if (!hpBarEnabled(item)) return false;
   if (!item || !item.metadata) return false;
   if (item.metadata[KEY_HPBAR] === true) return true;
   var m = item.metadata[KEY_HP];

@@ -21,6 +21,8 @@ const NS = "com.4enext-owlbear";
 const KEY_BIND = NS + "/cardId";
 const KEY_INIT = NS + "/init";
 const KEY_INITIATIVE = NS + "/initiative";
+const KEY_HP = NS + "/hp";
+const KEY_HPBAR = NS + "/hp-bar/enabled";
 const CH_INIT_REQUEST = NS + "/init-request";
 
 const sample = JSON.parse(fs.readFileSync(path.join(ROOT, "samples", "sample-card.json"), "utf8"));
@@ -195,6 +197,75 @@ if (bound[KEY_INIT] && bound[KEY_INIT].bonus === expectedBonus && bound[KEY_INIT
   typeof bound[KEY_INIT].updatedAt === "number") {
   ok("bindToken 写入 init = { bonus: " + expectedBonus + ", cardId, updatedAt }");
 } else bad("init 元数据不对：" + JSON.stringify(bound[KEY_INIT]));
+/* v1.8.4（Full Suite 口径）：绑卡即用卡的数据**覆盖** token 血量 ——
+ * cur = max = 卡上限、surges = surgesMax、defenses = 卡四防；只保留 token 自己的 temp / locked。 */
+const boundHp = bound[KEY_HP];
+const wantHpMax = Math.round(derived.hpMax);
+const wantHpSurgesMax = Math.round(derived.surgesMax);
+const wantHpDef = {};
+for (const row of derived.defenses || []) {
+  const map = { ac: "ac", fort: "fort", ref: "reflex", reflex: "reflex", will: "will" };
+  if (row && map[row.key] && typeof row.value === "number") wantHpDef[map[row.key]] = Math.round(row.value);
+}
+if (boundHp && boundHp.max === wantHpMax && boundHp.cur === wantHpMax && boundHp.surges === wantHpSurgesMax &&
+  boundHp.surgesMax === wantHpSurgesMax)
+  ok("bindToken：绑卡即覆盖 HP（cur = max = " + wantHpMax + "，surges = surgesMax = " + wantHpSurgesMax + "，与 Full Suite 一致）");
+else bad("bindToken 覆盖 HP 不对：" + JSON.stringify(boundHp));
+if (boundHp && ["ac", "fort", "reflex", "will"].every((k) => (wantHpDef[k] || 0) === (boundHp.defenses && typeof boundHp.defenses[k] === "number" ? boundHp.defenses[k] : 0)))
+  ok("bindToken：四防按卡数据覆盖（" + JSON.stringify(boundHp && boundHp.defenses) + "）");
+else bad("bindToken 的四防不是卡数据：" + JSON.stringify(boundHp && boundHp.defenses));
+
+/* 已有血量 + 显式移除血条组件：再绑卡要**覆盖**血量、保留 temp/locked、并删掉 hp-bar/enabled（恢复显示） */
+const HP_TOKEN = {
+  id: "tok-hp-existing", type: "IMAGE", name: "已有血的 token", createdUserId: "user-gm",
+  metadata: {
+    [KEY_HP]: { cur: 7, max: 99, temp: 2, surges: 3, surgesMax: 8, defenses: { ac: 1 }, locked: false },
+    [KEY_HPBAR]: false
+  },
+  position: { x: 0, y: 0 }, scale: { x: 1, y: 1 }
+};
+items.push(HP_TOKEN);
+await C.bindToken(HP_TOKEN.id, CARD.id);
+const keptHp = itemById(HP_TOKEN.id).metadata[KEY_HP];
+const keptMeta = itemById(HP_TOKEN.id).metadata;
+if (keptHp && keptHp.cur === wantHpMax && keptHp.max === wantHpMax && keptHp.surges === wantHpSurgesMax &&
+  keptHp.surgesMax === wantHpSurgesMax && keptHp.temp === 2 && keptHp.locked === false)
+  ok("bindToken：已有血量再绑也覆盖 cur/max/surges（Full Suite 口径），但 temp=2 / locked=false 保留");
+else bad("bindToken 覆盖语义不对：" + JSON.stringify(keptHp));
+if (!(KEY_HPBAR in keptMeta))
+  ok("bindToken：删除 hp-bar/enabled（之前「移除血条组件」的 token 绑卡后也重新显示血条）");
+else bad("bindToken 没删 hp-bar/enabled：" + JSON.stringify(keptMeta));
+
+/* v1.8.4：卡片更新后回推（propagateCardStats）——只更 max/surgesMax/四防/先攻，cur/temp/locked 保留 */
+const newCard = deep(CARD);
+newCard.char.hpBonus = 29; /* 卡上限 171 → 200 */
+const newMax = Math.round(G.deriveGlance(newCard.char).hpMax);
+const tok1 = itemById(TOKEN.id).metadata;
+tok1[KEY_HP] = Object.assign({}, tok1[KEY_HP], { cur: 77, temp: 3, locked: false });
+tok1[KEY_INIT] = { bonus: 0, cardId: CARD.id, updatedAt: 1 };
+itemById(HP_TOKEN.id).metadata[KEY_HP] = Object.assign({}, itemById(HP_TOKEN.id).metadata[KEY_HP], { cur: 50, temp: 2, locked: false });
+itemById(HP_TOKEN.id).metadata[KEY_INIT] = { bonus: 0, cardId: CARD.id, updatedAt: 1 };
+const propagated = await C.propagateCardStats([newCard], [CARD.id]);
+const t1 = itemById(TOKEN.id).metadata, t2 = itemById(HP_TOKEN.id).metadata;
+if (propagated === 2 && t1[KEY_HP].max === newMax && t2[KEY_HP].max === newMax && newMax !== wantHpMax)
+  ok("propagateCardStats：卡上限更新后两枚已绑定 token 的 max 都回推（" + wantHpMax + " → " + newMax + "）");
+else bad("propagateCardStats 没回推 max：" + JSON.stringify({ propagated, newMax, t1: t1[KEY_HP] && t1[KEY_HP].max, t2: t2[KEY_HP] && t2[KEY_HP].max }));
+if (t1[KEY_HP].cur === 77 && t2[KEY_HP].cur === 50 && t1[KEY_HP].temp === 3 && t2[KEY_HP].temp === 2 &&
+  t1[KEY_HP].locked === false && t2[KEY_HP].locked === false)
+  ok("propagateCardStats：cur / temp / locked 一律保留（保留当前 HP）");
+else bad("propagateCardStats 动了 cur/temp/locked：" + JSON.stringify({ t1: t1[KEY_HP], t2: t2[KEY_HP] }));
+if (t1[KEY_INIT].bonus === expectedBonus && t2[KEY_INIT].bonus === expectedBonus)
+  ok("propagateCardStats：先攻加值也按新卡回推（" + expectedBonus + "）");
+else bad("propagateCardStats 没回推先攻加值：" + JSON.stringify({ t1: t1[KEY_INIT], t2: t2[KEY_INIT] }));
+const again = await C.propagateCardStats([newCard], [CARD.id]);
+if (again === 0) ok("propagateCardStats：值没变化时不再写（不抖元数据）");
+else bad("propagateCardStats 同值仍写了 " + again + " 枚 token");
+const roleBefore = role;
+role = "PLAYER";
+const byPlayer = await C.propagateCardStats([newCard], [CARD.id]);
+role = roleBefore;
+if (byPlayer === 0) ok("propagateCardStats：只有 GM 执行（玩家身份直接跳过）");
+else bad("propagateCardStats 玩家也执行了");
 
 await C.bindToken(TOKEN.id, null);
 const unbound = itemById(TOKEN.id).metadata;
@@ -1273,7 +1344,7 @@ console.log("== v1.7.10 先攻加值可编辑 + 无卡 token 加入先攻");
 
 console.log("== 静态检查");
 const man = JSON.parse(fs.readFileSync(path.join(ROOT, "manifest.json"), "utf8"));
-if (man.name === "4eNEXT to owlbear" && man.version === "1.8.3") ok("manifest 名称 / 版本 = 4eNEXT to owlbear 1.8.3");
+if (man.name === "4eNEXT to owlbear" && man.version === "1.8.4") ok("manifest 名称 / 版本 = 4eNEXT to owlbear 1.8.4");
 else bad("manifest 名称 / 版本不对：" + man.name + " " + man.version);
 if (!man.action) ok("manifest 仍然没有 action 字段（真机验证过无 action 能加载）");
 else bad("manifest 又加回了 action 字段");

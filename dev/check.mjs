@@ -19,7 +19,7 @@ const NOTES_PATH = path.join(ROOT, "docs", "NOTES.md");
 const NOTES = exists(NOTES_PATH) ? fs.readFileSync(NOTES_PATH, "utf8") : "";
 const notesHas = (s) => NOTES.indexOf(s) >= 0;
 /* 当前版本号：所有「版本全链路」断言都读它，升版本只改这一处（+ 各文件里的真实版本号）。 */
-const VER = "1.8.3";
+const VER = "1.8.4";
 
 function walk(dir, out = []) {
   for (const name of fs.readdirSync(dir)) {
@@ -206,6 +206,11 @@ if (exists(trackPath)) {
     if (!a) bad("background.core.js 里找不到 KEY_HP");
     else if (trackSrc.indexOf('NS + "' + a[1] + '"') < 0) bad("背景页的 KEY_HP 与 track.js 不一致：" + a[1]);
     else ok("背景页与 track.js 的 KEY_HP 一致（" + a[1] + "）");
+    /* v1.8.4：common.js 的 bindToken 也要写 HP（绑卡播种），常量必须与后台 / track 逐字一致 */
+    const commonHpSrc = fs.readFileSync(path.join(ROOT, "assets", "common.js"), "utf8");
+    const c = /export const KEY_HP = NS \+ "([^"]+)";/.exec(commonHpSrc);
+    if (a && c && c[1] === a[1]) ok("common.js 的 KEY_HP 与 background.core.js 一致（" + c[1] + "，绑卡播种用）");
+    else bad("common.js 的 KEY_HP 不一致：common=" + (c && c[1]) + " core=" + (a && a[1]));
   }
 }
 const bundleSrc2 = exists(bundlePath) ? fs.readFileSync(bundlePath, "utf8") : "";
@@ -506,6 +511,17 @@ else bad("右键加入先攻没有写房间数据");
 if (/function bindToken\(/.test(commonSrc) && /metadata\[KEY_INIT\]/.test(commonSrc) && /initiativeBonus\(/.test(commonSrc))
   ok("绑定角色卡时写入 init 元数据（先攻加值取卡里的先攻）");
 else bad("bindToken 没有写入 init 元数据 / 没有复用 initiativeBonus");
+/* v1.8.4（Full Suite 口径）：绑卡即用卡数据覆盖 token 血量（并删 hp-bar/enabled）；
+ * 面板更新卡片后 propagateCardStats 回推上限 / 四防 / 先攻，保留当前 HP。 */
+{
+  const panelPropSrc = fs.readFileSync(path.join(ROOT, "assets", "panel.js"), "utf8");
+  if (/export async function propagateCardStats\(/.test(commonSrc) &&
+    /propagateCardStats\(/.test(panelPropSrc) &&
+    /delete it\.metadata\[KEY_HPBAR\]/.test(commonSrc) &&
+    /out\.cur = max;/.test(commonSrc) && /out\.max = max;/.test(commonSrc))
+    ok("v1.8.4：绑卡覆盖 token 血量（cur = max = 卡上限、删 hp-bar/enabled）；面板更新卡后回推（propagateCardStats，保留 cur/temp/locked）");
+  else bad("v1.8.4 绑卡覆盖 / propagateCardStats 回推没接上");
+}
 /* [v1.7.7] docs 合并：为什么拆窗口 / 先攻入口的说明并进 NOTES.md */
 if (notesHas("窗口默认尺寸") && notesHas("先攻条尺寸")) ok("docs/NOTES.md：窗口拆分与先攻条尺寸的维护口径都在");
 else bad("docs/NOTES.md 缺少窗口 / 先攻条尺寸的维护口径");
@@ -2250,6 +2266,9 @@ console.log("== v1.7.7 选中 token 就弹血条编辑窗（三分支 / 不重�
     has(coreV177, "readIntOrNull(m.cur) !== null") && has(coreV177, "m.defenses && typeof m.defenses === \"object\"")) {
     ok("hasHpBarData：hp 里有值（cur / max / temp / surges / defenses / boss）或 hp-bar/enabled = true 就算「有血条」");
   } else bad("缺少 hasHpBarData（或判据不是「hp 有值 / 开关 true」）");
+  if (has(coreV177, "if (!hpBarEnabled(item)) return false;"))
+    ok("hasHpBarData 先看组件开关：显式「移除血条组件」（enabled=false）后不再算「有血条」（v1.8.4 真机 bug）");
+  else bad("hasHpBarData 没检查 hp-bar/enabled=false（移除组件后选中仍会弹编辑窗）");
 
   /* ---- 2) 选中即弹的三分支（refreshInfo） ---- */
   if (/async function selectedItem\(/.test(coreV177) && /async function boundCardId\(/.test(coreV177)) {

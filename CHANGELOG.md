@@ -2,6 +2,16 @@
 
 > 这份文件是历史更新记录。安装与使用请看 [README](README.md)。
 
+**v1.8.4：修「移除血条组件后选中仍自动弹编辑窗」**（2026-11-16）——
+给 token「移除血条组件」只是把 `com.4enext-owlbear/hp-bar/enabled` 写成 `false`（hp 数据按设计保留），
+但后台 `hasHpBarData()` 没看这个开关 → 移除后选中/点击 token 仍会弹出血条编辑窗（真机 bug）。
+修复：`hasHpBarData()` 开头加 `if (!hpBarEnabled(item)) return false;` —— 显式移除后不再自动弹；
+从没点过「移除」的老 token（开关未写、默认开）行为不变；右键「编辑血条」入口/行为不变。
+另：**绑卡即用卡片数据覆盖 token 血量**（当前 / 上限 = 卡的满血，回复力 = 上限，四防 = 卡值；临时值 / locked 保留，
+并删掉 `hp-bar/enabled` 让血条立即显示；与 Full Suite 一致）；**面板更新卡片后自动回推上限 / 四防 / 先攻，
+保留当前 HP**（`propagateCardStats`，只 GM、同值不写）；**速览打开时也会补 HP 上限**
+（`syncTokenStats` 在 token 没有 max 时用卡片上限播种 cur = max，老 token 第一次打开速览就长出血条）。
+
 **v1.8.3：先攻条 d20 按钮移到卡片下方**（2026-11-16）——
 卡片下方那枚圆形 d20 原来上移 8px、压在卡片底边遮挡合计数字；现改为**卡片正下方的整宽长方形按钮**
 （`margin-top: 1px`、`width: 100%`、`height: 16px`、`border-radius: 4px`），不再遮挡卡片内容；

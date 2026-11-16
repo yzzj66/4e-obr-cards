@@ -393,18 +393,33 @@ export async function writeTokenHp(itemId, mutate) {
 /** v1.6.0：把卡里算出来的 surgesMax / 四防同步进 token（只在真的不一样时写一次）。
  *  速览弹窗刷新时调用 —— 老 token 第一次打开速览就会长出蓝色回复力条与四角盾，
  *  不用城主动手再加一次。没有权限 / 没有值 / 已经一致 → 什么都不做。
+ *  v1.8.4：token 还没有 HP 上限（没 hp 或 max 非正）时，用卡里的 maxHp 播种 cur = max，
+ *  否则「绑卡 + 打开速览」后地图上仍然没有血条环；已有 max 的 token 一律不动。
+ *  用户显式「移除血条组件」（enabled === false）时不播种（与 hasHpBarData 修复一致）。
  *  返回 true 表示这次真的写了一次（页面据此重画）。 */
 export async function syncTokenStats(itemId, hp, ctx) {
   if (!itemId || !hp || !ctx) return false;
+  const wantMax = typeof ctx.maxHp === "number" && isFinite(ctx.maxHp) && ctx.maxHp > 0 ? Math.round(ctx.maxHp) : null;
+  const raw = await readItem(itemId);
+  const rawMeta = raw && raw.metadata ? raw.metadata : {};
+  const rawHp = normalizeHp(rawMeta[KEY_HP]);
+  const barOff = rawMeta[KEY_HPBAR] === false;
+  /* 用户显式移除血条组件：不播种、也不补数据（反正不画；重新「添加」后下次打开速览再补）。 */
+  if (barOff) return false;
+  const needHp = !!wantMax && !barOff && !(typeof rawHp.max === "number" && rawHp.max > 0);
   const wantSurge = ctx.surgesMax > 0 ? Math.round(ctx.surgesMax) : null;
   const wantDef = defensesFromDerived(ctx.defenses);
   const curDef = hp.defenses || null;
   const sameSurge = !wantSurge || hp.surgesMax === wantSurge;
   const sameDef = !wantDef || !!curDef &&
     ["ac", "fort", "reflex", "will"].every((k) => curDef[k] === wantDef[k]);
-  if (sameSurge && sameDef) return false;
+  if (!needHp && sameSurge && sameDef) return false;
   await writeTokenHp(itemId, function (prev) {
     const out = clone(prev);
+    if (needHp) {
+      out.cur = wantMax;
+      out.max = wantMax;
+    }
     if (wantSurge) out.surgesMax = wantSurge;
     if (wantDef) out.defenses = wantDef;
     return out;

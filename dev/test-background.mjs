@@ -209,8 +209,8 @@ globalThis.localStorage = {
 // 这里传打桩版本，才能在不装 SDK 的情况下验证血条代码真的在跑。
 let readyCb = null;
 let sceneReadyCb = null;
-const run = new Function("OBR", "buildCurve", "buildShape", "buildText", CORE + "\nreturn { boot: typeof boot === 'function' ? boot : null };");
-run(OBR, stubBuilder("CURVE"), stubBuilder("SHAPE"), stubBuilder("TEXT"));
+const run = new Function("OBR", "buildCurve", "buildShape", "buildText", CORE + "\nreturn { boot: typeof boot === 'function' ? boot : null, hasHpBarData: typeof hasHpBarData === 'function' ? hasHpBarData : null };");
+const BG = run(OBR, stubBuilder("CURVE"), stubBuilder("SHAPE"), stubBuilder("TEXT"));
 
 (async () => {
   if (typeof readyCb !== "function") { bad("没有注册 OBR.onReady"); return finish(); }
@@ -1547,6 +1547,59 @@ run(OBR, stubBuilder("CURVE"), stubBuilder("SHAPE"), stubBuilder("TEXT"));
       else if (JSON.stringify(flagTok.metadata) !== beforeMeta) bad("「编辑血条」偷偷改了 token 元数据（它只该开窗）");
       else ok("右键「编辑血条」→ 不看选中直接打开这枚 token 的编辑窗，且不改开关");
     }
+
+    /* ⑨ v1.8.4：「移除血条组件」写 enabled=false 后，即使 hp 数据还在也不再自动弹窗（真机 bug） */
+    const REMOVED_ID = "tok-auto-removed";
+    const LEGACY_ID = "tok-auto-legacy";
+    const EXPLICIT_TRUE_ID = "tok-auto-explicit-true";
+    const removedTok = mk(REMOVED_ID, "移除血条的杂兵", {
+      [HP_A]: { cur: 30, max: 60, updatedAt: 8 },
+      [HP_BAR_A]: false
+    });
+    const legacyTok = mk(LEGACY_ID, "老 token（没写过开关）", {
+      [HP_A]: { cur: 40, max: 80, updatedAt: 9 }
+    });
+    const explicitTrueTok = mk(EXPLICIT_TRUE_ID, "显式开血条的杂兵", {
+      [HP_A]: { cur: 45, max: 90, updatedAt: 10 },
+      [HP_BAR_A]: true
+    });
+    for (const t of [removedTok, legacyTok, explicitTrueTok]) {
+      sceneItems.push(t);
+      boundsFor[t.id] = { min: { x: 0, y: 0 }, max: { x: 150, y: 150 }, center: { x: 75, y: 75 }, width: 150, height: 150 };
+    }
+    if (!BG.hasHpBarData) bad("测试没法直接调 hasHpBarData（run 没暴露）");
+    else if (BG.hasHpBarData(removedTok) !== false) bad("hasHpBarData 对 hp-bar/enabled=false 仍返回 true（移除后还会弹）");
+    else if (BG.hasHpBarData(legacyTok) !== true) bad("hasHpBarData 对没写过开关的老 token 返回 false（默认行为被改了）");
+    else if (BG.hasHpBarData(explicitTrueTok) !== true) bad("hasHpBarData 对 enabled=true 返回 false");
+    else ok("v1.8.4 hasHpBarData：enabled=false → false；undefined / true → true");
+
+    /* 选中「已移除血条组件」的 token：即使有 hp 数据也不能自动弹编辑窗 */
+    await select([]);
+    h0 = hpOpens().length;
+    await select([REMOVED_ID]);
+    if (hpOpens().length !== h0) bad("选中「已移除血条组件」的 token 仍自动弹了血条编辑窗（真机 bug 没修）");
+    else ok("v1.8.4：选中「已移除血条组件」（enabled=false、hp 数据还在）→ 不再自动弹编辑窗");
+
+    /* 老 token（从未写过开关）行为不变：仍然自动弹 */
+    h0 = hpOpens().length;
+    await select([LEGACY_ID]);
+    if (hpOpens().length === h0) bad("老 token（hp-bar/enabled 未写过、默认开）不再自动弹编辑窗（默认行为被改了）");
+    else ok("v1.8.4：enabled 未写过的老 token 仍按默认开 → 自动弹编辑窗（行为不变）");
+
+    /* 显式 enabled=true 行为不变 */
+    h0 = hpOpens().length;
+    await select([EXPLICIT_TRUE_ID]);
+    if (hpOpens().length === h0) bad("enabled=true 的 token 不再自动弹编辑窗");
+    else ok("v1.8.4：enabled=true 仍自动弹编辑窗（行为不变）");
+
+    /* 取消选中 → 再选回「已移除」的 token，仍然不弹（记忆清空也不该弹） */
+    await select([]);
+    h0 = hpOpens().length;
+    await select([REMOVED_ID]);
+    for (const cb of playerChangeCbs) cb();
+    await sleep(240);
+    if (hpOpens().length !== h0) bad("取消选中再选回「已移除血条组件」的 token 又弹了编辑窗");
+    else ok("v1.8.4：取消选中后再选回「已移除血条组件」的 token 仍不弹（反复触发也不弹）");
 
     /* ⑨ Boss 锁（hp.locked）→ 非城主的编辑窗只读（藏保存 + 提示「已锁定」） */
     const coreSrcSplit = fs.readFileSync(path.join(ROOT, "assets", "hp-edit-core.js"), "utf8");

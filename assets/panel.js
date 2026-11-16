@@ -14,7 +14,7 @@
 import OBR from "../vendor/obr-sdk.js";
 import {
   ID_PANEL, getCardsInfo, writeCards, mergeImports, parseExport, loadSample,
-  bindToken, selectedImageToken, esc, fmtTime, onReady
+  bindToken, selectedImageToken, esc, fmtTime, onReady, propagateCardStats
 } from "./common.js";
 import { renderGlanceHTML, cardMeta, deriveGlance, magicItemDailyUses, loadCardIndex } from "./glance.js";
 import { applyAction, loadState, scopeText } from "./track.js";
@@ -256,6 +256,7 @@ async function refresh(preferId, authoritative) {
  * 这里只把「角色卡：本机」这个状态带回界面。
  */
 async function saveCards(next) {
+  const prevCards = cards.slice();
   let res = null;
   try {
     res = await writeCards(next);
@@ -268,6 +269,18 @@ async function saveCards(next) {
   if (res.scope === "local" && res.saved === false) {
     feedback("保存失败：房间数据写不进去，本机也存不下这张卡", "ERROR");
     return null;
+  }
+  /* v1.8.4（照 Full Suite propagateCardRefresh）：导入 / 更新卡片成功后，把新卡数据回推到已绑定的 token。
+   * 只更新 max / 回复力上限 / 四防 / 先攻加值，cur / temp / locked 保留；只 GM 执行、同值不写。 */
+  try {
+    const prevChar = {};
+    for (const c of prevCards) prevChar[c.id] = JSON.stringify(c.char || null);
+    const updatedIds = (res.cards || next || []).filter(function (c) {
+      return c && c.id && prevChar[c.id] !== JSON.stringify(c.char || null);
+    }).map(function (c) { return c.id; });
+    if (updatedIds.length) void propagateCardStats(res.cards || next, updatedIds);
+  } catch (e) {
+    console.warn("[4enext] 回推卡片统计失败（不影响导入）", e);
   }
   return res;
 }

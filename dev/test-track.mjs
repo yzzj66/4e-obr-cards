@@ -294,5 +294,35 @@ else bad("两个页面互相覆盖：" + JSON.stringify({ lostA, lostB }));
 
 echoDelay = false;
 
+/* ---------------------------------------------------------------------------
+ * 14. v1.8.4：syncTokenStats 在 token 没有 HP 上限时用卡里的 maxHp 播种血条
+ * ------------------------------------------------------------------------- */
+console.log("== 14 syncTokenStats：补 HP 上限（绑卡 / 首次打开速览后要长出血条）");
+item.metadata = {};
+const hpCtx = { maxHp: 40, surgesMax: 4, defenses: [{ key: "ac", value: 18 }, { key: "fort", value: 17 }] };
+const seeded = await T.syncTokenStats(item.id, T.hpView(null, { maxHp: 40, surges: 4 }), hpCtx);
+const hSeeded = item.metadata[T.KEY_HP];
+if (seeded === true && hSeeded && hSeeded.max === 40 && hSeeded.cur === 40 &&
+  hSeeded.surgesMax === 4 && hSeeded.defenses && hSeeded.defenses.ac === 18 && hSeeded.defenses.reflex === undefined &&
+  hSeeded.defenses.will === undefined)
+  ok("没 HP 上限的 token：syncTokenStats 写 cur = max = 40 + 回复力上限 4 + 四防（只补缺）");
+else bad("syncTokenStats 没有播种 HP 上限：" + JSON.stringify({ seeded, hp: hSeeded }));
+
+/* 已有 max：一律不动（只可能补回复力 / 四防） */
+item.metadata[T.KEY_HP] = { cur: 10, max: 50, temp: 1, surges: 2, surgesMax: 4, locked: false };
+const hpCtx2 = { maxHp: 40, surgesMax: 4, defenses: null };
+const seeded2 = await T.syncTokenStats(item.id, T.hpView(item.metadata[T.KEY_HP], { maxHp: 40, surges: 4 }), hpCtx2);
+const hKept = item.metadata[T.KEY_HP];
+if (seeded2 === false && hKept.cur === 10 && hKept.max === 50 && hKept.temp === 1 && hKept.locked === false)
+  ok("已有 max 的 token：syncTokenStats 不动 cur / max / temp / locked（没有重复写）");
+else bad("syncTokenStats 覆盖了已有血量：" + JSON.stringify({ seeded2, hp: hKept }));
+
+/* 显式移除血条组件：不播种、不画 */
+item.metadata = { [T.KEY_HPBAR]: false };
+const seeded3 = await T.syncTokenStats(item.id, T.hpView(null, { maxHp: 40, surges: 4 }), hpCtx);
+if (seeded3 === false && !item.metadata[T.KEY_HP])
+  ok("显式「移除血条组件」（enabled=false）的 token：syncTokenStats 不播种 HP");
+else bad("syncTokenStats 给移除血条组件的 token 又写了 HP：" + JSON.stringify(item.metadata));
+
 console.log(fail ? "\n" + fail + " 个问题" : "\n全部通过");
 process.exit(fail ? 1 : 0);

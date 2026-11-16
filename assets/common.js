@@ -22,6 +22,10 @@ export {
 export const KEY_CARDS = NS + "/cards";
 /** Token（item）身上的绑定键：值为卡片 id。 */
 export const KEY_BIND = NS + "/cardId";
+/** Token（item）上的血量（与 track.js / background.core.js 的 KEY_HP 逐字一致）。 */
+export const KEY_HP = NS + "/hp";
+/** Token（item）上的血条组件开关（false = 用户显式「移除血条组件」）。 */
+export const KEY_HPBAR = NS + "/hp-bar/enabled";
 /** Token（item）上的先攻加值（v1.3.0）：{ bonus, cardId, updatedAt }。 */
 export const KEY_INIT = NS + "/init";
 /** 房间数据里的先攻状态（v1.3.0）。 */
@@ -47,7 +51,7 @@ export const ID_SETTINGS_WIN = NS + "/settings-window";
  * id 与其它窗口都不同 → 可以和速览 / 先攻条同时开着；位置按窗口名 "hpEdit" 单独记。 */
 export const ID_HP_EDIT = NS + "/hp-edit";
 
-export const PLUGIN_VERSION = "1.8.3";
+export const PLUGIN_VERSION = "1.8.4";
 
 /**
  * 站点根地址。
@@ -590,13 +594,34 @@ export async function loadSample() {
   return await res.json();
 }
 
+/** 卡里算出来的四防 [{key,value}] → token 字段 { ac, fort, reflex, will }（与 track.js 的换算一致）。 */
+function defensesFromDerived(list) {
+  const map = { ac: "ac", fort: "fort", ref: "reflex", reflex: "reflex", will: "will" };
+  const out = {};
+  let any = false;
+  const take = (k, v) => {
+    const key = map[String(k)];
+    if (!key) return;
+    if (typeof v === "number" && isFinite(v)) { out[key] = Math.max(0, Math.round(v)); any = true; }
+  };
+  if (Array.isArray(list)) {
+    for (const row of list) if (row && typeof row === "object") take(row.key, row.value);
+  } else if (list && typeof list === "object") {
+    for (const k of Object.keys(list)) take(k, list[k]);
+  }
+  return any ? out : null;
+}
+
 /**
  * 把卡片 id 写到 token 的 metadata 上；cardId 为空表示解绑。
  * v1.3.0：同时写 com.4enext-owlbear/init = { bonus, cardId, updatedAt }，
  * 先攻加值取自角色卡的「先攻」（与速览 / 面板共用 glance.js 的 initiativeBonus）。
+ * v1.8.4：顺带把卡里的 HP / 回复力 / 四防**播种**到 token（只补缺，不覆盖已有血量）——
+ *   修复「绑了卡、速览能开，但地图上 token 没有血条环」；用户显式移除过血条组件的 token 不播种。
  */
 export async function bindToken(itemId, cardId) {
   let init = null;
+  let seed = null;
   if (cardId) {
     let bonus = 0;
     try {
@@ -606,6 +631,16 @@ export async function bindToken(itemId, cardId) {
       if (card) {
         const glance = await import("./glance.js");
         bonus = glance.initiativeBonus(card.char);
+        const d = glance.deriveGlance(card.char);
+        const hpMax = d && typeof d.hpMax === "number" && isFinite(d.hpMax) && d.hpMax > 0 ? Math.round(d.hpMax) : null;
+        if (hpMax) {
+          seed = {
+            hpMax: hpMax,
+            surgesMax: d && typeof d.surgesMax === "number" && isFinite(d.surgesMax) && d.surgesMax > 0
+              ? Math.round(d.surgesMax) : null,
+            defenses: defensesFromDerived(d && d.defenses)
+          };
+        }
       }
     } catch (e) {
       console.error("[4enext] 读取先攻加值失败，按 +0 处理", e);
@@ -619,8 +654,120 @@ export async function bindToken(itemId, cardId) {
       else delete it.metadata[KEY_BIND];
       if (init) it.metadata[KEY_INIT] = init;
       else delete it.metadata[KEY_INIT];
+      /* v1.8.4（与 Full Suite 一致）：**卡数据优先** —— 绑卡即用卡的血量覆盖 token 的
+       * 当前 / 上限 / 回复力 / 四防（cur = max = 卡上限，surges = surgesMax）。
+       * 只保留 token 自己的 temp（临时生命）与 locked（玩家端锁定）；其它 hp 字段（如 legacy boss）原样带过。
+       * 同时删除 hp-bar/enabled（回到默认开启）→ 绑卡后血条立刻出现（即使之前显式移除过组件）。
+       * 先攻加值仍照旧写 KEY_INIT；以上都在同一个 updateItems 里原子写。 */
+      if (cardId) delete it.metadata[KEY_HPBAR];
+      if (cardId && seed) {
+        const prev = it.metadata[KEY_HP] && typeof it.metadata[KEY_HP] === "object" ? it.metadata[KEY_HP] : {};
+        const max = seed.hpMax;
+        const out = Object.assign({}, prev);
+        out.cur = max;
+        out.max = max;
+        out.temp = typeof prev.temp === "number" && isFinite(prev.temp) && prev.temp > 0 ? Math.round(prev.temp) : 0;
+        out.surges = seed.surgesMax;
+        if (seed.surgesMax != null) out.surgesMax = seed.surgesMax;
+        else delete out.surgesMax;
+        if (seed.defenses) out.defenses = seed.defenses;
+        else delete out.defenses;
+        out.locked = prev.locked !== false;
+        it.metadata[KEY_HP] = out;
+      }
     }
   });
+}
+
+/** 四防比较（缺字段 = 0）：用于回推时避免元数据抖动。 */
+function sameDefenses(a, b) {
+  const keys = ["ac", "fort", "reflex", "will"];
+  const na = a && typeof a === "object" ? a : {};
+  const nb = b && typeof b === "object" ? b : {};
+  for (const k of keys) {
+    if (Math.round(Number(na[k]) || 0) !== Math.round(Number(nb[k]) || 0)) return false;
+  }
+  return true;
+}
+
+/**
+ * v1.8.4（照 Full Suite propagateCardRefresh）：面板导入 / 更新卡片成功后，把新卡数据回推到
+ * 所有绑定该卡的 token —— 只更新 **max / surgesMax / defenses / 先攻加值**，
+ * **cur / temp / locked 一律保留**（保留当前 HP，Full Suite 明确 preserve CURRENT HP）。
+ * 与现有值相同就不写（避免元数据抖动）；只 GM 执行；失败只 console.warn，不影响导入。
+ * 返回实际更新过的 token 数。
+ */
+export async function propagateCardStats(cards, updatedIds) {
+  let role = "";
+  try { role = await OBR.player.getRole(); } catch (e) { return 0; }
+  if (role !== "GM") return 0;
+  const ids = Array.isArray(updatedIds) ? updatedIds.filter(Boolean) : [];
+  if (!ids.length) return 0;
+  const byId = {};
+  for (const c of cards || []) if (c && c.id) byId[c.id] = c;
+  const stats = {};
+  try {
+    const glance = await import("./glance.js");
+    for (const id of ids) {
+      const c = byId[id];
+      if (!c || !c.char) continue;
+      const d = glance.deriveGlance(c.char);
+      if (!d) continue;
+      stats[id] = {
+        hpMax: typeof d.hpMax === "number" && isFinite(d.hpMax) && d.hpMax > 0 ? Math.round(d.hpMax) : null,
+        surgesMax: typeof d.surgesMax === "number" && isFinite(d.surgesMax) && d.surgesMax > 0 ? Math.round(d.surgesMax) : null,
+        defenses: defensesFromDerived(d.defenses),
+        bonus: glance.initiativeBonus(c.char)
+      };
+    }
+  } catch (e) {
+    console.warn("[4enext] 回推卡片统计失败（跳过）", e);
+    return 0;
+  }
+  if (!Object.keys(stats).length) return 0;
+  let items = [];
+  try { items = await OBR.scene.items.getItems(); } catch (e) {
+    console.warn("[4enext] 回推卡片统计：读场景 token 失败（跳过）", e);
+    return 0;
+  }
+  const plan = [];
+  for (const it of items || []) {
+    if (!it || !it.metadata) continue;
+    const bind = it.metadata[KEY_BIND];
+    const st = typeof bind === "string" ? stats[bind] : null;
+    if (!st) continue;
+    const prevHp = it.metadata[KEY_HP] && typeof it.metadata[KEY_HP] === "object" ? it.metadata[KEY_HP] : {};
+    const hpChanged =
+      (st.hpMax != null && prevHp.max !== st.hpMax) ||
+      (st.surgesMax != null && prevHp.surgesMax !== st.surgesMax) ||
+      (!!st.defenses && !sameDefenses(prevHp.defenses, st.defenses));
+    const prevInit = it.metadata[KEY_INIT] && typeof it.metadata[KEY_INIT] === "object" ? it.metadata[KEY_INIT] : null;
+    const initChanged = !prevInit || prevInit.bonus !== st.bonus || prevInit.cardId !== bind;
+    if (!hpChanged && !initChanged) continue;
+    plan.push({ id: it.id, st: st, hpChanged: hpChanged, initChanged: initChanged, bind: bind });
+  }
+  if (!plan.length) return 0;
+  const byItem = {};
+  for (const p of plan) byItem[p.id] = p;
+  await OBR.scene.items.updateItems(plan.map(function (p) { return p.id; }), function (drafts) {
+    for (const it of drafts) {
+      const p = byItem[it.id];
+      if (!p) continue;
+      if (!it.metadata || typeof it.metadata !== "object") it.metadata = {};
+      if (p.hpChanged) {
+        const prev = it.metadata[KEY_HP] && typeof it.metadata[KEY_HP] === "object" ? it.metadata[KEY_HP] : {};
+        const out = Object.assign({}, prev);
+        if (p.st.hpMax != null) out.max = p.st.hpMax;
+        if (p.st.surgesMax != null) out.surgesMax = p.st.surgesMax;
+        if (p.st.defenses) out.defenses = p.st.defenses;
+        it.metadata[KEY_HP] = out;
+      }
+      if (p.initChanged) {
+        it.metadata[KEY_INIT] = { bonus: p.st.bonus, cardId: p.bind, updatedAt: Date.now() };
+      }
+    }
+  });
+  return plan.length;
 }
 
 export async function getItemBinding(itemId) {
