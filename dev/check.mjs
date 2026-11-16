@@ -19,7 +19,7 @@ const NOTES_PATH = path.join(ROOT, "docs", "NOTES.md");
 const NOTES = exists(NOTES_PATH) ? fs.readFileSync(NOTES_PATH, "utf8") : "";
 const notesHas = (s) => NOTES.indexOf(s) >= 0;
 /* 当前版本号：所有「版本全链路」断言都读它，升版本只改这一处（+ 各文件里的真实版本号）。 */
-const VER = "1.9.2";
+const VER = "1.10.0";
 
 function walk(dir, out = []) {
   for (const name of fs.readdirSync(dir)) {
@@ -142,9 +142,9 @@ if (man.action && typeof man.action.title === "string" && man.action.title.lengt
 else bad("manifest.action.title 缺失或过长");
 if (man.action && isAbs(man.action.icon) && isAbs(man.action.popover)) ok("action.icon / action.popover 都是绝对地址");
 else bad("action.icon / action.popover 必须是绝对地址：" + JSON.stringify(man.action));
-if (man.action && /\/dice\.html$/.test(String(man.action.popover)) && man.action.width === 320 && man.action.height === 620)
-  ok("action.popover = dice.html（320×620，左上角按钮直接打开骰子栏）");
-else bad("action.popover 不是 dice.html 320×620：" + JSON.stringify(man.action));
+if (man.action && /\/dice\.html$/.test(String(man.action.popover)) && man.action.width === 320 && man.action.height === 660)
+  ok("action.popover = dice.html（320×660，左上角按钮直接打开骰子栏）");
+else bad("action.popover 不是 dice.html 320×660：" + JSON.stringify(man.action));
 if (man.manifest_version === 1) ok("manifest_version = 1"); else bad("manifest_version 不是 1");
 ok("version = " + man.version);
 
@@ -1558,9 +1558,9 @@ console.log("== v1.7.2 血条组件编辑小窗（HP / 四防 / 回复力）");
     exists(path.join(ROOT, "assets", "hp-edit-core.js")))
     ok("hp-edit.html + assets/hp-edit-page.js + assets/hp-edit-core.js 都在");
   else bad("缺少血条编辑窗的页面 / 脚本（hp-edit.html / hp-edit-page.js / hp-edit-core.js）");
-  if (has(editHtmlV172, 'class="win') && has(editHtmlV172, 'id="head"') && has(editHtmlV172, 'id="pin"'))
-    ok("编辑窗用 .win 外壳 + #head 拖动区 + #pin（复用 window.js 的拖动 / 记位置）");
-  else bad("编辑窗缺少窗口外壳 / 拖动区 #head / 回到默认位置 #pin");
+  if (has(editHtmlV172, 'class="win') && has(editHtmlV172, 'id="head"') && has(editHtmlV172, 'hpe-pin'))
+    ok("编辑窗用 .win 外壳 + #head 拖动区 + 钉住按钮（复用 window.js 的拖动 / 记位置）");
+  else bad("编辑窗缺少窗口外壳 / 拖动区 #head / 钉住按钮");
   const assetRef = (src, name) =>
     new RegExp('(?:href|src)="assets/' + name.replace(/\./g, "\\.") + '(?:\\?v=[^"]*)?"').test(src);
   if (assetRef(editHtmlV172, "ui.css") && assetRef(editHtmlV172, "hp-edit-page.js") &&
@@ -1576,10 +1576,11 @@ console.log("== v1.7.2 血条组件编辑小窗（HP / 四防 / 回复力）");
   const missingDef = DEF_IDS.filter((k) => !has(editHtmlV172, 'id="hpe-def-' + k + '"'));
   if (!missingDef.length) ok("编辑窗有四个四防输入框：AC / 强韧 / 反射 / 意志（hpe-def-ac/fort/reflex/will）");
   else bad("编辑窗缺少四防输入框：" + missingDef.join(" / "));
-  if (has(editHtmlV172, "hpe-hp") && has(editHtmlV172, "hpe-surge") &&
+  if (has(editHtmlV172, "hpe-cur") && has(editHtmlV172, "hpe-max") && has(editHtmlV172, "hpe-temp") &&
+    has(editHtmlV172, "hpe-hp-pill") && !has(editHtmlV172, "hpe-surge") &&
     !has(editHtmlV172, "hpe-save") && !has(editHtmlV172, "hpe-foot") && !has(editHtmlV172, "hpe-cancel"))
-    ok("编辑窗底部没有保存按钮 / 取消 / 底栏（v1.8.5「即改即生效」，✕ / Esc 仍可关窗）");
-  else bad("编辑窗底栏应只保留生命 / 回复力输入（没有保存 / 取消 / 底栏）");
+    ok("v1.10.0：编辑窗用药丸布局（当前 / 上限 / 临时生命），没有回复力输入、没有保存按钮 / 底栏");
+  else bad("编辑窗字段不是 v1.10.0 的药丸布局 / 还留着回复力或底栏");
   /* v1.8.5：自动保存接线（input 防抖 + change/blur/Enter 立即提交 + 同值不写 + 广播） */
   if (has(editJsV172, 'el.addEventListener("input"') && has(editJsV172, 'el.addEventListener("change"') &&
     has(editJsV172, 'el.addEventListener("blur"') && has(editJsV172, 'commit("enter", el)') &&
@@ -1587,17 +1588,17 @@ console.log("== v1.7.2 血条组件编辑小窗（HP / 四防 / 回复力）");
     has(editJsV172, "CH_HP_EDIT_SAVED") && !has(editJsV172, "els.save"))
     ok("v1.8.5：编辑窗自动保存接线（input 防抖 500ms + change/blur/Enter + 同值不写 + CH_HP_EDIT_SAVED）");
   else bad("v1.8.5：编辑窗自动保存接线不完整");
-  if (has(editHtmlV172, "20 / 20/20 / +5 / -3"))
-    ok("生命输入的提示里写清了 20 / 20/20 / +5 / -3");
-  else bad("生命输入没有语法提示（用户不知道能填什么）");
-  for (const fn of ["parseHpInput", "parseSurgeInput", "parseDefenseInput", "buildHpEditPatch", "applyHpEdit", "mayEditToken", "writeHpEdit", "hpEditView", "createHpEditLease"]) {
+  if (has(editHtmlV172, 'id="hpe-cur"') && has(editHtmlV172, 'id="hpe-max"') && has(editHtmlV172, 'placeholder="20"'))
+    ok("生命药丸有当前 / 上限两个独立输入（placeholder 提示填法）");
+  else bad("生命药丸缺少当前 / 上限输入");
+  for (const fn of ["parseHpInput", "parseMaxInput", "parseCurInput", "parseTempInput", "parseDefenseInput", "buildHpEditPatch", "applyHpEdit", "mayEditToken", "writeHpEdit", "hpEditView", "hpRatio", "createHpEditLease"]) {
     if (new RegExp("export (async )?function " + fn + "\\(").test(editCoreV172)) ok("hp-edit-core.js 导出 " + fn);
     else bad("hp-edit-core.js 没有导出 " + fn);
   }
-  if (has(editCoreV172, "/^([+-])(\\d+)$/") && has(editCoreV172, "/^(\\d+)\\/(\\d+)$/") &&
-    has(editCoreV172, "/^(\\d+)([+-])(\\d+)$/"))
-    ok("语法：+5 / -3、20/20、15+5 三种写法都解析（看不懂 → ok:false + 提示，保留原值）");
-  else bad("parseHpInput 没有覆盖 20 / 20/20 / +5 / -3 / 15+5");
+  if (has(editCoreV172, "parseMaxInput(") && has(editCoreV172, "parseCurInput(") &&
+    has(editCoreV172, "HPE_TEMP_MAX = 999") && has(editCoreV172, "clampInt(p.temp, 0, HPE_TEMP_MAX)"))
+    ok("v1.10.0：上限 / 当前 / 临时生命三条 clamp（当前 0~上限、上限 ≥1、temp 0~999）");
+  else bad("v1.10.0 字段 clamp 不完整");
   if (has(editCoreV172, "if (!raw) return { ok: true, value: null };"))
     ok("四防留空 = null = 不写这个字段（那枚盾不画）");
   else bad("四防留空没有被当成「不画」");
@@ -1610,10 +1611,10 @@ console.log("== v1.7.2 血条组件编辑小窗（HP / 四防 / 回复力）");
   if (has(editCoreV172, "delete out.defenses;") && has(editCoreV172, "patch.defenses = defAny ? defs : null;"))
     ok("四防四个框全空 → 删掉 defenses 键（一枚盾都不画，而不是写 null / 0）");
   else bad("空四防没有删键（会画出一排 0）");
-  if (has(editCoreV172, "Math.max(-out.max, Math.min(out.cur, out.max))") &&
-    has(editCoreV172, "Math.max(0, Math.min(out.surges, out.surgesMax))"))
-    ok("写盘夹取：−max ≤ cur ≤ max、0 ≤ surges ≤ surgesMax（每次写都做）");
-  else bad("写盘没有跨字段夹取（cur 会超过上限）");
+  if (has(editCoreV172, "Math.max(0, Math.min(out.cur, out.max))") &&
+    has(editCoreV172, "if (\"locked\" in p) out.locked = !!p.locked;"))
+    ok("写盘夹取：0 ≤ cur ≤ max、temp 0~999；locked 切换单独写（surges 只读不写）");
+  else bad("写盘没有跨字段夹取 / 锁定字段");
   if (has(editCoreV172, "if (!mayEditToken(it, role, playerId))") && has(editCoreV172, "这枚 token 已经不能改了"))
     ok("两次校验：updateItems 的 draft 回调里再查一次权限（照参考实现 edit.ts）");
   else bad("只在写之前校验了一次（draft 延迟执行时会写坏别人的 token）");
@@ -1629,9 +1630,9 @@ console.log("== v1.7.2 血条组件编辑小窗（HP / 四防 / 回复力）");
     ok("URL_HP_EDIT → hp-edit.html（后台开窗 / 页面侧同一个地址）");
   else bad("URL_HP_EDIT 没接上 hp-edit.html");
   if (has(coreV172, "hpEdit: { id: ID_HP_EDIT, url: URL_HP_EDIT, width: HPE_W, height: HPE_H }") &&
-    has(coreV172, "var HPE_W = 340;") && has(coreV172, "var HPE_H = 122;"))
-    ok("WINS.hpEdit 注册（340×122，可拖动 / 记位置 / 视口夹紧）");
-  else bad("WINS 没有注册 hpEdit（或尺寸不是 340×122）");
+    has(coreV172, "var HPE_W = 344;") && has(coreV172, "var HPE_H = 106;"))
+    ok("WINS.hpEdit 注册（344×106，可拖动 / 记位置 / 视口夹紧）");
+  else bad("WINS 没有注册 hpEdit（或尺寸不是 344×106）");
   if (has(coreV172, "async function openWin(name, urlOverride)") && has(coreV172, "async function openHpEdit(itemId)") &&
     has(coreV172, 'URL_HP_EDIT + "?item=" + encodeURIComponent(itemId)') && has(coreV172, 'await openWin("hpEdit", url)'))
     ok("openWin(name, urlOverride) + openHpEdit：开窗带 ?item=<tokenId>&session=<uuid>");
@@ -1664,12 +1665,12 @@ console.log("== v1.7.2 血条组件编辑小窗（HP / 四防 / 回复力）");
   else bad("页面侧没有用租约 / 没有保存回执");
 
   /* ---- 5) 样式 / 只读 / 版本 / 文档 / 测试 ---- */
-  if (has(uiV172, ".hpe-body") && has(uiV172, ".hpe-def") && has(uiV172, ".hpe-note") && has(uiV172, ".hpe-btn"))
+  if (has(uiV172, ".hpe-body") && has(uiV172, ".hpe-def") && has(uiV172, ".hpe-note") && has(uiV172, ".hpe-hp-pill"))
     ok("ui.css 末尾追加了 .hpe-*（深色 + 绿，沿用 :root 变量）");
   else bad("ui.css 缺少 .hpe-* 样式");
-  if (has(editJsV172, "readOnly = !on") && has(editJsV172, "只有城主或这枚 token 的创建者能改血量与四防") &&
+  if (has(editJsV172, "disabled = dis") && has(editJsV172, "只读：只有城主或这枚 token 的创建者能改生命") &&
     has(editJsV172, 'feedback(res.message, "ERROR")'))
-    ok("只读分支（非城主 / 非创建者）+ 写失败 ERROR 通知（不静默）");
+    ok("只读分支（非城主 / 非创建者，输入 disabled）+ 写失败 ERROR 通知（不静默）");
   else bad("编辑窗没有只读分支 / 写失败静默");
   if (has(editCoreV172, "data-bg-soft") || has(editHtmlV172, "data-bg-soft"))
     ok("编辑窗标了 data-bg-soft（后台离线只弱化外观；保存是页面直写 token，不靠后台）");
@@ -1690,7 +1691,7 @@ console.log("== v1.7.2 血条组件编辑小窗（HP / 四防 / 回复力）");
   if (has(readmeSrc, "血条组件编辑窗") && has(readmeSrc, "v1.7.2") && has(readmeSrc, "## ⭐ 安装地址"))
     ok("README 功能表加了「血条组件编辑窗（HP/四防/回复力）」，顶部「⭐ 安装地址」保留");
   else bad("README 没有这个功能行 / 安装地址被动了");
-  if (has(testBgV172, "v1.7.2") && has(testBgV172, "parseHpInput") && has(testBgV172, "空四防"))
+  if (has(testBgV172, "v1.7.2") && has(testBgV172, "parseMaxInput") && has(testBgV172, "空四防"))
     ok("dev/test-background.mjs 扩了 v1.7.2 的断言（语法 / 空四防 / 权限 / 租约）");
   else bad("dev/test-background.mjs 没有扩 v1.7.2 的断言");
   /* [v1.7.7] docs 合并：spec-hpbar-boss.md 已并入 docs/NOTES.md，键名纪律仍在 */
@@ -2329,9 +2330,9 @@ console.log("== v1.7.7 选中 token 就弹血条编辑窗（三分支 / 不重�
     ok("hpEditReadOnly：hp.locked === true 时非城主只读；城主不受限（locked 默认 true，锁是给玩家看的）");
   } else bad("hp-edit-core 没有 hpEditReadOnly / 判定不是「locked + 非城主」");
   /* [v1.7.8 改] 提示行抽成 refreshNote()（成功类提示不再写），锁定分支变成 if (state.locked)。 */
-  if (has(editJsV177, "hpEditReadOnly(hpMetaOf(item), role)") && has(editJsV177, "setEditable(editable)") &&
+  if (has(editJsV177, "hpEditReadOnly(hpMetaOf(item), state.role)") && has(editJsV177, "setEditable(state.editable)") &&
     has(editJsV177, "已锁定") && has(editJsV177, "function refreshNote()") && has(editJsV177, "if (state.locked) {") &&
-    has(editJsV177, "el.readOnly = !on")) {
+    has(editJsV177, "readOnly = dis")) {
     ok("编辑窗：锁定时 setEditable(false)（输入框只读）+ 提示「已锁定」+ 自动保存不再写（v1.8.5：无保存按钮）");
   } else bad("编辑窗没有接「锁定 → 输入框只读 / 提示已锁定 / 不写」");
 
@@ -2461,7 +2462,7 @@ console.log("== v1.7.8 减少打扰：成功类通知 = 0，只保留 ERROR / WA
     ["window.js", "后台未连接：先点顶部的「后台未连接，点这里重试」"],
     ["window.js", "后台还是没有响应"],
     ["dice-page.js", "记录窗口打开失败："],
-    ["hp-edit-page.js", "只读：只有城主或这枚 token 的创建者能改血量与四防"],
+    ["hp-edit-page.js", "只读：只有城主或这枚 token 的创建者能改生命"],
     ["hp-edit-page.js", "已锁定：这枚 token 的血量对玩家隐藏"],
     ["bind.js", "绑定失败：可能没有这个 token 的修改权限"],
     ["background.core.js", "4E插件出错："],
@@ -3427,6 +3428,11 @@ console.log("== v1.9.2 骰子 action 入口 / 记录窗口自动打开");
     manRelV192.action && manRelV192.action.icon === "icon-tool-dice.svg" && manRelV192.action.popover === "dice.html")
     ok("manifest.action 骰子入口：绝对 URL（线上）/ 相对 URL（relative）都对");
   else bad("manifest.action 骰子入口不完整：" + JSON.stringify(manV192.action) + " / " + JSON.stringify(manRelV192.action));
+  const uiCssV110 = fs.readFileSync(path.join(ROOT, "assets", "ui.css"), "utf8");
+  if (manV192.action.width === 320 && manV192.action.height === 660 &&
+    /body\.dice-action \.win-head \{ display: none; \}/.test(uiCssV110))
+    ok("v1.10.0：骰子 action 高 660；action 模式隐藏页面自己的标题栏（关闭靠左上角按钮）");
+  else bad("v1.10.0：骰子 action 尺寸 / action 模式隐藏标题栏没接上");
   if (/OBR\.action\.isOpen/.test(dicePageV192) && /OBR\.action\.close\(\)/.test(dicePageV192) &&
     /createWindow\(\{ name: "dice", head: null \}\)/.test(dicePageV192))
     ok("dice-page：action.isOpen 判断 + ✕ 用 action.close + action 模式不绑定标题栏拖动");

@@ -1099,61 +1099,49 @@ const BG = run(OBR, stubBuilder("CURVE"), stubBuilder("SHAPE"), stubBuilder("TEX
   fs.copyFileSync(path.join(ROOT, "assets", "hp-edit-core.js"), hpeModPath);
   const HPE = await import(pathToFileURL(hpeModPath).href);
 
-  /* ---- 1) 语法：20 / 20/20 / +5 / -3 / 15+5 / 乱填保留原值 ---- */
+  /* ---- 1) v1.10.0 字段：当前 / 上限 / 临时生命 / 四防（独立输入框、clamp、留空 = null） ---- */
   {
-    const a = HPE.parseHpInput("20", { cur: null, max: null });
-    const b = HPE.parseHpInput("20/20", { cur: null, max: null });
-    const c = HPE.parseHpInput("+5", { cur: 12, max: 20 });
-    const d = HPE.parseHpInput("-3", { cur: 12, max: 20 });
-    const noMax = HPE.parseHpInput("+5", { cur: null, max: null });
-    const calc = HPE.parseHpInput("15+5", { cur: null, max: null });
-    const raise = HPE.parseHpInput("30", { cur: 12, max: 20 });
-    const junk = HPE.parseHpInput("二十", { cur: 12, max: 20 });
-    if (!a.ok || a.patch.max !== 20 || a.patch.cur !== 20) bad("「20」不是设上限 20（20/20）：" + JSON.stringify(a));
-    else if (!b.ok || b.patch.cur !== 20 || b.patch.max !== 20) bad("「20/20」没有同时设当前/上限：" + JSON.stringify(b));
-    else if (!c.ok || c.patch.cur !== 17) bad("「+5」没有在当前 12 上加到 17：" + JSON.stringify(c));
-    else if (!d.ok || d.patch.cur !== 9) bad("「-3」没有在当前 12 上减到 9：" + JSON.stringify(d));
-    else if (noMax.ok) bad("没有上限时「+5」应该拒绝（先给上限），实际：" + JSON.stringify(noMax));
-    else if (!calc.ok || calc.patch.cur !== 20) bad("「15+5」算式结果不是 20：" + JSON.stringify(calc));
-    else if (!raise.ok || raise.patch.max !== 30 || raise.patch.cur !== 12) bad("「30」应把上限改到 30、当前 12 保留：" + JSON.stringify(raise));
-    else if (junk.ok) bad("看不懂的输入应该 ok:false（保留原值），实际：" + JSON.stringify(junk));
-    else ok("HP 语法：20（上限）/ 20/20 / +5 / -3 / 15+5 都对；没上限时 +5 拒绝、乱填保留原值");
-  }
-  {
-    const pair = HPE.parseSurgeInput("3/3", { surges: null, surgesMax: null });
-    const one = HPE.parseSurgeInput("2", { surges: 3, surgesMax: 3 });
-    const plus = HPE.parseSurgeInput("+1", { surges: 2, surgesMax: 3 });
-    const empty = HPE.parseDefenseInput("");
-    const num = HPE.parseDefenseInput("18");
+    const max = HPE.parseMaxInput("20");
+    const curHigh = HPE.parseCurInput("25", { max: 20 });
+    const curNeg = HPE.parseCurInput("-3", { max: 20 });
+    const temp = HPE.parseTempInput("999");
+    const tempJunk = HPE.parseTempInput("10a");
+    const emptyDef = HPE.parseDefenseInput("");
+    const def = HPE.parseDefenseInput("18");
     const badDef = HPE.parseDefenseInput("十八");
-    if (!pair.ok || pair.patch.surges !== 3 || pair.patch.surgesMax !== 3) bad("回复力 3/3 解析不对：" + JSON.stringify(pair));
-    else if (!one.ok || one.patch.surges !== 2) bad("回复力「2」解析不对：" + JSON.stringify(one));
-    else if (!plus.ok || plus.patch.surges !== 3) bad("回复力「+1」解析不对：" + JSON.stringify(plus));
-    else if (!empty.ok || empty.value !== null) bad("四防留空不是 null（应该「不画那枚盾」）：" + JSON.stringify(empty));
-    else if (!num.ok || num.value !== 18) bad("四防「18」解析不对：" + JSON.stringify(num));
+    if (!max.ok || max.value !== 20) bad("生命上限「20」解析不对：" + JSON.stringify(max));
+    else if (!curHigh.ok || curHigh.value !== 20) bad("当前生命 25 没有夹到上限 20：" + JSON.stringify(curHigh));
+    else if (!curNeg.ok || curNeg.value !== 0) bad("当前生命 -3 没有夹到 0：" + JSON.stringify(curNeg));
+    else if (!temp.ok || temp.value !== 999) bad("临时生命 999 解析不对：" + JSON.stringify(temp));
+    else if (tempJunk.ok) bad("临时生命非数字应该拒绝：" + JSON.stringify(tempJunk));
+    else if (!emptyDef.ok || emptyDef.value !== null) bad("四防留空不是 null（应该「不画那枚盾」）：" + JSON.stringify(emptyDef));
+    else if (!def.ok || def.value !== 18) bad("四防「18」解析不对：" + JSON.stringify(def));
     else if (badDef.ok) bad("四防填非数字应该拒绝：" + JSON.stringify(badDef));
-    else ok("回复力 3/3、2、+1 与四防「留空 = null / 18 / 非数字拒绝」都对");
+    else ok("v1.10.0 字段：当前 0~上限 / 上限 ≥1 / 临时 0~999 / 四防留空 = null，非法输入拒绝");
   }
   {
-    const built = HPE.buildHpEditPatch({ hp: "20/20", surge: "3/3", defs: { ac: "18", fort: "", reflex: "", will: "" } }, { cur: null, max: null });
-    const none = HPE.buildHpEditPatch({ hp: "", surge: "", defs: { ac: "", fort: "", reflex: "", will: "" } }, { cur: null, max: null });
-    const emptyDefs = HPE.buildHpEditPatch({ hp: "20/20", surge: "", defs: { ac: "", fort: "", reflex: "", will: "" } }, { cur: 20, max: 20 });
-    if (!built.ok || !built.patch.defenses || built.patch.defenses.ac !== 18 || "fort" in built.patch.defenses) {
-      bad("buildHpEditPatch 没有只写填了的那枚盾：" + JSON.stringify(built));
-    } else if (none.ok) bad("表单全空时应该拒绝保存（提示先填生命）：" + JSON.stringify(none));
+    const view = { cur: 12, max: 20, temp: 0, defenses: { ac: 18 } };
+    const built = HPE.buildHpEditPatch({ cur: "20", max: "20", temp: "5", defs: { ac: "18", fort: "", reflex: "", will: "" } }, view);
+    const emptyDefs = HPE.buildHpEditPatch({ cur: "20", max: "20", temp: "0", defs: { ac: "", fort: "", reflex: "", will: "" } }, view);
+    const noMax = HPE.buildHpEditPatch({ cur: "20", max: "", temp: "0", defs: {} }, view);
+    if (!built.ok || built.patch.cur !== 20 || built.patch.max !== 20 || built.patch.temp !== 5 ||
+      !built.patch.defenses || built.patch.defenses.ac !== 18 || "fort" in built.patch.defenses) {
+      bad("buildHpEditPatch 没有只写填了的那枚盾 / temp：" + JSON.stringify(built));
+    } else if (noMax.ok) bad("没填上限时应该拒绝保存：" + JSON.stringify(noMax));
     else if (!emptyDefs.ok || emptyDefs.patch.defenses !== null) bad("四防全空应给 defenses = null（删键）：" + JSON.stringify(emptyDefs));
     else {
-      const next = HPE.applyHpEdit({ cur: 20, max: 20, defenses: { ac: 18 }, boss: { enabled: true }, locked: false }, emptyDefs.patch, 999);
+      const next = HPE.applyHpEdit({ cur: 20, max: 20, temp: 3, surges: 2, surgesMax: 3, defenses: { ac: 18 }, boss: { enabled: true }, locked: false }, emptyDefs.patch, 999);
       if ("defenses" in next) bad("空四防写盘后 metadata 里还留着 defenses：" + JSON.stringify(next));
       else if (!next.boss || next.boss.enabled !== true || next.locked !== false) bad("写盘把 boss / locked 洗掉了：" + JSON.stringify(next));
+      else if (next.surges !== 2 || next.surgesMax !== 3) bad("写盘把 surges 数据洗掉了（应只读不写）：" + JSON.stringify(next));
+      else if (next.temp !== 0) bad("临时生命没有按 patch 写 0：" + JSON.stringify(next));
       else if (next.updatedAt !== 999) bad("写盘没有更新 updatedAt：" + JSON.stringify(next));
-      else ok("空四防 → 删掉 defenses 键；boss / locked 原样保留、updatedAt 更新");
+      else ok("写盘：空四防删键；surges 数据原样保留（只读不写）；temp 写入；boss / locked 保留");
     }
-    const clamped = HPE.applyHpEdit({ cur: 12, max: 20, surges: 3, surgesMax: 3 }, { cur: 99, surges: 9 }, 1);
-    if (clamped.cur > clamped.max || clamped.surges > clamped.surgesMax) bad("写盘没有跨字段夹取：" + JSON.stringify(clamped));
-    else ok("写盘夹取：cur 99 → 20、surges 9 → 3");
+    const clamped = HPE.applyHpEdit({ cur: 12, max: 20, temp: 500 }, { cur: 99, max: 20, temp: 5000 }, 1);
+    if (clamped.cur > clamped.max || clamped.temp > 999) bad("写盘没有夹取：" + JSON.stringify(clamped));
+    else ok("写盘夹取：cur 99 → 20、temp 5000 → 999");
   }
-
   /* ---- 2) 权限 / 两次校验 / 租约 ---- */
   {
     const gm = HPE.mayEditToken({ id: "t", createdUserId: "u-owner" }, "GM", "u-other");
@@ -1176,13 +1164,14 @@ const BG = run(OBR, stubBuilder("CURVE"), stubBuilder("SHAPE"), stubBuilder("TEX
       now: () => 4242
     });
     const writeOk = await HPE.writeHpEdit(deps({ role: "GM", pid: "u-gm" }), "tok-hpe",
-      { cur: 20, max: 20, surges: 2, surgesMax: 3, defenses: { ac: 18, fort: 15, reflex: 17, will: 16 } });
+      { cur: 20, max: 20, temp: 2, defenses: { ac: 18, fort: 15, reflex: 17, will: 16 } });
     const hp = target.metadata[HP_E_KEY];
     if (!writeOk.ok) bad("GM 保存失败：" + JSON.stringify(writeOk));
-    else if (!hp || hp.cur !== 20 || hp.max !== 20 || !hp.defenses || hp.defenses.ac !== 18) bad("保存没有写进 hp：" + JSON.stringify(hp));
+    else if (!hp || hp.cur !== 20 || hp.max !== 20 || hp.temp !== 2 || !hp.defenses || hp.defenses.ac !== 18) bad("保存没有写进 hp / temp：" + JSON.stringify(hp));
     else if (hp.updatedAt !== 4242) bad("保存没有用 deps.now() 的时间戳：" + hp.updatedAt);
     else if (target.metadata["com.4enext-owlbear/hp-bar/enabled"] !== true) bad("保存没有顺手把血条组件打开");
-    else ok("保存写 token metadata：20/20 + 回复力 2/3 + 四防 4 项 + 开关 true（updatedAt 来自 now()）");
+    else if ("surges" in hp) bad("保存把没有表单字段的 surges 写出来了（应只读不写）：" + JSON.stringify(hp));
+    else ok("保存写 token metadata：20/20 + 临时 2 + 四防 4 项 + 开关 true（surges 不动）");
 
     const before = JSON.stringify(target.metadata);
     const denied = await HPE.writeHpEdit(deps({ role: "PLAYER", pid: "u-other" }), "tok-hpe", { cur: 1, max: 1 });
@@ -1251,14 +1240,14 @@ const BG = run(OBR, stubBuilder("CURVE"), stubBuilder("SHAPE"), stubBuilder("TEX
         bad("「添加血条组件」没有打开血条编辑窗（用户要的就是这个入口）");
       } else if (win.id !== "com.4enext-owlbear/hp-edit") {
         bad("编辑窗的 popover id 不对：" + win.id);
-      } else if (win.width !== 340 || win.height !== 122) {
-        bad("编辑窗尺寸不是 340×122：" + win.width + "×" + win.height);
+      } else if (win.width !== 344 || win.height !== 106) {
+        bad("编辑窗尺寸不是 344×106：" + win.width + "×" + win.height);
       } else if (!new RegExp("hp-edit\\.html\\?item=" + HPE_MONSTER + "&session=").test(win.url)) {
         bad("编辑窗 url 没带 item / session：" + win.url);
       } else if (win.hidePaper !== true || win.disableClickAway !== true) {
         bad("编辑窗 popover 参数不对（hidePaper / disableClickAway）");
       } else {
-        ok("右键「添加血条组件」→ 写 true + 打开 /hp-edit（340×122，url 带 item + session）");
+        ok("右键「添加血条组件」→ 写 true + 打开 /hp-edit（344×106，url 带 item + session）");
       }
     }
     const targets = all("broadcast.sendMessage").map((c) => c[1]).filter((m) => /\/hp-edit-target$/.test(m.channel));
@@ -1299,7 +1288,7 @@ const BG = run(OBR, stubBuilder("CURVE"), stubBuilder("SHAPE"), stubBuilder("TEX
   };
   {
     const saved = await HPE.writeHpEdit(sceneDeps, HPE_MONSTER,
-      { cur: 20, max: 20, surges: 3, surgesMax: 3, defenses: { ac: 18, fort: 15, reflex: 17, will: 16 } });
+      { cur: 20, max: 20, temp: 3, defenses: { ac: 18, fort: 15, reflex: 17, will: 16 } });
     if (!saved.ok) bad("GM 给杂兵保存失败：" + JSON.stringify(saved));
     const savedCbs = broadcastCbs["com.4enext-owlbear/hp-edit-saved"] || [];
     if (!savedCbs.length) bad("没有订阅 hp-edit-saved（保存后不会立刻重画）");
@@ -1312,7 +1301,7 @@ const BG = run(OBR, stubBuilder("CURVE"), stubBuilder("SHAPE"), stubBuilder("TEX
       else if (items.length !== 11) bad("杂兵保存后应画 11 件（环 2 + HP 数字 1 + 四盾 + 4 数字），实际 " + items.length + "：" + roles.join(","));
       else if (!items.some((it) => barRoleOf(it) === "shield" && it.metadata["com.4enext-owlbear/bar"].key === "ac")) {
         bad("四防盾没有按 key=ac 画出来");
-      } else ok("没绑角色卡的杂兵：保存 20/20 + 回复力 3/3 + 四防 → 血条立刻画出 11 件（环形 + 四角四防，含 AC 盾）");
+      } else ok("没绑角色卡的杂兵：保存 20/20 + 临时 3 + 四防 → 血条立刻画出 11 件（环形 + 四角四防，含 AC 盾）");
     }
   }
   {
@@ -1346,19 +1335,36 @@ const BG = run(OBR, stubBuilder("CURVE"), stubBuilder("SHAPE"), stubBuilder("TEX
       editPage.indexOf("hpPatchEqualsView(built.patch") >= 0 &&
       editPage.indexOf("CH_HP_EDIT_SAVED") >= 0 &&
       editPage.indexOf("els.save") < 0;
-    if (wired) ok("v1.8.5：自动保存接线齐全（input 防抖 500ms + change/blur/Enter 立即提交 + 同值不写 + 广播 CH_HP_EDIT_SAVED）");
-    else bad("v1.8.5：自动保存接线缺项（input/change/blur/Enter/去抖/去重/广播）");
-    const view = { cur: 20, max: 20, surges: 2, surgesMax: 3, defenses: { ac: 18, fort: 15, reflex: 17, will: 16 } };
-    const samePatch = { cur: 20, max: 20, defenses: { ac: 18, fort: 15, reflex: 17, will: 16 } };
+    if (wired) ok("v1.10.0：自动保存接线齐全（input 防抖 500ms + change/blur/Enter 立即提交 + 同值不写 + 广播 CH_HP_EDIT_SAVED）");
+    else bad("v1.10.0：自动保存接线缺项（input/change/blur/Enter/去抖/去重/广播）");
+    if (editHtml.indexOf("hpe-temp") >= 0 && editHtml.indexOf("hpe-pin") >= 0 &&
+      editHtml.indexOf("hpe-lock") >= 0 && editHtml.indexOf("hpe-repaint") >= 0 &&
+      editHtml.indexOf("hpe-hp-pill") >= 0 && editHtml.indexOf("hpe-surge") < 0)
+      ok("v1.10.0：布局有生命药丸 / 临时生命 / 钉住 / 锁定 / 重绘，回复力输入已去掉");
+    else bad("v1.10.0：编辑窗布局字段不全 / 还留着回复力");
+    if (editPage.indexOf("--hp-ratio") >= 0 && editPage.indexOf("PIN_KEY") >= 0 &&
+      editPage.indexOf("CH_HP_REPAINT") >= 0 && editPage.indexOf("el.select()") >= 0 &&
+      editPage.indexOf("setBusy(") >= 0 && editPage.indexOf("disabled = dis") >= 0 &&
+      editPage.indexOf("toggleLock") >= 0 && editPage.indexOf("repaintBars") >= 0)
+      ok("v1.10.0：页面接药丸比例 / 钉住 / 锁定 / 重绘 / 聚焦全选 / saving 禁用输入");
+    else bad("v1.10.0：页面交互接线缺项（比例/钉住/锁定/重绘/聚焦/saving）");
+    const view = { cur: 20, max: 20, temp: 2, defenses: { ac: 18, fort: 15, reflex: 17, will: 16 } };
+    const samePatch = { cur: 20, max: 20, temp: 2, defenses: { ac: 18, fort: 15, reflex: 17, will: 16 } };
     if (typeof HPE.hpPatchEqualsView === "function" && HPE.hpPatchEqualsView(samePatch, view) === true &&
       HPE.hpPatchEqualsView({ cur: 19 }, view) === false &&
       HPE.hpPatchEqualsView({ defenses: null }, view) === false &&
       HPE.hpPatchEqualsView({ defenses: null }, { defenses: null }) === true)
-      ok("v1.8.5：hpPatchEqualsView 同值判重（cur/max/四防逐字段比较，相同不写）");
-    else bad("v1.8.5：hpPatchEqualsView 判重不对");
-    const badHp = HPE.buildHpEditPatch({ hp: "20/", surge: "", defs: {} }, view);
-    if (!badHp.ok) ok("v1.8.5：非法 / 半截输入（20/）不生成 patch → 不会写 token");
-    else bad("v1.8.5：半截输入也能生成 patch（会写坏数据）");
+      ok("v1.10.0：hpPatchEqualsView 同值判重（cur/max/temp/四防逐字段比较，相同不写）");
+    else bad("v1.10.0：hpPatchEqualsView 判重不对");
+    const badHp = HPE.buildHpEditPatch({ cur: "20/", max: "20", temp: "0", defs: {} }, view);
+    if (!badHp.ok) ok("v1.10.0：非法 / 半截输入（20/）不生成 patch → 不会写 token");
+    else bad("v1.10.0：半截输入也能生成 patch（会写坏数据）");
+    const lockOn = await HPE.writeHpEdit(sceneDeps, HPE_MONSTER, { locked: true });
+    const lockMeta = hpeMonster.metadata[HP_E_KEY];
+    const lockOff = await HPE.writeHpEdit(sceneDeps, HPE_MONSTER, { locked: false });
+    if (lockOn.ok && lockMeta && lockMeta.locked === true && lockOff.ok && hpeMonster.metadata[HP_E_KEY].locked === false)
+      ok("v1.10.0：锁定切换写 hp.locked（true → false）");
+    else bad("v1.10.0：锁定切换没有写 hp.locked");
     const ro = await HPE.writeHpEdit({
       getItems: async (ids) => sceneItems.filter((it) => ids.includes(it.id)).map((it) => JSON.parse(JSON.stringify(it))),
       updateItems: async (ids, fn) => { await OBR.scene.items.updateItems(ids, fn); },
@@ -1368,6 +1374,43 @@ const BG = run(OBR, stubBuilder("CURVE"), stubBuilder("SHAPE"), stubBuilder("TEX
     if (!ro.ok) ok("v1.8.5：只读（无权限 / locked）不写 token");
     else bad("v1.8.5：只读还写 token");
   }
+  /* v1.10.0：钉住（选中变化 / 取消选中不关窗）与「重绘血条」频道 */
+  {
+    const HPE_ID = "com.4enext-owlbear/hp-edit";
+    const wcCb = (broadcastCbs["com.4enext-owlbear/win-close"] || [])[0];
+    const closeCount = () => all("popover.close").filter((c) => c[1] === HPE_ID).length;
+    const select = async (ids) => {
+      selection = ids.slice();
+      for (const cb of playerChangeCbs) cb();
+      await sleep(300);
+    };
+    if (wcCb) { wcCb({ data: { op: "close-win", name: "hpEdit" } }); await sleep(120); }
+    lsStore["4enext/hp-edit/pinned"] = "1";
+    await select([]);
+    await select([HPE_MONSTER]);
+    const c0 = closeCount();
+    await select([]);
+    if (closeCount() !== c0) bad("v1.10.0：钉住后取消选中仍然自动关窗");
+    else ok("v1.10.0：钉住 → 取消选中不自动关窗");
+    lsStore["4enext/hp-edit/pinned"] = "0";
+    await select([HPE_MONSTER]);
+    const c1 = closeCount();
+    await select([]);
+    if (closeCount() === c1) bad("v1.10.0：未钉住时取消选中没有自动关窗");
+    else ok("v1.10.0：未钉住 → 取消选中自动关窗（跟随选中）");
+    const repaintCbs = broadcastCbs["com.4enext-owlbear/hp-repaint"] || [];
+    if (!repaintCbs.length) bad("v1.10.0：没有订阅 CH_HP_REPAINT（重绘按钮没用）");
+    else {
+      const before = liveOf(HPE_MONSTER).length;
+      for (const cb of repaintCbs) cb({ data: { itemId: HPE_MONSTER } });
+      await sleep(320);
+      const after = liveOf(HPE_MONSTER).length;
+      if (before > 0 && after > 0) ok("v1.10.0：CH_HP_REPAINT 触发强制重算（血条件数 " + before + " → " + after + "，环 / 盾 / 徽记重建）");
+      else bad("v1.10.0：重绘后血条件数变了 / 没画出来：" + before + " → " + after);
+    }
+    await select([HPE_MONSTER]); /* 给后面的拖动用例留一个开着的编辑窗 */
+  }
+
   {
     /* 拖动编辑窗：位置跟手、尺寸不变、url 里的 ?item= 不能丢（丢了就编错 token） */
     const cfgBefore = all("popover.open").map((c) => c[1]).filter((c) => /hp-edit\.html/.test(String(c.url))).pop();
@@ -1383,7 +1426,7 @@ const BG = run(OBR, stubBuilder("CURVE"), stubBuilder("SHAPE"), stubBuilder("TEX
         bad("拖动血条编辑窗没有跟手：" + JSON.stringify(moved && moved.anchorPosition));
       } else if (!new RegExp("\\?item=" + HPE_MONSTER + "&session=").test(moved.url)) {
         bad("拖动重开编辑窗时把 ?item= 丢了：" + moved.url);
-      } else if (moved.width !== 340 || moved.height !== 122) {
+      } else if (moved.width !== 344 || moved.height !== 106) {
         bad("拖动时编辑窗尺寸变了：" + moved.width + "×" + moved.height);
       } else {
         ok("拖动血条编辑窗：位置跟手、尺寸不变、url 里的 ?item= 没丢");
@@ -1569,8 +1612,8 @@ const BG = run(OBR, stubBuilder("CURVE"), stubBuilder("SHAPE"), stubBuilder("TEX
     if (hpOpens().length === h0) bad("选中「没绑定卡但有血条数据」的 token 没有弹血条编辑窗（用户要的就是这个入口）");
     else if (!win || win.id !== "com.4enext-owlbear/hp-edit") bad("自动弹出的 popover id 不是 /hp-edit：" + (win && win.id));
     else if (!new RegExp("hp-edit\\.html\\?item=" + AUTO_ID + "&session=").test(win.url)) bad("自动弹的编辑窗 url 没带这枚 token：" + win.url);
-    else if (win.width !== 340 || win.height !== 122) bad("自动弹的编辑窗不是 340×122：" + win.width + "×" + win.height);
-    else ok("v1.7.7 分支②：没绑定卡 + 有血条数据 → 选中即弹 /hp-edit（340×122，url 带 item + session）");
+    else if (win.width !== 344 || win.height !== 106) bad("自动弹的编辑窗不是 344×106：" + win.width + "×" + win.height);
+    else ok("v1.7.7 分支②：没绑定卡 + 有血条数据 → 选中即弹 /hp-edit（344×106，url 带 item + session）");
 
     /* ③ 只有开关（hp-bar/enabled = true）、没有 hp 数值 → 也算有血条 */
     h0 = hpOpens().length;
@@ -1795,7 +1838,7 @@ const BG = run(OBR, stubBuilder("CURVE"), stubBuilder("SHAPE"), stubBuilder("TEX
     else if (HPE.hpEditReadOnly({ locked: false }, "PLAYER")) bad("没锁（locked:false）时玩家也被锁成只读（锁就没意义了）");
     else if (HPE.hpEditReadOnly({ locked: true }, "GM")) bad("城主被 locked 挡成只读（用户点开编辑窗就改不了）");
     else if (pageSrcSplit.indexOf("hpEditReadOnly(") < 0 || pageSrcSplit.indexOf("已锁定") < 0 ||
-      pageSrcSplit.indexOf("setEditable(editable)") < 0) {
+      pageSrcSplit.indexOf("setEditable(state.editable)") < 0) {
       bad("编辑窗页面没有接 hpEditReadOnly / 没有「已锁定」提示（只读不会生效）");
     } else ok("Boss 锁：locked → 非城主只读（藏保存 + 提示「已锁定」）、城主照常能改；页面真的接了这条判定");
   }

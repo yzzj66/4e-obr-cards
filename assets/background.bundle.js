@@ -1,4 +1,4 @@
-/*! 4eNEXT to owlbear · background.bundle.js  (v1.9.2)
+/*! 4eNEXT to owlbear · background.bundle.js  (v1.10.0)
  * ---------------------------------------------------------------------------
  * 这是后台页唯一加载的脚本：纯「经典脚本」，没有 type="module"，没有 import/export，
  * 不依赖任何 CDN。内容是：
@@ -7,7 +7,7 @@
  *
  * 不要手改本文件。改逻辑请改 assets/background.core.js，然后：
  *     node dev/build-background.mjs
- * 生成时间：2026-11-16T06:43:29.152Z
+ * 生成时间：2026-11-16T07:05:34.350Z
  * --------------------------------------------------------------------------- */
 (function () {
 "use strict";
@@ -98,7 +98,7 @@ var TOOL_SETTINGS_ID = NS + "/settings-tool";
 var CH_HELLO = NS + "/diag-hello";
 var CH_PING = NS + "/diag-ping";
 var CH_PONG = NS + "/diag-pong";
-var PLUGIN_VERSION = "1.9.2";
+var PLUGIN_VERSION = "1.10.0";
 
 var KEY_HP = NS + "/hp";
 
@@ -244,14 +244,16 @@ var CH_DICE_HIST_STATE = NS + "/dice-hist-state";
 var CH_HP_EDIT_TARGET = NS + "/hp-edit-target";
 var CH_HP_EDIT_READY = NS + "/hp-edit-ready";
 var CH_HP_EDIT_SAVED = NS + "/hp-edit-saved";
+/* v1.10.0：血条编辑窗「重绘」按钮 → 后台强制重算这张 token 的血条环 / 四防盾 / 资源徽记。 */
+var CH_HP_REPAINT = NS + "/hp-repaint";
 /* v1.8.9：信息窗单次挂载 —— 目标租约（换 token 只广播 target，不重开 popover）+ ready 握手。 */
 var CH_INFO_TARGET = NS + "/info-target";
 var CH_INFO_READY = NS + "/info-ready";
 /* v1.9.0：页面刷新成功 ack —— 700ms 没收到就兜底关闭重开一次（极端情况下内容也能换过去）。 */
 var CH_INFO_ACK = NS + "/info-ack";
 
-var HPE_W = 340;
-var HPE_H = 122;
+var HPE_W = 344;
+var HPE_H = 106;
 
 var STRIP_COLLAPSED_W = 120;
 var STRIP_COLLAPSED_H = 40;
@@ -1013,6 +1015,22 @@ function onHpEditSaved(ev) {
   hpAutoPopped[itemId] = true;
   scheduleBars();
   stepOk("血条编辑窗已保存：" + itemId);
+}
+
+/* v1.10.0：编辑窗「钉住」偏好（默认关）——钉住后选中变化 / 取消选中不自动关窗。 */
+function hpEditPinned() {
+  try { return localStorage.getItem("4enext/hp-edit/pinned") === "1"; } catch (e) { return false; }
+}
+
+/* v1.10.0：编辑窗「重绘」→ 丢掉这张 token 的血条缓存，下一次 scheduleBars 强制重建（环 / 盾 / 徽记）。 */
+function onHpRepaint(ev) {
+  var data = ev && ev.data !== undefined ? ev.data : ev;
+  var itemId = data && typeof data.itemId === "string" ? data.itemId : "";
+  if (!itemId) return;
+  var entry = barEntries[itemId];
+  if (entry) entry.force = true;
+  scheduleBars();
+  stepOk("血条已重绘：" + itemId);
 }
 
 var stripOpen = false;
@@ -2257,7 +2275,15 @@ async function refreshInfo() {
     /* v1.8.1 诊断：选中变化时才重置「自动弹过」记录。真机排查时看这行就知道是不是选择事件在抖。 */
     pageLog("info", "选中变化 → " + (selId || "无") + "（自动弹窗记录已重置）");
   }
-  if (!item) return closeInfo();
+  if (!item) {
+    /* v1.10.0：未钉住时取消选中 → 自动关掉血条编辑窗（钉住则保留）。 */
+    if (winOpen["hpEdit"] && !hpEditPinned()) await closeWin("hpEdit");
+    return closeInfo();
+  }
+  /* v1.10.0：未钉住时跟随选中 —— 选到别的 token 就先关旧的编辑窗（新 token 需要时下面会再开）。 */
+  if (winOpen["hpEdit"] && !hpEditPinned() && hpEditTarget.itemId !== item.id) {
+    await closeWin("hpEdit");
+  }
   /* v1.8.2：先攻条点卡片头像（页面先发 CH_GLANCE_SUPPRESS 再 select）→ 1.5 秒内不自动弹速览。
    * token 仍然被选中 / 地图高亮，只是不弹；不碰下面 hpAutoSel / hpAutoPopped / hasHpBarData 顺序。 */
   if (Date.now() < suppressGlanceUntil) return;
@@ -3703,6 +3729,9 @@ async function boot() {
   });
   await attempt("订阅 " + CH_HP_EDIT_SAVED + "（血条编辑窗保存）", function () {
     OBR.broadcast.onMessage(CH_HP_EDIT_SAVED, onHpEditSaved);
+  });
+  await attempt("订阅 " + CH_HP_REPAINT + "（血条编辑窗重绘）", function () {
+    OBR.broadcast.onMessage(CH_HP_REPAINT, onHpRepaint);
   });
   /* v1.8.9：信息窗页面 ready → 重发当前 target（防第一条 target 在 iframe 加载前丢掉）。 */
   await attempt("订阅 " + CH_INFO_READY + "（速览页 ready 握手）", function () {

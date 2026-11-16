@@ -1,31 +1,34 @@
-// v1.7.2：血条编辑小窗的页面脚本（hp-edit.html）。
+// v1.10.0：血条编辑窗的页面脚本（hp-edit.html）—— 照 Full Suite 的 hp-bar 重做第一批（布局 + 字段）。
 // ---------------------------------------------------------------------------
-// 为什么有这个窗口（用户真机反馈）：
-//   右键「添加血条组件」过去只写 hp-bar/enabled = true —— 没绑定角色卡的怪物 / 杂兵
-//   没有任何地方填血量与四防，血条永远是空的。参考 FullPeople/obr-suite 的
-//   src/modules/hpBar/（选中 token → 弹一个可拖动的编辑面板）补上这个入口。
+// 窗口 344×106：行1 名称 + 钉住 / 锁定 / 重绘 + ✕；行2 生命药丸（按 cur/max 比例填充）+ 临时生命；
+// 行3 四防；行4 状态行。**去掉回复力字段**（surges 数据保留在 token 上，只读不写）。
 //
-// 谁写盘：**页面自己写**（OBR.scene.items.updateItems），不经过后台。
-//   理由：① 写 token 元数据本来就不需要后台（速览弹窗、骰子都是页面直写）；
-//         ② 后台万一没起来，编辑窗仍然能保存；
-//         ③ 权限按「城主 or token 创建者」判定（与速览 / 参考实现一致）。
-//   后台只做两件事：开窗时广播 CH_HP_EDIT_TARGET（版本租约，规格 §2.2 的简化版），
-//   收到 CH_HP_EDIT_SAVED 后立刻 scheduleBars()（不等 scene.items.onChange）。
-//
-// 窗口壳（拖动 / 位置记忆 / 后台检测 / 统一反馈）复用 assets/window.js。
-// 语法解析 / 夹取 / 权限 / 写盘 / 租约全在 assets/hp-edit-core.js（纯函数，Node 可测）。
+// 谁写盘：页面自己写（OBR.scene.items.updateItems），不经过后台；后台只做三件事：
+//   ① 开窗时广播 CH_HP_EDIT_TARGET（版本租约）；② 收到 CH_HP_EDIT_SAVED 后立即重画；
+//   ③ 收到 CH_HP_REPAINT 后强制重算这张 token 的血条环 / 四防盾 / 资源徽记。
+// 交互：聚焦全选；失焦 / Enter 提交；非法 / 半截输入回退；saving 时输入禁用；clamp 在 hp-edit-core.js。
+// 钉住：localStorage["4enext/hp-edit/pinned"]（默认关）——钉住后选中变化 / 取消选中不自动关窗。
 import OBR from "../vendor/obr-sdk.js";
-import { CH_HP_EDIT_READY, CH_HP_EDIT_SAVED, CH_HP_EDIT_TARGET, ID_HP_EDIT, KEY_BIND, findCard, getCards, onReady } from "./common.js";
+import {
+  CH_HP_EDIT_READY, CH_HP_EDIT_SAVED, CH_HP_EDIT_TARGET, CH_HP_REPAINT, ID_HP_EDIT, KEY_BIND,
+  findCard, getCards, onReady
+} from "./common.js";
 import { closeSelf, createWindow, feedback } from "./window.js";
 import {
-  HPE_DEF_KEYS, HPE_DEF_LABELS, buildHpEditPatch, createHpEditLease, defText,
-  hpEditReadOnly, hpEditView, hpPatchEqualsView, hpText, mayEditToken, surgeText, writeHpEdit
+  HPE_DEF_KEYS, buildHpEditPatch, createHpEditLease, curText, defText, hpEditReadOnly, hpEditView,
+  hpPatchEqualsView, maxText, mayEditToken, tempText, writeHpEdit
 } from "./hp-edit-core.js";
 
-/** v1.7.7：token 上的 hp 元数据（锁 / 数值都在里面）。 */
 const HP_META_KEY = "com.4enext-owlbear/hp";
+const PIN_KEY = "4enext/hp-edit/pinned";
 function hpMetaOf(item) {
   return item && item.metadata ? item.metadata[HP_META_KEY] : null;
+}
+function readPin() {
+  try { return localStorage.getItem(PIN_KEY) === "1"; } catch (e) { return false; }
+}
+function writePin(on) {
+  try { localStorage.setItem(PIN_KEY, on ? "1" : "0"); } catch (e) { /* 忽略 */ }
 }
 
 var PARAMS = (function () {
@@ -39,8 +42,13 @@ var lease = createHpEditLease(session);
 
 var els = {
   name: document.getElementById("hpe-name"),
-  hp: document.getElementById("hpe-hp"),
-  surge: document.getElementById("hpe-surge"),
+  hpPill: document.getElementById("hpe-hp-pill"),
+  cur: document.getElementById("hpe-cur"),
+  max: document.getElementById("hpe-max"),
+  temp: document.getElementById("hpe-temp"),
+  pin: document.getElementById("hpe-pin"),
+  lock: document.getElementById("hpe-lock"),
+  repaint: document.getElementById("hpe-repaint"),
   note: document.getElementById("hpe-note"),
   close: document.getElementById("close"),
   off: document.getElementById("hpe-off")
@@ -49,10 +57,19 @@ for (var di = 0; di < HPE_DEF_KEYS.length; di++) {
   els["def_" + HPE_DEF_KEYS[di]] = document.getElementById("hpe-def-" + HPE_DEF_KEYS[di]);
 }
 
-var state = { item: null, view: null, editable: false, locked: false, busy: false, pending: false };
+var state = {
+  item: null,
+  view: null,
+  editable: false,
+  role: "",
+  locked: false,
+  pinned: readPin(),
+  busy: false,
+  pending: false
+};
 
-/* 后台在线状态：只在标题栏挂一个小标记（窗口只有 340×150，放不下整条 bg-strip）。
- * 注意保存**不依赖**后台（页面自己写 token 元数据），所以离线只是「血条不会立刻重画」。 */
+/* 后台在线状态：只在标题栏挂一个小标记（窗口只有 344×106，放不下整条 bg-strip）。
+ * 保存**不依赖**后台（页面自己写 token 元数据），离线只是「血条不会立刻重画」。 */
 win.onStatus(function (st) {
   if (els.off) els.off.hidden = st !== "bad";
 });
@@ -78,30 +95,72 @@ function defsInput() {
 
 function formValues() {
   return {
-    hp: els.hp ? els.hp.value : "",
-    surge: els.surge ? els.surge.value : "",
+    cur: els.cur ? els.cur.value : "",
+    max: els.max ? els.max.value : "",
+    temp: els.temp ? els.temp.value : "",
     defs: defsInput()
   };
 }
 
+function paintRatio(view) {
+  if (!els.hpPill) return;
+  var v = view || {};
+  var max = typeof v.max === "number" && v.max > 0 ? v.max : 0;
+  var cur = typeof v.cur === "number" ? v.cur : 0;
+  var ratio = max ? Math.max(0, Math.min(1, cur / max)) : 0;
+  els.hpPill.style.setProperty("--hp-ratio", String(ratio));
+  els.hpPill.classList.toggle("low", ratio <= 0.5);
+}
+
 function fillForm(view) {
-  if (els.hp) els.hp.value = hpText(view);
-  if (els.surge) els.surge.value = surgeText(view);
+  var v = view || {};
+  if (els.cur) els.cur.value = curText(v);
+  if (els.max) els.max.value = maxText(v);
+  if (els.temp) els.temp.value = tempText(v);
   for (var i = 0; i < HPE_DEF_KEYS.length; i++) {
     var key = HPE_DEF_KEYS[i];
     var el = els["def_" + key];
-    if (el) el.value = defText(view, key);
+    if (el) el.value = defText(v, key);
   }
+  paintRatio(v);
+}
+
+function paintTools() {
+  if (els.pin) {
+    els.pin.classList.toggle("on", !!state.pinned);
+    els.pin.textContent = state.pinned ? "📌" : "📍";
+    els.pin.title = state.pinned ? "已钉住：选中变化 / 取消选中不自动关窗（点击取消）" : "钉住：选中变化 / 取消选中时不自动关窗";
+  }
+  if (els.lock) {
+    var locked = !!(state.view && state.view.locked);
+    els.lock.classList.toggle("on", locked);
+    els.lock.textContent = locked ? "🔒" : "🔓";
+    els.lock.title = locked ? "已锁定：玩家看不到精确数字（点击解锁）" : "锁定：玩家看不到精确数字（点击锁定）";
+    els.lock.disabled = state.role !== "GM" || state.busy;
+  }
+  if (els.repaint) els.repaint.disabled = state.busy;
+}
+
+function applyDisabled() {
+  var dis = !state.editable || state.busy;
+  var list = [els.cur, els.max, els.temp];
+  for (var i = 0; i < HPE_DEF_KEYS.length; i++) list.push(els["def_" + HPE_DEF_KEYS[i]]);
+  for (var k = 0; k < list.length; k++) {
+    if (!list[k]) continue;
+    list[k].disabled = dis;
+    list[k].readOnly = dis;
+  }
+  paintTools();
 }
 
 function setEditable(on) {
   state.editable = !!on;
-  for (var i = 0; i < HPE_DEF_KEYS.length; i++) {
-    var el = els["def_" + HPE_DEF_KEYS[i]];
-    if (el) el.readOnly = !on;
-  }
-  if (els.hp) els.hp.readOnly = !on;
-  if (els.surge) els.surge.readOnly = !on;
+  applyDisabled();
+}
+
+function setBusy(on) {
+  state.busy = !!on;
+  applyDisabled();
 }
 
 /* ---------------------------------------------------------------------------
@@ -125,7 +184,7 @@ async function playerIdOf() {
   try { return await OBR.player.getId(); } catch (e) { return ""; }
 }
 
-/** 绑定角色卡的默认值：只取「算得出」的几项（上限 / 回复力 / 四防），拿不到就算了。 */
+/** 绑定角色卡的默认值：只取「算得出」的几项（上限 / 四防，v1.10.0 不再带回复力）。 */
 async function cardDefaults(item) {
   var cardId = item && item.metadata ? item.metadata[KEY_BIND] : null;
   if (typeof cardId !== "string" || !cardId) return null;
@@ -145,15 +204,8 @@ async function cardDefaults(item) {
       defs[key] = Math.round(row.value);
       any = true;
     }
-    return {
-      max: d && d.maxHp > 0 ? d.maxHp : 0,
-      surges: d && d.surges > 0 ? d.surges : 0,
-      surgesMax: d && d.surgesMax > 0 ? d.surgesMax : 0,
-      defenses: any ? defs : null,
-      name: card.name || ""
-    };
+    return { max: d && d.maxHp > 0 ? d.maxHp : 0, defenses: any ? defs : null, name: card.name || "" };
   } catch (e) {
-    /* 卡片读不到 / 渲染层没加载起来：按「没有默认值」处理，不影响手动填 */
     return null;
   }
 }
@@ -176,39 +228,38 @@ async function load() {
     return;
   }
   state.item = item;
-  var role = await roleOf();
+  state.role = await roleOf();
   var pid = await playerIdOf();
-  /* v1.7.7：Boss 锁（hp.locked）→ 编辑窗只读（藏保存 + 提示「已锁定」）。
-   * 判定在 hp-edit-core.js 的 hpEditReadOnly：城主不受限（locked 默认 true，锁是给玩家看的）。 */
-  var locked = hpEditReadOnly(hpMetaOf(item), role);
-  state.locked = locked;
-  var editable = mayEditToken(item, role, pid) && !locked;
-  setEditable(editable);
+  var lockedForPlayer = hpEditReadOnly(hpMetaOf(item), state.role);
+  state.locked = lockedForPlayer;
+  state.editable = mayEditToken(item, state.role, pid) && !lockedForPlayer;
 
   var card = await cardDefaults(item);
   var view = hpEditView(hpMetaOf(item), card);
   state.view = view;
   if (els.name) els.name.textContent = (item.name || "").trim() || "未命名";
   fillForm(view);
+  setEditable(state.editable);
+  paintTools();
   refreshNote();
 }
 
-/**
- * 窗口内那一行提示（**不是**通知中心）。v1.7.8：只写「状态 / 只读 / 锁定」，
- * 「已保存 …」这类成功回音不再写 —— token 上的血条立刻重画就是反馈。
- */
+/** 窗口内状态行（不是通知中心）。 */
 function refreshNote() {
   var view = state.view || {};
-  if (state.locked) {
+  if (state.busy) {
+    note("保存中…（输入暂时禁用）", "warn");
+  } else if (state.locked) {
     note("已锁定：这枚 token 的血量对玩家隐藏（城主解锁后才能改）", "warn");
   } else if (!state.editable) {
-    note("只读：只有城主或这枚 token 的创建者能改血量与四防", "warn");
+    note("只读：只有城主或这枚 token 的创建者能改生命 / 临时生命 / 四防", "warn");
   } else if (view.fromCard) {
     note("已按绑定角色卡带入默认值；改动会自动保存", "ok");
   } else if (view.max === null) {
     note("填生命上限（比如 20）就能画出第一根血条", "warn");
   } else {
-    note("血量 " + (view.cur === null ? "?" : view.cur) + "/" + view.max + "；留空的四防 = 不画那枚盾", "");
+    note("生命 " + (view.cur === null ? "?" : view.cur) + "/" + view.max +
+      (view.temp ? "（临时 +" + view.temp + "）" : "") + "；留空的四防 = 不画那枚盾", "");
   }
 }
 
@@ -220,14 +271,10 @@ function broadcast(channel, payload) {
 }
 
 /* ---------------------------------------------------------------------------
- * v1.8.5：自动保存（照 Full Suite 的「即改即生效」架构，没有保存按钮）
- * ---------------------------------------------------------------------------
- * input 防抖 500ms / change / blur / Enter 都会触发 commit()：
- *   · buildHpEditPatch 把表单换算成 patch；与 state.view 相同就不写、也不广播；
- *   · 非法 / 半截输入（如 "20/"）不写，失焦时恢复成当前值；
- *   · 写成功后更新 state.view、短暂提示「已保存：…」并广播 CH_HP_EDIT_SAVED（后台立刻重画）；
- *   · 写失败仍弹 ERROR（不静默）；只读（locked / 无权限）绝不写。
- */
+ * 自动保存（照 Full Suite「即改即生效」）：input 防抖 500ms；change / blur / Enter 立即提交。
+ * 非法 / 半截输入不写，失焦时恢复成当前值；写成功更新 state.view 并广播 CH_HP_EDIT_SAVED。
+ * saving 时输入 disabled（见 setBusy），失败绝不静默。
+ * ------------------------------------------------------------------------- */
 var SAVE_DEBOUNCE_MS = 500;
 var saveTimer = 0;
 var noteTimer = 0;
@@ -241,36 +288,25 @@ function scheduleSave() {
   saveTimer = setTimeout(function () { saveTimer = 0; void commit("debounce"); }, SAVE_DEBOUNCE_MS);
 }
 
-function defSummary(view) {
-  var d = view && view.defenses ? view.defenses : null;
-  if (!d) return "";
-  var short = { ac: "AC", fort: "强", reflex: "反", will: "意" };
-  var out = [];
-  for (var i = 0; i < HPE_DEF_KEYS.length; i++) {
-    var k = HPE_DEF_KEYS[i];
-    if (typeof d[k] === "number") out.push(short[k] + d[k]);
-  }
-  return out.length ? "四防 " + out.join(" ") : "";
-}
-
-/** 写成功后短暂显示「已保存 …」（1.6s 后回到常规提示；不弹通知中心）。 */
 function showSaved(view) {
-  var txt = hpText(view || {});
-  var def = defSummary(view);
+  var txt = (view && view.max !== null && view.max !== undefined)
+    ? (view.cur === null || view.cur === undefined ? "?" : view.cur) + "/" + view.max
+    : "";
   if (noteTimer) clearTimeout(noteTimer);
-  note("已保存" + (txt ? "：" + txt : "") + (def ? " · " + def : ""), "ok");
+  note("已保存" + (txt ? "：" + txt : "") + (view && view.temp ? " · 临时 " + view.temp : ""), "ok");
   noteTimer = setTimeout(function () {
     noteTimer = 0;
     refreshNote();
   }, 1600);
 }
 
-/** 只回填一个输入框（失焦 / Enter 提交后恢复规范值；不碰其它正在编辑的格子）。 */
+/** 回填单个输入框（失焦 / Enter 后恢复规范值；不碰其它正在编辑的格子）。 */
 function fillOne(el, view) {
   if (!el) return;
   var v = view || {};
-  if (el === els.hp) { el.value = hpText(v); return; }
-  if (el === els.surge) { el.value = surgeText(v); return; }
+  if (el === els.cur) { el.value = curText(v); return; }
+  if (el === els.max) { el.value = maxText(v); return; }
+  if (el === els.temp) { el.value = tempText(v); return; }
   for (var i = 0; i < HPE_DEF_KEYS.length; i++) {
     var key = HPE_DEF_KEYS[i];
     if (el === els["def_" + key]) { el.value = defText(v, key); return; }
@@ -279,8 +315,7 @@ function fillOne(el, view) {
 
 async function commit(trigger, sourceEl) {
   if (state.busy) { state.pending = true; return; }
-  if (!state.editable) return; /* 只读 / 锁定：绝不写 */
-  /* 版本租约的安全网：后台已经把「当前编辑谁」换成别的 token 时，这个旧窗口不许再写。 */
+  if (!state.editable) return;
   var leaseNow = lease.capture();
   if (leaseNow && leaseNow.itemId !== itemId) {
     note("这个窗口已经过期：请重新右键「编辑血条」", "error");
@@ -290,7 +325,6 @@ async function commit(trigger, sourceEl) {
   var built = buildHpEditPatch(formValues(), state.view || {});
   if (!built.ok) {
     if (trigger === "blur" || trigger === "change" || trigger === "enter") {
-      /* 半截 / 非法输入：只把这一格恢复成当前值，不写 token（别动其它正在编辑的格子） */
       fillOne(sourceEl, state.view || {});
       refreshNote();
     } else {
@@ -298,35 +332,79 @@ async function commit(trigger, sourceEl) {
     }
     return;
   }
-  if (hpPatchEqualsView(built.patch, state.view)) return; /* 同值不写、不广播（避免元数据抖动） */
-  state.busy = true;
+  if (hpPatchEqualsView(built.patch, state.view)) { paintRatio(state.view); return; }
+  setBusy(true);
+  refreshNote();
   var res = await writeHpEdit({
     getItems: function (ids) { return OBR.scene.items.getItems(ids); },
     updateItems: function (ids, fn) { return OBR.scene.items.updateItems(ids, fn); },
     getRole: roleOf,
     getId: playerIdOf
   }, itemId, built.patch);
-  state.busy = false;
+  setBusy(false);
   if (state.pending) {
     state.pending = false;
     scheduleSave();
   }
   if (!res.ok) {
-    /* 写失败绝不静默（用户明确要求）：通知中心 ERROR + 窗口内红字 */
     note(res.message, "error");
     feedback(res.message, "ERROR");
     return;
   }
   state.view = hpEditView(res.hp, null);
-  /* 失焦 / Enter 提交成功时，把这一格回填成夹取后的规范值（如 171/20 → 20/20）；正在别的格子输入时不动它 */
+  var defsObj = {};
+  var keepDefs = false;
+  for (var i = 0; i < HPE_DEF_KEYS.length; i++) {
+    var key = HPE_DEF_KEYS[i];
+    if (state.view.defenses && typeof state.view.defenses[key] === "number") {
+      defsObj[key] = state.view.defenses[key];
+      keepDefs = true;
+    }
+  }
+  state.view.defenses = keepDefs ? defsObj : null;
   if (sourceEl) fillOne(sourceEl, state.view);
+  paintRatio(state.view);
+  paintTools();
   showSaved(state.view);
-  /* 让后台立刻重画（也兜住「后台没收到 scene.items.onChange」的情况） */
   broadcast(CH_HP_EDIT_SAVED, { itemId: itemId, hp: res.hp, at: Date.now() });
 }
 
+/* 锁定切换：只有城主能点；写 hp.locked（true = 玩家看不到精确数字）。 */
+async function toggleLock() {
+  if (state.role !== "GM" || state.busy || !state.view) return;
+  var next = !state.view.locked;
+  setBusy(true);
+  refreshNote();
+  var res = await writeHpEdit({
+    getItems: function (ids) { return OBR.scene.items.getItems(ids); },
+    updateItems: function (ids, fn) { return OBR.scene.items.updateItems(ids, fn); },
+    getRole: roleOf,
+    getId: playerIdOf
+  }, itemId, { locked: next });
+  setBusy(false);
+  if (!res.ok) {
+    note(res.message, "error");
+    feedback(res.message, "ERROR");
+    return;
+  }
+  state.view.locked = next;
+  paintTools();
+  note(next ? "已锁定：玩家看不到精确数字" : "已解锁：玩家可以看到精确数字", "ok");
+  if (noteTimer) clearTimeout(noteTimer);
+  noteTimer = setTimeout(function () { noteTimer = 0; refreshNote(); }, 1600);
+  broadcast(CH_HP_EDIT_SAVED, { itemId: itemId, hp: res.hp, at: Date.now() });
+}
+
+/* 重绘血条：广播 CH_HP_REPAINT，后台强制重算这张 token 的血条环 / 四防盾 / 资源徽记。 */
+function repaintBars() {
+  if (state.busy) return;
+  broadcast(CH_HP_REPAINT, { itemId: itemId, at: Date.now() });
+  note("已请求重绘这张 token 的血条（血条环 / 四防盾 / 资源徽记）", "ok");
+  if (noteTimer) clearTimeout(noteTimer);
+  noteTimer = setTimeout(function () { noteTimer = 0; refreshNote(); }, 1600);
+}
+
 function closeWindow() {
-  /* v1.7.10：✕ 双保险 —— popover.close(本窗 id) + 后台 {op:"close-win"}。 */
   closeSelf(ID_HP_EDIT, "hpEdit");
 }
 
@@ -334,13 +412,27 @@ function closeWindow() {
  * 事件
  * ------------------------------------------------------------------------- */
 if (els.close) els.close.addEventListener("click", closeWindow);
+if (els.pin) {
+  els.pin.addEventListener("click", function () {
+    state.pinned = !state.pinned;
+    writePin(state.pinned);
+    paintTools();
+    note(state.pinned ? "已钉住：选中变化 / 取消选中不会自动关窗" : "已取消钉住：跟随选中（取消选中会关窗）", "ok");
+    if (noteTimer) clearTimeout(noteTimer);
+    noteTimer = setTimeout(function () { noteTimer = 0; refreshNote(); }, 1600);
+  });
+}
+if (els.lock) els.lock.addEventListener("click", function () { void toggleLock(); });
+if (els.repaint) els.repaint.addEventListener("click", repaintBars);
 
-var inputs = [els.hp, els.surge];
+var inputs = [els.cur, els.max, els.temp];
 for (var k = 0; k < HPE_DEF_KEYS.length; k++) inputs.push(els["def_" + HPE_DEF_KEYS[k]]);
 for (var i = 0; i < inputs.length; i++) {
   var el = inputs[i];
   if (!el) continue;
-  /* v1.8.5：自动保存接线 —— input 防抖 500ms；change / blur / Enter 立即提交（带上触发的那一格）。 */
+  el.addEventListener("focus", function () {
+    try { el.select(); } catch (e) { /* 忽略 */ }
+  });
   el.addEventListener("input", function () { scheduleSave(); });
   el.addEventListener("change", function () { void commit("change", el); });
   el.addEventListener("blur", function () { void commit("blur", el); });
@@ -353,7 +445,7 @@ document.addEventListener("keydown", function (ev) {
   if (ev.key === "Escape") closeWindow();
 });
 
-/* 后台的版本租约：ready → 后台补发 target（面板 iframe 可能比第一条广播晚加载） */
+/* 后台版本租约：ready → 后台补发 target（iframe 可能比第一条广播晚加载）。 */
 onReady(function () {
   try {
     OBR.broadcast.onMessage(CH_HP_EDIT_TARGET, function (ev) {
@@ -361,14 +453,12 @@ onReady(function () {
       if (!lease.accept(data)) return;
       var now = lease.state;
       if (now.itemId && now.itemId !== itemId) {
-        /* 同一个 popover id 又开了别的 token：直接跟过去（URL 一般已经换了，这里兜住缓存页） */
         itemId = now.itemId;
         void load();
       }
     });
   } catch (e) { /* 忽略：没有 broadcast 也能手动保存 */ }
   broadcast(CH_HP_EDIT_READY, { session: session, itemId: itemId, at: Date.now() });
+  paintTools();
   void load();
 });
-
-/* 直接打开本页（不在枭熊里）时 onReady 会兜底执行，上面那段已经处理了 */

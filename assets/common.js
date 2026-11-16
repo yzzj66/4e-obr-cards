@@ -51,7 +51,7 @@ export const ID_SETTINGS_WIN = NS + "/settings-window";
  * id 与其它窗口都不同 → 可以和速览 / 先攻条同时开着；位置按窗口名 "hpEdit" 单独记。 */
 export const ID_HP_EDIT = NS + "/hp-edit";
 
-export const PLUGIN_VERSION = "1.9.2";
+export const PLUGIN_VERSION = "1.10.0";
 
 /**
  * 站点根地址。
@@ -196,6 +196,8 @@ export const CH_DICE_HIST_STATE = NS + "/dice-hist-state";
 export const CH_HP_EDIT_TARGET = NS + "/hp-edit-target";
 export const CH_HP_EDIT_READY = NS + "/hp-edit-ready";
 export const CH_HP_EDIT_SAVED = NS + "/hp-edit-saved";
+/** v1.10.0：编辑窗「重绘血条」按钮 → 后台强制重算这张 token 的血条环 / 四防盾 / 资源徽记。 */
+export const CH_HP_REPAINT = NS + "/hp-repaint";
 export const LS_DICE_ANIM = "4enext/dice/anim";
 /** 记录窗口默认只显示最近几条（其余滚 / 点「展开全部」看）。 */
 export const HIST_VISIBLE_ROWS = 4;

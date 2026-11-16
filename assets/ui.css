@@ -1191,47 +1191,68 @@ body.fx-page {
  *          ③ 状态行（提示 / 错误 / 已保存，右端是 window.js 的 win-flash）
  * 颜色全部取 :root（--bg2 / --line / --green / --orange / --red），不引入第二套色板。
  * 高度按「100vh 装下、内部不滚」写死：窗口本身由后台用 winSize() 夹进视口。 */
-body.hpe-page { padding: 6px; overflow: hidden; height: 100vh; }
-.hpe { height: calc(100vh - 12px); max-height: calc(100vh - 12px); }
-.hpe-head { padding: 2px 8px; gap: 6px; }
-.hpe-head .t {
-  min-width: 0; font-size: 12.5px; font-weight: 700; line-height: 1.4;
+/* v1.10.0：照 Full Suite hp-bar 的药丸布局（344×106，四行不滚）
+ * 行1 名称 + ⣿ 拖动柄 + 钉住 / 锁定 / 重绘 / ✕；行2 生命药丸（--hp-ratio 填充）+ 临时生命；
+ * 行3 四防四个小输入；行4 状态行。回复力字段已去掉（surges 数据只读不写）。 */
+body.hpe-page { padding: 5px; overflow: hidden; height: 100vh; }
+.hpe { height: calc(100vh - 10px); max-height: calc(100vh - 10px); }
+.hpe-head { padding: 1px 7px; gap: 5px; min-height: 24px; }
+.hpe-grip { flex: 0 0 auto; font-size: 12px; line-height: 1; color: #7b8a99; cursor: grab; letter-spacing: 0; }
+.hpe-title {
+  flex: 1 1 auto; min-width: 0; font-size: 12px; font-weight: 700; line-height: 1.4; text-align: center;
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
-.hpe-head .t b { color: var(--text); }
-.hpe-head .sp { margin-left: auto; }
+.hpe-title b { color: var(--text); }
+.hpe-tools { flex: 0 0 auto; display: flex; align-items: center; gap: 2px; margin-left: auto; }
+.hpe-icon { width: 20px; height: 20px; padding: 0; font-size: 11px; line-height: 1; opacity: .72; }
+.hpe-icon.on { opacity: 1; border-color: rgba(86, 211, 100, .6); color: var(--green); }
+body.hpe-page .hpe-icon[disabled] { opacity: .3; cursor: not-allowed; }
 .hpe-off {
-  flex: 0 0 auto; font-size: 10px; line-height: 1.5; color: var(--orange);
-  border: 1px solid rgba(227, 179, 65, .45); border-radius: 6px; padding: 0 5px;
+  flex: 0 0 auto; font-size: 9.5px; line-height: 1.4; color: var(--orange);
+  border: 1px solid rgba(227, 179, 65, .45); border-radius: 6px; padding: 0 4px;
   white-space: nowrap;
 }
 .hpe-body {
   flex: 1 1 auto; min-height: 0; overflow: hidden;
-  padding: 5px 8px 2px; display: flex; flex-direction: column; gap: 3px;
+  padding: 2px 7px 1px; display: flex; flex-direction: column; gap: 3px;
 }
-.hpe-row { flex: 0 0 auto; display: flex; align-items: center; gap: 5px; min-height: 24px; }
-.hpe-lab { flex: 0 0 auto; font-size: 11px; color: var(--muted); white-space: nowrap; }
-.hpe-in {
-  min-width: 0; height: 23px; padding: 0 6px;
-  border: 1px solid var(--line); border-radius: 7px;
-  background: #0e141b; color: var(--text);
-  font: 600 12.5px/1 ui-monospace, "Cascadia Code", Consolas, monospace;
-  font-variant-numeric: tabular-nums;
-  transition: border-color .15s, box-shadow .15s;
+.hpe-row { flex: 0 0 auto; display: flex; align-items: center; gap: 6px; min-height: 22px; }
+.hpe-pills { min-height: 26px; }
+.hpe-pill {
+  position: relative; display: flex; align-items: center; gap: 2px;
+  height: 24px; padding: 0 9px; border: 1px solid var(--line); border-radius: 999px;
+  background: #0e141b; overflow: hidden;
 }
-.hpe-in::placeholder { color: #56636f; font-weight: 400; letter-spacing: 0; }
-.hpe-in:hover { border-color: #34465a; }
-.hpe-in:focus {
-  outline: none; border-color: rgba(86, 211, 100, .65);
-  box-shadow: 0 0 0 2px rgba(86, 211, 100, .16);
+.hpe-hp-pill { flex: 1 1 auto; min-width: 0; }
+.hpe-hp-pill::before {
+  content: ""; position: absolute; left: 0; top: 0; bottom: 0; z-index: 0;
+  width: calc(var(--hp-ratio, 0) * 100%);
+  background: linear-gradient(90deg, rgba(198, 40, 40, .9), rgba(198, 40, 40, .55));
+  transition: width .15s;
 }
-.hpe-in[readonly] { opacity: .55; cursor: not-allowed; }
-.hpe-hp { flex: 1 1 auto; }
-.hpe-surge { flex: 0 0 64px; }
+.hpe-hp-pill.low::before {
+  background: linear-gradient(90deg, rgba(127, 20, 22, .96), rgba(127, 20, 22, .62));
+}
+.hpe-temp-pill { flex: 0 0 86px; justify-content: center; }
+.hpe-num {
+  position: relative; z-index: 1; min-width: 0; height: 20px; padding: 0 2px;
+  border: 0; border-radius: 999px; background: transparent; color: var(--text);
+  font: 700 13px/1 ui-monospace, "Cascadia Code", Consolas, monospace;
+  font-variant-numeric: tabular-nums; text-align: center;
+}
+.hpe-num::placeholder { color: #7f8b96; font-weight: 500; }
+.hpe-num:hover { background: rgba(255, 255, 255, .04); }
+.hpe-num:focus { outline: none; box-shadow: inset 0 0 0 1px rgba(86, 211, 100, .7); }
+.hpe-num[readonly], .hpe-num:disabled { opacity: .55; cursor: not-allowed; }
+#hpe-cur { flex: 0 0 34px; }
+#hpe-max { flex: 0 0 40px; }
+#hpe-temp { flex: 1 1 auto; }
+.hpe-sep, .hpe-unit { position: relative; z-index: 1; flex: 0 0 auto; font-size: 10px; color: var(--muted); }
 .hpe-defs { gap: 4px; }
-.hpe-def { flex: 1 1 0; display: flex; align-items: center; gap: 3px; min-width: 0; }
-.hpe-def span { flex: 0 0 auto; font-size: 10.5px; color: var(--muted); white-space: nowrap; }
-.hpe-def .hpe-in { flex: 1 1 auto; width: 0; padding: 0 4px; text-align: center; }
+.hpe-def { flex: 1 1 0; display: flex; align-items: center; gap: 2px; min-width: 0; }
+.hpe-def span { flex: 0 0 auto; font-size: 10px; color: var(--muted); white-space: nowrap; }
+.hpe-def .hpe-num { flex: 1 1 auto; width: 0; height: 20px; padding: 0 3px; border: 1px solid var(--line); background: #0e141b; font-size: 11.5px; }
+.hpe-def .hpe-num:focus { border-color: rgba(86, 211, 100, .65); box-shadow: 0 0 0 2px rgba(86, 211, 100, .16); }
 .hpe-status {
   position: relative; flex: 1 1 auto; min-height: 14px;
   display: flex; align-items: center;
@@ -1243,7 +1264,7 @@ body.hpe-page { padding: 6px; overflow: hidden; height: 100vh; }
 .hpe-note.ok { color: #a8e6b0; }
 .hpe-note.warn { color: var(--orange); }
 .hpe-note.error { color: #ffb4b1; }
-/* window.js 的 feedback() 往 #win-flash 写一行；它压在提示行右侧（自己带底色盖住提示） */
+/* window.js 的 feedback() 往 #win-flash 写一行；它压在提示行右侧 */
 .hpe-status .win-flash {
   position: absolute; right: 0; top: 0; bottom: 0; max-width: 62%;
   display: flex; align-items: center; padding-left: 8px;
@@ -1251,12 +1272,7 @@ body.hpe-page { padding: 6px; overflow: hidden; height: 100vh; }
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
 .hpe-status .win-flash:empty { display: none; }
-.hpe-foot { min-height: 26px; padding: 3px 8px; gap: 6px; justify-content: flex-end; }
-.hpe-foot .win-hint {
-  margin: 0 auto 0 0; font-size: 9.5px; color: #56636f;
-  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
-}
-.hpe-btn { padding: 3px 10px; font-size: 12px; border-radius: 7px; }
+
 
 
 
@@ -1394,3 +1410,9 @@ body.dh-page .dh-list.compact .dh-row:nth-child(n + 5) { display: none; }
   font-size: 12px; font-variant-numeric: tabular-nums;
 }
 .init-bonus-input:focus { border-color: #58a6ff; background: rgba(11, 15, 20, .92); }
+
+/* v1.10.0：骰子 action 模式隐藏页面自己的标题栏（关闭靠左上角 action 按钮），内容顶到边。 */
+body.dice-action { padding: 0; }
+body.dice-action .win-head { display: none; }
+body.dice-action .win { height: 100vh; border-radius: 0; border: 0; }
+body.dice-action .win-body.dice-wrap { padding-top: 8px; }

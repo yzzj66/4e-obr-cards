@@ -1,6 +1,6 @@
 {
   "name": "4eNEXT to owlbear",
-  "version": "1.9.2",
+  "version": "1.10.0",
   "manifest_version": 1,
   "author": "4E NEXT 玩家自制",
   "description": "基于4eNEXT的4e跑团适配mod",
@@ -11,6 +11,6 @@
     "icon": "icon-tool-dice.svg",
     "popover": "dice.html",
     "width": 320,
-    "height": 620
+    "height": 660
   }
 }

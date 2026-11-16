@@ -31,8 +31,8 @@ export const HPE_DEF_LABELS = { ac: "AC", fort: "强韧", reflex: "反射", will
 export const HPE_DEF_MAX = 999;
 /** 生命上限上限（防止手滑输 99999999 把血条算糊）。 */
 export const HPE_HP_MAX = 999999;
-/** 回复力上限（4E 通常 < 20，给 99 足够）。 */
-export const HPE_SURGE_MAX = 99;
+/** 临时生命上限（0~999，v1.10.0 新增；不做负数）。 */
+export const HPE_TEMP_MAX = 999;
 
 function numOrNull(v) {
   return typeof v === "number" && isFinite(v) ? Math.round(v) : null;
@@ -99,42 +99,36 @@ export function parseHpInput(text, base) {
 }
 
 /**
- * 解析回复力输入（可选字段）。base = { surges, surgesMax }。
- * "3/3" → 当前 / 上限；"3" → 当前（上限跟着长）；"+1" / "-1" → 在当前值上加减。
+ * v1.10.0：编辑窗改成 Full Suite 药丸布局，字段拆成独立输入框。
+ *   parseMaxInput("20")  → 上限（≥1，≤ HPE_HP_MAX）
+ *   parseCurInput("20", {max}) → 当前值（0~上限）
+ *   parseTempInput("5")  → 临时生命（0~999；空 = 0）
+ * 返回 { ok:true, value } 或 { ok:false, message }。
  */
-export function parseSurgeInput(text, base) {
+export function parseMaxInput(text) {
   const raw = normText(text);
-  const surges = numOrNull(base && base.surges);
-  const surgesMax = numOrNull(base && base.surgesMax);
-  if (!raw) return { ok: false, reason: "empty", message: "" };
-  let m = /^([+-])(\d+)$/.exec(raw);
-  if (m) {
-    if (surges === null) {
-      return { ok: false, reason: "no-surge", message: "先填回复力（比如 3/3），再用 " + raw };
-    }
-    const cap = surgesMax && surgesMax > 0 ? surgesMax : Math.max(surges, 1);
-    return {
-      ok: true,
-      patch: { surges: clampInt(surges + (m[1] === "-" ? -1 : 1) * parseInt(m[2], 10), 0, cap) },
-      shape: "delta"
-    };
-  }
-  m = /^(\d+)\/(\d+)$/.exec(raw);
-  if (m) {
-    const maxV = clampInt(parseInt(m[2], 10), 1, HPE_SURGE_MAX);
-    return {
-      ok: true,
-      patch: { surges: clampInt(parseInt(m[1], 10), 0, maxV), surgesMax: maxV },
-      shape: "pair"
-    };
-  }
-  m = /^(\d+)$/.exec(raw);
-  if (m) {
-    const value = clampInt(parseInt(m[1], 10), 0, HPE_SURGE_MAX);
-    const maxV = surgesMax && surgesMax > 0 ? Math.max(surgesMax, value) : Math.max(value, 1);
-    return { ok: true, patch: { surges: value, surgesMax: maxV }, shape: "abs" };
-  }
-  return { ok: false, reason: "syntax", message: "回复力可以填 3/3、3、+1、-1" };
+  if (!raw) return { ok: false, reason: "empty", message: "生命上限至少填 1" };
+  const m = /^(\d{1,7})$/.exec(raw);
+  if (!m) return { ok: false, reason: "syntax", message: "生命上限只填数字（≥ 1）" };
+  return { ok: true, value: clampInt(parseInt(m[1], 10), 1, HPE_HP_MAX) };
+}
+
+export function parseCurInput(text, base) {
+  const raw = normText(text);
+  if (!raw) return { ok: false, reason: "empty", message: "生命当前值要填 0 或以上" };
+  const m = /^(-?\d{1,7})$/.exec(raw);
+  if (!m) return { ok: false, reason: "syntax", message: "生命当前值只填数字" };
+  const max = numOrNull(base && base.max);
+  const hi = max && max > 0 ? max : HPE_HP_MAX;
+  return { ok: true, value: clampInt(parseInt(m[1], 10), 0, hi) };
+}
+
+export function parseTempInput(text) {
+  const raw = normText(text);
+  if (!raw) return { ok: true, value: 0 };
+  const m = /^(\d{1,3})$/.exec(raw);
+  if (!m) return { ok: false, reason: "syntax", message: "临时生命填 0~999" };
+  return { ok: true, value: clampInt(parseInt(m[1], 10), 0, HPE_TEMP_MAX) };
 }
 
 /**
@@ -154,34 +148,25 @@ export function parseDefenseInput(text) {
  * ------------------------------------------------------------------------- */
 
 /**
- * 把表单值换算成要写进 hp 的字段。form = { hp, surge, defs:{ac,fort,reflex,will} }。
+ * v1.10.0：把表单值换算成要写进 hp 的字段。form = { cur, max, temp, locked?, defs:{ac,fort,reflex,will} }。
  * base = 当前 view（hpEditView 的结果）。
- * 返回 { ok:true, patch:{ cur?, max?, surges?, surgesMax?, defenses } } 或 { ok:false, message }。
+ * 返回 { ok:true, patch:{ cur, max, temp, defenses, locked? } } 或 { ok:false, message }。
  * 注意 patch.defenses **总是**出现：四个框全空 = null = 把 defenses 从 metadata 里删掉（一枚盾都不画）。
  */
 export function buildHpEditPatch(form, base) {
   const f = form || {};
+  const b = base || {};
   const patch = {};
-  let any = false;
-
-  const hpRaw = String(f.hp == null ? "" : f.hp).trim();
-  if (hpRaw) {
-    const hp = parseHpInput(hpRaw, base);
-    if (!hp.ok) return { ok: false, field: "hp", message: hp.message };
-    patch.cur = hp.patch.cur;
-    if ("max" in hp.patch) patch.max = hp.patch.max;
-    any = true;
-  }
-
-  const surgeRaw = String(f.surge == null ? "" : f.surge).trim();
-  if (surgeRaw) {
-    const sg = parseSurgeInput(surgeRaw, base);
-    if (!sg.ok) return { ok: false, field: "surge", message: sg.message };
-    patch.surges = sg.patch.surges;
-    if ("surgesMax" in sg.patch) patch.surgesMax = sg.patch.surgesMax;
-    any = true;
-  }
-
+  const maxParsed = parseMaxInput(f.max);
+  if (!maxParsed.ok) return { ok: false, field: "max", message: maxParsed.message };
+  patch.max = maxParsed.value;
+  const curParsed = parseCurInput(f.cur, { max: patch.max });
+  if (!curParsed.ok) return { ok: false, field: "cur", message: curParsed.message };
+  patch.cur = curParsed.value;
+  const tempParsed = parseTempInput(f.temp);
+  if (!tempParsed.ok) return { ok: false, field: "temp", message: tempParsed.message };
+  patch.temp = tempParsed.value;
+  if ("locked" in f) patch.locked = !!f.locked;
   const defs = {};
   let defAny = false;
   const src = f.defs || {};
@@ -192,10 +177,6 @@ export function buildHpEditPatch(form, base) {
     if (one.value !== null) { defs[key] = one.value; defAny = true; }
   }
   patch.defenses = defAny ? defs : null;
-
-  if (!any && !defAny) {
-    return { ok: false, field: "hp", message: "先填一个生命值（比如 20），再点保存" };
-  }
   return { ok: true, patch: patch, hasDefenses: defAny };
 }
 
@@ -210,11 +191,11 @@ export function buildHpEditPatch(form, base) {
 export function applyHpEdit(rawMeta, patch, now) {
   const out = rawMeta && typeof rawMeta === "object" ? JSON.parse(JSON.stringify(rawMeta)) : {};
   const p = patch || {};
-  if ("cur" in p) out.cur = Math.round(p.cur);
-  if ("max" in p) out.max = Math.max(1, Math.round(p.max));
-  if ("temp" in p) out.temp = Math.max(0, Math.round(p.temp));
-  if ("surges" in p) out.surges = Math.max(0, Math.round(p.surges));
-  if ("surgesMax" in p) out.surgesMax = Math.max(1, Math.round(p.surgesMax));
+  if ("max" in p) out.max = clampInt(p.max, 1, HPE_HP_MAX);
+  if ("cur" in p) out.cur = p.cur;
+  if ("temp" in p) out.temp = clampInt(p.temp, 0, HPE_TEMP_MAX);
+  /* v1.10.0：surges / surgesMax 数据**只读不写**（编辑窗已去掉回复力字段）。 */
+  if ("locked" in p) out.locked = !!p.locked;
   if ("defenses" in p) {
     if (p.defenses && typeof p.defenses === "object") {
       const def = {};
@@ -230,14 +211,10 @@ export function applyHpEdit(rawMeta, patch, now) {
       delete out.defenses;
     }
   }
-  /* 跨字段夹取：先有 max 才能夹 cur；回复力夹到分母。 */
+  /* 跨字段夹取：v1.10.0 当前生命 0~上限（4E 负数血由其它 UI 处理，编辑窗不做）。 */
   if (typeof out.max === "number" && out.max > 0) {
-    if (typeof out.cur === "number") out.cur = Math.max(-out.max, Math.min(out.cur, out.max));
-    if (typeof out.surgesMax === "number" && out.surgesMax > 0 && typeof out.surges === "number") {
-      out.surges = Math.max(0, Math.min(out.surges, out.surgesMax));
-    }
+    if (typeof out.cur === "number") out.cur = Math.max(0, Math.min(out.cur, out.max));
   }
-  if (out.surgesMax == null) delete out.surgesMax;
   out.updatedAt = typeof now === "number" && isFinite(now) ? Math.round(now) : Date.now();
   return out;
 }
@@ -325,7 +302,7 @@ export async function writeHpEdit(deps, itemId, patch) {
 export function hpPatchEqualsView(patch, view) {
   const p = patch || {};
   const v = view || {};
-  const pairs = [["cur", "cur"], ["max", "max"], ["surges", "surges"], ["surgesMax", "surgesMax"]];
+  const pairs = [["cur", "cur"], ["max", "max"], ["temp", "temp"]];
   for (const pair of pairs) {
     const pk = pair[0];
     const vk = pair[1];
@@ -334,6 +311,7 @@ export function hpPatchEqualsView(patch, view) {
     const b = v[vk] === null || v[vk] === undefined ? null : Math.round(v[vk]);
     if (a !== b) return false;
   }
+  if ("locked" in p && !!p.locked !== !!v.locked) return false;
   const pa = p.defenses || null;
   const va = v.defenses || null;
   if (!pa && !va) return true;
@@ -362,11 +340,12 @@ export function hpEditView(meta, card) {
   const view = {
     cur: numOrNull(m.cur),
     max: numOrNull(m.max),
-    surges: numOrNull(m.surges),
-    surgesMax: numOrNull(m.surgesMax),
+    temp: numOrNull(m.temp),
+    locked: m.locked !== false,
     defenses: null,
     fromCard: false
   };
+  if (view.temp === null) view.temp = 0;
   if (m.defenses && typeof m.defenses === "object") {
     const def = {};
     let any = false;
@@ -384,14 +363,6 @@ export function hpEditView(meta, card) {
       view.fromCard = true;
     }
     if (view.cur === null && view.max !== null) view.cur = view.max;
-    if (view.surges === null && typeof c.surges === "number" && c.surges > 0) {
-      view.surges = Math.round(c.surges);
-      view.fromCard = true;
-    }
-    if (view.surgesMax === null && typeof c.surgesMax === "number" && c.surgesMax > 0) {
-      view.surgesMax = Math.round(c.surgesMax);
-      view.fromCard = true;
-    }
     if (!view.defenses && c.defenses && typeof c.defenses === "object") {
       const def = {};
       let any = false;
@@ -406,26 +377,27 @@ export function hpEditView(meta, card) {
   return view;
 }
 
-/** 生命输入框里的文字：有上限就写「当前/上限」，只有上限写上限，都没有留空。 */
-export function hpText(view) {
+/** v1.10.0：药丸布局的独立输入框文字（当前 / 上限 / 临时生命）。 */
+export function curText(view) {
   const v = view || {};
-  if (v.cur !== null && v.cur !== undefined && v.max !== null && v.max !== undefined) {
-    return Math.round(v.cur) + "/" + Math.round(v.max);
-  }
-  if (v.max !== null && v.max !== undefined) return String(Math.round(v.max));
-  /* 只有当前值、没有上限的老数据：至少把当前值显示出来，别让用户以为没数据 */
-  if (v.cur !== null && v.cur !== undefined) return String(Math.round(v.cur));
-  return "";
+  return v.cur === null || v.cur === undefined ? "" : String(Math.round(v.cur));
+}
+export function maxText(view) {
+  const v = view || {};
+  return v.max === null || v.max === undefined ? "" : String(Math.round(v.max));
+}
+export function tempText(view) {
+  const v = view || {};
+  return v.temp === null || v.temp === undefined ? "0" : String(Math.round(v.temp));
 }
 
-/** 回复力输入框里的文字。 */
-export function surgeText(view) {
+/** 生命比例（0~1，给药丸背景填充用）；没有上限时按 0。 */
+export function hpRatio(view) {
   const v = view || {};
-  if (v.surges !== null && v.surges !== undefined && v.surgesMax !== null && v.surgesMax !== undefined) {
-    return Math.round(v.surges) + "/" + Math.round(v.surgesMax);
-  }
-  if (v.surges !== null && v.surges !== undefined) return String(Math.round(v.surges));
-  return "";
+  const max = typeof v.max === "number" && v.max > 0 ? v.max : 0;
+  const cur = typeof v.cur === "number" ? v.cur : 0;
+  if (!max) return 0;
+  return Math.max(0, Math.min(1, cur / max));
 }
 
 /** 单个四防输入框里的文字（没有就留空 = 不画那枚盾）。 */

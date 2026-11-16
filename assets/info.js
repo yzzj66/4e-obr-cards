@@ -17,10 +17,10 @@ import OBR from "../vendor/obr-sdk.js";
 import { CH_INFO_ACK, CH_INFO_READY, CH_INFO_TARGET, CH_INFO_DRAG, ID_INFO, ID_PANEL, INFO_DRAG_THROTTLE_MS, URL_PANEL, KEY_BIND, getCards, findCard, esc, onReady, notify } from "./common.js";
 /* v1.7.13：带版本查询串 —— 旧缓存的 glance.js / track.js 正是「chip 点不动」的另一种可能，
  * 更新后必须让浏览器重新取这两个文件（info.html 的入口也带了 ?v=）。 */
-import { renderGlanceHTML, deriveGlance, magicItemDailyUses, loadCardIndex } from "./glance.js?v=1.9.2";
+import { renderGlanceHTML, deriveGlance, magicItemDailyUses, loadCardIndex } from "./glance.js?v=1.10.0";
 /* v1.7.10：✕ 统一走「OBR.popover.close(正确 id) + OBR.modal.close + 后台 {op:"close-win"}」双保险。 */
 import { closeSelf } from "./window.js";
-import { KEY_HP, applyAction, hpView, loadState, mayEditItem, readItem, scopeText, syncTokenStats } from "./track.js?v=1.9.2";
+import { KEY_HP, applyAction, hpView, loadState, mayEditItem, readItem, scopeText, syncTokenStats } from "./track.js?v=1.10.0";
 
 const params = new URLSearchParams(location.search);
 let itemId = params.get("item") || "";
