@@ -58,7 +58,7 @@ var TOOL_SETTINGS_ID = NS + "/settings-tool";
 var CH_HELLO = NS + "/diag-hello";
 var CH_PING = NS + "/diag-ping";
 var CH_PONG = NS + "/diag-pong";
-var PLUGIN_VERSION = "1.8.8";
+var PLUGIN_VERSION = "1.8.9";
 
 var KEY_HP = NS + "/hp";
 
@@ -204,6 +204,9 @@ var CH_DICE_HIST_STATE = NS + "/dice-hist-state";
 var CH_HP_EDIT_TARGET = NS + "/hp-edit-target";
 var CH_HP_EDIT_READY = NS + "/hp-edit-ready";
 var CH_HP_EDIT_SAVED = NS + "/hp-edit-saved";
+/* v1.8.9：信息窗单次挂载 —— 目标租约（换 token 只广播 target，不重开 popover）+ ready 握手。 */
+var CH_INFO_TARGET = NS + "/info-target";
+var CH_INFO_READY = NS + "/info-ready";
 
 var HPE_W = 340;
 var HPE_H = 122;
@@ -512,7 +515,10 @@ async function closeWinById(name) {
     if (infoItemId) infoAutoPopped[infoItemId] = true;
     infoOpen = false;
     infoItemId = null;
+    infoCardId = null;
     infoGeom = null;
+    /* v1.8.9：关窗清掉目标租约，下次打开重新分配 session。 */
+    resetInfoTarget();
   } else {
     var st = winOpen[name];
     if (st && st.timer) { clearTimeout(st.timer); st.timer = null; }
@@ -1589,6 +1595,46 @@ var infoOpen = false;
 var infoItemId = null;
 var infoCardId = null;
 
+/* v1.8.9：信息窗目标租约（照 hpEditTarget / Full Suite characterCards 的 sendInfoTarget）。
+ * 窗口只挂载一次：换 token 时 version+1 广播 CH_INFO_TARGET，页面收到后换 itemId/cardId 重渲染，
+ * 不 reload iframe。session 内的 version 必须严格递增；页面 READY 时后台重发当前 target（防丢首条）。 */
+var infoSession = "";
+var infoTarget = { session: "", version: 0, itemId: null, cardId: null };
+
+function newInfoSession() {
+  try {
+    if (typeof crypto !== "undefined" && crypto && typeof crypto.randomUUID === "function") {
+      return String(crypto.randomUUID());
+    }
+  } catch (e) {  }
+  return "info-" + Date.now().toString(36) + "-" + Math.random().toString(36).slice(2, 8);
+}
+
+function publishInfoTarget(itemId, cardId) {
+  if (!infoSession) infoSession = newInfoSession();
+  infoTarget = {
+    session: infoSession,
+    version: infoTarget.version + 1,
+    itemId: typeof itemId === "string" ? itemId : (itemId || ""),
+    cardId: typeof cardId === "string" ? cardId : (cardId || "")
+  };
+  return sendHello(CH_INFO_TARGET, infoTarget);
+}
+
+function resetInfoTarget() {
+  infoSession = "";
+  infoTarget = { session: "", version: 0, itemId: null, cardId: null };
+}
+
+function onInfoReady(ev) {
+  var data = ev && ev.data !== undefined ? ev.data : ev;
+  var session = data && typeof data.session === "string" ? data.session : "";
+  if (session && infoSession && session !== infoSession) return;
+  if (!infoSession) return;
+  /* 页面刚挂载 / 拖动重开后会发 READY：重发当前 target（第一条广播可能在 iframe 加载前丢了）。 */
+  void sendHello(CH_INFO_TARGET, infoTarget);
+}
+
 var infoGeom = null;
 
 var infoDrag = null;
@@ -1788,13 +1834,25 @@ async function infoAutoPos(itemId, size, vp) {
 }
 
 async function openInfo(itemId, cardId) {
+  /* v1.8.9：**单窗挂载** —— 窗口已经开着同一枚 token 换 target 即可，绝不重开 iframe
+   * （每次都新建 iframe 要重新下载 / 解析 ~430KB 脚本，是「切换 token 黑屏」的根因）。 */
+  if (infoOpen) {
+    infoItemId = itemId;
+    infoCardId = cardId;
+    await publishInfoTarget(itemId, cardId);
+    return;
+  }
   var vp = await infoViewport();
   var size = infoSize(vp);
   var pos = await infoAutoPos(itemId, size, vp);
+  if (!infoSession) infoSession = newInfoSession();
 
   var url = URL_INFO + "?v=" + encodeURIComponent(PLUGIN_VERSION) +
-    "&item=" + encodeURIComponent(itemId) + "&card=" + encodeURIComponent(cardId);
+    "&item=" + encodeURIComponent(itemId) + "&card=" + encodeURIComponent(cardId) +
+    "&session=" + encodeURIComponent(infoSession);
   await showInfoAt(pos, size, url, itemId, cardId, vp);
+  /* 首次挂载后广播 target：页面若在 iframe 加载完成前就 READY，onInfoReady 会补发。 */
+  await publishInfoTarget(itemId, cardId);
 }
 
 async function closeInfo() {
@@ -1806,6 +1864,7 @@ async function closeInfo() {
   infoOpen = false;
   infoItemId = null;
   infoCardId = null;
+  resetInfoTarget();
 }
 
 function queueInfoDrag(pos) {
@@ -1906,11 +1965,14 @@ async function resetInfoToToken() {
   var size = infoSize(vp);
   var pos = await infoAutoPos(itemId, size, vp);
   var url = infoGeom ? infoGeom.url : URL_INFO + "?v=" + encodeURIComponent(PLUGIN_VERSION) +
-    "&item=" + encodeURIComponent(itemId) + "&card=" + encodeURIComponent(cardId || "");
+    "&item=" + encodeURIComponent(itemId) + "&card=" + encodeURIComponent(cardId || "") +
+    "&session=" + encodeURIComponent(infoSession);
 
   if (!infoOpen || infoItemId !== itemId) return;
   try {
     await showInfoAt(pos, size, url, itemId, cardId, vp);
+    /* v1.8.9：重锚后页面会重新 READY 要 target —— 这里也主动重发一次（两边兜底）。 */
+    await publishInfoTarget(itemId, cardId);
     pageLog("info", "速览弹窗已回到 token 上方");
   } catch (e) {
     stepFail("把速览弹窗移回 token", e);
@@ -2083,7 +2145,7 @@ async function refreshInfo() {
     /* v1.8.5：用户手动 ✕ 关过这枚 token 的速览 → 选中不变之前不再自动弹回（先于「已开则返回」判断）。 */
     if (infoAutoPopped[item.id]) { perfLogBg("", __t0, __t1, __t2, perfNowMs()); return; }
     if (infoOpen && infoItemId === item.id && infoCardId === cardId) { perfLogBg("", __t0, __t1, __t2, perfNowMs()); return; }
-    if (infoOpen) await closeInfo();
+    /* v1.8.9：窗口已开、但不是这枚 token → 不关重开，交给 openInfo 只广播 target 换内容。 */
     /* 打开之前先置位：即使 openInfo 抛错也不在后续 onChange 里重试刷屏。 */
     infoAutoPopped[item.id] = true;
     try {
@@ -3550,6 +3612,10 @@ async function boot() {
   await attempt("订阅 " + CH_HP_EDIT_SAVED + "（血条编辑窗保存）", function () {
     OBR.broadcast.onMessage(CH_HP_EDIT_SAVED, onHpEditSaved);
   });
+  /* v1.8.9：信息窗页面 ready → 重发当前 target（防第一条 target 在 iframe 加载前丢掉）。 */
+  await attempt("订阅 " + CH_INFO_READY + "（速览页 ready 握手）", function () {
+    OBR.broadcast.onMessage(CH_INFO_READY, onInfoReady);
+  });
   await attempt("订阅 viewport.onChange", function () {
     if (!OBR.viewport || typeof OBR.viewport.onChange !== "function") return;
     var timer = null;
@@ -3573,16 +3639,35 @@ async function boot() {
   await watchLocalBars();
   scheduleBars();
 
-  /* v1.8.6：后台预热速览精简索引（data/card-index.js，约 305KB），让 info iframe 首次 import
-   * 直接命中 HTTP 缓存（GitHub Pages 冷缓存时尤其有用）。延迟 2s、不 await、失败静默；
-   * 用 BASE/pageUrl 拼绝对地址，背景脚本不依赖当前页面路径。 */
+  /* v1.8.9：串行预热速览（info）会用到的静态资源，让首次 / 后续打开 iframe 直接命中 HTTP 缓存。
+   * 启动 1500ms 后开始、不 await、失败静默（离线 / 网络慢不影响启动）；URL 带与页面一致的 ?v=。 */
   setTimeout(function () {
-    try {
-      var prewarm = pageUrl("data/card-index.js") + "?v=" + encodeURIComponent(PLUGIN_VERSION);
-      var p = fetch(prewarm, { cache: "force-cache" });
-      if (p && typeof p.catch === "function") p.catch(function () { /* 静默：离线 / 无网时 info 自己会降级 */ });
-    } catch (e) { /* 静默：fetch 不可用不影响启动 */ }
-  }, 2000);
+    var v = "?v=" + encodeURIComponent(PLUGIN_VERSION);
+    var list = [
+      pageUrl("info.html"),
+      pageUrl("assets/ui.css") + v,
+      pageUrl("assets/glance.css") + v,
+      pageUrl("assets/info.js") + v,
+      pageUrl("assets/common.js"),
+      pageUrl("assets/window.js"),
+      pageUrl("assets/glance.js") + v,
+      pageUrl("assets/track.js") + v,
+      pageUrl("vendor/obr-sdk.js"),
+      pageUrl("data/rules.js"),
+      pageUrl("data/card-index.js") + v
+    ];
+    var i = 0;
+    function next() {
+      if (i >= list.length) return;
+      var url = list[i++];
+      try {
+        var p = fetch(url, { cache: "force-cache" });
+        if (p && typeof p.then === "function") p.then(next, next);
+        else next();
+      } catch (e) { next(); }
+    }
+    try { next(); } catch (e) { /* 静默 */ }
+  }, 1500);
 
   var mark = function (v) { return v ? "✓" : "✗"; };
   var okLine = "4eNEXT to owlbear v" + PLUGIN_VERSION + " 已加载：工具栏×5 " + mark(bootStatus.tool) +

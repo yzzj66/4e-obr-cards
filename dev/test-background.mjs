@@ -660,7 +660,7 @@ const BG = run(OBR, stubBuilder("CURVE"), stubBuilder("SHAPE"), stubBuilder("TEX
   else if (info.anchorPosition.left !== 16 || info.anchorPosition.top !== 16)
     bad("速览弹窗初始位置不对（应夹到 16,16）：" + JSON.stringify(info.anchorPosition));
   /* v1.7.13：info 入口 URL 带 ?v=<版本>（缓存穿透），item / card 参数照旧。 */
-  else if (!/\/info\.html\?v=[\d.]+&item=tok-1&card=c-1$/.test(info.url)) bad("速览弹窗 url 不对：" + info.url);
+  else if (!/\/info\.html\?v=[\d.]+&item=tok-1&card=c-1(&session=[^&]+)?$/.test(info.url)) bad("速览弹窗 url 不对：" + info.url);
   else ok("速览弹窗按左上角定位（初始 16,16，url 带 item/card）");
 
   const infoUrl = info ? info.url : "";
@@ -846,9 +846,12 @@ const BG = run(OBR, stubBuilder("CURVE"), stubBuilder("SHAPE"), stubBuilder("TEX
     }
   }
 
-  /* 当前选中的 tok-1 绑定着 c-1 → 点「速览」应该重新开 /info（与「选中即弹」同一个 popover） */
+  /* 当前选中的 tok-1 绑定着 c-1 → 点「速览」应该重新开 /info（与「选中即弹」同一个 popover）。
+   * v1.8.9：信息窗已开时手动入口只换目标不重开；这里先关掉，验证「关闭后手动入口能重新开」。 */
+  const winCloseCbGlance = (broadcastCbs["com.4enext-owlbear/win-close"] || [])[0];
+  if (winCloseCbGlance) { winCloseCbGlance({ data: { op: "close-win", name: "info" } }); await sleep(80); }
   selection = [TOKEN_ID];
-  const glanceWin = await openByTool(toolGlance, /\/info\.html\?v=[\d.]+&item=tok-1&card=c-1$/, "速览");
+  const glanceWin = await openByTool(toolGlance, /\/info\.html\?v=[\d.]+&item=tok-1&card=c-1(&session=[^&]+)?$/, "速览");
   if (!glanceWin) bad("点工具栏「速览」没有打开当前选中 token 的速览");
   else ok("点工具栏「速览」打开 /info（复用「选中即弹」同一个 popover，url 带 item/card）");
 
@@ -1550,7 +1553,7 @@ const BG = run(OBR, stubBuilder("CURVE"), stubBuilder("SHAPE"), stubBuilder("TEX
     await select([TOKEN_ID]);
     const infoWin = infoOpens()[infoOpens().length - 1];
     if (infoOpens().length === i0) bad("选中已绑定卡的 token 没有弹速览（v1.2 的老行为被破坏了）");
-    else if (!infoWin || !/\/info\.html\?v=[\d.]+&item=tok-1&card=c-1$/.test(infoWin.url)) bad("速览的 url 不对：" + (infoWin && infoWin.url));
+    else if (!infoWin || !/\/info\.html\?v=[\d.]+&item=tok-1&card=c-1(&session=[^&]+)?$/.test(infoWin.url)) bad("速览的 url 不对：" + (infoWin && infoWin.url));
     else if (hpOpens().length !== h0) bad("已绑定卡的 token 同时也弹了血条编辑窗（应该只弹速览）");
     else ok("v1.7.7 分支①：已绑定卡 → 只弹速览 /info，不弹 /hp-edit（老行为不变）");
 
@@ -1674,6 +1677,48 @@ const BG = run(OBR, stubBuilder("CURVE"), stubBuilder("SHAPE"), stubBuilder("TEX
         ok("v1.8.5：工具栏 openGlance() 手动路径仍能打开速览（不受自动弹记忆影响）");
       else bad("openGlance 手动打开速览被挡住了");
     }
+
+    /* ⑪ v1.8.9：信息窗单窗挂载 —— 连着切两枚绑卡 token 只 open 一次，第二次走 target 广播换内容 */
+    const BOUND2_ID = "tok-bound-2";
+    sceneItems.push(mk(BOUND2_ID, "第二张绑卡单位", { "com.4enext-owlbear/cardId": "c-1" }));
+    boundsFor[BOUND2_ID] = { min: { x: 0, y: 0 }, max: { x: 150, y: 150 }, center: { x: 75, y: 75 }, width: 150, height: 150 };
+    const winCloseCb3 = (broadcastCbs["com.4enext-owlbear/win-close"] || [])[0];
+    if (winCloseCb3) { winCloseCb3({ data: { op: "close-win", name: "info" } }); await sleep(80); }
+    const targetCalls = () => all("broadcast.sendMessage").map((c) => c[1]).filter((m) => /\/info-target$/.test(m.channel));
+    await select([]);
+    const infoBefore9 = infoOpens().length;
+    const targetsBefore9 = targetCalls().length;
+    await select([TOKEN_ID]);
+    const infoAfterFirst9 = infoOpens().length;
+    await select([BOUND2_ID]);
+    const infoAfterSecond9 = infoOpens().length;
+    if (infoAfterFirst9 === infoBefore9 + 1 && infoAfterSecond9 === infoAfterFirst9)
+      ok("v1.8.9：连续选中两枚绑卡 token —— 只 popover.open 一次（第二次换目标不重建 iframe）");
+    else bad("v1.8.9：换 token 又重开了速览窗（" + infoBefore9 + "→" + infoAfterFirst9 + "→" + infoAfterSecond9 + "）");
+    const targetMsgs = targetCalls().slice(targetsBefore9).map((m) => m.data || {});
+    const versions = targetMsgs.map((x) => x.version).filter((v) => typeof v === "number");
+    const sessions = new Set(targetMsgs.map((x) => x.session).filter(Boolean));
+    if (versions.length >= 2 && versions[versions.length - 1] > versions[0] && sessions.size === 1)
+      ok("v1.8.9：target 广播 version 严格递增（" + versions.join("→") + "），session 一致");
+    else bad("v1.8.9：target version / session 不对：" + JSON.stringify({ versions, sessions: Array.from(sessions) }));
+    /* 页面 READY → 后台重发当前 target（防第一条广播早于 iframe 加载） */
+    const readyCb9 = (broadcastCbs["com.4enext-owlbear/info-ready"] || [])[0];
+    const session9 = Array.from(sessions)[0] || "";
+    const beforeReady9 = targetCalls().length;
+    const lastVer9 = versions.length ? versions[versions.length - 1] : 0;
+    if (readyCb9) { readyCb9({ data: { session: session9 } }); await sleep(80); }
+    const readyMsgs9 = targetCalls().slice(beforeReady9).map((m) => m.data || {});
+    if (readyMsgs9.length === 1 && readyMsgs9[0].version === lastVer9 && readyMsgs9[0].session === session9)
+      ok("v1.8.9：页面 READY → 后台重发当前 target（同 version 同 session，不递增）");
+    else bad("v1.8.9：READY 没有重发 target：" + JSON.stringify(readyMsgs9));
+    /* 关闭后下次打开重新 popover.open */
+    if (winCloseCb3) { winCloseCb3({ data: { op: "close-win", name: "info" } }); await sleep(80); }
+    const infoBeforeReopen = infoOpens().length;
+    await select([]);
+    await select([TOKEN_ID]);
+    if (infoOpens().length === infoBeforeReopen + 1)
+      ok("v1.8.9：关闭速览后再打开会重新 popover.open（session 重新分配）");
+    else bad("v1.8.9：关闭后重新打开没有新建 popover");
 
     /* ⑨ Boss 锁（hp.locked）→ 非城主的编辑窗只读（藏保存 + 提示「已锁定」） */
     const coreSrcSplit = fs.readFileSync(path.join(ROOT, "assets", "hp-edit-core.js"), "utf8");

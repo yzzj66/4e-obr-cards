@@ -155,7 +155,7 @@ globalThis.window = {
   addEventListener(type, fn) { (winListeners[type] = winListeners[type] || []).push(fn); },
   removeEventListener() {}
 };
-globalThis.location = { href: "https://example.test/info.html?item=tok-1&card=c-test", search: "?item=tok-1&card=c-test" };
+globalThis.location = { href: "https://example.test/info.html?item=tok-1&card=c-test&session=sess-test", search: "?item=tok-1&card=c-test&session=sess-test" };
 const lsStore = {};
 globalThis.localStorage = {
   getItem: (k) => (Object.prototype.hasOwnProperty.call(lsStore, k) ? lsStore[k] : null),
@@ -170,10 +170,15 @@ globalThis.requestAnimationFrame = (fn) => setTimeout(fn, 0);
 const save = JSON.parse(fs.readFileSync(path.join(ROOT, "samples", "sample-card.json"), "utf8"));
 const char = save.pages.character;
 const CARD_ID = "c-test";
+const CARD2_ID = "c-test-2";
 const TOKEN_ID = "tok-1";
+const TOKEN2_ID = "tok-2";
 const NS = "com.4enext-owlbear";
 const roomMeta = {
-  [NS + "/cards"]: { v: 1, updatedAt: 1, cards: [{ id: CARD_ID, name: char.name, level: char.level, char: char }] }
+  [NS + "/cards"]: { v: 1, updatedAt: 1, cards: [
+    { id: CARD_ID, name: char.name, level: char.level, char: char },
+    { id: CARD2_ID, name: "第二角色", level: char.level, char: char }
+  ] }
 };
 const token = {
   id: TOKEN_ID,
@@ -185,9 +190,22 @@ const token = {
     [NS + "/hp"]: { cur: 171, max: 171, temp: 0, surges: 8, surgesMax: 8, locked: true, updatedAt: 1 }
   }
 };
+/* v1.8.9：第二枚绑卡 token —— 测「换目标」时页面要重渲染成第二张卡。 */
+const token2 = {
+  id: TOKEN2_ID,
+  type: "IMAGE",
+  name: "第二角色",
+  createdUserId: "user-gm",
+  metadata: {
+    [NS + "/cardId"]: CARD2_ID,
+    [NS + "/hp"]: { cur: 171, max: 171, temp: 0, surges: 8, surgesMax: 8, locked: true, updatedAt: 1 }
+  }
+};
 const readyCbs = [];
 const metaChangeCbs = [];
 const notes = [];
+const broadcastHandlers = {};
+const broadcastSent = [];
 let setMetadataCalls = 0;
 const fakeOBR = {
   isAvailable: true,
@@ -207,7 +225,10 @@ const fakeOBR = {
     isReady: async () => true,
     onReadyChange() { return () => {}; },
     items: {
-      getItems: async (ids) => (ids && ids.indexOf(TOKEN_ID) >= 0 ? [token] : []),
+      getItems: async (ids) => {
+        const all = [token, token2];
+        return Array.isArray(ids) ? all.filter((it) => ids.indexOf(it.id) >= 0) : all;
+      },
       updateItems: async (ids, fn) => {
         if (typeof fn === "function") fn([token]);
       },
@@ -227,8 +248,8 @@ const fakeOBR = {
     onMetadataChange(cb) { metaChangeCbs.push(cb); return () => {}; }
   },
   broadcast: {
-    sendMessage: async () => {},
-    onMessage() { return () => {}; }
+    sendMessage: async (ch, data) => { broadcastSent.push({ ch: ch, data: data }); },
+    onMessage(ch, cb) { (broadcastHandlers[ch] = broadcastHandlers[ch] || []).push(cb); return () => {}; }
   },
   popover: { open: async () => {}, close: async () => {}, getWidth: async () => 660, getHeight: async () => 700 },
   modal: { open: async () => {}, close: async () => {}, getId: () => "m" },
@@ -362,6 +383,32 @@ else {
 const errNotes = notes.filter((n) => n.variant === "ERROR" || n.variant === "WARNING");
 if (!errNotes.length) ok("正常点击全程没有 ERROR / WARNING（v1.7.8：成功类提示不打扰）");
 else bad("正常点击弹出了错误提示：" + JSON.stringify(errNotes));
+
+/* ---- 6) v1.8.9：收到 CH_INFO_TARGET → 换 itemId/cardId 重渲染（不 reload 页面） ---- */
+const infoTargetCbs = broadcastHandlers[NS + "/info-target"] || [];
+const readySent = broadcastSent.filter((x) => x.ch === NS + "/info-ready");
+if (!infoTargetCbs.length) bad("v1.8.9：info.js 没有订阅 CH_INFO_TARGET");
+else if (!readySent.length) bad("v1.8.9：info.js onReady 没有发 CH_INFO_READY");
+else if (readySent[0].data.session !== "sess-test") bad("v1.8.9：READY 里的 session 不是 URL 里的：" + JSON.stringify(readySent[0].data));
+else if (html().indexOf("第二角色") >= 0) bad("v1.8.9：换目标前就已经渲染了第二张卡（前置不对）");
+else {
+  for (const cb of infoTargetCbs) cb({ data: { session: "sess-test", version: 1, itemId: TOKEN2_ID, cardId: CARD2_ID } });
+  await sleep(320);
+  if (domMap["title-text"].textContent === "第二角色" && html().indexOf("第二角色") < 0)
+    ok("v1.8.9：收到 target（session+version 校验通过）→ 换 itemId/cardId 重渲染，标题变成「第二角色」");
+  else bad("v1.8.9：收到 target 没有换卡重渲染（title=" + domMap["title-text"].textContent + "）");
+  /* 错误 session 的 target 必须忽略 */
+  const titleBefore = domMap["title-text"].textContent;
+  for (const cb of infoTargetCbs) cb({ data: { session: "other-session", version: 2, itemId: TOKEN_ID, cardId: CARD_ID } });
+  await sleep(120);
+  if (domMap["title-text"].textContent === titleBefore) ok("v1.8.9：session 不匹配的 target 被忽略（不会串房间）");
+  else bad("v1.8.9：错误 session 的 target 也生效了");
+  /* 旧 version 必须忽略 */
+  for (const cb of infoTargetCbs) cb({ data: { session: "sess-test", version: 1, itemId: TOKEN_ID, cardId: CARD_ID } });
+  await sleep(120);
+  if (domMap["title-text"].textContent === titleBefore) ok("v1.8.9：version 不递增的 target 被忽略（幂等防抖）");
+  else bad("v1.8.9：旧 version 的 target 也生效了");
+}
 
 console.log(fail ? "\n" + fail + " 个问题" : "\n全部通过");
 process.exit(fail ? 1 : 0);

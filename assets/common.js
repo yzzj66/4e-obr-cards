@@ -51,7 +51,7 @@ export const ID_SETTINGS_WIN = NS + "/settings-window";
  * id 与其它窗口都不同 → 可以和速览 / 先攻条同时开着；位置按窗口名 "hpEdit" 单独记。 */
 export const ID_HP_EDIT = NS + "/hp-edit";
 
-export const PLUGIN_VERSION = "1.8.8";
+export const PLUGIN_VERSION = "1.8.9";
 
 /**
  * 站点根地址。
@@ -92,6 +92,10 @@ export const CH_GLANCE_SUPPRESS = NS + "/glance-suppress";
 /** v1.8.8：临时性能日志中转频道 —— info iframe 的计时通过它发给后台打印，
  *  用户只看后台控制台也能看到 iframe 内部耗时。与 background.core.js 逐字一致。 */
 export const CH_PERF = NS + "/perf";
+/** v1.8.9：信息窗单次挂载 —— 后台广播「当前要给谁看」的目标租约（session + version）。 */
+export const CH_INFO_TARGET = NS + "/info-target";
+/** v1.8.9：信息窗页面 ready 握手 —— 后台收到后重发当前 target，防第一条广播早于 iframe 加载。 */
+export const CH_INFO_READY = NS + "/info-ready";
 
 /* ---- v1.5.0：骰子（团队共享）----
  * CH_ROLL        任何人 → 全桌：一次投掷（LOCAL + REMOTE；投掷者自己也听 LOCAL）

@@ -14,13 +14,13 @@
 //         子元素 stopPropagation、甚至正文外层被包一层都不会丢点击）；④ 渲染层 / 读写层带 ?v=1.7.14，
 //         避免浏览器 / 宿主继续用旧缓存的 glance.js（旧版威能 chip 根本不是 button）。
 import OBR from "../vendor/obr-sdk.js";
-import { CH_INFO_DRAG, CH_PERF, ID_INFO, ID_PANEL, INFO_DRAG_THROTTLE_MS, URL_PANEL, KEY_BIND, getCards, findCard, esc, onReady, notify } from "./common.js";
+import { CH_INFO_READY, CH_INFO_TARGET, CH_INFO_DRAG, CH_PERF, ID_INFO, ID_PANEL, INFO_DRAG_THROTTLE_MS, URL_PANEL, KEY_BIND, getCards, findCard, esc, onReady, notify } from "./common.js";
 /* v1.7.13：带版本查询串 —— 旧缓存的 glance.js / track.js 正是「chip 点不动」的另一种可能，
  * 更新后必须让浏览器重新取这两个文件（info.html 的入口也带了 ?v=）。 */
-import { renderGlanceHTML, deriveGlance, magicItemDailyUses, loadCardIndex } from "./glance.js?v=1.8.8";
+import { renderGlanceHTML, deriveGlance, magicItemDailyUses, loadCardIndex } from "./glance.js?v=1.8.9";
 /* v1.7.10：✕ 统一走「OBR.popover.close(正确 id) + OBR.modal.close + 后台 {op:"close-win"}」双保险。 */
 import { closeSelf } from "./window.js";
-import { KEY_HP, applyAction, hpView, loadState, mayEditItem, readItem, scopeText, syncTokenStats } from "./track.js?v=1.8.8";
+import { KEY_HP, applyAction, hpView, loadState, mayEditItem, readItem, scopeText, syncTokenStats } from "./track.js?v=1.8.9";
 
 /* v1.8.7：临时性能计时（只 console.log，不改行为、不弹通知；定位「速览打开慢 / 黑屏」，
  * 用户真机点一次拿到数字后即可整段删除）。时间基准 = iframe 内 performance.now()（导航起点）。 */
@@ -45,6 +45,9 @@ function perfLog(msg) {
 const params = new URLSearchParams(location.search);
 let itemId = params.get("item") || "";
 let cardId = params.get("card") || "";
+/* v1.8.9：单窗挂载 —— 本 iframe 只挂一次，之后换 token 由 CH_INFO_TARGET 广播更新（不 reload）。 */
+let infoSession = params.get("session") || "";
+let infoTargetVersion = 0;
 
 const bodyEl = document.getElementById("body");
 const titleEl = document.getElementById("title-text");
@@ -381,6 +384,29 @@ function refreshWithIndex(tries, done) {
   if (typeof done === "function") void Promise.resolve(p).then(done);
 }
 
+/** v1.8.9：收到后台「换目标」广播 → 只更新 itemId/cardId 后重渲染，**不 reload 页面 / 不重建 iframe**。 */
+function onInfoTarget(ev) {
+  var data = ev && ev.data !== undefined ? ev.data : ev;
+  if (!data) return;
+  var session = typeof data.session === "string" ? data.session : "";
+  if (!infoSession) infoSession = session;
+  else if (session && session !== infoSession) return;
+  var version = typeof data.version === "number" ? data.version : 0;
+  if (version && version <= infoTargetVersion) return;
+  infoTargetVersion = version;
+  var nextItem = typeof data.itemId === "string" ? data.itemId : "";
+  var nextCard = typeof data.cardId === "string" ? data.cardId : "";
+  if (!nextItem) return;
+  /* 同目标（首次挂载后后台补发 target）不重复刷新。 */
+  if (nextItem === itemId && nextCard === (cardId || "") && card) return;
+  itemId = nextItem;
+  cardId = nextCard;
+  card = null;
+  token = null;
+  lastSig = "";
+  void refresh(true);
+}
+
 onReady(function () {
   perfReadyMs = perfNow() - PERF_T0;
   try {
@@ -393,9 +419,15 @@ onReady(function () {
     OBR.player.onChange(function () {
       schedule(true);
     });
+    /* v1.8.9：订阅后台的换目标广播（窗口只挂载一次）。 */
+    OBR.broadcast.onMessage(CH_INFO_TARGET, onInfoTarget);
   } catch (e) {
     console.error(e);
   }
+  /* v1.8.9：告诉后台「我准备好了」—— 后台收到后重发当前 target（第一条广播可能早于 iframe 加载）。 */
+  try {
+    OBR.broadcast.sendMessage(CH_INFO_READY, { session: infoSession, at: Date.now() }, { destination: "LOCAL" });
+  } catch (e2) { /* 没有 broadcast 也能用 URL 里的 item/card 首绘 */ }
   /* v1.8.6：首帧不阻塞 —— 立刻先渲染（此时没有动作标签，冷缓存也能几帧内出内容），
    * 再异步加载精简索引（~305KB）→ 二次渲染补动作标签；加载失败静默（缺标签，数值 / 点击不受影响）。 */
   void refresh(true);

@@ -2,6 +2,15 @@
 
 > 这份文件是历史更新记录。安装与使用请看 [README](README.md)。
 
+**v1.8.9：信息窗单次挂载 + 广播换目标（切换 token 不再重建 iframe/黑屏）**（2026-11-16）——
+真机数据确认内容渲染只要 ~7ms，慢在「每次打开都新建 iframe 并重新下载/解析 ~430KB 脚本」+ 索引下载慢。本版照 Full Suite
+`characterCards` 改成**单窗挂载**：`info` popover 只开一次，之后切换 token 只通过 `CH_INFO_TARGET` 广播（session +
+version 递增租约）让页面换 `itemId/cardId` 后重渲染（**不 reload**）；页面 `onReady` 发 `CH_INFO_READY` 握手，后台重发当前 target
+防丢首条；拖动 / pin 重锚仍会重开 popover，重开后同样补发 target。新增后台**串行预热**：启动 1.5s 后
+`fetch(cache:"force-cache")` 依次预热 `info.html`、`ui.css`/`glance.css`、`info.js`/`common.js`/`window.js`/`glance.js`/`track.js`、
+`vendor/obr-sdk.js`、`data/rules.js`、`data/card-index.js`（失败静默）。v1.8.8 的 perf 日志保留，便于用户验证改善；
+关闭 / 手动 ✕ / `infoAutoPopped` 行为不变。
+
 **v1.8.8：性能日志改为后台中转 + 细分 info 阶段**（2026-11-16）——
 v1.8.7 用户只看到后台的 `bg select/card/open`（open 仅 3~6ms），info iframe 内部的日志没出现；本版：
 ① 新增 `CH_PERF` 频道：`info.js` 的计时除本 iframe 控制台外，还经 `OBR.broadcast`（LOCAL）发给后台，

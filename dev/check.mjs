@@ -19,7 +19,7 @@ const NOTES_PATH = path.join(ROOT, "docs", "NOTES.md");
 const NOTES = exists(NOTES_PATH) ? fs.readFileSync(NOTES_PATH, "utf8") : "";
 const notesHas = (s) => NOTES.indexOf(s) >= 0;
 /* 当前版本号：所有「版本全链路」断言都读它，升版本只改这一处（+ 各文件里的真实版本号）。 */
-const VER = "1.8.8";
+const VER = "1.8.9";
 
 function walk(dir, out = []) {
   for (const name of fs.readdirSync(dir)) {
@@ -3313,6 +3313,32 @@ console.log("== v1.8.8 性能日志后台中转（CH_PERF）");
 }
 
 /* ===========================================================================
+ * v1.8.9：信息窗单次挂载 + 广播换目标（CH_INFO_TARGET / CH_INFO_READY）
+ * ======================================================================== */
+console.log("== v1.8.9 信息窗单窗挂载（CH_INFO_TARGET / CH_INFO_READY）");
+{
+  const commonSrcV189 = fs.readFileSync(path.join(ROOT, "assets", "common.js"), "utf8");
+  const coreSrcV189 = fs.readFileSync(path.join(ROOT, "assets", "background.core.js"), "utf8");
+  const infoSrcV189 = fs.readFileSync(path.join(ROOT, "assets", "info.js"), "utf8");
+  for (const ch of ["CH_INFO_TARGET", "CH_INFO_READY"]) {
+    const c = new RegExp('export const ' + ch + ' = NS \\+ "([^"]+)";').exec(commonSrcV189);
+    const k = new RegExp('var ' + ch + ' = NS \\+ "([^"]+)";').exec(coreSrcV189);
+    if (c && k && c[1] === k[1]) ok("信息窗频道一致：" + ch + " = " + c[1]);
+    else bad(ch + " 不一致：common=" + (c && c[1]) + " core=" + (k && k[1]));
+  }
+  if (/if \(infoOpen\) \{[\s\S]{0,220}?publishInfoTarget\(itemId, cardId\)/.test(coreSrcV189) &&
+    /&session=" \+ encodeURIComponent\(infoSession\)/.test(coreSrcV189) &&
+    /onMessage\(CH_INFO_READY/.test(coreSrcV189) && /function onInfoReady\(/.test(coreSrcV189) &&
+    /function publishInfoTarget\(/.test(coreSrcV189) && /function resetInfoTarget\(/.test(coreSrcV189))
+    ok("后台：openInfo 已开只广播 target（不重开 iframe）+ session/version 租约 + READY 重发");
+  else bad("后台没有接「单窗挂载 / target 租约 / READY 握手」");
+  if (/onMessage\(CH_INFO_TARGET/.test(infoSrcV189) && /sendMessage\(CH_INFO_READY/.test(infoSrcV189) &&
+    /function onInfoTarget\(/.test(infoSrcV189) && /infoTargetVersion/.test(infoSrcV189))
+    ok("info.js：订阅 CH_INFO_TARGET 换目标（session + version 校验）+ onReady 发 CH_INFO_READY");
+  else bad("info.js 没有接 target 订阅 / READY 握手");
+}
+
+/* ===========================================================================
  * v1.8.6：速览首屏提速 —— 索引瘦身 / 首帧不阻塞 / 后台预热
  * ======================================================================== */
 console.log("== v1.8.6 速览首屏提速：索引瘦身 / 首帧不阻塞 / 后台预热");
@@ -3367,10 +3393,10 @@ console.log("== v1.8.6 速览首屏提速：索引瘦身 / 首帧不阻塞 / 后
   } else bad("③ gen-card-index.mjs 仍生成旧结构 / details 文件");
 
   /* ---- ④ 后台预热索引（延迟、失败静默、不影响启动） ---- */
-  if (has(coreV186, "data/card-index.js") && has(coreV186, 'cache: "force-cache"') &&
-    has(coreV186, "pageUrl(\"data/card-index.js\")") && has(coreV186, "}, 2000);")) {
-    ok("④ background.core.js：启动后延迟 2s 用 fetch(force-cache) 预热 data/card-index.js");
-  } else bad("④ background.core.js 没有后台预热索引（缺 fetch / force-cache / 2s 延迟）");
+  if (has(coreV186, "pageUrl(\"info.html\")") && has(coreV186, "pageUrl(\"data/card-index.js\")") &&
+    has(coreV186, 'cache: "force-cache"') && has(coreV186, "}, 1500);")) {
+    ok("④ background.core.js：启动后延迟 1.5s 串行 fetch(force-cache) 预热 info 静态资源（含 card-index）");
+  } else bad("④ background.core.js 没有后台预热 info 静态资源（缺列表 / force-cache / 1.5s 延迟）");
   if (!/await\s+fetch\(prewarm/.test(coreV186)) ok("④ 预热不 await、不影响启动");
   else bad("④ 预热被 await 了（会拖慢启动）");
 }
