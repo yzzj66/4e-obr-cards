@@ -499,6 +499,25 @@ ok("从真实源码拿到 window.__4ePortal（portalMeta / 螺旋 / 墙避让 / 
   else bad("①l openWin 没有统一补版本参数");
 }
 
+/* ---- ①m 目的地窗布局不裁切 ---- */
+{
+  const destHtml = fs.readFileSync(path.join(ROOT, "portal-dest.html"), "utf8");
+  if (coreSrc.indexOf("var PORTAL_DEST_H = 420;") >= 0 &&
+    coreSrc.indexOf("height: PORTAL_DEST_H") >= 0)
+    ok("①m WINS.portalDest 高度 420（宽 360 不变）");
+  else bad("①m PORTAL_DEST_H 不是 420");
+  if (destHtml.indexOf('class="dest-list"') >= 0 && destHtml.indexOf('class="dest-foot"') >= 0 &&
+    /\.dest-list \{[^}]*overflow-y: auto/.test(destHtml) &&
+    /\.dest-foot \{[^}]*flex: 0 0 auto/.test(destHtml) &&
+    !/\.dest-foot \{[^}]*position: absolute/.test(destHtml))
+    ok("①m 目的地窗布局：dest-list flex+overflow-y:auto，dest-foot 固定不绝对定位");
+  else bad("①m 目的地窗布局仍有裁切风险");
+  if (destHtml.indexOf('id="pd-close"') >= 0 && destHtml.indexOf("dest-empty") >= 0 &&
+    destHtml.indexOf("同一标签的其它传送门会出现在这里") < 0)
+    ok("①m 空状态 / 取消按钮齐全；底部提示整句已删除");
+  else bad("①m 空状态/取消按钮缺失，或底部提示未删");
+}
+
 /* ---- ② 同 tag 目的地 ---- */
 {
   const portals = [

@@ -3988,5 +3988,21 @@ console.log("== v2.1.0 窗口页 HTML 防缓存（统一 v=）");
   else bad("v2.1.0：缺少窗口 URL 版本断言");
 }
 
+console.log("== v2.1.0 目的地窗布局（420 高 / 列表可滚 / 底栏固定）");
+{
+  const coreDl = fs.readFileSync(path.join(ROOT, "assets", "background.core.js"), "utf8");
+  const destDl = fs.readFileSync(path.join(ROOT, "portal-dest.html"), "utf8");
+  if (coreDl.indexOf("var PORTAL_DEST_H = 420;") >= 0 &&
+    coreDl.indexOf("portalDest: { id: ID_PORTAL_DEST") >= 0)
+    ok("v2.1.0：PORTAL_DEST_H=420（WINS.portalDest 同步）");
+  else bad("v2.1.0：目的地窗高度未改 420");
+  if (destDl.indexOf('class="dest-list"') >= 0 && destDl.indexOf('class="dest-foot"') >= 0 &&
+    /\.dest-list \{[^}]*overflow-y: auto/.test(destDl) &&
+    /\.dest-foot \{[^}]*flex: 0 0 auto/.test(destDl) &&
+    !/\.dest-foot \{[^}]*position: absolute/.test(destDl))
+    ok("v2.1.0：dest-list 可滚动 / dest-foot 固定（非 absolute）；标题栏 + 列表 + 底栏不裁切");
+  else bad("v2.1.0：目的地窗布局仍可能裁切");
+}
+
 console.log(fail ? "\n" + fail + " 个问题" : "\n全部通过");
 process.exit(fail ? 1 : 0);

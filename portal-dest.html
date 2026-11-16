@@ -6,18 +6,22 @@
 <title>4eNEXT to owlbear · 传送目的地</title>
 <link rel="stylesheet" href="assets/ui.css?v=2.1.0">
 <style>
-  body.pd-page .win { height: 100vh; max-height: 100vh; }
-  .pd-body { padding: 8px 10px 10px; display: flex; flex-direction: column; gap: 7px; overflow: hidden; }
-  .pd-body .list { flex: 1 1 auto; overflow: auto; display: flex; flex-direction: column; gap: 6px; }
-  .pd-body button.dest {
-    display: flex; justify-content: space-between; align-items: center; gap: 8px;
-    padding: 7px 9px; border: 1px solid var(--line); border-radius: 8px;
-    background: #101820; color: #e6edf3; cursor: pointer; text-align: left; font-size: 12px;
+  html, body.pd-page { height: 100%; }
+  body.pd-page { margin: 0; padding: 0; overflow: hidden; box-sizing: border-box; }
+  body.pd-page .win { height: 100vh; max-height: 100vh; display: flex; flex-direction: column; box-sizing: border-box; }
+  .pd-body { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; gap: 6px; padding: 8px 10px 10px; box-sizing: border-box; overflow: hidden; }
+  .dest-list { flex: 1 1 auto; min-height: 0; overflow-y: auto; overflow-x: hidden; display: flex; flex-direction: column; gap: 6px; }
+  .dest-empty { flex: 1 1 auto; display: flex; align-items: center; justify-content: center; padding: 12px; color: #93a1b0; font-size: 11px; text-align: center; }
+  .dest-list button.dest {
+    flex: 0 0 auto; display: flex; justify-content: space-between; align-items: center; gap: 8px;
+    min-height: 32px; padding: 8px; border: 1px solid var(--line); border-radius: 8px;
+    background: #101820; color: #e6edf3; cursor: pointer; text-align: left; font-size: 12px; box-sizing: border-box;
   }
-  .pd-body button.dest:hover { border-color: #3f8bff; background: #14202b; }
-  .pd-body .tag { font-size: 10px; color: #93a1b0; }
-  .pd-body .hint { font-size: 10.5px; color: #93a1b0; line-height: 1.5; }
-  .pd-body .foot { display: flex; justify-content: flex-end; }
+  .dest-list button.dest:hover { border-color: #3f8bff; background: #14202b; }
+  .dest-list .tag { font-size: 10px; color: #93a1b0; }
+  .dest-foot { flex: 0 0 auto; display: flex; align-items: center; justify-content: flex-end; gap: 8px; padding-top: 2px; }
+  .dest-foot .hint { flex: 1 1 auto; min-width: 0; font-size: 10.5px; color: #93a1b0; line-height: 1.4; }
+  .dest-foot .btn { flex: 0 0 auto; }
   .pd-close { font-size: 14px; line-height: 1; }
 </style>
 </head>
@@ -29,9 +33,10 @@
     <div class="sp"><button class="icon-btn pd-close" id="pd-close-x" type="button" title="关闭（Esc）">✕</button></div>
   </div>
   <div class="win-body pd-body">
-    <div class="list" id="pd-list"></div>
-    <p class="hint" id="pd-hint">同一标签的其它传送门会出现在这里。</p>
-    <div class="foot"><button class="btn" id="pd-close" type="button" data-bg-soft>取消</button></div>
+    <div class="dest-list" id="pd-list"></div>
+    <div class="dest-foot">
+      <button class="btn" id="pd-close" type="button" data-bg-soft>取消</button>
+    </div>
   </div>
 </div>
 <script type="module" src="assets/portal-dest-page.js?v=2.1.0"></script>

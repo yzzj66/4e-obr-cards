@@ -7,7 +7,6 @@ var params = new URLSearchParams(location.search);
 var sourceId = params.get("portal") || "";
 var tokenIds = (params.get("tokens") || "").split(",").filter(Boolean);
 var listEl = document.getElementById("pd-list");
-var hintEl = document.getElementById("pd-hint");
 var closeEl = document.getElementById("pd-close");
 var portals = [];
 
@@ -33,8 +32,8 @@ function render() {
       "<span>" + esc(p.name || "传送门") + "</span>" +
       '<span class="tag">' + esc(p.tag || "") + "</span></button>";
   }
+  if (!portals.length) html = '<div class="dest-empty">没有同标签的其它传送门。</div>';
   listEl.innerHTML = html;
-  if (!portals.length && hintEl) hintEl.textContent = "没有同标签的其它传送门。";
 }
 
 async function load() {

@@ -310,7 +310,7 @@ var PORTAL_SUPPRESS_MS = 700;
 var PORTAL_EDIT_W = 360;
 var PORTAL_EDIT_H = 390;
 var PORTAL_DEST_W = 360;
-var PORTAL_DEST_H = 320;
+var PORTAL_DEST_H = 420;
 var PORTAL_PREVIEW_TAG = NS + "/portal-preview";
 
 /* ---- 1. 日志 / 通知 / 失败上报（成功不打扰，失败必可见） ---- */

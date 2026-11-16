@@ -7,7 +7,7 @@
  *
  * 不要手改本文件。改逻辑请改 assets/background.core.js，然后：
  *     node dev/build-background.mjs
- * 生成时间：2026-11-16T17:26:15.153Z
+ * 生成时间：2026-11-16T17:33:53.769Z
  * --------------------------------------------------------------------------- */
 (function () {
 "use strict";
@@ -352,7 +352,7 @@ var PORTAL_SUPPRESS_MS = 700;
 var PORTAL_EDIT_W = 360;
 var PORTAL_EDIT_H = 390;
 var PORTAL_DEST_W = 360;
-var PORTAL_DEST_H = 320;
+var PORTAL_DEST_H = 420;
 var PORTAL_PREVIEW_TAG = NS + "/portal-preview";
 
 /* ---- 1. 日志 / 通知 / 失败上报（成功不打扰，失败必可见） ---- */
