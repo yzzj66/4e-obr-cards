@@ -1,4 +1,4 @@
-// v2.1.0：传送门核心离线自测（node dev/test-portal.mjs）
+// v2.2.0：传送门核心离线自测（node dev/test-portal.mjs）
 // ---------------------------------------------------------------------------
 // 直接加载 **assets/background.core.js 的真实源码**（vm + 浏览器外壳桩，不启动 boot），
 // 从 window.__4ePortal 拿纯函数，断言：
@@ -86,17 +86,21 @@ ok("从真实源码拿到 window.__4ePortal（portalMeta / 螺旋 / 墙避让 / 
   else bad("① portal.svg 仍是黑盘 / 有矩形底");
 }
 
-/* ---- ①b 工具对齐 Full Suite：GM-only / tool→mode / activateMode / 双路径（v2.1.0 真机 bug 回归） ---- */
+/* ---- ①b 工具对齐 Full Suite：GM-only / tool→mode / activateMode / 双路径（v2.2.0 真机 bug 回归） ---- */
 {
   const order = [];
-  let toolDef = null, modeDef = null, role = "GM", notified = 0;
+  let toolDef = null, modeDef = null, pairModeDef = null, role = "GM", notified = 0;
   let activeModeCalls = 0, activateToolCalls = 0;
   sandbox.OBR = {
     player: { getRole: async () => role },
     tool: {
       create: async (def) => { order.push("tool"); toolDef = def; },
       remove: async () => {},
-      createMode: async (def) => { order.push("mode"); modeDef = def; },
+      createMode: async (def) => {
+        order.push("mode");
+        if (def.id === P.CONSTANTS.TOOL_PORTAL_MODE_ID) modeDef = def;
+        if (def.id === P.CONSTANTS.TOOL_PORTAL_PAIR_MODE_ID) pairModeDef = def;
+      },
       removeMode: async () => {},
       activateTool: async () => { activateToolCalls++; order.push("activateTool"); },
       getActiveTool: async () => P.CONSTANTS.TOOL_PORTAL_ID,
@@ -127,6 +131,10 @@ ok("从真实源码拿到 window.__4ePortal（portalMeta / 螺旋 / 墙避让 / 
     typeof modeDef.onToolDown === "function" && typeof modeDef.onToolMove === "function" && typeof modeDef.onToolUp === "function")
     ok("①b mode：无 preventDrag、icon filter.activeTools、crosshair、drag + down/move/up 双路径齐全");
   else bad("①b mode 定义不对：" + JSON.stringify(modeDef));
+  if (pairModeDef && pairModeDef.icons[0].filter && pairModeDef.icons[0].filter.activeTools &&
+    typeof pairModeDef.onToolClick === "function")
+    ok("①b pair mode：icon filter.activeTools + onToolClick");
+  else bad("①b pair mode 未注册");
   if (activeModeCalls === 1 && order.indexOf("activateMode") > order.indexOf("mode"))
     ok("①b createMode 后 active tool 是传送门 → activateMode(TOOL_PORTAL_ID, TOOL_PORTAL_MODE_ID)");
   else bad("①b 注册后没有 activateMode 兜底：" + JSON.stringify({ activeModeCalls, order }));
@@ -281,7 +289,7 @@ ok("从真实源码拿到 window.__4ePortal（portalMeta / 螺旋 / 墙避让 / 
   else bad("①d 预览/手势诊断日志缺失");
 }
 
-/* ---- ①e 创建验证 / 传送门生命周期诊断（v2.1.0 真机排障） ---- */
+/* ---- ①e 创建验证 / 传送门生命周期诊断（v2.2.0 真机排障） ---- */
 {
   if (coreSrc.indexOf("portal verify id=") >= 0 && coreSrc.indexOf("getItems([item.id])") >= 0 &&
     coreSrc.indexOf("portalLifecycleSync") >= 0 && coreSrc.indexOf("portal added id=") >= 0 &&
@@ -414,7 +422,7 @@ ok("从真实源码拿到 window.__4ePortal（portalMeta / 螺旋 / 墙避让 / 
   else bad("①i readForm 仍包含 radius");
 }
 
-/* ---- ①j 传送落点不重复触发 / 手动再次拖入正常触发（v2.1.0 收窄版） ---- */
+/* ---- ①j 传送落点不重复触发 / 手动再次拖入正常触发（v2.2.0 收窄版） ---- */
 {
   let portalOpen = 0;
   const portal = { id: "p-door", type: "IMAGE", position: { x: 500, y: 500 }, width: 40, height: 40, scale: { x: 0.9333, y: 0.9333 }, visible: true, metadata: { [P.CONSTANTS.KEY_PORTAL]: { name: "门", tag: "城", radius: 70 } } };
@@ -540,6 +548,109 @@ ok("从真实源码拿到 window.__4ePortal（portalMeta / 螺旋 / 墙避让 / 
     coreSrc.indexOf("500ms 内重复触发") >= 0)
     ok("①n 检测触发 500ms 内同 portal+tokenIds 只触发一次");
   else bad("①n 检测触发没有 500ms 去重");
+}
+
+const NS_PREVIEW_GHOST = P.CONSTANTS.KEY_PORTAL + "-ghost";
+
+/* ---- ①o v2.2.0 隐形门：入口跳过 / 目的地保留 / GM ghost ---- */
+{
+  const portals = [
+    { itemId: "v1", name: "显形门", tag: "T", visible: true },
+    { itemId: "h1", name: "隐藏门", tag: "T", visible: false }
+  ];
+  const ds = P.portalDestinations(portals, "v1");
+  if (ds.length === 1 && ds[0].itemId === "h1")
+    ok("①o 隐形门仍出现在目的地列表（同 tag，visible=false 不过滤）");
+  else bad("①o 隐形门没有出现在目的地：" + JSON.stringify(ds));
+  const item = { id: "h1", type: "IMAGE", position: { x: 100, y: 200 }, width: 40, height: 40, scale: { x: 0.9333, y: 0.9333 }, visible: false, metadata: { [P.CONSTANTS.KEY_PORTAL]: { name: "隐藏门", tag: "T", radius: 70, visible: false } } };
+  let localAdds = [], localDeletes = [];
+  let builtOpacity = null;
+  const builder = {
+    position() { return this; }, scale() { return this; }, layer() { return this; }, locked() { return this; },
+    disableHit() { return this; }, visible() { return this; }, opacity(v) { builtOpacity = v; return this; },
+    metadata() { return this; }, build() { return { id: "ghost-" + localAdds.length, metadata: {} }; }
+  };
+  sandbox.buildImage = () => builder;
+  sandbox.OBR = {
+    player: { getRole: async () => "GM" },
+    scene: {
+      grid: { getDpi: async () => 150 },
+      local: {
+        getItems: async () => [{ id: "old-ghost", metadata: { [NS_PREVIEW_GHOST]: true } }],
+        deleteItems: async (ids) => { localDeletes = localDeletes.concat(ids); },
+        addItems: async (items) => { localAdds = localAdds.concat(items); }
+      }
+    }
+  };
+  await P.portalGhostSync([item]);
+  if (localDeletes.indexOf("old-ghost") >= 0 && localAdds.length === 1 && builtOpacity === 0.45)
+    ok("①o GM ghost：清旧 local ghost + 按隐形门重建（opacity 0.45）");
+  else bad("①o GM ghost 重建不对：" + JSON.stringify({ localDeletes, n: localAdds.length, builtOpacity }));
+  const addsBefore = localAdds.length;
+  await P.portalGhostSync([item]);
+  if (localAdds.length === addsBefore)
+    ok("①o ghost 签名未变 → 不重复重建");
+  else bad("①o ghost 重复重建");
+  await P.portalGhostSync([Object.assign({}, item, { visible: true, metadata: { [P.CONSTANTS.KEY_PORTAL]: { name: "显形", tag: "T", radius: 70, visible: true } } })]);
+  if (localAdds.length === addsBefore)
+    ok("①o 门恢复可见 → ghost 被清理、不新增");
+  else bad("①o 可见门仍生成 ghost");
+}
+
+/* ---- ①p 传送动画已整体移除 ---- */
+{
+  const fxPage = path.join(ROOT, "portal-fx.html");
+  if (!fs.existsSync(fxPage) &&
+    coreSrc.indexOf("portalPlayFx") < 0 && coreSrc.indexOf("CH_PORTAL_FX") < 0 &&
+    coreSrc.indexOf("portalEffectFor") < 0 && coreSrc.indexOf("PORTAL_FX_MS") < 0 &&
+    coreSrc.indexOf("prefers-reduced-motion") < 0)
+    ok("①p 传送动画已整体移除（无 portal-fx.html / fx 函数 / CH_PORTAL_FX / effect 逻辑）");
+  else bad("①p 传送动画仍有残留");
+  const editHtml = fs.readFileSync(path.join(ROOT, "portal-edit.html"), "utf8");
+  const pageJs = fs.readFileSync(path.join(ROOT, "assets", "portal-page.js"), "utf8");
+  if (editHtml.indexOf("pe-effect") < 0 && editHtml.indexOf("传送效果") < 0 &&
+    pageJs.indexOf("effect") < 0)
+    ok("①p 编辑窗已删除传送效果下拉与 effect 字段");
+  else bad("①p 编辑窗仍有 effect 残留");
+  const m = P.portalMeta({ effect: "fade", name: "测试" });
+  if (!("effect" in m)) ok("①p portalMeta 不再输出 effect（旧 metadata 的 effect 被忽略）");
+  else bad("①p portalMeta 仍输出 effect");
+}
+
+/* ---- ①q v2.2.0 成对创建（两个同 tag 门） ---- */
+{
+  let added = [];
+  const builder = {
+    position() { return this; }, scale() { return this; }, layer() { return this; }, name() { return this; },
+    locked() { return this; }, disableHit() { return this; }, visible() { return this; }, opacity() { return this; },
+    metadata(m) { this._meta = m; return this; }, build() { return { id: "pair-" + added.length, metadata: this._meta || {} }; }
+  };
+  sandbox.buildImage = () => builder;
+  sandbox.OBR = {
+    player: { getRole: async () => "GM" },
+    scene: {
+      grid: { getDpi: async () => 150 },
+      items: { addItems: async (items) => { added = added.concat(items); } },
+      local: { addItems: async () => {}, updateItems: async () => {}, deleteItems: async () => {}, getItems: async () => [] }
+    }
+  };
+  const pair = await P.portalPairCreate({ x: 100, y: 100 }, { x: 400, y: 100 });
+  const tags = added.map((it) => it.metadata && it.metadata[P.CONSTANTS.KEY_PORTAL] && it.metadata[P.CONSTANTS.KEY_PORTAL].tag);
+  if (added.length === 2 && tags[0] && tags[0] === tags[1])
+    ok("①q pair create 两个门：同随机 tag（" + tags[0] + "）、名称 A/B");
+  else bad("①q 成对创建不对：" + JSON.stringify({ n: added.length, tags }));
+  if (coreSrc.indexOf("TOOL_PORTAL_PAIR_MODE_ID") >= 0 && coreSrc.indexOf("portal pair first=") >= 0 &&
+    coreSrc.indexOf("portal pair create tag=") >= 0)
+    ok("①q pair mode 注册 / 日志齐全");
+  else bad("①q pair mode 缺失");
+}
+
+/* ---- ①r 已无 fx 播放入口 ---- */
+{
+  if (typeof P.portalPlayFx !== "function" && typeof P.onPortalFx !== "function" &&
+    coreSrc.indexOf("portal fx play") < 0)
+    ok("①r 调试钩子/日志也不再暴露 fx 播放（传送完全无动画）");
+  else bad("①r 仍有 fx 播放入口");
 }
 
 /* ---- ② 同 tag 目的地 ---- */

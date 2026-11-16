@@ -57,7 +57,7 @@ var TOOL_SETTINGS_ID = NS + "/settings-tool";
 var CH_HELLO = NS + "/diag-hello";
 var CH_PING = NS + "/diag-ping";
 var CH_PONG = NS + "/diag-pong";
-var PLUGIN_VERSION = "2.1.0";
+var PLUGIN_VERSION = "2.2.0";
 
 var KEY_HP = NS + "/hp";
 
@@ -209,9 +209,9 @@ var CH_DICE_HIST_STATE = NS + "/dice-hist-state";
 var CH_HP_EDIT_TARGET = NS + "/hp-edit-target";
 var CH_HP_EDIT_READY = NS + "/hp-edit-ready";
 var CH_HP_EDIT_SAVED = NS + "/hp-edit-saved";
-/* v2.1.0：页面切换/载入完成回 ack（单窗换目标确认；600ms 无 ack 兜底重开一次）。 */
+/* v2.2.0：页面切换/载入完成回 ack（单窗换目标确认；600ms 无 ack 兜底重开一次）。 */
 var CH_HP_EDIT_ACK = NS + "/hp-edit-ack";
-/* v2.1.0：血条编辑窗「重绘」按钮 → 后台强制重算这张 token 的血条环 / 四防盾 / 资源徽记。 */
+/* v2.2.0：血条编辑窗「重绘」按钮 → 后台强制重算这张 token 的血条环 / 四防盾 / 资源徽记。 */
 var CH_HP_REPAINT = NS + "/hp-repaint";
 /* v1.8.9：信息窗单次挂载 —— 目标租约（换 token 只广播 target，不重开 popover）+ ready 握手。 */
 var CH_INFO_TARGET = NS + "/info-target";
@@ -291,10 +291,11 @@ var URL_SETTINGS = pageUrl("settings.html");
 var URL_BIND = pageUrl("bind.html");
 var URL_BUTTON = pageUrl("button.html");
 
-/* v2.1.0：传送门（核心）。 */
+/* v2.2.0：传送门（核心）。 */
 var KEY_PORTAL = NS + "/portal";
 var TOOL_PORTAL_ID = NS + "/portal-tool";
 var TOOL_PORTAL_MODE_ID = NS + "/portal-mode";
+var TOOL_PORTAL_PAIR_MODE_ID = NS + "/portal-pair-mode";
 var ID_PORTAL_EDIT = NS + "/portal-edit";
 var ID_PORTAL_DEST = NS + "/portal-dest";
 var CH_PORTAL_SAVE = NS + "/portal-save";
@@ -312,6 +313,8 @@ var PORTAL_EDIT_H = 390;
 var PORTAL_DEST_W = 360;
 var PORTAL_DEST_H = 420;
 var PORTAL_PREVIEW_TAG = NS + "/portal-preview";
+var PORTAL_GHOST_TAG = NS + "/portal-ghost";
+var PORTAL_PAIR_TAG = NS + "/portal-pair-preview";
 
 /* ---- 1. 日志 / 通知 / 失败上报（成功不打扰，失败必可见） ---- */
 function pageLog(kind, text) {
@@ -518,7 +521,7 @@ function winPopoverOptions(def, pos, size, url) {
   };
 }
 
-/** v2.1.0：窗口页 HTML 自身也带缓存，打开 URL 统一补 ?v=<PLUGIN_VERSION>（已有 v= 不重复）。 */
+/** v2.2.0：窗口页 HTML 自身也带缓存，打开 URL 统一补 ?v=<PLUGIN_VERSION>（已有 v= 不重复）。 */
 function withWindowVersion(url) {
   var u = String(url || "");
   if (/[?&]v=[^&]*/.test(u)) return u;
@@ -665,7 +668,7 @@ function endWinDrag(name) {
   st.drag = null;
 }
 
-/* v2.1.0：拖动改用「start 时最新视口 + 本轮 base/size」模型（照 Full Suite panelDrag/panelLayout）。
+/* v2.2.0：拖动改用「start 时最新视口 + 本轮 base/size」模型（照 Full Suite panelDrag/panelLayout）。
  * 旧实现用 st.geom.vp（打开窗口时的快照）clamp，视口变大后向下拖会卡在旧下限。 */
 async function beginWinDrag(name, st) {
   var vp = await infoViewport();
@@ -1014,7 +1017,7 @@ function publishHpEditTarget(itemId, pending) {
   return sendHello(CH_HP_EDIT_TARGET, hpEditTarget);
 }
 
-/* v2.1.0：单窗常驻的 ack 等待（照 info 的 700ms 模式，这里 600ms）。
+/* v2.2.0：单窗常驻的 ack 等待（照 info 的 700ms 模式，这里 600ms）。
  * 页面收到 target → commit 未保存输入 → load → 回 CH_HP_EDIT_ACK {session,version,itemId}。 */
 var hpEditAckWait = null;
 function waitHpEditAck(session, version, itemId, ms) {
@@ -1053,7 +1056,7 @@ async function openHpEdit(itemId) {
   hpAutoPopped[itemId] = true;
   if (winOpen["hpEdit"] && hpEditTarget.itemId === itemId && !hpEditTarget.pending) return true;
   if (!hpEditSession) hpEditSession = newHpEditSession();
-  /* v2.1.0：窗口已挂载 → 不重开 iframe；广播 target 换目标，等页面 ack；600ms 没 ack 兜底重开一次。 */
+  /* v2.2.0：窗口已挂载 → 不重开 iframe；广播 target 换目标，等页面 ack；600ms 没 ack 兜底重开一次。 */
   if (winOpen["hpEdit"]) {
     var expectVersion = hpEditTarget.version + 1;
     var ackP = waitHpEditAck(hpEditSession, expectVersion, itemId, 600);
@@ -1099,12 +1102,12 @@ function onHpEditSaved(ev) {
   stepOk("血条编辑窗已保存：" + itemId);
 }
 
-/* v2.1.0：编辑窗「钉住」偏好（默认关）——钉住后选中变化 / 取消选中不自动关窗。 */
+/* v2.2.0：编辑窗「钉住」偏好（默认关）——钉住后选中变化 / 取消选中不自动关窗。 */
 function hpEditPinned() {
   try { return localStorage.getItem("4enext/hp-edit/pinned") === "1"; } catch (e) { return false; }
 }
 
-/* v2.1.0：编辑窗「重绘」→ 丢掉这张 token 的血条缓存，下一次 scheduleBars 强制重建（环 / 盾 / 徽记）。 */
+/* v2.2.0：编辑窗「重绘」→ 丢掉这张 token 的血条缓存，下一次 scheduleBars 强制重建（环 / 盾 / 徽记）。 */
 function onHpRepaint(ev) {
   var data = ev && ev.data !== undefined ? ev.data : ev;
   var itemId = data && typeof data.itemId === "string" ? data.itemId : "";
@@ -1492,7 +1495,7 @@ async function closeButton() {
   buttonOpen = false;
 }
 
-/* v2.1.0：移植 Full Suite viewportAnchor —— OBR SDK **没有 viewport.onChange**，
+/* v2.2.0：移植 Full Suite viewportAnchor —— OBR SDK **没有 viewport.onChange**，
  * 所以用后台 500ms 轮询 getWidth/getHeight；变化时回调（按钮重锚 + 窗口 reclamp）。
  * 只在有监听者时跑；读失败退避 2s；首读只记 baseline 不触发。 */
 var vpAnchorTimer = null;
@@ -1662,7 +1665,7 @@ async function registerTools() {
     }
   });
 
-  /* v2.1.0：传送门工具（GM 拖动画圆；玩家点工具给提示，不进入绘制模式）。 */
+  /* v2.2.0：传送门工具（GM 拖动画圆；玩家点工具给提示，不进入绘制模式）。 */
   await registerPortalTool();
 }
 
@@ -1920,7 +1923,7 @@ async function registerContextMenu() {
     onClick: function (context) { return onHpBarEdit(context); }
   });
 
-  /* v2.1.0：GM 右键 → 编辑传送门。filter 不能按 metadata 值相等（值对象，永远不匹配），
+  /* v2.2.0：GM 右键 → 编辑传送门。filter 不能按 metadata 值相等（值对象，永远不匹配），
    * 只在 onClick 里检查 metadata[KEY_PORTAL]；正常路径还有「GM 选中单枚门自动弹编辑窗」。 */
   await createContextMenu({
     id: NS + "/portal-edit",
@@ -2116,7 +2119,7 @@ async function anchorOf(itemId) {
   }
 }
 
-/* v2.1.0：最近一次成功读到的视口尺寸（轮询 / infoViewport 都更新），供拖动 start / clamp 参考。 */
+/* v2.2.0：最近一次成功读到的视口尺寸（轮询 / infoViewport 都更新），供拖动 start / clamp 参考。 */
 var lastVp = { width: 0, height: 0 };
 async function infoViewport() {
   var vp = { width: 0, height: 0 };
@@ -2506,7 +2509,7 @@ async function refreshInfo() {
     pageLog("info", "选中变化 → " + (selId || "无") + "（自动弹窗记录已重置）");
   }
   if (!item) {
-    /* v2.1.0：未钉住时取消选中 → 自动关掉血条编辑窗（钉住则保留）。 */
+    /* v2.2.0：未钉住时取消选中 → 自动关掉血条编辑窗（钉住则保留）。 */
     if (winOpen["hpEdit"] && !hpEditPinned()) await closeWin("hpEdit");
     return closeInfo();
   }
@@ -2516,7 +2519,7 @@ async function refreshInfo() {
 
   var cardId = await boundCardId(item);
   if (cardId) {
-    /* v2.1.0：选了绑定卡的 token → 速览接管；未钉住时关掉血条编辑窗（钉住则保持当前 token）。 */
+    /* v2.2.0：选了绑定卡的 token → 速览接管；未钉住时关掉血条编辑窗（钉住则保持当前 token）。 */
     if (winOpen["hpEdit"] && !hpEditPinned() && hpEditTarget.itemId !== item.id) {
       await closeWin("hpEdit");
     }
@@ -2540,7 +2543,7 @@ async function refreshInfo() {
   /* v1.8.1 说明：这里不写「窗口开着就 return」，否则「取消选中 → 再选回来」这类正常重弹会被误杀。
    * 防止「保存后关掉又自己弹」的护栏在 openHpEdit()：同一枚 token 的窗口已经开着时直接复用、不重开。 */
   await closeInfo();
-  /* v2.1.0：钉住时保持当前编辑的 token，不换 target。 */
+  /* v2.2.0：钉住时保持当前编辑的 token，不换 target。 */
   if (hpEditPinned() && winOpen["hpEdit"]) return;
   if (!hasHpBarData(item)) {
     if (winOpen["hpEdit"] && hpEditTarget.itemId !== item.id) await closeWin("hpEdit");
@@ -2674,7 +2677,7 @@ async function sceneDpi() {
   return cachedDpi;
 }
 
-/* v2.1.0：用户样板布局 —— 底部比例横条 + 左侧三圆（强/反/意）+ 右下 AC 盾，不再用环形。
+/* v2.2.0：用户样板布局 —— 底部比例横条 + 左侧三圆（强/反/意）+ 右下 AC 盾，不再用环形。
  * 坐标全部相对 token 包围盒（宽 64%、高 10% 短边），s = min(w,h)/dpi 沿用旧缩放。 */
 
 /** 圆角矩形多边形（以中心为原点，24 段近似；血条 / 填充都用它）。 */
@@ -2949,7 +2952,7 @@ function buildBarItems(tokenId, L) {
   var bar = L.bar;
   var i;
 
-  /* v2.1.0 底部圆角横条：深红轨道 + 按 cur/max 比例的左→右填充。 */
+  /* v2.2.0 底部圆角横条：深红轨道 + 按 cur/max 比例的左→右填充。 */
   items.push(barCurveItem(tokenId, "bar-bg",
     roundedRectPoints(bar.width, bar.height, bar.radius, 24), bar.cx, bar.cy,
     { fill: bar.track, fillOpacity: bar.trackOpacity }));
@@ -3854,7 +3857,7 @@ async function onRollClear() {
 }
 
 /* =====================================================================
- * v2.1.0：传送门（核心）
+ * v2.2.0：传送门（核心）
  *   GM 拖动画圆建门 → 同 tag 互联；玩家拖动自己 token 进门 → 目的地选择 →
  *   六边形螺旋落点 + 原生 WALL 避让；传送后 700ms 抑制重复触发。
  * 数据：metadata com.4enext-owlbear/portal = { name, tag, radius, showName, visible, locked }
@@ -4006,7 +4009,7 @@ var portalRadiusInflight = {};
 var portalTeleportLanded = {};
 var portalWritingIds = {};
 var portalSkipLogAt = 0;
-/** v2.1.0：GM 拖缩放手柄 → 把 item.scale 反算回 metadata.radius（只 GM 写，inflight 防自触发循环）。 */
+/** v2.2.0：GM 拖缩放手柄 → 把 item.scale 反算回 metadata.radius（只 GM 写，inflight 防自触发循环）。 */
 async function portalScaleRadiusSync(all) {
   var role = "";
   try { role = await OBR.player.getRole(); } catch (e) { role = ""; }
@@ -4044,7 +4047,7 @@ async function portalScaleRadiusSync(all) {
   return wrote;
 }
 
-/** v2.1.0 诊断：对比已知传送门 id 集合，打印 added / removed / hidden，区分「被删」还是「没画出来」。 */
+/** v2.2.0 诊断：对比已知传送门 id 集合，打印 added / removed / hidden，区分「被删」还是「没画出来」。 */
 function portalLifecycleSync(all) {
   var current = {};
   var count = 0;
@@ -4182,13 +4185,17 @@ async function portalPreviewClear() {
   catch (e) { pageLog("err", "preview remove fail：" + errText(e)); }
   await portalClearPreviewResidue("clear");
 }
-async function portalCreate(center, radius) {
+async function portalCreate(center, radius, opts) {
   var role = "";
   try { role = await OBR.player.getRole(); } catch (e) { role = ""; }
   if (role !== "GM") { notify("只有城主能创建传送门", "WARNING"); return null; }
   var rr = Number(radius);
   if (!isFinite(rr) || rr < PORTAL_MIN_RADIUS) return null;
-  var meta = portalMeta({ name: "传送门", tag: "传送门", radius: Math.round(rr), showName: true, visible: true, locked: false });
+  var o = opts && typeof opts === "object" ? opts : {};
+  var meta = portalMeta({
+    name: o.name || "传送门", tag: o.tag || o.name || "传送门", radius: Math.round(rr),
+    showName: true, visible: true, locked: false
+  });
   var item = await portalImageItem(center, meta.radius, meta, false);
   try {
     await OBR.scene.items.addItems([item]);
@@ -4338,6 +4345,40 @@ async function registerPortalTool() {
     catch (e3) { pageLog("err", "传送门 mode 创建失败（重试后）：" + errText(e3)); return; }
   }
 
+  /* v2.2.0：成对创建 mode（tool 下第二个 mode）。 */
+  try {
+    await OBR.tool.createMode({
+      id: TOOL_PORTAL_PAIR_MODE_ID,
+      icons: [{ icon: TOOL_PORTAL_ICON_URL, label: "成对创建传送门（点两处）", filter: { activeTools: [TOOL_PORTAL_ID] } }],
+      cursors: [{ cursor: "crosshair" }],
+      onToolClick: async function (_ctx, event) {
+        var p = event && event.pointerPosition;
+        if (!p) return false;
+        if (!portalPairFirst) {
+          portalPairFirst = { x: p.x, y: p.y };
+          pageLog("info", "portal pair first=" + p.x + "," + p.y);
+          await portalPairPreview(portalPairFirst, portalPairFirst);
+          return false;
+        }
+        var first = { x: portalPairFirst.x, y: portalPairFirst.y };
+        portalPairFirst = null;
+        await portalPairCreate(first, { x: p.x, y: p.y });
+        return false;
+      },
+      onToolMove: async function (_ctx, event) {
+        if (!portalPairFirst) return;
+        var p = event && event.pointerPosition;
+        if (p) await portalPairPreview(portalPairFirst, p);
+      },
+      onToolDragCancel: async function () { await portalPairClear(); },
+      onDeactivate: async function () { await portalPairClear(); },
+      onKeyDown: async function (_ctx, event) { if (event && event.key === "Escape") await portalPairClear(); }
+    });
+    pageLog("info", "传送门 pair mode 创建 ✓");
+  } catch (ePair) {
+    pageLog("err", "传送门 pair mode 创建失败：" + errText(ePair));
+  }
+
   /* 已激活的 tool 可能还没切 mode：显式切一次并打印当前 active 状态。 */
   try {
     var active = typeof OBR.tool.getActiveTool === "function" ? await OBR.tool.getActiveTool() : "";
@@ -4358,7 +4399,7 @@ async function syncPortalEditFromSelection() {
   var sel = [];
   try { sel = (await OBR.player.getSelection()) || []; } catch (e2) { sel = []; }
 
-  /* v2.1.0 修复：打开 popover 后选区会变成「无」（焦点变化），不能当成取消选中去关窗，
+  /* v2.2.0 修复：打开 popover 后选区会变成「无」（焦点变化），不能当成取消选中去关窗，
    * 否则用户看到一闪。空选中 / 多选 / 选中非门 → 都保持现有编辑窗。 */
   if (sel.length === 0) {
     if (portalEditItemId) pageLog("info", "传送门 编辑窗保持（选中 0 项）");
@@ -4402,7 +4443,7 @@ async function onPortalEditClosed(ev) {
 async function openPortalEdit(itemId) {
   if (!itemId) return false;
   try {
-    /* v2.1.0：编辑窗接进通用窗口框架（可拖动 / 位置记忆 / 视口 reclamp）。
+    /* v2.2.0：编辑窗接进通用窗口框架（可拖动 / 位置记忆 / 视口 reclamp）。
      * URL 带 ?item=<id>；同一 popover id 重复打开会原地更新，不会重开。 */
     await openWin("portalEdit", URL_PORTAL_EDIT + "?item=" + encodeURIComponent(itemId));
     return true;
@@ -4425,7 +4466,7 @@ async function onPortalSave(ev) {
       for (var i = 0; i < drafts.length; i++) {
         if (!drafts[i].metadata || typeof drafts[i].metadata !== "object") drafts[i].metadata = {};
         var oldMeta = drafts[i].metadata[KEY_PORTAL] ? portalMeta(drafts[i].metadata[KEY_PORTAL]) : null;
-        /* v2.1.0：半径不再由表单决定 —— 以当前 item.scale 反算（scale 缺失才退回旧 metadata.radius）。 */
+        /* v2.2.0：半径不再由表单决定 —— 以当前 item.scale 反算（scale 缺失才退回旧 metadata.radius）。 */
         var r = drafts[i].scale
           ? portalRadiusFromScale(drafts[i].scale, saveDpi)
           : (oldMeta ? oldMeta.radius : meta.radius);
@@ -4494,7 +4535,125 @@ async function onPortalItemsChange() {
     void portalDetectDragEnd();
   }, 200);
 }
-/** v2.1.0：目的地选择窗接进通用窗口框架（可拖动 / 位置记忆 / reclamp）。 */
+/** v2.2.0：目的地选择窗接进通用窗口框架（可拖动 / 位置记忆 / reclamp）。 */
+/* ---------- v2.2.0：隐形门 GM ghost ---------- */
+var portalGhostSig = "";
+async function portalGhostSync(all) {
+  var role = "";
+  try { role = await OBR.player.getRole(); } catch (e) { role = ""; }
+  if (!OBR.scene || !OBR.scene.local) return;
+  var invisible = [];
+  for (var i = 0; i < (all || []).length; i++) {
+    var it = all[i];
+    if (!it || !it.metadata || !it.metadata[KEY_PORTAL]) continue;
+    var meta = portalMeta(it.metadata[KEY_PORTAL]);
+    if (meta.visible === false) invisible.push({ item: it, meta: meta });
+  }
+  var sigParts = [];
+  for (var g = 0; g < invisible.length; g++) {
+    var ii = invisible[g].item, mm = invisible[g].meta;
+    sigParts.push([ii.id, ii.position.x, ii.position.y, ii.scale && ii.scale.x, mm.radius, mm.name].join(":"));
+  }
+  var sig = (role === "GM" ? "GM|" : "PLAYER|") + sigParts.join("|");
+  if (sig === portalGhostSig) return 0;
+  portalGhostSig = sig;
+  try {
+    var locals = await OBR.scene.local.getItems();
+    var old = [];
+    for (var l = 0; l < (locals || []).length; l++) {
+      if (locals[l] && locals[l].metadata && locals[l].metadata[PORTAL_GHOST_TAG]) old.push(locals[l].id);
+    }
+    if (old.length) await OBR.scene.local.deleteItems(old);
+  } catch (e0) {  }
+  if (role !== "GM" || !invisible.length) return 0;
+  var dpi = await portalSceneDpi();
+  var ghosts = [];
+  for (var k = 0; k < invisible.length; k++) {
+    var itG = invisible[k].item, metaG = invisible[k].meta;
+    var scale = portalScaleFor(metaG.radius, dpi);
+    var ghost = buildImage(
+      { width: 256, height: 256, url: PORTAL_ICON_URL, mime: "image/svg+xml" },
+      { dpi: 256, offset: { x: 128, y: 128 } }
+    )
+      .position({ x: Number(itG.position.x) || 0, y: Number(itG.position.y) || 0 })
+      .scale({ x: scale, y: scale })
+      .layer("ATTACHMENT")
+      .locked(true)
+      .disableHit(true)
+      .visible(true)
+      .opacity(0.45)
+      .metadata({ [PORTAL_GHOST_TAG]: itG.id, "名称": "隐藏门" })
+      .build();
+    ghosts.push(ghost);
+  }
+  try {
+    if (ghosts.length) await OBR.scene.local.addItems(ghosts);
+  } catch (e1) { pageLog("err", "portal ghost 创建失败：" + errText(e1)); }
+  pageLog("info", "portal ghost 重建 n=" + ghosts.length);
+  return ghosts.length;
+}
+
+/* ---------- v2.2.0：成对创建（第二个 mode） ---------- */
+var portalPairFirst = null;
+var portalPairPreviewId = null;
+var portalPairLineId = null;
+async function portalPairClear() {
+  portalPairFirst = null;
+  if (portalPairPreviewId) {
+    var pid = portalPairPreviewId; portalPairPreviewId = null;
+    try { await OBR.scene.local.deleteItems([pid]); } catch (e) {  }
+  }
+  if (portalPairLineId) {
+    var lid = portalPairLineId; portalPairLineId = null;
+    try { await OBR.scene.local.deleteItems([lid]); } catch (e2) {  }
+  }
+}
+async function portalPairPreview(center, to) {
+  try {
+    var dpi = await portalSceneDpi();
+    var scale = portalScaleFor(70, dpi);
+    var item = buildImage(
+      { width: 256, height: 256, url: PORTAL_ICON_URL, mime: "image/svg+xml" },
+      { dpi: 256, offset: { x: 128, y: 128 } }
+    ).position({ x: Number(center.x) || 0, y: Number(center.y) || 0 }).scale({ x: scale, y: scale })
+      .layer("ATTACHMENT").locked(true).disableHit(true).visible(true).opacity(0.6)
+      .metadata({ [PORTAL_PAIR_TAG]: true }).build();
+    if (!portalPairPreviewId) {
+      await OBR.scene.local.addItems([item]);
+      portalPairPreviewId = item.id;
+    } else {
+      await OBR.scene.local.updateItems([portalPairPreviewId], function (drafts) {
+        for (var i = 0; i < drafts.length; i++) drafts[i].position = { x: center.x, y: center.y };
+      });
+    }
+    if (to && typeof buildLine === "function") {
+      if (!portalPairLineId) {
+        var line = buildLine().position({ x: 0, y: 0 }).startPosition(center).endPosition(to)
+          .strokeColor("#58c7ff").strokeOpacity(0.9).strokeWidth(4).strokeDash([18, 12])
+          .layer("CONTROL").locked(true).disableHit(true).visible(true)
+          .metadata({ [PORTAL_PAIR_TAG]: true }).build();
+        await OBR.scene.local.addItems([line]);
+        portalPairLineId = line.id;
+      } else {
+        await OBR.scene.local.updateItems([portalPairLineId], function (drafts) {
+          for (var j = 0; j < drafts.length; j++) {
+            drafts[j].startPosition = { x: center.x, y: center.y };
+            drafts[j].endPosition = { x: to.x, y: to.y };
+          }
+        });
+      }
+    }
+  } catch (e3) { pageLog("err", "portal pair preview 失败：" + errText(e3)); }
+}
+async function portalPairCreate(first, second) {
+  var tag = "P-" + Math.floor(Math.random() * 0xffff).toString(16).toUpperCase().padStart(4, "0");
+  pageLog("info", "portal pair create tag=" + tag + " at=" + first.x + "," + first.y + " / " + second.x + "," + second.y);
+  var a = await portalCreate(first, 70, { name: "传送门 A", tag: tag });
+  var b = await portalCreate(second, 70, { name: "传送门 B", tag: tag });
+  await portalPairClear();
+  return [a, b];
+}
+
 async function openDestinationPopover(portalId, tokenIds) {
   if (portalDestOpening || portalDestOpen) {
     pageLog("info", "portal dest skip（已开/并发）");
@@ -4527,7 +4686,9 @@ async function portalDetectDragEnd() {
   try { all = await OBR.scene.items.getItems(); } catch (e3) { return; }
   try { portalLifecycleSync(all); } catch (eLife) { /* 诊断失败不影响侦测 */ }
   try { await portalScaleRadiusSync(all); } catch (eScale) { /* 缩放同步失败不影响拖动侦测 */ }
-  var portals = portalListOf(all).filter(function (p) { return p.visible !== false; });
+  var allPortals = portalListOf(all);
+  var portals = allPortals.filter(function (p) { return p.visible !== false; });
+  try { await portalGhostSync(all); } catch (eGhost) { /* ghost 失败不影响检测 */ }
   if (!portals.length) return;
   var sel = [];
   try { sel = (await OBR.player.getSelection()) || []; } catch (e4) { sel = []; }
@@ -4575,7 +4736,7 @@ async function portalDetectDragEnd() {
   }
   if (suppress || portalDestOpen || !candidates.length) return;
   var origin = candidates[0];
-  var dests = portalDestinations(portals, origin.portal.itemId);
+  var dests = portalDestinations(allPortals, origin.portal.itemId);
   if (!dests.length) return;
   var tokenIds = [];
   for (var s2 = 0; s2 < sel.length; s2++) if (tokenMap[sel[s2]]) tokenIds.push(sel[s2]);
@@ -4745,8 +4906,17 @@ async function boot() {
   await attempt("订阅 " + CH_INFO_ACK + "（速览页刷新 ack）", function () {
     OBR.broadcast.onMessage(CH_INFO_ACK, onInfoAck);
   });
-  /* v2.1.0：OBR SDK 没有 viewport.onChange → 安装 500ms 轮询重锚。
+  /* v2.2.0：OBR SDK 没有 viewport.onChange → 安装 500ms 轮询重锚。
    * 视口变化时：按钮重新 open 到右下角（同 id+url），各窗口 / 先攻条用新 vp reclamp。 */
+  await attempt("重建传送门 ghost（启动）", async function () {
+    try {
+      if (await sceneReady()) {
+        var allGhost = await OBR.scene.items.getItems();
+        await portalGhostSync(allGhost);
+      }
+    } catch (eGhostBoot) { /* 场景没准备好就等 onChange 重建 */ }
+    return true;
+  });
   await attempt("清理旧传送门窗口残留（boot）", function () {
     try { void OBR.popover.close(ID_PORTAL_DEST); } catch (e1) {  }
     try { void OBR.popover.close(ID_PORTAL_EDIT); } catch (e2) {  }
@@ -4765,7 +4935,7 @@ async function boot() {
     return true;
   });
 
-  /* v2.1.0：传送门频道 + 拖动进门侦测。 */
+  /* v2.2.0：传送门频道 + 拖动进门侦测。 */
   await attempt("订阅 " + CH_PORTAL_SAVE + "（传送门编辑保存）", function () {
     OBR.broadcast.onMessage(CH_PORTAL_SAVE, onPortalSave);
   });
@@ -4926,6 +5096,8 @@ if (typeof window !== "undefined") {
     portalDragFinish: portalDragFinish,
     portalScaleFor: portalScaleFor,
     portalImageItem: portalImageItem,
+    portalGhostSync: portalGhostSync,
+    portalPairCreate: portalPairCreate,
     portalRadiusFromScale: portalRadiusFromScale,
     portalScaleRadiusSync: portalScaleRadiusSync,
     portalDetectDragEnd: portalDetectDragEnd,
@@ -4941,6 +5113,7 @@ if (typeof window !== "undefined") {
       PORTAL_SUPPRESS_MS: PORTAL_SUPPRESS_MS,
       TOOL_PORTAL_ID: TOOL_PORTAL_ID,
       TOOL_PORTAL_MODE_ID: TOOL_PORTAL_MODE_ID,
+      TOOL_PORTAL_PAIR_MODE_ID: TOOL_PORTAL_PAIR_MODE_ID,
       PORTAL_PREVIEW_TAG: PORTAL_PREVIEW_TAG
     }
   };

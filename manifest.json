@@ -1,6 +1,6 @@
 {
   "name": "4eNEXT to owlbear",
-  "version": "2.1.0",
+  "version": "2.2.0",
   "manifest_version": 1,
   "author": "4E NEXT 玩家自制",
   "description": "基于4eNEXT的4e跑团适配mod",
@@ -9,7 +9,7 @@
   "action": {
     "title": "骰子 / Dice",
     "icon": "https://yzzj66.github.io/4e-obr-cards/icon-tool-dice.svg",
-    "popover": "https://yzzj66.github.io/4e-obr-cards/dice.html?v=2.1.0",
+    "popover": "https://yzzj66.github.io/4e-obr-cards/dice.html?v=2.2.0",
     "width": 320,
     "height": 660
   }

@@ -2,6 +2,14 @@
 
 > 这份文件是历史更新记录。安装与使用请看 [README](README.md)。
 
+**v2.2.0：传送门进阶（隐形门 / 传送效果 / 成对创建）**（2026-11-17）——
+- **隐形门**：`visible=false` 的真门所有人都看不到；GM 端用 `scene.local` 生成半透明 ghost（opacity 0.45，标记「隐藏门」）跟随位置/半径/删除重建；
+  进门检测只认可见门，但隐形门**仍出现在目的地列表**，可传送进去；编辑窗取消「玩家可见」即隐形。
+- **成对创建**：传送门工具下第二个 mode（点两处）：第一处显示默认半径 70 的预览 + 连线，第二处创建两个同随机 tag（如 `P-3F9A`）的
+  「传送门 A / 传送门 B」；ESC/取消清理预览。
+- 传送动画已整体移除（不播任何全屏效果）；`dev/test-portal.mjs` 覆盖隐形门过滤/GM ghost/pair 创建，并断言动画相关页面/函数/频道不再存在；
+  `check.mjs` 同步静态锁。
+
 **v2.1.0：传送门（核心）**（2026-11-17）——
 GM 用新工具**拖动画圆**建门（起点=门心、拖动距离=半径，实时预览，松手半径 ≥16 才创建）；门 item 用自绘 `assets/portal.svg`，
 `ATTACHMENT` + `locked` + `disableHit`，metadata `com.4enext-owlbear/portal = { name, tag, radius, showName, visible, locked }`。

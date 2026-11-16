@@ -31,7 +31,7 @@ export const HPE_DEF_LABELS = { ac: "AC", fort: "强韧", reflex: "反射", will
 export const HPE_DEF_MAX = 999;
 /** 生命上限上限（防止手滑输 99999999 把血条算糊）。 */
 export const HPE_HP_MAX = 999999;
-/** 临时生命上限（0~999，v2.1.0 新增；不做负数）。 */
+/** 临时生命上限（0~999，v2.2.0 新增；不做负数）。 */
 export const HPE_TEMP_MAX = 999;
 
 function numOrNull(v) {
@@ -99,7 +99,7 @@ export function parseHpInput(text, base) {
 }
 
 /**
- * v2.1.0：编辑窗改成 Full Suite 药丸布局，字段拆成独立输入框。
+ * v2.2.0：编辑窗改成 Full Suite 药丸布局，字段拆成独立输入框。
  *   parseMaxInput("20")  → 上限（≥1，≤ HPE_HP_MAX）
  *   parseCurInput("20", {max}) → 当前值（0~上限）
  *   parseTempInput("5")  → 临时生命（0~999；空 = 0）
@@ -148,7 +148,7 @@ export function parseDefenseInput(text) {
  * ------------------------------------------------------------------------- */
 
 /**
- * v2.1.0：把表单值换算成要写进 hp 的字段。form = { cur, max, temp, locked?, defs:{ac,fort,reflex,will} }。
+ * v2.2.0：把表单值换算成要写进 hp 的字段。form = { cur, max, temp, locked?, defs:{ac,fort,reflex,will} }。
  * base = 当前 view（hpEditView 的结果）。
  * 返回 { ok:true, patch:{ cur, max, temp, defenses, locked? } } 或 { ok:false, message }。
  * 注意 patch.defenses **总是**出现：四个框全空 = null = 把 defenses 从 metadata 里删掉（一枚盾都不画）。
@@ -194,7 +194,7 @@ export function applyHpEdit(rawMeta, patch, now) {
   if ("max" in p) out.max = clampInt(p.max, 1, HPE_HP_MAX);
   if ("cur" in p) out.cur = p.cur;
   if ("temp" in p) out.temp = clampInt(p.temp, 0, HPE_TEMP_MAX);
-  /* v2.1.0：surges / surgesMax 数据**只读不写**（编辑窗已去掉回复力字段）。 */
+  /* v2.2.0：surges / surgesMax 数据**只读不写**（编辑窗已去掉回复力字段）。 */
   if ("locked" in p) out.locked = !!p.locked;
   if ("defenses" in p) {
     if (p.defenses && typeof p.defenses === "object") {
@@ -211,7 +211,7 @@ export function applyHpEdit(rawMeta, patch, now) {
       delete out.defenses;
     }
   }
-  /* 跨字段夹取：v2.1.0 当前生命 0~上限（4E 负数血由其它 UI 处理，编辑窗不做）。 */
+  /* 跨字段夹取：v2.2.0 当前生命 0~上限（4E 负数血由其它 UI 处理，编辑窗不做）。 */
   if (typeof out.max === "number" && out.max > 0) {
     if (typeof out.cur === "number") out.cur = Math.max(0, Math.min(out.cur, out.max));
   }
@@ -377,7 +377,7 @@ export function hpEditView(meta, card) {
   return view;
 }
 
-/** v2.1.0：药丸布局的独立输入框文字（当前 / 上限 / 临时生命）。 */
+/** v2.2.0：药丸布局的独立输入框文字（当前 / 上限 / 临时生命）。 */
 export function curText(view) {
   const v = view || {};
   return v.cur === null || v.cur === undefined ? "" : String(Math.round(v.cur));
@@ -388,7 +388,7 @@ export function maxText(view) {
 }
 export function tempText(view) {
   const v = view || {};
-  /* v2.1.0：0 也留空，让 placeholder「—」提示这里可以填；空值保存仍按 0 处理。 */
+  /* v2.2.0：0 也留空，让 placeholder「—」提示这里可以填；空值保存仍按 0 处理。 */
   return v.temp ? String(Math.round(v.temp)) : "";
 }
 
