@@ -57,7 +57,7 @@ var TOOL_SETTINGS_ID = NS + "/settings-tool";
 var CH_HELLO = NS + "/diag-hello";
 var CH_PING = NS + "/diag-ping";
 var CH_PONG = NS + "/diag-pong";
-var PLUGIN_VERSION = "1.10.1";
+var PLUGIN_VERSION = "1.10.2";
 
 var KEY_HP = NS + "/hp";
 
@@ -203,6 +203,8 @@ var CH_DICE_HIST_STATE = NS + "/dice-hist-state";
 var CH_HP_EDIT_TARGET = NS + "/hp-edit-target";
 var CH_HP_EDIT_READY = NS + "/hp-edit-ready";
 var CH_HP_EDIT_SAVED = NS + "/hp-edit-saved";
+/* v1.10.2：页面切换/载入完成回 ack（单窗换目标确认；600ms 无 ack 兜底重开一次）。 */
+var CH_HP_EDIT_ACK = NS + "/hp-edit-ack";
 /* v1.10.0：血条编辑窗「重绘」按钮 → 后台强制重算这张 token 的血条环 / 四防盾 / 资源徽记。 */
 var CH_HP_REPAINT = NS + "/hp-repaint";
 /* v1.8.9：信息窗单次挂载 —— 目标租约（换 token 只广播 target，不重开 popover）+ ready 握手。 */
@@ -935,15 +937,59 @@ function publishHpEditTarget(itemId, pending) {
   return sendHello(CH_HP_EDIT_TARGET, hpEditTarget);
 }
 
+/* v1.10.2：单窗常驻的 ack 等待（照 info 的 700ms 模式，这里 600ms）。
+ * 页面收到 target → commit 未保存输入 → load → 回 CH_HP_EDIT_ACK {session,version,itemId}。 */
+var hpEditAckWait = null;
+function waitHpEditAck(session, version, itemId, ms) {
+  return new Promise(function (resolve) {
+    if (hpEditAckWait) {
+      clearTimeout(hpEditAckWait.timer);
+      var old = hpEditAckWait.resolve;
+      hpEditAckWait = null;
+      if (old) old(false);
+    }
+    var waiter = { session: session, version: version, itemId: itemId, timer: 0, resolve: resolve };
+    waiter.timer = setTimeout(function () {
+      if (hpEditAckWait !== waiter) return;
+      hpEditAckWait = null;
+      resolve(false);
+    }, ms);
+    hpEditAckWait = waiter;
+  });
+}
+function onHpEditAck(ev) {
+  var data = ev && ev.data !== undefined ? ev.data : ev;
+  var waiter = hpEditAckWait;
+  if (!waiter) return;
+  if (!data || data.session !== waiter.session || data.itemId !== waiter.itemId) return;
+  if (typeof data.version !== "number" || data.version < waiter.version) return;
+  clearTimeout(waiter.timer);
+  hpEditAckWait = null;
+  waiter.resolve(true);
+}
+
 async function openHpEdit(itemId) {
   if (!itemId) {
     notify("没有读到要编辑的 token，右键请对着一个图片 token 再试", "WARNING");
     return false;
   }
   hpAutoPopped[itemId] = true;
-  /* v1.8.1：窗口已经开着同一枚 token → 直接复用，不再关掉重开（重开会闪、也会被 onWinClose 当成手关）。 */
   if (winOpen["hpEdit"] && hpEditTarget.itemId === itemId && !hpEditTarget.pending) return true;
   if (!hpEditSession) hpEditSession = newHpEditSession();
+  /* v1.10.2：窗口已挂载 → 不重开 iframe；广播 target 换目标，等页面 ack；600ms 没 ack 兜底重开一次。 */
+  if (winOpen["hpEdit"]) {
+    var expectVersion = hpEditTarget.version + 1;
+    var ackP = waitHpEditAck(hpEditSession, expectVersion, itemId, 600);
+    await publishHpEditTarget(itemId, true);
+    var acked = await ackP;
+    if (acked) {
+      await publishHpEditTarget(itemId, false);
+      pageLog("info", "血条编辑窗：切换目标（单窗常驻，不重开）→ " + itemId);
+      return true;
+    }
+    pageLog("warn", "血条编辑窗切换目标 600ms 无 ack → 兜底关闭重开一次");
+    try { await closeWin("hpEdit"); } catch (e0) { pageLog("err", "血条编辑窗兜底关闭失败：" + errText(e0)); }
+  }
   var url = URL_HP_EDIT + "?item=" + encodeURIComponent(itemId) +
     "&session=" + encodeURIComponent(hpEditSession);
   try {
@@ -2239,16 +2285,16 @@ async function refreshInfo() {
     if (winOpen["hpEdit"] && !hpEditPinned()) await closeWin("hpEdit");
     return closeInfo();
   }
-  /* v1.10.0：未钉住时跟随选中 —— 选到别的 token 就先关旧的编辑窗（新 token 需要时下面会再开）。 */
-  if (winOpen["hpEdit"] && !hpEditPinned() && hpEditTarget.itemId !== item.id) {
-    await closeWin("hpEdit");
-  }
   /* v1.8.2：先攻条点卡片头像（页面先发 CH_GLANCE_SUPPRESS 再 select）→ 1.5 秒内不自动弹速览。
    * token 仍然被选中 / 地图高亮，只是不弹；不碰下面 hpAutoSel / hpAutoPopped / hasHpBarData 顺序。 */
   if (Date.now() < suppressGlanceUntil) return;
 
   var cardId = await boundCardId(item);
   if (cardId) {
+    /* v1.10.2：选了绑定卡的 token → 速览接管；未钉住时关掉血条编辑窗（钉住则保持当前 token）。 */
+    if (winOpen["hpEdit"] && !hpEditPinned() && hpEditTarget.itemId !== item.id) {
+      await closeWin("hpEdit");
+    }
     /* v1.8.5：用户手动 ✕ 关过这枚 token 的速览 → 选中不变之前不再自动弹回（先于「已开则返回」判断）。 */
     if (infoAutoPopped[item.id]) return;
     if (infoOpen && infoItemId === item.id && infoCardId === cardId) return;
@@ -2269,7 +2315,12 @@ async function refreshInfo() {
   /* v1.8.1 说明：这里不写「窗口开着就 return」，否则「取消选中 → 再选回来」这类正常重弹会被误杀。
    * 防止「保存后关掉又自己弹」的护栏在 openHpEdit()：同一枚 token 的窗口已经开着时直接复用、不重开。 */
   await closeInfo();
-  if (!hasHpBarData(item)) return;
+  /* v1.10.2：钉住时保持当前编辑的 token，不换 target。 */
+  if (hpEditPinned() && winOpen["hpEdit"]) return;
+  if (!hasHpBarData(item)) {
+    if (winOpen["hpEdit"] && hpEditTarget.itemId !== item.id) await closeWin("hpEdit");
+    return;
+  }
   if (hpAutoPopped[item.id]) return;
   try {
     await openHpEdit(item.id);
@@ -3691,6 +3742,9 @@ async function boot() {
   });
   await attempt("订阅 " + CH_HP_REPAINT + "（血条编辑窗重绘）", function () {
     OBR.broadcast.onMessage(CH_HP_REPAINT, onHpRepaint);
+  });
+  await attempt("订阅 " + CH_HP_EDIT_ACK + "（血条编辑窗切换 ack）", function () {
+    OBR.broadcast.onMessage(CH_HP_EDIT_ACK, onHpEditAck);
   });
   /* v1.8.9：信息窗页面 ready → 重发当前 target（防第一条 target 在 iframe 加载前丢掉）。 */
   await attempt("订阅 " + CH_INFO_READY + "（速览页 ready 握手）", function () {

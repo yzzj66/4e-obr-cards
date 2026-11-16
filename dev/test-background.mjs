@@ -1379,7 +1379,9 @@ const BG = run(OBR, stubBuilder("CURVE"), stubBuilder("SHAPE"), stubBuilder("TEX
     const HPE_ID = "com.4enext-owlbear/hp-edit";
     const wcCb = (broadcastCbs["com.4enext-owlbear/win-close"] || [])[0];
     const closeCount = () => all("popover.close").filter((c) => c[1] === HPE_ID).length;
-    const select = async (ids) => {
+    const select = async (ids, opts) => {
+      const ackInfo = !opts || opts.ackInfo !== false;
+      const ackHp = !opts || opts.ackHp !== false;
       selection = ids.slice();
       for (const cb of playerChangeCbs) cb();
       await sleep(300);
@@ -1590,11 +1592,33 @@ const BG = run(OBR, stubBuilder("CURVE"), stubBuilder("SHAPE"), stubBuilder("TEX
       boundsFor[t.id] = { min: { x: 0, y: 0 }, max: { x: 150, y: 150 }, center: { x: 75, y: 75 }, width: 150, height: 150 };
     }
     const hpOpens = () => all("popover.open").map((c) => c[1]).filter((c) => /hp-edit\.html/.test(String(c.url)));
+    const hpTargets = () => all("broadcast.sendMessage").map((c) => c[1]).filter((m) => /\/hp-edit-target$/.test(m.channel));
+    const lastHpTarget = () => (hpTargets().pop() || {}).data || null;
     const infoOpens = () => all("popover.open").map((c) => c[1]).filter((c) => /\/info\.html/.test(String(c.url)));
-    const select = async (ids) => {
+    const hpAckCbs = broadcastCbs["com.4enext-owlbear/hp-edit-ack"] || [];
+    const select = async (ids, opts) => {
+      const ackInfo = !opts || opts.ackInfo !== false;
+      const ackHp = !opts || opts.ackHp !== false;
       selection = ids.slice();
       for (const cb of playerChangeCbs) cb();
-      await sleep(260);
+      /* v1.10.2：等 target 真的切到目标 token 再 ack（否则 600ms 后后台兜底重开会多一次 popover.open）。
+       * 同时顺手 ack info-target，避免本 helper 的等待拖到 info 的 700ms 兜底。 */
+      const want = ids[0] || "";
+      const infoAckCbs = broadcastCbs["com.4enext-owlbear/info-ack"] || [];
+      for (let i = 0; i < 6; i++) {
+        await sleep(50);
+        const it = (all("broadcast.sendMessage").map((c) => c[1]).filter((m) => /\/info-target$/.test(m.channel)).pop() || {}).data;
+        if (ackInfo && it && it.session && infoAckCbs[0]) {
+          infoAckCbs[0]({ data: { session: it.session, version: it.version, itemId: it.itemId } });
+        }
+        const t = lastHpTarget();
+        if (ackHp && want && t && t.itemId === want && hpAckCbs[0]) {
+          hpAckCbs[0]({ data: { session: t.session, version: t.version, itemId: t.itemId } });
+          break;
+        }
+        if (!want) break;
+      }
+      await sleep(220);
     };
 
     /* ① 没绑定卡、也没有血条 → 什么都不弹（老行为） */
@@ -1618,16 +1642,18 @@ const BG = run(OBR, stubBuilder("CURVE"), stubBuilder("SHAPE"), stubBuilder("TEX
     /* ③ 只有开关（hp-bar/enabled = true）、没有 hp 数值 → 也算有血条 */
     h0 = hpOpens().length;
     await select([FLAG_ID]);
-    if (hpOpens().length === h0) bad("选中「只开了血条组件开关」的 token 没有弹编辑窗");
-    else ok("v1.7.7 分支②（开关）：hp-bar/enabled = true 也算「有血条」→ 自动弹编辑窗");
+    if (lastHpTarget() && lastHpTarget().itemId === FLAG_ID) ok("v1.7.7 分支②（开关）：hp-bar/enabled = true 也算「有血条」→ 自动切到编辑窗目标");
+    else bad("选中「只开了血条组件开关」的 token 没有切编辑窗目标：" + JSON.stringify(lastHpTarget()));
 
     /* ④ 同一个 token 只自动弹一次：player / scene 事件不再弹（否则关掉又被弹回来） */
-    h0 = hpOpens().length;
+    const t0Item = lastHpTarget() && lastHpTarget().itemId;
+    const o0 = hpOpens().length;
     for (const cb of playerChangeCbs) cb();
     await sleep(240);
     for (const cb of itemsChangeCbs) cb(sceneItems);
     await sleep(320);
-    if (hpOpens().length !== h0) bad("同一个 token 反复触发事件时又弹了 " + (hpOpens().length - h0) + " 次编辑窗（关不掉）");
+    if (hpOpens().length !== o0 || (lastHpTarget() && lastHpTarget().itemId) !== t0Item)
+      bad("同一个 token 反复触发事件时又切了目标 / 重开了窗（关不掉） [opens " + o0 + "→" + hpOpens().length + " item " + t0Item + "→" + (lastHpTarget() && lastHpTarget().itemId) + "]");
     else ok("v1.7.7：同一个 token 只自动弹一次（player / scene 事件 / 保存后重画都不会再弹）");
 
     /* ⑤ 已绑定卡 → 只弹速览（三分支的第一支不能被破坏） */
@@ -1714,16 +1740,16 @@ const BG = run(OBR, stubBuilder("CURVE"), stubBuilder("SHAPE"), stubBuilder("TEX
     /* 显式 enabled=true 行为不变 */
     h0 = hpOpens().length;
     await select([EXPLICIT_TRUE_ID]);
-    if (hpOpens().length === h0) bad("enabled=true 的 token 不再自动弹编辑窗");
-    else ok("v1.8.4：enabled=true 仍自动弹编辑窗（行为不变）");
+    if (lastHpTarget() && lastHpTarget().itemId === EXPLICIT_TRUE_ID) ok("v1.8.4：enabled=true 仍自动切编辑窗目标（行为不变）");
+    else bad("enabled=true 的 token 没有自动切编辑窗目标");
 
     /* 取消选中 → 再选回「已移除」的 token，仍然不弹（记忆清空也不该弹） */
     await select([]);
-    h0 = hpOpens().length;
+    const tBefore = hpTargets().length;
     await select([REMOVED_ID]);
     for (const cb of playerChangeCbs) cb();
     await sleep(240);
-    if (hpOpens().length !== h0) bad("取消选中再选回「已移除血条组件」的 token 又弹了编辑窗");
+    if (hpTargets().length !== tBefore) bad("取消选中再选回「已移除血条组件」的 token 又切了编辑窗目标");
     else ok("v1.8.4：取消选中后再选回「已移除血条组件」的 token 仍不弹（反复触发也不弹）");
 
     /* ⑩ v1.8.5：用户手动 ✕ 关掉速览后，选中不变之前不再自动弹回（修「莫名其妙跳出来」） */
@@ -1812,7 +1838,7 @@ const BG = run(OBR, stubBuilder("CURVE"), stubBuilder("SHAPE"), stubBuilder("TEX
 
     /* v1.9.0：reuse target 后 700ms 无 ack → 兜底关闭重开一次 */
     const openBeforeNoAck = infoOpens().length;
-    await select([BOUND2_ID]); /* 换 target（复用 popover），故意不回 ack */
+    await select([BOUND2_ID], { ackInfo: false }); /* 换 target（复用 popover），故意不回 ack */
     const openAfterArm = infoOpens().length;
     await sleep(950);
     if (infoOpens().length === openAfterArm + 1)
@@ -1828,6 +1854,86 @@ const BG = run(OBR, stubBuilder("CURVE"), stubBuilder("SHAPE"), stubBuilder("TEX
     if (infoOpens().length === openBeforeAckOk)
       ok("v1.9.0：ack 及时到达 → 不触发兜底重开（正常路径不抖动）");
     else bad("v1.9.0：ack 及时仍重开了 popover（多开了 " + (infoOpens().length - openBeforeAckOk) + " 次）");
+
+    /* v1.10.2 bugfix：7 个输入框 focus 时 select() 必须选中自己（抓 var 闭包让焦点全跑到意志） */
+    {
+      const src = fs.readFileSync(path.join(ROOT, "assets", "hp-edit-page.js"), "utf8");
+      const start = src.indexOf("inputs.forEach(function (el) {");
+      const end = src.indexOf('document.addEventListener("keydown"', start);
+      if (start < 0 || end < 0) {
+        bad("v1.10.2 bugfix：找不到输入框绑定循环（应该用 inputs.forEach 捕获每个 el）");
+      } else {
+        const snippet = src.slice(start, end);
+        const ids = ["hpe-cur", "hpe-max", "hpe-temp", "hpe-def-ac", "hpe-def-fort", "hpe-def-reflex", "hpe-def-will"];
+        const selected = [];
+        const inputs = ids.map((id) => ({
+          id,
+          listeners: {},
+          addEventListener(type, cb) { (this.listeners[type] = this.listeners[type] || []).push(cb); },
+          select() { selected.push(this.id); }
+        }));
+        let saveCalls = 0, commitCalls = 0;
+        const fn = new Function("inputs", "scheduleSave", "commit", "clearSaveTimer", "closeWindow",
+          snippet + "\nreturn inputs;");
+        fn(inputs, function () { saveCalls++; }, function () { commitCalls++; }, function () {}, function () {});
+        for (const one of inputs) for (const cb of (one.listeners.focus || [])) cb();
+        const okAll = ids.every((id, i) => selected[i] === id);
+        if (okAll) ok("v1.10.2 bugfix：7 个输入框各自 focus → select() 选中的就是自己（意志不会再抢焦点）");
+        else bad("v1.10.2 bugfix：focus 时 select 选错了框（var 闭包 bug）：" + JSON.stringify(selected));
+      }
+    }
+
+    /* v1.10.2：页面在 lease.accept 之前先 commit 当前输入（假 DOM 级静态顺序锁） */
+    {
+      const hpPageSrc = fs.readFileSync(path.join(ROOT, "assets", "hp-edit-page.js"), "utf8");
+      const iCommit = hpPageSrc.indexOf('commit("switch", document.activeElement)');
+      const iAccept = hpPageSrc.indexOf("lease.accept(data)");
+      if (iCommit >= 0 && iAccept >= 0 && iCommit < iAccept)
+        ok("v1.10.2：页面 target 切换先 commit 当前输入，再 lease.accept / load（不会丢未保存输入）");
+      else bad("v1.10.2：页面没有「先 commit 再 accept」的顺序");
+    }
+
+    /* v1.10.2：血条编辑窗单窗常驻（换 token 只广播 target，不重建 iframe；无 ack 600ms 兜底重开一次；钉住不换目标） */
+    {
+      const mkHp = (id) => ({
+        id, type: "IMAGE", name: "常驻测试 " + id, layer: "CHARACTER", createdUserId: "user-gm",
+        position: { x: 0, y: 0 }, scale: { x: 1, y: 1 },
+        metadata: { "com.4enext-owlbear/hp": { cur: 10, max: 20, defenses: { ac: 15 }, updatedAt: 1 } }
+      });
+      const HP2 = "tok-reuse-hp2";
+      const HP3 = "tok-reuse-hp3";
+      for (const id of [HP2, HP3]) {
+        if (!sceneItems.some((it) => it.id === id)) {
+          sceneItems.push(mkHp(id));
+          boundsFor[id] = { min: { x: 0, y: 0 }, max: { x: 100, y: 100 }, center: { x: 50, y: 50 }, width: 100, height: 100 };
+        }
+      }
+      await select([HP2]);
+      const opensBeforeReuse = hpOpens().length;
+      const targetsBeforeReuse = hpTargets().length;
+      await select([HP3]);
+      if (hpOpens().length === opensBeforeReuse && lastHpTarget() && lastHpTarget().itemId === HP3 &&
+        hpTargets().length > targetsBeforeReuse)
+        ok("v1.10.2：换 token 只广播 target 换目标（iframe 不重建、popover.open 不增加）");
+      else bad("v1.10.2：换 token 又重开了编辑窗：opens " + opensBeforeReuse + "→" + hpOpens().length +
+        " target " + (lastHpTarget() && lastHpTarget().itemId));
+      /* 故意不回 ack → 600ms 后兜底重开一次 */
+      const opensBeforeNoAck = hpOpens().length;
+      await select([HP2], { ackHp: false });
+      await sleep(750);
+      if (hpOpens().length === opensBeforeNoAck + 1 && lastHpTarget() && lastHpTarget().itemId === HP2)
+        ok("v1.10.2：换目标 600ms 无 ack → 兜底关闭重开一次（内容也能换过去）");
+      else bad("v1.10.2：无 ack 没有兜底重开一次：" + opensBeforeNoAck + "→" + hpOpens().length);
+      /* 钉住：选中别的 token 不换 target、不关窗 */
+      lsStore["4enext/hp-edit/pinned"] = "1";
+      const pinnedItem = lastHpTarget() && lastHpTarget().itemId;
+      const opensPinned = hpOpens().length;
+      await select([HP3], { ackInfo: false });
+      if (lastHpTarget() && lastHpTarget().itemId === pinnedItem && hpOpens().length === opensPinned)
+        ok("v1.10.2：钉住时选中别的 token 不换 target、不关窗（保持当前 token）");
+      else bad("v1.10.2：钉住时 target 被换了：" + pinnedItem + "→" + (lastHpTarget() && lastHpTarget().itemId));
+      lsStore["4enext/hp-edit/pinned"] = "0";
+    }
 
     /* ⑨ Boss 锁（hp.locked）→ 非城主的编辑窗只读（藏保存 + 提示「已锁定」） */
     const coreSrcSplit = fs.readFileSync(path.join(ROOT, "assets", "hp-edit-core.js"), "utf8");

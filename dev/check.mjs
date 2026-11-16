@@ -19,7 +19,7 @@ const NOTES_PATH = path.join(ROOT, "docs", "NOTES.md");
 const NOTES = exists(NOTES_PATH) ? fs.readFileSync(NOTES_PATH, "utf8") : "";
 const notesHas = (s) => NOTES.indexOf(s) >= 0;
 /* 当前版本号：所有「版本全链路」断言都读它，升版本只改这一处（+ 各文件里的真实版本号）。 */
-const VER = "1.10.1";
+const VER = "1.10.2";
 
 function walk(dir, out = []) {
   for (const name of fs.readdirSync(dir)) {
@@ -2306,7 +2306,7 @@ console.log("== v1.7.7 选中 token 就弹血条编辑窗（三分支 / 不重�
   if (/var cardId = await boundCardId\(item\);[\s\S]{0,120}?if \(cardId\) \{[\s\S]{0,1600}?await openInfo\(item\.id, cardId\)/.test(coreV177)) {
     ok("分支①：已绑定角色卡 → openInfo（v1.2 的老行为）");
   } else bad("分支①（已绑定卡 → openInfo）不见了");
-  if (/await closeInfo\(\);\s*\n\s*if \(!hasHpBarData\(item\)\) return;\s*\n\s*if \(hpAutoPopped\[item\.id\]\) return;\s*\n\s*try \{\s*\n\s*await openHpEdit\(item\.id\);/.test(coreV177)) {
+  if (/await closeInfo\(\);[\s\S]{0,620}?if \(!hasHpBarData\(item\)\)[\s\S]{0,360}?if \(hpAutoPopped\[item\.id\]\) return;[\s\S]{0,220}?await openHpEdit\(item\.id\);/.test(coreV177)) {
     ok("分支②：没绑定卡 + 有血条 → openHpEdit（用户要的「选中就弹编辑窗」）");
   } else bad("分支②（没卡 + 有血条 → openHpEdit）没有接上");
   if (/if \(!sel \|\| sel\.length !== 1\) return null;/.test(coreV177)) {
@@ -3468,6 +3468,38 @@ console.log("== v1.10.1 血条编辑窗输入可发现性");
     pageV1101.indexOf('classList.toggle("hpe-readonly", dis)') >= 0)
     ok("v1.10.1：生命 / 临时药丸点文字即可聚焦输入（label for），空临时生命显示「—」");
   else bad("v1.10.1：label 聚焦 / 临时空占位 / 只读类没接上");
+}
+
+console.log("== v1.10.2 血条编辑窗单窗常驻");
+{
+  const coreV1102 = fs.readFileSync(path.join(ROOT, "assets", "background.core.js"), "utf8");
+  const commonV1102 = fs.readFileSync(path.join(ROOT, "assets", "common.js"), "utf8");
+  const pageV1102 = fs.readFileSync(path.join(ROOT, "assets", "hp-edit-page.js"), "utf8");
+  const grab = (src, head) => {
+    const i = src.indexOf(head);
+    if (i < 0) return "";
+    const j = src.indexOf('";', i + head.length);
+    return j < 0 ? "" : src.slice(i + head.length, j);
+  };
+  const a = grab(coreV1102, 'var CH_HP_EDIT_ACK = NS + "');
+  const b = grab(commonV1102, 'export const CH_HP_EDIT_ACK = NS + "');
+  if (a && a === b && /CH_HP_EDIT_ACK = NS \+ "\/hp-edit-ack"/.test(coreV1102))
+    ok("v1.10.2：CH_HP_EDIT_ACK 频道两端一致（" + a + "）");
+  else bad("v1.10.2：CH_HP_EDIT_ACK 缺失 / 两端不一致 core=" + a + " common=" + b);
+  if (/if \(winOpen\["hpEdit"\]\) \{[\s\S]{0,520}?waitHpEditAck\(hpEditSession/.test(coreV1102) &&
+    /if \(acked\) \{[\s\S]{0,160}?publishHpEditTarget\(itemId, false\)/.test(coreV1102) &&
+    /600ms 无 ack → 兜底关闭重开一次/.test(coreV1102) &&
+    /hpEditPinned\(\) && winOpen\["hpEdit"\]/.test(coreV1102))
+    ok("v1.10.2：窗口已挂载 → 广播 target 换目标、等 ack；600ms 无 ack 兜底重开；钉住保持当前 token");
+  else bad("v1.10.2：后台复用 / ack / 兜底 / 钉住 逻辑不完整");
+  if (/inputs\.forEach\(function \(el\) \{/.test(pageV1102) &&
+    pageV1102.indexOf("for (var i = 0; i < inputs.length; i++) {") < 0 &&
+    /function handleHpTarget\(/.test(pageV1102) &&
+    /commit\("switch", document.activeElement\)/.test(pageV1102) &&
+    pageV1102.indexOf("CH_HP_EDIT_ACK") >= 0 && /function ackTarget\(/.test(pageV1102) &&
+    pageV1102.indexOf("lease.accept(data)") >= 0)
+    ok("v1.10.2：页面换 target 前先 commit 未保存输入，load 后回 ack（不重建 iframe）");
+  else bad("v1.10.2：页面 target 切换 / commit / ack 接线不完整");
 }
 
 console.log(fail ? "\n" + fail + " 个问题" : "\n全部通过");

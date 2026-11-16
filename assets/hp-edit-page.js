@@ -10,7 +10,7 @@
 // 钉住：localStorage["4enext/hp-edit/pinned"]（默认关）——钉住后选中变化 / 取消选中不自动关窗。
 import OBR from "../vendor/obr-sdk.js";
 import {
-  CH_HP_EDIT_READY, CH_HP_EDIT_SAVED, CH_HP_EDIT_TARGET, CH_HP_REPAINT, ID_HP_EDIT, KEY_BIND,
+  CH_HP_EDIT_ACK, CH_HP_EDIT_READY, CH_HP_EDIT_SAVED, CH_HP_EDIT_TARGET, CH_HP_REPAINT, ID_HP_EDIT, KEY_BIND,
   findCard, getCards, onReady
 } from "./common.js";
 import { closeSelf, createWindow, feedback } from "./window.js";
@@ -428,9 +428,12 @@ if (els.repaint) els.repaint.addEventListener("click", repaintBars);
 
 var inputs = [els.cur, els.max, els.temp];
 for (var k = 0; k < HPE_DEF_KEYS.length; k++) inputs.push(els["def_" + HPE_DEF_KEYS[k]]);
-for (var i = 0; i < inputs.length; i++) {
-  var el = inputs[i];
-  if (!el) continue;
+/* v1.10.2 bugfix：这里必须用 forEach 的形参 el 捕获每个输入框。
+ * 之前用 `for (var el = inputs[i])` + 内部函数：var 是函数作用域共享，循环结束后 el 永远指向
+ * 最后一个输入框（hpe-def-will）——任何框 focus 时 select() 都抢到「意志」，用户输入全写进意志。
+ * 注意：isFieldEl 的 for (var i) 直接同步返回，不捕获闭包，保留没问题。 */
+inputs.forEach(function (el) {
+  if (!el) return;
   el.addEventListener("focus", function () {
     try { el.select(); } catch (e) { /* 忽略 */ }
   });
@@ -441,25 +444,52 @@ for (var i = 0; i < inputs.length; i++) {
     if (ev.key === "Enter") { ev.preventDefault(); clearSaveTimer(); void commit("enter", el); }
     else if (ev.key === "Escape") { ev.preventDefault(); closeWindow(); }
   });
-}
+});
 document.addEventListener("keydown", function (ev) {
   if (ev.key === "Escape") closeWindow();
 });
+
+/* v1.10.2：单窗常驻 —— 后台换 target 时页面自己 commit 未保存输入再 load（不重建 iframe）。 */
+function isFieldEl(el) {
+  if (!el) return false;
+  for (var i = 0; i < inputs.length; i++) if (inputs[i] === el) return true;
+  return false;
+}
+function ackTarget(version) {
+  broadcast(CH_HP_EDIT_ACK, { session: session, version: version, itemId: itemId, at: Date.now() });
+}
+async function handleHpTarget(data) {
+  if (!data || typeof data !== "object") return;
+  var nextId = typeof data.itemId === "string" ? data.itemId : "";
+  /* 切到别的 token 前先把当前输入提交掉（否则会被 load 直接覆盖）。 */
+  if (nextId && nextId !== itemId && state.editable && isFieldEl(document.activeElement)) {
+    await commit("switch", document.activeElement);
+  }
+  if (!lease.accept(data)) return;
+  var now = lease.state;
+  if (!now || !now.itemId) return;
+  if (now.itemId !== itemId) {
+    itemId = now.itemId;
+    setBusy(true);
+    refreshNote();
+    await load();
+    setBusy(false);
+  }
+  if (!now.pending) paintTools();
+  ackTarget(now.version);
+}
 
 /* 后台版本租约：ready → 后台补发 target（iframe 可能比第一条广播晚加载）。 */
 onReady(function () {
   try {
     OBR.broadcast.onMessage(CH_HP_EDIT_TARGET, function (ev) {
       var data = ev && ev.data !== undefined ? ev.data : ev;
-      if (!lease.accept(data)) return;
-      var now = lease.state;
-      if (now.itemId && now.itemId !== itemId) {
-        itemId = now.itemId;
-        void load();
-      }
+      void handleHpTarget(data);
     });
   } catch (e) { /* 忽略：没有 broadcast 也能手动保存 */ }
   broadcast(CH_HP_EDIT_READY, { session: session, itemId: itemId, at: Date.now() });
   paintTools();
-  void load();
+  void load().then(function () {
+    if (lease.state && lease.state.version) ackTarget(lease.state.version);
+  });
 });
