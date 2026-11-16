@@ -883,7 +883,7 @@ html.strip-html .strip-items {
 .initiative-item.veil { display: flex; align-items: center; justify-content: center; border-style: dashed; }
 .initiative-item.veil .item-veil { font-size: 12px; color: #c9a7ff; letter-spacing: 1px; }
 
-.item-img { position: absolute; top: 0; left: 0; right: 0; height: 80%; overflow: hidden; border-radius: 4px 4px 0 0; background: #1b242e; }
+.item-img { position: absolute; top: 0; left: 0; right: 0; height: 72%; overflow: hidden; border-radius: 4px 4px 0 0; background: #1b242e; }
 .item-img img { position: absolute; top: -12.5%; left: 0; width: 100%; height: 125%; object-fit: cover; object-position: center; }
 .item-img::after {
   content: ""; position: absolute; left: 0; right: 0; bottom: 0; height: 30%;
@@ -899,19 +899,20 @@ html.strip-html .strip-items {
   font-family: ui-monospace, "Cascadia Code", Consolas, monospace;
   background: rgba(11, 15, 20, .72); color: #e6edf3;
 }
-.item-hp-track { position: absolute; left: 0; right: 0; bottom: 24%; height: 4px; z-index: 2; background: rgba(0, 0, 0, .55); }
+.item-hp-track { position: absolute; left: 0; right: 0; bottom: 34%; height: 4px; z-index: 2; background: rgba(0, 0, 0, .55); }
 .item-hp-track.slot { background: rgba(255, 255, 255, .06); }
 .item-hp-fill { height: 100%; background: #a52424; }
 .item-count {
-  position: absolute; left: 0; right: 0; bottom: 0; height: 24%; z-index: 3;
-  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  position: absolute; left: 0; right: 0; bottom: 0; height: 34%; z-index: 3;
+  padding: 1px 0; display: flex; flex-direction: column; align-items: center; justify-content: center;
   border-top: 1px solid rgba(255, 255, 255, .08); background: #10161d; overflow: hidden;
 }
 .item-count b {
   font-family: ui-monospace, "Cascadia Code", Consolas, monospace;
   font-size: 13px; line-height: 1; color: #e6edf3; font-variant-numeric: tabular-nums;
 }
-/* v1.8.2：大号合计可手改（点数字直接输入）；视觉与 .item-count b 一致，容器 24% 高规则不动。 */
+/* v1.8.2：大号合计可手改（点数字直接输入）；视觉与 .item-count b 一致。
+ * v1.10.4：容器底部色带 24% → 34%（容纳合计 + (骰+加值) 公式，外框尺寸不变）。 */
 .item-count-input {
   width: 100%; height: 13px; margin: 0; padding: 0; flex: 0 0 auto;
   border: 0; border-radius: 0; background: transparent;
@@ -1426,3 +1427,7 @@ body.dice-action { padding: 0; }
 body.dice-action .win-head { display: none; }
 body.dice-action .win { height: 100vh; border-radius: 0; border: 0; }
 body.dice-action .win-body.dice-wrap { padding-top: 8px; }
+
+/* v1.10.3：用户矢量图标（内联 SVG，currentColor 跟随按钮状态） */
+.hpe-icon svg { display: block; width: 14px; height: 14px; }
+.gl4-share svg { width: 12px; height: 12px; vertical-align: -2px; fill: currentColor; }

@@ -445,12 +445,15 @@ async function onCardClick(tokenId) {
     return;
   }
   /* 非战斗 / 玩家：把选中切到这枚 token（地图高亮照旧），但**不弹速览**。
-   * v1.8.2：先广播 CH_GLANCE_SUPPRESS 再 select —— 后台 refreshInfo 收到抑制信号，1.5s 内不弹窗；
-   * 先发再选，避免「select 引起的 onChange 比广播先到」的竞态。 */
+   * v1.8.2：先广播 CH_GLANCE_SUPPRESS 再 select —— 后台 refreshInfo 收到抑制信号，1.5s 内不弹窗。
+   * v1.10.6：**必须 await 抑制广播送达后再 select**。之前 `void sendMessage` 直接 select，
+   * 真机上偶尔 select 引发的 refreshInfo 比抑制消息先到 → 速览弹一次（竞态）。 */
   try {
-    void OBR.broadcast.sendMessage(CH_GLANCE_SUPPRESS, { tokenId: tokenId, at: Date.now() }, { destination: "LOCAL" });
+    await OBR.broadcast.sendMessage(CH_GLANCE_SUPPRESS, { tokenId: tokenId, at: Date.now() }, { destination: "LOCAL" });
+  } catch (e) { /* 广播失败也继续选中；最坏情况是后台没收到抑制（不会阻塞地图高亮） */ }
+  try {
     await OBR.player.select([tokenId], true);
-  } catch (e) { /* 忽略 */ }
+  } catch (e2) { /* 忽略 */ }
 }
 
 /** 玩家「结束我的回合」：只发广播，**不写房间数据**（规格 §5）。 */

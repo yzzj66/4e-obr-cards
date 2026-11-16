@@ -57,7 +57,7 @@ var TOOL_SETTINGS_ID = NS + "/settings-tool";
 var CH_HELLO = NS + "/diag-hello";
 var CH_PING = NS + "/diag-ping";
 var CH_PONG = NS + "/diag-pong";
-var PLUGIN_VERSION = "1.10.2";
+var PLUGIN_VERSION = "1.10.6";
 
 var KEY_HP = NS + "/hp";
 
@@ -164,6 +164,12 @@ var DEF_COLORS = { ac: "#ffffff", fort: "#e3b341", reflex: "#56d364", will: "#a3
 var BAR_Z = {
   "ring-bg": 9500,
   "ring-fill": 9800,
+  "bar-bg": 9500,
+  "bar-fill": 9800,
+  "def": 15000,
+  "def-text": 16000,
+  "ac-shield": 15000,
+  "ac-text": 16000,
   "shield": 15000,
   "shield-text": 16000,
   "bar-text": 30000
@@ -2449,22 +2455,32 @@ async function sceneDpi() {
   return cachedDpi;
 }
 
-function ringSectorPoints(radiusOuter, radiusInner, ratio, segments) {
-  var n = Math.max(8, Math.round(segments || HP_RING_SEGMENTS));
-  var sweep = Math.max(0.0001, Math.min(1, ratio)) * Math.PI * 2;
-  var a0 = -Math.PI / 2;
+/* v1.10.5：用户样板布局 —— 底部比例横条 + 左侧三圆（强/反/意）+ 右下 AC 盾，不再用环形。
+ * 坐标全部相对 token 包围盒（宽 64%、高 10% 短边），s = min(w,h)/dpi 沿用旧缩放。 */
+
+/** 圆角矩形多边形（以中心为原点，24 段近似；血条 / 填充都用它）。 */
+function roundedRectPoints(W, H, R, segments) {
+  var w = Math.max(0, W), h = Math.max(0, H);
+  var r = Math.max(0, Math.min(R, Math.min(w, h) / 2));
+  var perArc = Math.max(2, Math.round((segments || 24) / 4));
+  var x0 = -w / 2, y0 = -h / 2;
   var pts = [];
-  var i;
-  for (i = 0; i <= n; i++) {
-    var a = a0 + sweep * (i / n);
-    pts.push({ x: Math.cos(a) * radiusOuter, y: Math.sin(a) * radiusOuter });
+  function arc(cx, cy, a0, a1) {
+    for (var i = 0; i <= perArc; i++) {
+      var a = a0 + (a1 - a0) * (i / perArc);
+      pts.push({ x: cx + Math.cos(a) * r, y: cy + Math.sin(a) * r });
+    }
   }
-  for (i = n; i >= 0; i--) {
-    var b = a0 + sweep * (i / n);
-    pts.push({ x: Math.cos(b) * radiusInner, y: Math.sin(b) * radiusInner });
-  }
+  arc(x0 + r, y0 + r, Math.PI, Math.PI * 1.5);
+  arc(x0 + w - r, y0 + r, -Math.PI / 2, 0);
+  arc(x0 + w - r, y0 + h - r, 0, Math.PI / 2);
+  arc(x0 + r, y0 + h - r, Math.PI / 2, Math.PI);
   return pts;
 }
+
+/* 四防颜色（样板）：强韧粉 / 反射黄 / 意志蓝；AC 盾深灰蓝。 */
+var BAR_DEF_COLORS = { fort: "#f0a5ab", reflex: "#f5e884", will: "#8e9dd6" };
+var BAR_DEF_ORDER = ["fort", "reflex", "will"];
 
 function shieldPoints(W, H, segments) {
   var seg = segments || 14;
@@ -2472,18 +2488,15 @@ function shieldPoints(W, H, segments) {
   var cornerR = Math.min(W, H) * 0.18;
   var sideStraightBottom = H * 0.42;
   var i, t, a;
-
   for (i = 0; i <= seg; i++) {
     t = i / seg; a = -Math.PI + (Math.PI / 2) * t;
     pts.push({ x: cornerR + Math.cos(a) * cornerR, y: cornerR + Math.sin(a) * cornerR });
   }
-
   for (i = 0; i <= seg; i++) {
     t = i / seg; a = -Math.PI / 2 + (Math.PI / 2) * t;
     pts.push({ x: W - cornerR + Math.cos(a) * cornerR, y: cornerR + Math.sin(a) * cornerR });
   }
   pts.push({ x: W, y: sideStraightBottom });
-
   var segs2 = seg * 2;
   for (i = 1; i <= segs2; i++) {
     t = i / segs2;
@@ -2493,7 +2506,6 @@ function shieldPoints(W, H, segments) {
       y: u * u * sideStraightBottom + 2 * u * t * (H * 0.92) + t * t * H
     });
   }
-
   for (i = 1; i <= segs2; i++) {
     t = i / segs2;
     var v = 1 - t;
@@ -2516,21 +2528,10 @@ function circlePoints(D, segments) {
   return out;
 }
 
-function defShapePoints(sh) {
-  return sh.circle ? circlePoints(sh.d, DEF_CIRCLE_SEGMENTS) : shieldPoints(sh.d, sh.d);
-}
-
-/* ---- 7. token 血条：环形 48 段 + 环内数字 + 四角四防 ---- */
 function barLayout(bounds, dpi, hp, viewer) {
-  /* ---- v1.7.9 环形血条的像素常数（真机微调只改这里；s = min(宽,高)/dpi）---- */
-  var RING_THICK = HP_RING_THICK;
-  var RING_INSET = HP_RING_INSET;
-  var RING_SEGMENTS = HP_RING_SEGMENTS;
-
   var max = hp.max > 0 ? hp.max : (hp.cur !== null ? Math.max(1, hp.cur) : 1);
   var cur = hp.cur === null ? max : hp.cur;
   var ratio = Math.max(0, Math.min(1, cur / max));
-  /* v1.8.0 血怒（bloodied）：4E 口径 cur ≤ max/2。只影响颜色与返回值，不动数据结构。 */
   var bloodied = max > 0 ? cur <= max / 2 : false;
   var s = Math.min(bounds.width, bounds.height) / dpi;
   if (!isFinite(s) || s <= 0) s = 1;
@@ -2539,38 +2540,32 @@ function barLayout(bounds, dpi, hp, viewer) {
   var exact = !viewer || viewer.exact !== false;
   var threshold = viewer && typeof viewer.threshold === "number" ? viewer.threshold : PLAYER_THRESHOLD_DEFAULT;
   var shownRatio = exact ? ratio : quantiseRatio(ratio, threshold);
+  var short = Math.min(bounds.width, bounds.height);
 
-  var halfShort = Math.min(bounds.width, bounds.height) / 2;
-  /* v1.8.0：RO = 半短边 − inset·s（环的所有点半径 ≤ RO ⇒ 永远不超出包围盒）；
-   * Ri = RO − T。不再用 max(3s, …) 把半径顶回去 —— 那会让极小 token 的环越界。 */
-  var ringRo = Math.max(0, halfShort - RING_INSET * s);
-  var ringT = Math.min(RING_THICK * s, ringRo * 0.9);
-  if (!(ringT > 0) || !isFinite(ringT)) ringT = 0;
-  var ringRi = Math.max(0, ringRo - ringT);
-  if (!isFinite(ringRi)) ringRi = 0;
-  var ring = {
-    cx: bounds.center.x, cy: bounds.center.y,
-    Ro: ringRo, Ri: ringRi, T: ringT,
-    ratio: shownRatio, segments: RING_SEGMENTS
+  /* 底部血条：宽 64% token 宽、高 10% 短边、底边距 4% 短边、圆角 = 高/2。 */
+  var barW = Math.max(4 * s, bounds.width * 0.64);
+  var barH = Math.max(2 * s, short * 0.10);
+  var gap = short * 0.04;
+  var barCx = bounds.center.x;
+  var barCy = bounds.max.y - gap - barH / 2;
+  var bar = {
+    cx: barCx, cy: barCy, left: barCx - barW / 2, top: barCy - barH / 2,
+    width: barW, height: barH, radius: Math.min(barH / 2, barW / 2),
+    ratio: shownRatio, fillW: Math.max(0, barW * shownRatio),
+    color: bloodied ? COLOR_HP_BLOODIED : "#b00000",
+    track: "#3a1414", trackOpacity: 0.8
   };
 
+  /* 条内文字：精确时 cur/max（+temp 后缀）；按条宽 / 条高自适应，装不下就隐藏。 */
   var hpText = exact ? (String(cur) + "/" + max + (hp.temp > 0 ? " +" + hp.temp : "")) : "";
-  /* v1.8.0：HP 数字放环内且自动降字号 —— 文字框必须落在内圆 Ri 里（旧版固定 1.4·Ri 宽，
-   * 长文本会被裁）。availR = Ri − 1.5s 是文字可用的半径；字宽按 0.66em/字符估
-   * （≥ Roboto 数字实际宽度），装不下就 ×0.9 递减到 3s 下限；连下限都装不下
-   * （极小 token）就整块隐藏，绝不裁切。 */
-  var textDrop = 0.52;
-  var availR = Math.max(0, ringRi - 1.5 * s);
   var hpFont = 0, hpTextW = 0, hpTextH = 0, hpTextFits = false;
-  if (hpText && availR > 2 * s) {
-    var tryFont = Math.max(4 * s, Math.min(ringRi * 0.62, availR * 0.9));
+  if (hpText) {
+    var tryFont = Math.max(3 * s, Math.min(barH * 0.78, 14 * s));
     var fontFloor = 3 * s;
-    for (var fitTry = 0; fitTry < 64; fitTry++) {
-      var needW = Math.max(6 * s, hpText.length * tryFont * 0.66);
-      var needH = Math.max(4 * s, tryFont * 1.35);
-      var yFar = textDrop * ringRi + needH / 2;
-      var chord = yFar < availR ? Math.sqrt(availR * availR - yFar * yFar) : 0;
-      if (needH / 2 <= availR && needW / 2 <= chord * 0.98) {
+    for (var fitTry = 0; fitTry < 48; fitTry++) {
+      var needW = Math.max(4 * s, hpText.length * tryFont * 0.62);
+      var needH = Math.max(3 * s, tryFont * 1.2);
+      if (needW <= barW * 0.92 && needH <= barH * 0.98) {
         hpFont = tryFont; hpTextW = needW; hpTextH = needH; hpTextFits = true;
         break;
       }
@@ -2579,95 +2574,88 @@ function barLayout(bounds, dpi, hp, viewer) {
     }
   }
   if (!hpTextFits) { hpText = ""; hpFont = 0; hpTextW = 0; hpTextH = 0; }
-  var hpTextX = bounds.center.x - hpTextW / 2;
-  var hpTextY = bounds.center.y + ringRi * 0.52 - hpTextH / 2;
+  var barText = {
+    text: hpText, font: hpFont, width: hpTextW, height: hpTextH,
+    x: barCx - hpTextW / 2, y: barCy - hpTextH / 2,
+    fits: hpTextFits, visible: exact && hpTextFits && !!hpText
+  };
 
-  var dAc = SHIELD_DIAMETER * s;
-  var dDef = DEF_CIRCLE_DIAMETER * s;
-  var dRow = Math.max(dAc, dDef);
-  /* v1.8.0：贴角内缩至少留下「描边一半 + 0.5s」，保证整枚四防（含 strokeWidth）
-   * 完全落在包围盒内。名义值 8s（SHIELD_INSET）远大于描边，这里只是兜底。 */
-  var strokeHalf = Math.max(0.6, dRow * 0.04) / 2;
-  var inset = Math.max(SHIELD_INSET * s, strokeHalf + 0.5 * s);
-  var needTwo = 2 * dRow + inset * 2;
-  var rowKeys = [];
-  var i;
+  /* 左侧竖排三圆：直径 16% 短边、左边距 6%、间距 4%，从血条上方往上排（上 → 下 = 强/反/意）。 */
+  var dDef = short * 0.16;
+  var defMargin = short * 0.06;
+  var defGap = short * 0.04;
+  var defX = bounds.min.x + defMargin + dDef / 2;
+  var yBottom = barCy - barH / 2 - gap - dDef / 2;
+  var defs = [];
+  var present = [];
   if (hp.defenses) {
-    for (i = 0; i < DEF_ROW.length; i++) {
-      if (typeof hp.defenses[DEF_ROW[i]] === "number") rowKeys.push(DEF_ROW[i]);
+    for (var di = 0; di < BAR_DEF_ORDER.length; di++) {
+      var dk = BAR_DEF_ORDER[di];
+      if (typeof hp.defenses[dk] === "number") present.push(dk);
     }
   }
-  while (rowKeys.length > 1 && (needTwo > bounds.width || needTwo > bounds.height)) {
-    var dropped = false;
-    for (i = 0; i < DEF_DROP.length; i++) {
-      var at = rowKeys.indexOf(DEF_DROP[i]);
-      if (at < 0) continue;
-      rowKeys.splice(at, 1);
-      dropped = true;
-      break;
-    }
-    if (!dropped) break;
+  for (var dj = present.length - 1; dj >= 0; dj--) {
+    var key = present[dj];
+    var val = hp.defenses[key];
+    var txt = String(val);
+    defs.unshift({
+      key: key, value: val, text: txt, d: dDef, x: defX, y: yBottom,
+      color: BAR_DEF_COLORS[key],
+      fontSize: Math.max(8 * s, dDef * (txt.length > 2 ? 0.42 : 0.5))
+    });
+    yBottom -= dDef + defGap;
   }
-  var needOne = dRow + inset * 2;
-  var showDefenses = !!hp.defenses && exact && rowKeys.length > 0 &&
-    needOne <= bounds.width && needOne <= bounds.height;
-  var shields = [];
-  if (showDefenses) {
+  /* 玩家（非精确）沿用旧 viewer 逻辑：不画四防图形、不显示数字。 */
+  var showDefenses = exact && defs.length > 0;
 
-    for (i = 0; i < DEF_ROW.length; i++) {
-      var k = DEF_ROW[i];
-      if (rowKeys.indexOf(k) < 0) continue;
-      var val = hp.defenses[k];
-      var txt = String(val);
-
-      var ghost = k === "ac";
-      var dk = ghost ? dAc : dDef;
-      var corner = DEF_CORNER[k] || "left-top";
-      var onLeft = corner.indexOf("left") === 0;
-      var onTop = corner.indexOf("top") >= 0;
-      shields.push({
-        key: k, value: val, text: txt, d: dk, corner: corner,
-        x: onLeft ? bounds.min.x + inset + dk / 2 : bounds.max.x - inset - dk / 2,
-        y: onTop ? bounds.min.y + inset + dk / 2 : bounds.max.y - inset - dk / 2,
-        circle: !ghost,
-        color: DEF_COLORS[k], ghost: ghost,
-        fillOpacity: ghost ? DEF_AC_FILL_OPACITY : DEF_FILL_OPACITY,
-        strokeOpacity: ghost ? DEF_AC_STROKE_OPACITY : DEF_STROKE_OPACITY,
-
-        fontSize: Math.max(8 * s, dk * (txt.length > 2 ? 0.46 : 0.5))
-      });
-    }
+  /* 右下角 AC 盾：宽 20% 短边、高按盾形比例 1.08，右下内缩 4%，白描边。 */
+  var shield = null;
+  if (exact && hp.defenses && typeof hp.defenses.ac === "number") {
+    var sw = short * 0.20;
+    var sh = sw * 1.08;
+    var inset = short * 0.04;
+    var acTxt = String(hp.defenses.ac);
+    shield = {
+      key: "ac", value: hp.defenses.ac, text: acTxt, w: sw, h: sh,
+      cx: bounds.max.x - inset - sw / 2,
+      cy: bounds.max.y - inset - sh / 2,
+      strokeWidth: Math.max(1, 1.5 * s),
+      fontSize: Math.max(8 * s, sw * (acTxt.length > 2 ? 0.42 : 0.5))
+    };
   }
 
   return {
     scale: s, exact: exact,
     ratio: shownRatio, rawRatio: ratio,
     bloodied: bloodied,
-    ring: ring,
+    bar: bar, barText: barText,
+    textVisible: barText.visible,
     hpText: hpText, hpFont: hpFont, hpTextW: hpTextW, hpTextH: hpTextH,
-    hpTextX: hpTextX, hpTextY: hpTextY, hpTextFits: hpTextFits,
-    colorFill: bloodied ? COLOR_HP_BLOODIED : COLOR_HP_FILL,
-    showDefenses: showDefenses, shields: shields, d: dRow, dAc: dAc, dDef: dDef,
-    cornerInset: inset, textVisible: exact && hpTextFits && !!hpText
+    hpTextX: barText.x, hpTextY: barText.y, hpTextFits: hpTextFits,
+    colorFill: bar.color,
+    showDefenses: showDefenses, defs: showDefenses ? defs : [],
+    shield: shield,
+    d: dDef, dDef: dDef, gap: gap
   };
 }
 
 function barRolesKey(L) {
-  return [
-    L.shields.length ? "D" + L.shields.map(function (x) { return x.key; }).join("") : "",
-    L.textVisible ? "T" : ""
-  ].join("");
+  var defs = L.defs && L.defs.length ? "D" + L.defs.map(function (x) { return x.key; }).join("") : "";
+  return defs + (L.shield ? "A" : "") + (L.textVisible ? "T" : "");
 }
 
 function barSig(hp, L) {
   var d = hp.defenses;
+  var b = L.bar || {};
   return [
     hp.cur, hp.max, hp.temp,
     d ? [d.ac, d.fort, d.reflex, d.will].join(",") : "",
     hp.locked ? 1 : 0, L.exact ? 1 : 0,
-    Math.round(L.ring.Ro * 10), Math.round(L.ring.T * 10),
+    Math.round(b.width * 10), Math.round(b.height * 10),
+    Math.round(L.ratio * 1000),
     Math.round(L.scale * 1000),
-    L.shields.length ? Math.round(L.shields[0].d) : 0
+    L.defs ? L.defs.length : 0,
+    L.shield ? 1 : 0
   ].join("|");
 }
 function barMeta(tokenId, role, extra) {
@@ -2676,6 +2664,10 @@ function barMeta(tokenId, role, extra) {
   if (extra) for (var k in extra) if (Object.prototype.hasOwnProperty.call(extra, k)) tag[k] = extra[k];
   box[BAR_TAG] = tag;
   return box;
+}
+function findDef(L, key) {
+  for (var i = 0; i < L.defs.length; i++) if (L.defs[i].key === key) return L.defs[i];
+  return null;
 }
 
 function barCurveItem(tokenId, role, points, x, y, opt) {
@@ -2735,30 +2727,47 @@ function barCommon(builder, tokenId, role, z) {
 
 function buildBarItems(tokenId, L) {
   var items = [];
-  var R = L.ring;
+  var bar = L.bar;
   var i;
 
-  items.push(barCurveItem(tokenId, "ring-bg",
-    ringSectorPoints(R.Ro, R.Ri, 1, R.segments), R.cx, R.cy,
-    { fill: COLOR_RING_BG, fillOpacity: HP_RING_BG_OPACITY }));
-  items.push(barCurveItem(tokenId, "ring-fill",
-    ringSectorPoints(R.Ro, R.Ri, R.ratio, R.segments), R.cx, R.cy,
-    { fill: L.colorFill, fillOpacity: 0.9, visible: R.ratio > 0 }));
+  /* v1.10.5 底部圆角横条：深红轨道 + 按 cur/max 比例的左→右填充。 */
+  items.push(barCurveItem(tokenId, "bar-bg",
+    roundedRectPoints(bar.width, bar.height, bar.radius, 24), bar.cx, bar.cy,
+    { fill: bar.track, fillOpacity: bar.trackOpacity }));
+  items.push(barCurveItem(tokenId, "bar-fill",
+    roundedRectPoints(bar.fillW, bar.height, Math.min(bar.radius, bar.fillW / 2), 16),
+    bar.left + bar.fillW / 2, bar.cy,
+    { fill: L.colorFill, fillOpacity: 0.95, visible: bar.ratio > 0 }));
+  items.push(barTextItem(tokenId, "bar-text", L.barText.text, L.barText.font, "#ffffff",
+    L.barText.x, L.barText.y, L.barText.width, L.barText.height,
+    { strokeWidth: Math.max(0.4, L.barText.font * 0.09), visible: L.textVisible }));
 
-  items.push(barTextItem(tokenId, "bar-text", L.hpText, L.hpFont, "#ffffff",
-    L.hpTextX, L.hpTextY, L.hpTextW, L.hpTextH,
-    { strokeWidth: Math.max(0.4, L.hpFont * 0.09), visible: L.textVisible }));
-
-  for (i = 0; i < L.shields.length; i++) {
-    var sh = L.shields[i];
-    items.push(barCurveItem(tokenId, "shield", defShapePoints(sh), sh.x - sh.d / 2, sh.y - sh.d / 2,
+  /* 左侧三圆：强韧 / 反射 / 意志。 */
+  for (i = 0; i < L.defs.length; i++) {
+    var cd = L.defs[i];
+    items.push(barCurveItem(tokenId, "def", circlePoints(cd.d, DEF_CIRCLE_SEGMENTS),
+      cd.x - cd.d / 2, cd.y - cd.d / 2,
       {
-        fill: sh.color, fillOpacity: sh.fillOpacity, stroke: "#ffffff", strokeOpacity: sh.strokeOpacity,
-        strokeWidth: Math.max(0.6, sh.d * 0.04), extra: { key: sh.key }
+        fill: cd.color, fillOpacity: 1, stroke: "#1c2330", strokeOpacity: 1,
+        strokeWidth: Math.max(0.8, cd.d * 0.035), extra: { key: cd.key }
       }));
-    items.push(barTextItem(tokenId, "shield-text", sh.text, sh.fontSize, "#ffffff",
-      sh.x - sh.d / 2, sh.y - sh.d / 2, sh.d, sh.d,
-      { strokeWidth: Math.max(0.4, sh.d * 0.02), strokeOpacity: sh.ghost ? 0.85 : 0.7, extra: { key: sh.key } }));
+    items.push(barTextItem(tokenId, "def-text", cd.text, cd.fontSize, "#ffffff",
+      cd.x - cd.d / 2, cd.y - cd.d / 2, cd.d, cd.d,
+      { strokeWidth: Math.max(0.4, cd.d * 0.02), extra: { key: cd.key } }));
+  }
+
+  /* 右下角 AC 盾。 */
+  if (L.shield) {
+    var sh = L.shield;
+    items.push(barCurveItem(tokenId, "ac-shield",
+      shieldPoints(sh.w, sh.h, 14), sh.cx - sh.w / 2, sh.cy - sh.h / 2,
+      {
+        fill: "#393e50", fillOpacity: 1, stroke: "#ffffff", strokeOpacity: 1,
+        strokeWidth: sh.strokeWidth, extra: { key: "ac" }
+      }));
+    items.push(barTextItem(tokenId, "ac-text", sh.text, sh.fontSize, "#ffffff",
+      sh.cx - sh.w / 2, sh.cy - sh.h / 2, sh.w, sh.h,
+      { strokeWidth: Math.max(0.4, sh.w * 0.02), extra: { key: "ac" } }));
   }
 
   return items;
@@ -2772,50 +2781,68 @@ async function addBar(tokenId, L) {
 }
 
 async function patchBar(entry, L) {
-  var R = L.ring;
+  var bar = L.bar;
   await OBR.scene.local.updateItems(entry.ids, function (drafts) {
     for (var i = 0; i < drafts.length; i++) {
       var d = drafts[i];
       var tag = d.metadata && d.metadata[BAR_TAG] ? d.metadata[BAR_TAG] : null;
       var role = tag && tag.role ? tag.role : "";
       switch (role) {
-        case "ring-bg":
-          d.position = { x: R.cx, y: R.cy };
-          d.points = ringSectorPoints(R.Ro, R.Ri, 1, R.segments);
+        case "bar-bg":
+          d.position = { x: bar.cx, y: bar.cy };
+          d.points = roundedRectPoints(bar.width, bar.height, bar.radius, 24);
           d.visible = true;
           break;
-        case "ring-fill":
-          d.position = { x: R.cx, y: R.cy };
-          d.points = ringSectorPoints(R.Ro, R.Ri, R.ratio, R.segments);
-          /* v1.8.0 血怒两段色：只改填充色，不重建 item（rolesKey 不变时走的就是这里）。 */
+        case "bar-fill":
+          d.position = { x: bar.left + bar.fillW / 2, y: bar.cy };
+          d.points = roundedRectPoints(bar.fillW, bar.height, Math.min(bar.radius, bar.fillW / 2), 16);
           if (d.style) d.style.fillColor = L.colorFill;
-          d.visible = R.ratio > 0;
+          d.visible = bar.ratio > 0;
           break;
         case "bar-text":
           if (!d.text) break;
-          d.text.plainText = L.hpText;
-          d.text.style.fontSize = L.hpFont;
-          d.text.width = L.hpTextW;
-          d.text.height = L.hpTextH;
-          d.position = { x: L.hpTextX, y: L.hpTextY };
+          d.text.plainText = L.barText.text;
+          d.text.style.fontSize = L.barText.font;
+          d.text.width = L.barText.width;
+          d.text.height = L.barText.height;
+          d.position = { x: L.barText.x, y: L.barText.y };
           d.visible = L.textVisible;
           break;
-        case "shield": {
-          var sh = findShield(L, tag.key);
-          if (!sh) { d.visible = false; break; }
-          d.points = defShapePoints(sh);
-          d.position = { x: sh.x - sh.d / 2, y: sh.y - sh.d / 2 };
+        case "def": {
+          var cd = findDef(L, tag.key);
+          if (!cd) { d.visible = false; break; }
+          d.points = circlePoints(cd.d, DEF_CIRCLE_SEGMENTS);
+          d.position = { x: cd.x - cd.d / 2, y: cd.y - cd.d / 2 };
           d.visible = true;
           break;
         }
-        case "shield-text": {
-          var shx = findShield(L, tag.key);
-          if (!shx || !d.text) { d.visible = false; break; }
-          d.text.plainText = shx.text;
-          d.text.style.fontSize = shx.fontSize;
-          d.text.width = shx.d;
-          d.text.height = shx.d;
-          d.position = { x: shx.x - shx.d / 2, y: shx.y - shx.d / 2 };
+        case "def-text": {
+          var cdt = findDef(L, tag.key);
+          if (!cdt || !d.text) { d.visible = false; break; }
+          d.text.plainText = cdt.text;
+          d.text.style.fontSize = cdt.fontSize;
+          d.text.width = cdt.d;
+          d.text.height = cdt.d;
+          d.position = { x: cdt.x - cdt.d / 2, y: cdt.y - cdt.d / 2 };
+          d.visible = true;
+          break;
+        }
+        case "ac-shield": {
+          var sh = L.shield;
+          if (!sh) { d.visible = false; break; }
+          d.points = shieldPoints(sh.w, sh.h, 14);
+          d.position = { x: sh.cx - sh.w / 2, y: sh.cy - sh.h / 2 };
+          d.visible = true;
+          break;
+        }
+        case "ac-text": {
+          var sht = L.shield;
+          if (!sht || !d.text) { d.visible = false; break; }
+          d.text.plainText = sht.text;
+          d.text.style.fontSize = sht.fontSize;
+          d.text.width = sht.w;
+          d.text.height = sht.h;
+          d.position = { x: sht.cx - sht.w / 2, y: sht.cy - sht.h / 2 };
           d.visible = true;
           break;
         }
@@ -3866,10 +3893,9 @@ if (typeof window !== "undefined") {
     barLayout: barLayout,
     barSig: barSig,
     barRolesKey: barRolesKey,
-    ringSectorPoints: ringSectorPoints,
+    roundedRectPoints: roundedRectPoints,
     shieldPoints: shieldPoints,
     circlePoints: circlePoints,
-    defShapePoints: defShapePoints,
     quantiseRatio: quantiseRatio,
     CONSTANTS: {
       SHIELD_DIAMETER: SHIELD_DIAMETER,

@@ -1344,7 +1344,7 @@ console.log("== v1.7.10 先攻加值可编辑 + 无卡 token 加入先攻");
 
 console.log("== 静态检查");
 const man = JSON.parse(fs.readFileSync(path.join(ROOT, "manifest.json"), "utf8"));
-if (man.name === "4eNEXT to owlbear" && man.version === "1.10.2") ok("manifest 名称 / 版本 = 4eNEXT to owlbear 1.10.2");
+if (man.name === "4eNEXT to owlbear" && man.version === "1.10.6") ok("manifest 名称 / 版本 = 4eNEXT to owlbear 1.10.6");
 else bad("manifest 名称 / 版本不对：" + man.name + " " + man.version);
 if (man.action && /^https:\/\//.test(man.action.popover) && /\/dice\.html$/.test(man.action.popover))
   ok("manifest.action = 骰子左上角入口（dice.html，绝对 URL，v1.9.2）");
@@ -1400,6 +1400,41 @@ if (initPageSrc.indexOf("CH_GLANCE_SUPPRESS") >= 0 &&
   initPageSrc.indexOf("sendMessage(CH_GLANCE_SUPPRESS") < initPageSrc.indexOf("OBR.player.select"))
   ok("点先攻条卡片：先广播 CH_GLANCE_SUPPRESS 再 OBR.player.select（地图高亮保留、不再弹速览）");
 else bad("点卡片没有先广播 CH_GLANCE_SUPPRESS / 顺序不对（速览还是会弹）");
+/* v1.10.6：动态顺序断言 —— 抑制广播的 promise resolve 之前，player.select 绝不能被调用。 */
+{
+  const start = initPageSrc.indexOf("async function onCardClick(tokenId) {");
+  const end = initPageSrc.indexOf("\n\n/** 玩家「结束我的回合」", start);
+  if (start < 0 || end < 0) bad("v1.10.6：抽不出 onCardClick()（页面结构变了）");
+  else {
+    const snippet = initPageSrc.slice(start, end);
+    const order = [];
+    let release = null;
+    const fakeOBR = {
+      broadcast: {
+        sendMessage() {
+          order.push("send");
+          return new Promise(function (resolve) { release = resolve; });
+        }
+      },
+      player: {
+        select() { order.push("select"); return Promise.resolve(); }
+      }
+    };
+    const fn = new Function("OBR", "CH_GLANCE_SUPPRESS", "suppressClick", "myRole", "initiative",
+      "saveInit", "nameOf", "setActiveEntry", snippet + "\nreturn onCardClick;");
+    const onCardClick = fn(fakeOBR, "ch", false, "PLAYER", { phase: "idle" },
+      async function () {}, function () { return ""; }, function () {});
+    const pending = onCardClick("tok-1");
+    await new Promise(function (r) { setTimeout(r, 40); });
+    const before = order.join(",");
+    if (release) release();
+    await pending;
+    if (before === "send" && order.join(",") === "send,select")
+      ok("v1.10.6：先 await 抑制广播送达，再 player.select（旧写法会在广播 resolve 前就 select → 偶发弹速览）");
+    else bad("v1.10.6：抑制广播未 await 就 select（顺序 " + before + " → " + order.join(",") + "）");
+  }
+}
+
 if (CORE.indexOf('var CH_GLANCE_SUPPRESS = NS + "/glance-suppress";') >= 0 &&
   CORE.indexOf("var suppressGlanceUntil = 0;") >= 0 &&
   CORE.indexOf("Date.now() < suppressGlanceUntil") >= 0 &&

@@ -19,7 +19,7 @@ const NOTES_PATH = path.join(ROOT, "docs", "NOTES.md");
 const NOTES = exists(NOTES_PATH) ? fs.readFileSync(NOTES_PATH, "utf8") : "";
 const notesHas = (s) => NOTES.indexOf(s) >= 0;
 /* 当前版本号：所有「版本全链路」断言都读它，升版本只改这一处（+ 各文件里的真实版本号）。 */
-const VER = "1.10.2";
+const VER = "1.10.6";
 
 function walk(dir, out = []) {
   for (const name of fs.readdirSync(dir)) {
@@ -792,9 +792,9 @@ cssOk("先攻条容器 .strip（overflow:hidden + flex 竖排）", /\.strip \{[^
 cssOk("折叠药丸 .strip.collapsed", /\.strip\.collapsed \{[^}]*flex-direction: row/s);
 cssOk("卡片 56×80", /\.initiative-item \{[^}]*width: 56px; height: 80px/s);
 cssOk("当前回合卡 100 高", /\.initiative-item\.active \{[^}]*height: 100px/s);
-cssOk("头像占 80%（上下各裁 10%）", /\.item-img \{[^}]*height: 80%/s);
-cssOk("合计条 bottom:0 / height:24%", /\.item-count \{[^}]*bottom: 0; height: 24%/s);
-cssOk("HP 条 bottom:24% / height:4px", /\.item-hp-track \{[^}]*bottom: 24%; height: 4px/s);
+cssOk("头像占 72%（v1.10.4：底部让出 34% 给合计+公式）", /\.item-img \{[^}]*height: 72%/s);
+cssOk("合计条 bottom:0 / height:34%（v1.10.4：装下合计+公式）", /\.item-count \{[^}]*bottom: 0; height: 34%/s);
+cssOk("HP 条 bottom:34% / height:4px（v1.10.4 贴在加高后的色带上沿）", /\.item-hp-track \{[^}]*bottom: 34%; height: 4px/s);
 cssOk("掷骰按钮在卡片正下方（margin-top: 1px，不再压卡片）", /\.roll-buttons \{[^}]*margin-top: 1px/s);
 cssOk("d20 按钮是整宽长方形（100% × 16 高 / 4px 圆角）", /\.roll-btn\.normal \{[^}]*width: 100%; height: 16px[^}]*border-radius: 4px/s);
 cssOk("卡片区 min-height 104（卡片 80 + 下方 d20 17）", /\.strip-items \{[^}]*min-height: 104px/s);
@@ -1051,55 +1051,51 @@ console.log("== v1.6.0 血条扩展（临时生命 / 四防 / 蓝条）+ Boss �
   if (/var PLAYER_THRESHOLD_DEFAULT = 25;/.test(coreSrc2) && /function quantiseRatio\(/.test(coreSrc2)) {
     ok("玩家端 quantiseRatio + 阈值 25");
   } else bad("缺少 quantiseRatio / PLAYER_THRESHOLD_DEFAULT");
-  if (/"shield": 15000/.test(coreSrc2) && /"shield-text": 16000/.test(coreSrc2) &&
-    /"bar-text": 30000/.test(coreSrc2) && /"ring-bg": 9500/.test(coreSrc2) &&
-    /"ring-fill": 9800/.test(coreSrc2) && coreSrc2.indexOf('"lock-body"') < 0 &&
-    coreSrc2.indexOf('"bar-fill"') < 0) {
-    ok("zIndex：环底 9500 / 环填充 9800 / 盾 15000 / 盾数字 16000 / HP 数字 30000（固定 + disableAutoZIndex）；" +
-      "直条 / 锁的 role 已删");
-  } else bad("zIndex 表不对（环底 / 环填充 / 盾 / 盾数字 / HP 数字）");
+  if (/"bar-bg": 9500/.test(coreSrc2) && /"bar-fill": 9800/.test(coreSrc2) &&
+    /"def": 15000/.test(coreSrc2) && /"def-text": 16000/.test(coreSrc2) &&
+    /"ac-shield": 15000/.test(coreSrc2) && /"ac-text": 16000/.test(coreSrc2) &&
+    /"bar-text": 30000/.test(coreSrc2) && coreSrc2.indexOf('"lock-body"') < 0) {
+    ok("zIndex：底部条 9500/9800、四防图形 15000/16000、HP 数字 30000（固定 + disableAutoZIndex）");
+  } else bad("zIndex 表不对（bar-bg / bar-fill / def / def-text / ac-shield / ac-text / bar-text）");
 
   /* ---- 3) 形状全部用 Curve 手绘（SDK 没有 RING / 盾牌） ---- */
-  if (/function ringSectorPoints\(/.test(coreSrc2) && /function shieldPoints\(/.test(coreSrc2) &&
+  if (/function roundedRectPoints\(/.test(coreSrc2) && /function shieldPoints\(/.test(coreSrc2) &&
     /function circlePoints\(/.test(coreSrc2) &&
-    /ringSectorPoints\(R\.Ro, R\.Ri/.test(coreSrc2) && /shieldPoints\(sh\.d, sh\.d\)/.test(coreSrc2) &&
-    /circlePoints\(sh\.d, DEF_CIRCLE_SEGMENTS\)/.test(coreSrc2)) {
-    ok("环形扇区 / 盾形多边形 / 圆形都用 buildCurve().points() 手绘（环在所有 token 上复用）");
-  } else bad("环形 / 盾形 / 圆形没有用 Curve 手绘");
+    /roundedRectPoints\(bar\.width, bar\.height, bar\.radius, 24\)/.test(coreSrc2) &&
+    /shieldPoints\(sh\.w, sh\.h, 14\)/.test(coreSrc2) &&
+    /circlePoints\(cd\.d, DEF_CIRCLE_SEGMENTS\)/.test(coreSrc2)) {
+    ok("v1.10.5：圆角条 / 盾形 / 圆形都用 buildCurve().points() 手绘（不再有环形扇区）");
+  } else bad("圆角条 / 盾形 / 圆形没有用 Curve 手绘");
   if (coreSrc2.indexOf("buildShape(") < 0) ok("没有用 buildShape（SDK 3.1.0 只有四种形状，做不出环 / 盾）");
   else bad("血条里调用了 buildShape（做不出环 / 盾，规格 §5.4）");
 
   /* ---- 4) 布局：**环形血条**（所有 token）+ **四角四防**；直条 / 蓝条 / Boss 全删 ---- */
   /* [v1.7.9 改] 这里原来断言「两行直条 + Boss 压制」与「四防一排」，现在整段换成环形 + 四角。 */
-  if (/var ringRo = Math\.max\(0, halfShort - RING_INSET \* s\);/.test(coreSrc2) &&
-    /var ringT = Math\.min\(RING_THICK \* s, ringRo \* 0\.9\);/.test(coreSrc2) &&
-    /var ringRi = Math\.max\(0, ringRo - ringT\);/.test(coreSrc2) &&
-    /var RING_SEGMENTS = HP_RING_SEGMENTS;/.test(coreSrc2) &&
-    /var availR = Math\.max\(0, ringRi - 1\.5 \* s\);/.test(coreSrc2) &&
+  if (/var barW = Math\.max\(4 \* s, bounds\.width \* 0\.64\);/.test(coreSrc2) &&
+    /var barH = Math\.max\(2 \* s, short \* 0\.10\);/.test(coreSrc2) &&
+    /barCy = bounds\.max\.y - gap - barH \/ 2/.test(coreSrc2) &&
+    /width: barW, height: barH, radius: Math\.min\(barH \/ 2, barW \/ 2\)/.test(coreSrc2) &&
     /if \(!hpTextFits\) \{ hpText = ""/.test(coreSrc2) &&
     /var hpText = exact \? \(String\(cur\) \+ "\/" \+ max/.test(coreSrc2)) {
-    ok("环形血条几何（v1.8.0）：Ro = max(0, 半短边 − 2s)、环厚 = min(7s, 0.9·Ro)、Ri = Ro − 环厚、48 段；" +
-      "HP 数字仍按 cur/max 生成，并在内圆拟合（装不下自动降字号，绝不裁切）");
-  } else bad("环形血条的几何公式不对（Ro / 环厚 / Ri / 段数 / HP 数字内圆拟合）");
-  if (/var DEF_CORNER = \{/.test(coreSrc2) &&
-    /fort: "left-top"/.test(coreSrc2) && /reflex: "right-top"/.test(coreSrc2) &&
-    /will: "left-bottom"/.test(coreSrc2) && /ac: "right-bottom"/.test(coreSrc2) &&
-    /var needTwo = 2 \* dRow \+ inset \* 2;/.test(coreSrc2) &&
-    /rowKeys\.splice\(at, 1\)/.test(coreSrc2) &&
-    /var DEF_DROP = \["will", "reflex", "fort"\];/.test(coreSrc2)) {
-    ok("四防四角（v1.7.9）：左上强韧 / 右上反射 / 左下意志 / 右下 AC；" +
-      "窄 token 按 DEF_DROP 先丢意志 / 反射 / 强韧（AC 最后才丢）");
-  } else bad("四防四角的坐标 / 退化规则不对（DEF_CORNER / needTwo / DEF_DROP）");
+    ok("v1.10.5 样板底条几何：宽 64% token 宽 / 高 10% 短边 / 底边距 4% / 圆角 = 高/2；HP 数字按条宽高拟合，装不下隐藏");
+  } else bad("底部血条的几何公式不对（宽 64% / 高 10% / 底边距 4% / 圆角）");
+  if (/var BAR_DEF_ORDER = \["fort", "reflex", "will"\];/.test(coreSrc2) &&
+    /var BAR_DEF_COLORS = \{ fort: "#f0a5ab", reflex: "#f5e884", will: "#8e9dd6" \};/.test(coreSrc2) &&
+    /var dDef = short \* 0\.16;/.test(coreSrc2) && /var defGap = short \* 0\.04;/.test(coreSrc2) &&
+    /var sw = short \* 0\.20;/.test(coreSrc2) && /acTxt/.test(coreSrc2)) {
+    ok("v1.10.5 四防：左侧竖排 强/反/意（16% 短边圆、4% 间距），右下 AC 盾（20% 短边、1.08 高）");
+  } else bad("四防三圆 + AC 盾的坐标 / 颜色不对");
   if (coreSrc2.indexOf("hpVisible") < 0 && coreSrc2.indexOf("showSurge") < 0 &&
     coreSrc2.indexOf("surgeTop") < 0 && coreSrc2.indexOf("ringRatio") < 0) {
     ok("直条 / 蓝条 / Boss 压制的代码都已删除（没有 hpVisible / showSurge / surgeTop / ringRatio）");
   } else bad("还留着直条 / 蓝条 / Boss 压制的代码");
-  if (/"ring-bg"/.test(coreSrc2) && /"ring-fill"/.test(coreSrc2) && /"shield"/.test(coreSrc2) &&
-    /"shield-text"/.test(coreSrc2) && /"bar-text"/.test(coreSrc2) &&
+  if (/"bar-bg"/.test(coreSrc2) && /"bar-fill"/.test(coreSrc2) && /"def"/.test(coreSrc2) &&
+    /"def-text"/.test(coreSrc2) && /"ac-shield"/.test(coreSrc2) && /"ac-text"/.test(coreSrc2) &&
+    /"bar-text"/.test(coreSrc2) &&
     coreSrc2.indexOf('"plate-phase"') < 0 && coreSrc2.indexOf('"lock-shackle"') < 0 &&
     coreSrc2.indexOf('"divider"') < 0) {
-    ok("role 表只剩 5 种：环底 / 环填充 / 盾 / 盾数字 / HP 数字（牌 / 分段 / 锁的 role 已删）");
-  } else bad("role 表不对（应只有环 / 盾 / 数字；牌 / 分段 / 锁必须删掉）");
+    ok("role 表：条底 / 条填充 / 三圆 / 圆数字 / AC 盾 / AC 数字 / HP 数字（牌 / 分段 / 锁已删）");
+  } else bad("role 表不对（应只有条 / 圆 / 盾 / 数字；牌 / 分段 / 锁必须删掉）");
 
   /* ---- 5) 右键：血条两项 + 编辑血条（Boss 两项已删） ---- */
   const menuIds = ["/hpbar-add", "/hpbar-remove", "/hpbar-edit"];
@@ -1162,9 +1158,9 @@ console.log("== v1.6.0 血条扩展（临时生命 / 四防 / 蓝条）+ Boss �
   } else bad("README 功能表没有血条扩展 / 环形血条");
   if (verOf(commonSrc) === VER && verOf(coreSrc2) === VER) ok("PLUGIN_VERSION = 1.7.8");
   else bad("PLUGIN_VERSION 不是 1.7.8：" + verOf(commonSrc) + " / " + verOf(coreSrc2));
-  if (bundleSrc2.indexOf("ringSectorPoints(") >= 0 && bundleSrc2.indexOf("shieldPoints(") >= 0 &&
+  if (bundleSrc2.indexOf("roundedRectPoints(") >= 0 && bundleSrc2.indexOf("shieldPoints(") >= 0 &&
     bundleSrc2.indexOf("KEY_HPBAR") >= 0) {
-    ok("bundle 里带 v1.6.0 的环 / 盾 / 血条开关（已重新构建）");
+    ok("bundle 里带 v1.10.5 的圆角条 / 盾 / 血条开关（已重新构建）");
   } else bad("bundle 落后于 core（跑 node dev/build-background.mjs）");
 }
 
@@ -2030,27 +2026,24 @@ console.log("== v1.7.5 四防一排改样式（3 个圆 + 1 个 AC 盾；只改�
 
   /* ---- 2) 外形：圆用 circlePoints（24 段），AC 用 shieldPoints，构建与增量刷新共用 defShapePoints ---- */
   if (/function circlePoints\(D, segments\)/.test(coreV175) && numV175("DEF_CIRCLE_SEGMENTS") === 24 &&
-    /return sh\.circle \? circlePoints\(sh\.d, DEF_CIRCLE_SEGMENTS\) : shieldPoints\(sh\.d, sh\.d\);/.test(coreV175)) {
-    ok("外形：defShapePoints → 三防 circlePoints（24 段折线）/ AC shieldPoints（盾形）");
-  } else bad("没有「圆 / 盾」共用的外形函数（circlePoints / defShapePoints）");
-  const shapeUses = (coreV175.match(/defShapePoints\(shx?\)/g) || []).length;
-  if (shapeUses >= 2) ok("buildBarItems 与 patchBar 都用 defShapePoints（换形状只改一处，用到 " + shapeUses + " 处）");
-  else bad("defShapePoints 没有同时被构建与增量刷新使用（用到 " + shapeUses + " 处）");
+    /function shieldPoints\(W, H, segments\)/.test(coreV175) && /function roundedRectPoints\(/.test(coreV175)) {
+    ok("v1.10.5 外形：三圆用 circlePoints（24 段折线）/ AC 用 shieldPoints / 底条用 roundedRectPoints");
+  } else bad("没有「圆 / 盾 / 圆角条」的外形函数");
+  const shapeUses = (coreV175.match(/roundedRectPoints\(/g) || []).length;
+  if (shapeUses >= 2) ok("buildBarItems 与 patchBar 都用 roundedRectPoints（换形状只改一处，用到 " + shapeUses + " 处）");
+  else bad("roundedRectPoints 没有同时被构建与增量刷新使用（用到 " + shapeUses + " 处）");
   if (coreV175.indexOf("buildShape(") < 0) ok("圆仍然用 Curve 手绘（没有改用 buildShape）");
   else bad("v1.7.5 引入了 buildShape（与既有画法不一致）");
 
   /* ---- 3) [v1.7.9 改] 四防回到**四角**（原来 v1.7.6 的「铺满均分一排」已删） ---- */
-  if (/var DEF_ROW = \["fort", "reflex", "will", "ac"\];/.test(coreV175) &&
-    /var DEF_DROP = \["will", "reflex", "fort"\];/.test(coreV175) &&
-    /var dRow = Math\.max\(dAc, dDef\);/.test(coreV175) &&
-    /var DEF_CORNER = \{/.test(coreV175) &&
-    /fort: "left-top"/.test(coreV175) && /ac: "right-bottom"/.test(coreV175) &&
-    /x: onLeft \? bounds\.min\.x \+ inset \+ dk \/ 2 : bounds\.max\.x - inset - dk \/ 2,/.test(coreV175) &&
-    /y: onTop \? bounds\.min\.y \+ inset \+ dk \/ 2 : bounds\.max\.y - inset - dk \/ 2,/.test(coreV175) &&
+  if (/var BAR_DEF_ORDER = \["fort", "reflex", "will"\];/.test(coreV175) &&
+    /var BAR_DEF_COLORS = \{ fort: "#f0a5ab", reflex: "#f5e884", will: "#8e9dd6" \};/.test(coreV175) &&
+    /var dDef = short \* 0\.16;/.test(coreV175) && /var defGap = short \* 0\.04;/.test(coreV175) &&
+    /var defX = bounds\.min\.x \+ defMargin \+ dDef \/ 2;/.test(coreV175) &&
+    /var sw = short \* 0\.20;/.test(coreV175) &&
     coreV175.indexOf("defRowGap") < 0 && coreV175.indexOf("var rowCY") < 0) {
-    ok("四角几何（v1.7.9）：左上强韧 / 右上反射 / 左下意志 / 右下 AC —— " +
-      "x = 左缘+4s+d/2 或 右缘−4s−d/2，y = 上缘+4s+d/2 或 下缘−4s−d/2；「一排均分」的代码已删");
-  } else bad("四防四角的坐标公式不对（DEF_CORNER / onLeft / onTop）");
+    ok("v1.10.5 四防：左侧竖排 强/反/意（直径 16% 短边、左边距 6%、间距 4%），右下 AC 盾（宽 20% 短边、高 1.08 倍）");
+  } else bad("四防三圆 / AC 盾的坐标公式不对");
 
   /* ---- 4) AC 仍是半透明白盾（fill 0.18 + 描边 0.85），三防仍是实色 0.9 ---- */
   if (/var DEF_AC_FILL_OPACITY = 0\.18;/.test(coreV175) && /var DEF_AC_STROKE_OPACITY = 0\.85;/.test(coreV175) &&
@@ -2059,9 +2052,10 @@ console.log("== v1.7.5 四防一排改样式（3 个圆 + 1 个 AC 盾；只改�
     ok("配色：AC 半透明白盾（fill @0.18 + 白描边 @0.85）不变；三防仍是橙 / 绿 / 紫 @0.9");
   } else bad("AC 的半透明白 / 三防配色被改了");
   /* [v1.7.6 改] 四枚同直径 → 同一个字号公式：两位 ≈15s、三位 ≈14s（参考图 15 里四个数字一样大）。 */
-  if (/fontSize: Math\.max\(8 \* s, dk \* \(txt\.length > 2 \? 0\.46 : 0\.5\)\)/.test(coreV175)) {
-    ok("字号：四枚统一用 d×0.5 / d×0.46（d=30 → 15 / 13.8 ≈ 14，与参考图 15 一致）");
-  } else bad("四防数字的字号公式不对（v1.7.6 四枚同直径应共用 d×0.5 / d×0.46）");
+  if (/fontSize: Math\.max\(8 \* s, dDef \* \(txt\.length > 2 \? 0\.42 : 0\.5\)\)/.test(coreV175) &&
+    /fontSize: Math\.max\(8 \* s, sw \* \(acTxt\.length > 2 \? 0\.42 : 0\.5\)\)/.test(coreV175)) {
+    ok("字号：四防数字按各自图形直径自适应（两位 ×0.5、三位 ×0.42）");
+  } else bad("四防数字的字号公式不对");
 
   /* ---- 5) 版本 / bundle / 文档 / 自测 ---- */
   if (man.version === VER && manRel.version === VER && verOf(commonV175) === VER &&
@@ -2070,8 +2064,8 @@ console.log("== v1.7.5 四防一排改样式（3 个圆 + 1 个 AC 盾；只改�
     ok("版本 1.7.5 全链路（manifest×2 / common / core / background.html ?v= / index.html / index.js）");
   } else bad("版本没升到 1.7.5（manifest / common / core / ?v= / index.html / index.js）");
   if (bundleV175.indexOf("(v" + VER + ")") >= 0 && bundleV175.indexOf('var PLUGIN_VERSION = "' + VER + '";') >= 0 &&
-    bundleV175.indexOf("function circlePoints(") >= 0 && bundleV175.indexOf("defShapePoints(") >= 0)
-    ok("background.bundle.js 已重建（头部 v1.7.5 + circlePoints / defShapePoints 都在）");
+    bundleV175.indexOf("function circlePoints(") >= 0 && bundleV175.indexOf("roundedRectPoints(") >= 0)
+    ok("background.bundle.js 已重建（头部版本 + circlePoints / roundedRectPoints 都在）");
   else bad("bundle 没跟上 v1.7.5（跑 node dev/build-background.mjs）");
   if (man.action && /\/dice\.html$/.test(String(man.action.popover))) ok("manifest 仍然没有 action 字段（v1.7.5 没动它） → manifest action 指向 dice.html");
   else bad("manifest 又加回了 action → manifest action 缺失 / 未指向 dice.html");
@@ -2082,10 +2076,10 @@ console.log("== v1.7.5 四防一排改样式（3 个圆 + 1 个 AC 盾；只改�
   else bad("docs/NOTES.md 缺少四防常数的维护口径");
   /* [v1.7.6 改] 断言更新：四枚 30s、字号 15、整排左缘 4 / 右缘 146 铺满且均分。 */
   /* [v1.7.9 改] 自测断言换成「四角圆心坐标 + 四枚都 30s + 字号 15」。 */
-  if (has(testBgV175, "circleOk") && has(testBgV175, "13×40") &&
-    has(testBgV175, "左上强韧(19,19)") && has(testBgV175, "右下 AC(131,131)"))
-    ok("dev/test-background.mjs 断言了四防：四枚都 30s、字号 15、四角圆心 (19,19)/(131,19)/(19,131)/(131,131)、AC 半透明白、退化不变");
-  else bad("dev/test-background.mjs 没有补四角四防的断言");
+  if (has(testBgV175, "左侧三圆") && has(testBgV175, "右下 AC 盾") &&
+    has(testBgV175, "强韧(21,51)") && has(testBgV175, "AC 盾：30×32.4"))
+    ok("dev/test-background.mjs 断言了新布局：左侧三圆 (21,51)/(21,81)/(21,111) + 右下 AC 盾 30×32.4 + 数字");
+  else bad("dev/test-background.mjs 没有补样板血条的断言");
   if (has(readmeV175, "v" + VER) && has(readmeV175, "## ⭐ 安装地址"))
     ok("README 顶部写了 v1.7.8，且「⭐ 安装地址」保留");
   else bad("README 没写 v1.7.8 / 安装地址被动了");
@@ -2222,15 +2216,15 @@ console.log("== v1.7.6 删提示小字 + 记录窗直开 + 先攻条真透明 + 
     ok("四防直径（v1.8.0）：圆和 AC 盾统一 22s（真机反馈 30 → 22，四角贴边更稳）");
   else bad("四防直径不对：圆=" + numV176("DEF_CIRCLE_DIAMETER") + " 盾=" + numV176("SHIELD_DIAMETER"));
   /* [v1.7.9 改] 「一排铺满均分」换成四角：断言坐标公式 + 退化判据，并确认旧 helper 已删。 */
-  if (/var DEF_CORNER = \{/.test(coreV176) &&
-    /x: onLeft \? bounds\.min\.x \+ inset \+ dk \/ 2 : bounds\.max\.x - inset - dk \/ 2,/.test(coreV176) &&
-    /var needTwo = 2 \* dRow \+ inset \* 2;/.test(coreV176) &&
+  if (/var BAR_DEF_ORDER = \["fort", "reflex", "will"\];/.test(coreV176) &&
+    /var dDef = short \* 0\.16;/.test(coreV176) &&
+    /var defGap = short \* 0\.04;/.test(coreV176) &&
     coreV176.indexOf("defRowGap") < 0 && coreV176.indexOf("var rowLeft") < 0) {
-    ok("四防四角公式：贴 token 四角内侧 8s；两枚并排 / 两行叠放放不下就按 DEF_DROP 丢（AC 最后）；「一排均分」的 helper 已删");
-  } else bad("四防四角的坐标 / 退化公式不对（defRowGap / rowLeft 应该已经删掉）");
-  if (/fontSize: Math\.max\(8 \* s, dk \* \(txt\.length > 2 \? 0\.46 : 0\.5\)\)/.test(coreV176))
-    ok("四防数字字号统一放大：d×0.5 / d×0.46（22s → 11 / 10.12 ≈ 10）");
-  else bad("四防数字字号没有统一放大");
+    ok("v1.10.5 四防：左侧竖排 强/反/意（16% 短边圆、4% 间距），右下 AC 盾；「一排均分」的 helper 已删");
+  } else bad("四防三圆 + AC 盾的坐标 / 间距公式不对（defRowGap / rowLeft 必须已删）");
+  if (/fontSize: Math\.max\(8 \* s, dDef \* \(txt\.length > 2 \? 0\.42 : 0\.5\)\)/.test(coreV176))
+    ok("四防数字字号按圆直径自适应（两位 ×0.5、三位 ×0.42）");
+  else bad("四防数字字号没有自适应");
   if (/var DEF_ROW = \["fort", "reflex", "will", "ac"\];/.test(coreV176) &&
     /DEF_AC_FILL_OPACITY = 0\.18/.test(coreV176) && /DEF_AC_STROKE_OPACITY = 0\.85/.test(coreV176))
     ok("顺序与配色没变：强韧 → 反射 → 意志 → **AC 最右**，AC 仍是半透明白盾（0.18 + 0.85）");
@@ -2255,7 +2249,7 @@ console.log("== v1.7.6 删提示小字 + 记录窗直开 + 先攻条真透明 + 
   if (has(changelogV176, "v1.7.6") && has(changelogV176, "记录窗口") && has(changelogV176, "30s"))
     ok("CHANGELOG.md 补了 v1.7.6 一条（四件事都写了）");
   else bad("CHANGELOG.md 没有补 v1.7.6");
-  if (has(testDiceV176, "关闭记录窗口") && has(testBgV176, "四角") && has(testBgV176, "环形血条"))
+  if (has(testDiceV176, "关闭记录窗口") && has(testBgV176, "左侧三圆") && has(testBgV176, "底部血条"))
     ok("dev/test-dice.mjs 与 dev/test-background.mjs 都有 v1.7.6 的对应断言");
   else bad("自测里没有补 v1.7.6 的断言（记录窗直开 / 四防铺满均分）");
   if (exists(path.join(ROOT, "dev", "check-render.mjs")) &&
@@ -2547,28 +2541,28 @@ console.log("== v1.7.9 血条改环形 + 去掉 Boss 模式 / 蓝条 + 四防回
     ok("环形血条常数（v1.8.0）：环厚 7s / Ro = 半短边 − 2s / 48 段");
   } else bad("环形血条常数不对：THICK=" + numV179("HP_RING_THICK") + " INSET=" + numV179("HP_RING_INSET") +
     " SEG=" + numV179("HP_RING_SEGMENTS"));
-  if (/var RING_THICK = HP_RING_THICK;/.test(coreV179) && /var RING_INSET = HP_RING_INSET;/.test(coreV179) &&
-    /var RING_SEGMENTS = HP_RING_SEGMENTS;/.test(coreV179) &&
-    /\/\* ---- v1\.7\.9 环形血条的像素常数/.test(coreV179)) {
-    ok("barLayout() 顶部有「环形血条像素常数」常量区（真机微调只改那里）");
-  } else bad("barLayout() 顶部没有环形血条的常量区");
+  if (/var barW = Math\.max\(4 \* s, bounds\.width \* 0\.64\);/.test(coreV179) &&
+    /var barH = Math\.max\(2 \* s, short \* 0\.10\);/.test(coreV179) &&
+    /var dDef = short \* 0\.16;/.test(coreV179) && /var sw = short \* 0\.20;/.test(coreV179) &&
+    coreV179.indexOf("var RING_THICK = HP_RING_THICK;") < 0) {
+    ok("v1.10.5：barLayout() 用样板几何常数（底条 64%×10% / 圆 16% / 盾 20%），旧的 RING_* 别名已删");
+  } else bad("barLayout() 的样板几何常数不对");
 
   /* ---- 2) 环画在所有 token 上（构建 + 增量刷新都走 ringSectorPoints） ---- */
-  if (/ringSectorPoints\(R\.Ro, R\.Ri, 1, R\.segments\)/.test(coreV179) &&
-    /ringSectorPoints\(R\.Ro, R\.Ri, R\.ratio, R\.segments\)/.test(coreV179) &&
-    (coreV179.match(/ringSectorPoints\(R\.Ro, R\.Ri/g) || []).length >= 4) {
-    ok("环形血条：构建与增量刷新都调用 ringSectorPoints（底环 ratio=1 + 血量环 ratio=R.ratio）");
-  } else bad("环形血条没有同时接进 buildBarItems 与 patchBar");
-  if (/var hpTextX = bounds\.center\.x - hpTextW \/ 2;/.test(coreV179) &&
-    /var hpTextY = bounds\.center\.y \+ ringRi \* 0\.52 - hpTextH \/ 2;/.test(coreV179)) {
-    ok("HP 数字放在**环内底部**（横向居中、纵向 = 环心 + Ri×0.52，不压 token 脸）");
-  } else bad("HP 数字没有放在环内底部");
+  if ((coreV179.match(/roundedRectPoints\(/g) || []).length >= 4 &&
+    /roundedRectPoints\(bar\.width, bar\.height, bar\.radius, 24\)/.test(coreV179) &&
+    /roundedRectPoints\(bar\.fillW, bar\.height/.test(coreV179)) {
+    ok("v1.10.5：底部圆角条在构建与增量刷新里都用 roundedRectPoints（轨道 ratio=1 + 填充 bar.fillW）");
+  } else bad("底部圆角条没有同时接进 buildBarItems 与 patchBar");
+  if (/x: barCx - hpTextW \/ 2, y: barCy - hpTextH \/ 2/.test(coreV179)) {
+    ok("HP 数字在**底部血条内居中**（x=条中心−宽/2、y=条中心−高/2）");
+  } else bad("HP 数字没有放在底部血条内");
 
   /* ---- 3) 没有直条 / 蓝条 / Boss 名牌 / 分段 / 锁 ---- */
-  const goneRoles = ["bar-bg", "bar-fill", "surge-bg", "surge-fill", "surge-text",
+  const goneRoles = ["surge-bg", "surge-fill", "surge-text",
     "plate", "plate-text", "plate-phase", "divider", "lock-body", "lock-shackle"];
   const roleLeft = goneRoles.filter((r) => coreV179.indexOf('"' + r + '"') >= 0);
-  if (!roleLeft.length) ok("直条 / 蓝条 / 名牌 / 分段 / 锁的 role 全删");
+  if (!roleLeft.length) ok("蓝条 / 名牌 / 分段 / 锁的 role 全删（底部条 bar-bg/bar-fill 是 v1.10.5 新布局）");
   else bad("还留着这些 role：" + roleLeft.join(" / "));
   if (coreV179.indexOf("roundRectPoints") < 0 && coreV179.indexOf("arcPoints") < 0 &&
     coreV179.indexOf("BAR_HP_H") < 0 && coreV179.indexOf("BAR_SURGE_H") < 0 &&
@@ -2577,16 +2571,13 @@ console.log("== v1.7.9 血条改环形 + 去掉 Boss 模式 / 蓝条 + 四防回
   } else bad("还留着直条 / 蓝条 / 锁用的 helper 或常数");
 
   /* ---- 4) 四防回四角：左上强韧 / 右上反射 / 左下意志 / 右下 AC 盾，直径 22s、inset 8s（v1.8.0 真机微调） ---- */
-  if (/fort: "left-top"/.test(coreV179) && /reflex: "right-top"/.test(coreV179) &&
-    /will: "left-bottom"/.test(coreV179) && /ac: "right-bottom"/.test(coreV179)) {
-    ok("四角映射：fort=left-top / reflex=right-top / will=left-bottom / ac=right-bottom");
-  } else bad("四角映射不对（DEF_CORNER）");
-  if (numV179("SHIELD_DIAMETER") === 22 && numV179("DEF_CIRCLE_DIAMETER") === 22 && numV179("SHIELD_INSET") === 8) {
-    ok("四防直径 22s、贴角内侧 8s（v1.8.0 按真机反馈重调：30/4 → 22/8）");
-  } else bad("四防直径 / inset 不对：" + numV179("SHIELD_DIAMETER") + " / " + numV179("SHIELD_INSET"));
-  if (/var DEF_COLORS = \{ ac: "#ffffff", fort: "#e3b341", reflex: "#56d364", will: "#a371f7" \};/.test(coreV179)) {
-    ok("配色：左上黄 #e3b341 / 右上绿 #56d364 / 左下紫 #a371f7 / AC 半透明白");
-  } else bad("四角配色不对");
+  if (/var BAR_DEF_ORDER = \["fort", "reflex", "will"\];/.test(coreV179) &&
+    /var BAR_DEF_COLORS = \{ fort: "#f0a5ab", reflex: "#f5e884", will: "#8e9dd6" \};/.test(coreV179)) {
+    ok("v1.10.5 顺序：左侧上→下 强韧 / 反射 / 意志（粉 / 黄 / 蓝），AC 单独在右下盾");
+  } else bad("三圆顺序 / 配色不对");
+  if (/var dDef = short \* 0\.16;/.test(coreV179) && /var sw = short \* 0\.20;/.test(coreV179)) {
+    ok("四防尺寸：圆直径 16% 短边、AC 盾宽 20% 短边");
+  } else bad("四防尺寸不对");
 
   /* ---- 5) 速览 / 编辑窗：Boss 开关删掉，锁开关与回复力仍保留 ---- */
   const glanceCodeV179 = stripComments(glanceV179);
@@ -2619,15 +2610,15 @@ console.log("== v1.7.9 血条改环形 + 去掉 Boss 模式 / 蓝条 + 四防回
     has(changelogV179, "四角")) {
     ok("CHANGELOG.md 补了 v1.7.9 一条（环形 / 去 Boss / 四角 / 去蓝条）");
   } else bad("CHANGELOG.md 没有补 v1.7.9");
-  if (has(readmeV179, "v" + VER) && has(readmeV179, "环形血条") && has(readmeV179, "## ⭐ 安装地址")) {
-    ok("README 顶部写了 v" + VER + "、功能表写了环形血条，「⭐ 安装地址」保留");
-  } else bad("README 没有 v1.7.9 的功能行 / 安装地址被动了");
+  if (has(readmeV179, "v" + VER) && has(readmeV179, "样板布局") && has(readmeV179, "## ⭐ 安装地址")) {
+    ok("README 顶部写了 v" + VER + "、功能表写了样板血条布局，「⭐ 安装地址」保留");
+  } else bad("README 没有 v1.10.5 的功能行 / 安装地址被动了");
   if (notesHas("HP_RING_*") && notesHas("四角内缩")) ok("docs/NOTES.md 的常量表写了 HP_RING_* 与四角内缩");
   else bad("docs/NOTES.md 常量表没有更新（HP_RING_* / 四角内缩）");
-  if (has(testBgV179, "环形血条") && has(testBgV179, "48 段") && has(testBgV179, "四角") &&
-    has(testBgV179, "没有直条") && has(testBgV179, "hp.boss")) {
-    ok("dev/test-background.mjs 断言了环形（48 段）/ 四角坐标 / 无直条 / hp.boss 被忽略");
-  } else bad("dev/test-background.mjs 没有补 v1.7.9 的断言");
+  if (has(testBgV179, "底部圆角血条") && has(testBgV179, "左侧三圆") && has(testBgV179, "右下 AC 盾") &&
+    has(testBgV179, "hp.boss")) {
+    ok("dev/test-background.mjs 断言了底部条 / 三圆 / AC 盾 / hp.boss 被忽略");
+  } else bad("dev/test-background.mjs 没有补样板血条的断言");
 }
 
 console.log("== v1.7.10 / v1.7.11 先攻条（popover 回退）+ Full Suite 卡片 + 加值可编辑 + 记录窗 300×240 + ✕ 双保险");
@@ -2688,14 +2679,14 @@ console.log("== v1.7.10 / v1.7.11 先攻条（popover 回退）+ Full Suite 卡�
   const FS = [
     [/\.initiative-item \{[^}]*width: 56px; height: 80px/s, "卡片 56×80"],
     [/\.initiative-item\.active \{[^}]*height: 100px/s, ".active 高 100"],
-    [/\.item-img \{[^}]*height: 80%/s, ".item-img 80%"],
-    [/\.item-count \{[^}]*height: 24%/s, ".item-count 24%"],
-    [/\.item-hp-track \{[^}]*bottom: 24%; height: 4px/s, "血条 4px bottom 24%"],
+    [/\.item-img \{[^}]*height: 72%/s, ".item-img 72%"],
+    [/\.item-count \{[^}]*height: 34%/s, ".item-count 34%"],
+    [/\.item-hp-track \{[^}]*bottom: 34%; height: 4px/s, "血条 4px bottom 34%"],
     [/\.roll-buttons \{[^}]*top: 100%[^}]*margin-top: 1px/s, "掷骰按钮 top:100% / 1px（卡片下方）"],
     [/\.roll-btn\.normal \{[^}]*width: 100%; height: 16px[^}]*border-radius: 4px/s, "d20 整宽长方形 16 高"]
   ];
   const missFS = FS.filter(([re]) => !re.test(cssV1710)).map(([, why]) => why);
-  if (!missFS.length) ok("④ Full Suite 几何全对上：56×80 / active 100 / img 80% / count 24% / hp 4px bottom 24% / 按钮在卡片下方长方形");
+  if (!missFS.length) ok("④ Full Suite 几何：56×80 / active 100 / img 72% / count 34% / hp 4px bottom 34%（v1.10.4 底部加高，偏离 Full Suite 原 24% 以容纳合计+公式）");
   else bad("④ 少了 Full Suite 的几何：" + missFS.join(" / "));
   if (has(initV1710, 'data-roll="normal"') && !has(initV1710, 'data-roll="adv"') &&
     !has(initV1710, 'data-roll="dis"') && (initV1710.match(/class="roll-btn /g) || []).length === 1) {
@@ -3500,6 +3491,53 @@ console.log("== v1.10.2 血条编辑窗单窗常驻");
     pageV1102.indexOf("lease.accept(data)") >= 0)
     ok("v1.10.2：页面换 target 前先 commit 未保存输入，load 后回 ack（不重建 iframe）");
   else bad("v1.10.2：页面 target 切换 / commit / ack 接线不完整");
+}
+
+console.log("== v1.10.3 用户矢量图标（钉住 / 锁定 / 共享）");
+{
+  const htmlV1103 = fs.readFileSync(path.join(ROOT, "hp-edit.html"), "utf8");
+  const pageV1103 = fs.readFileSync(path.join(ROOT, "assets", "hp-edit-page.js"), "utf8");
+  const glanceV1103 = fs.readFileSync(path.join(ROOT, "assets", "glance.js"), "utf8");
+  const cssV1103 = fs.readFileSync(path.join(ROOT, "assets", "ui.css"), "utf8");
+  const svgCount = (htmlV1103.match(/<svg /g) || []).length;
+  if (svgCount >= 3 && /fill="currentColor"/.test(htmlV1103) &&
+    /id="hpe-pin"[\s\S]{0,1400}?<svg /.test(htmlV1103) &&
+    /id="hpe-lock-on" hidden/.test(htmlV1103) && /id="hpe-lock-off"/.test(htmlV1103) &&
+    htmlV1103.indexOf("📌") < 0 && htmlV1103.indexOf("🔒") < 0)
+    ok("v1.10.3：血条编辑窗钉住 / 锁定按钮改为内联 SVG（lock/unlock 两个 span 用 hidden 切换，无 emoji）");
+  else bad("v1.10.3：hp-edit.html 内联 SVG / lock-on / lock-off 不完整或还有 emoji");
+  if (pageV1103.indexOf("els.lockOn.hidden = !locked") >= 0 &&
+    pageV1103.indexOf("els.lockOff.hidden = locked") >= 0 &&
+    pageV1103.indexOf("els.lock.textContent") < 0)
+    ok("v1.10.3：paintTools 按 hp.locked 切换 lock / unlock 图标（不重绘按钮）");
+  else bad("v1.10.3：页面没有按 locked 切换 lock / unlock 图标");
+  if (glanceV1103.indexOf("SHARE_ICON_LOCK") >= 0 && glanceV1103.indexOf("SHARE_ICON_UNLOCK") >= 0 &&
+    /d\.locked \? SHARE_ICON_LOCK : SHARE_ICON_UNLOCK/.test(glanceV1103) &&
+    glanceV1103.indexOf("🔒") < 0 && glanceV1103.indexOf("🔓") < 0 &&
+    glanceV1103.indexOf("共享数据") >= 0)
+    ok("v1.10.3：速览共享数据按钮用 SHARE_ICON_LOCK / UNLOCK 内联 SVG（文本保留、无 emoji）");
+  else bad("v1.10.3：glance.js 共享图标常量 / 无 emoji / 文本 不完整");
+  if (/\.hpe-icon svg \{ display: block; width: 14px; height: 14px; \}/.test(cssV1103) &&
+    /\.gl4-share svg \{ width: 12px; height: 12px; vertical-align: -2px;/.test(cssV1103))
+    ok("v1.10.3：ui.css 给内联 SVG 加了 14×14 / 12×12 对齐样式");
+  else bad("v1.10.3：ui.css 缺少内联 SVG 尺寸样式");
+}
+
+console.log("== v1.10.6 先攻条点卡片：抑制广播 await 后再 select");
+{
+  const initPageV1106 = fs.readFileSync(path.join(ROOT, "assets", "initiative-page.js"), "utf8");
+  const coreV1106 = fs.readFileSync(path.join(ROOT, "assets", "background.core.js"), "utf8");
+  if (initPageV1106.indexOf("await OBR.broadcast.sendMessage(CH_GLANCE_SUPPRESS") >= 0 &&
+    initPageV1106.indexOf("void OBR.broadcast.sendMessage(CH_GLANCE_SUPPRESS") < 0 &&
+    initPageV1106.indexOf("await OBR.broadcast.sendMessage(CH_GLANCE_SUPPRESS") <
+      initPageV1106.indexOf("await OBR.player.select([tokenId], true)"))
+    ok("v1.10.6：onCardClick 先 await 抑制广播送达，再 player.select（不再 void 直接选）");
+  else bad("v1.10.6：抑制广播没有 await / 顺序不对 / 还留着 void 写法");
+  if (coreV1106.indexOf("Date.now() < suppressGlanceUntil") >= 0 &&
+    coreV1106.indexOf("Date.now() < suppressGlanceUntil") < coreV1106.indexOf("await openInfo(item.id, cardId)") &&
+    coreV1106.indexOf("onMessage(CH_GLANCE_SUPPRESS") >= 0)
+    ok("v1.10.6：后台 suppressGlanceUntil 早退仍在 openInfo 之前（兜底不弹速览）");
+  else bad("v1.10.6：后台抑制兜底不在 openInfo 之前");
 }
 
 console.log(fail ? "\n" + fail + " 个问题" : "\n全部通过");

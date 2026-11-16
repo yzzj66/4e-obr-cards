@@ -48,6 +48,8 @@ var els = {
   temp: document.getElementById("hpe-temp"),
   pin: document.getElementById("hpe-pin"),
   lock: document.getElementById("hpe-lock"),
+  lockOn: document.getElementById("hpe-lock-on"),
+  lockOff: document.getElementById("hpe-lock-off"),
   repaint: document.getElementById("hpe-repaint"),
   note: document.getElementById("hpe-note"),
   close: document.getElementById("close"),
@@ -128,13 +130,14 @@ function fillForm(view) {
 function paintTools() {
   if (els.pin) {
     els.pin.classList.toggle("on", !!state.pinned);
-    els.pin.textContent = state.pinned ? "📌" : "📍";
     els.pin.title = state.pinned ? "已钉住：选中变化 / 取消选中不自动关窗（点击取消）" : "钉住：选中变化 / 取消选中时不自动关窗";
   }
   if (els.lock) {
     var locked = !!(state.view && state.view.locked);
     els.lock.classList.toggle("on", locked);
-    els.lock.textContent = locked ? "🔒" : "🔓";
+    /* v1.10.3：锁定状态切换 lock / unlock 两个内联 SVG（不用 innerHTML 重绘按钮）。 */
+    if (els.lockOn) els.lockOn.hidden = !locked;
+    if (els.lockOff) els.lockOff.hidden = locked;
     els.lock.title = locked ? "已锁定：玩家看不到精确数字（点击解锁）" : "锁定：玩家看不到精确数字（点击锁定）";
     els.lock.disabled = state.role !== "GM" || state.busy;
   }

@@ -307,42 +307,52 @@ const BG = run(OBR, stubBuilder("CURVE"), stubBuilder("SHAPE"), stubBuilder("TEX
   if (swept.indexOf("stale-bar-1") >= 0) ok("启动时清掉了上一次会话残留的血条 item");
   else bad("没有清理残留的血条 item（会导致血条叠两层）");
 
-  /* v1.7.9：血条 = 环形（ring-bg / ring-fill）+ HP 数字，**没有**直条 / 蓝条。
-   *          tok-1 的包围盒 150×150、dpi 150 → s = 1：Ro 73 / Ri 66（v1.8.0 环厚 7）/ 48 段（98 点）。 */
-  const roleOf1 = (it) => (it.metadata && it.metadata["com.4enext-owlbear/bar"] ? it.metadata["com.4enext-owlbear/bar"].role : "");
+  /* v1.10.5：血条 = 用户样板布局（底部比例横条 + 左侧三圆 + 右下盾），不再用环形。
+   * tok-1 包围盒 150×150、dpi 150 → s=1：条 96×15 @ (75,136.5)，圆角 7.5。 */
+  const BAR_KEY = "com.4enext-owlbear/bar";
+  const HPBAR_KEY = "com.4enext-owlbear/hp-bar/enabled";
+  const roleOf1 = (it) => (it.metadata && it.metadata[BAR_KEY] ? it.metadata[BAR_KEY].role : "");
+  const spanOf = (it, k) => {
+    const vals = (it.points || [{ [k]: 0 }]).map((pt) => pt[k]);
+    return Math.max.apply(null, vals) - Math.min.apply(null, vals);
+  };
+  const shapeH = (it) => spanOf(it, "y");
+  const shapeW = (it) => spanOf(it, "x");
+  const liveOf = (id) => localItems.filter((it) => it.attachedTo === id);
   const added = all("local.addItems").map((c) => c[1]).flat();
   if (!added.length) bad("没有给带血量的 token 画血条（scene.local.addItems 没被调用）");
   else {
-    const ringBg = added.find((it) => roleOf1(it) === "ring-bg");
-    const ringFill = added.find((it) => roleOf1(it) === "ring-fill");
+    const bg = added.find((it) => roleOf1(it) === "bar-bg");
+    const fill = added.find((it) => roleOf1(it) === "bar-fill");
     const text = added.find((it) => roleOf1(it) === "bar-text");
-    const straight = added.filter((it) => ["bar-bg", "bar-fill", "surge-bg", "surge-fill", "surge-text"].indexOf(roleOf1(it)) >= 0);
-    const radii = ringBg && Array.isArray(ringBg.points) ? ringBg.points.map((pt) => Math.hypot(pt.x, pt.y)) : [];
-    if (!ringBg || !ringFill || !text) bad("环形血条不齐：ring-bg=" + !!ringBg + " ring-fill=" + !!ringFill + " bar-text=" + !!text);
-    else if (straight.length) bad("v1.7.9 还在画直条 / 蓝条：" + straight.map(roleOf1).join(","));
-    else if (ringBg.points.length !== 2 * (48 + 1) || Math.abs(Math.max.apply(null, radii) - 73) > 0.01 || Math.abs(Math.min.apply(null, radii) - 66) > 0.01) {
-      bad("环的几何不对（应 48 段 → 98 点、Ro 73 / Ri 66）：" + ringBg.points.length + " 点");
-    } else if (Math.abs(ringBg.position.x - 75) > 0.01 || Math.abs(ringBg.position.y - 75) > 0.01) {
-      bad("环心不在 token 中心：" + JSON.stringify(ringBg.position));
-    } else if (ringBg.attachedTo !== TOKEN_ID) bad("血条没有 attachedTo 到 token：" + ringBg.attachedTo);
-    else if (ringBg.layer !== "ATTACHMENT") bad("血条不在 ATTACHMENT 层：" + ringBg.layer);
-    else if (!Array.isArray(ringBg.disableAttachmentBehavior) || ringBg.disableAttachmentBehavior.indexOf("SCALE") < 0) bad("血条没有禁用 SCALE 继承（token 缩放会画错）");
-    else if (!(text.text && text.text.plainText === "12/20")) bad("血条数字不对：" + JSON.stringify(text.text));
-    else if (!(ringBg.zIndex < ringFill.zIndex && ringFill.zIndex < text.zIndex)) bad("血条 zIndex 顺序不对：" + ringBg.zIndex + "/" + ringFill.zIndex + "/" + text.zIndex);
-    else ok("环形血条已画在 token 上（48 段 / Ro 73 / Ri 66 / 环心 = token 中心 / 12/20，ATTACHMENT + 禁用 SCALE 继承），没有直条");
+    if (!bg || !fill || !text) bad("底部血条不齐：bar-bg=" + !!bg + " bar-fill=" + !!fill + " bar-text=" + !!text);
+    else if (added.some((it) => ["ring-bg", "ring-fill", "surge-bg", "surge-fill", "surge-text"].indexOf(roleOf1(it)) >= 0)) {
+      bad("v1.10.5 不该再画环形 / 直条 / 蓝条：" + added.map(roleOf1).join(","));
+    } else if (bg.points.length !== 28) bad("圆角条不是 24 段近似（应 28 点）：" + bg.points.length);
+    else if (Math.abs(shapeW(bg) - 96) > 0.01 || Math.abs(shapeH(bg) - 15) > 0.01) {
+      bad("底部条尺寸不对（应 96×15）：" + shapeW(bg) + "×" + shapeH(bg));
+    } else if (Math.abs(bg.position.x - 75) > 0.01 || Math.abs(bg.position.y - 136.5) > 0.01) {
+      bad("底部条位置不对（应 75,136.5）：" + JSON.stringify(bg.position));
+    } else if (bg.attachedTo !== TOKEN_ID || bg.layer !== "ATTACHMENT") bad("血条没有 attachedTo / ATTACHMENT");
+    else if (!(bg.zIndex < fill.zIndex && fill.zIndex < text.zIndex)) bad("血条 zIndex 顺序不对：" + bg.zIndex + "/" + fill.zIndex + "/" + text.zIndex);
+    else if (!text.text || text.text.plainText !== "12/20") bad("条内数字不对：" + JSON.stringify(text.text));
+    else ok("v1.10.5：底部圆角血条已画（96×15 @75,136.5、28 点、填充 12/20、ATTACHMENT），没有环形 / 直条 / 蓝条");
   }
 
-  // 血量变了 → 走 updateItems 刷新（不是重建）
+  /* 血量变了 → 走 updateItems 刷新（不是重建） */
   token.metadata[HP_KEY] = { cur: 5, max: 20, temp: 3, updatedAt: 2 };
   for (const cb of itemsChangeCbs) cb(sceneItems);
   await sleep(240);
   const patched = all("local.updateItems").map((c) => c[1]).flat();
-  const patchedText = patched.find((it) => it.metadata["com.4enext-owlbear/bar"] && it.metadata["com.4enext-owlbear/bar"].role === "bar-text");
+  const patchedText = patched.find((it) => roleOf1(it) === "bar-text");
+  const patchedFill = patched.find((it) => roleOf1(it) === "bar-fill");
+  const patchedFillColor = patchedFill && patchedFill.style ? patchedFill.style.fillColor : "";
   if (!patched.length) bad("血量变化后没有刷新血条（scene.local.updateItems 没被调用）");
   else if (!patchedText || patchedText.text.plainText !== "5/20 +3") bad("刷新后的血条数字不对：" + JSON.stringify(patchedText && patchedText.text));
-  else ok("血量变化后血条就地刷新：" + patchedText.text.plainText);
+  else if (!patchedFill) bad("血量变化后填充条没有参与刷新");
+  else ok("血量变化后血条就地刷新：" + patchedText.text.plainText + "（填充条参与 updateItems）");
 
-  // 血条被外部删掉 → 自愈重建
+  /* 血条被外部删掉 → 自愈重建 */
   const before = all("local.addItems").length;
   localItems = [];
   for (const cb of localChangeCbs) cb([]);
@@ -350,7 +360,7 @@ const BG = run(OBR, stubBuilder("CURVE"), stubBuilder("SHAPE"), stubBuilder("TEX
   if (all("local.addItems").length <= before) bad("血条 item 被删掉后没有自动重建");
   else ok("血条 item 被外部删掉后自动重建");
 
-  // 血条数据没了（解绑 / 手删）→ 清掉本地图形
+  /* 血条数据没了（解绑 / 手删）→ 清掉本地图形 */
   delete token.metadata[HP_KEY];
   for (const cb of itemsChangeCbs) cb(sceneItems);
   await sleep(240);
@@ -358,14 +368,10 @@ const BG = run(OBR, stubBuilder("CURVE"), stubBuilder("SHAPE"), stubBuilder("TEX
   else ok("血量数据被删掉后清理了本地血条 item");
 
   /* =======================================================================
-   * v1.7.9：血条改成环形（默认）+ 四角四防 + 去掉 Boss / 直条 / 蓝条
-   * ---------------------------------------------------------------------
-   * token2 的包围盒 150×150、dpi 150 → s = 1：
-   *   环：Ro = 75 − 2 = 73、环厚 7（v1.8.0）、Ri = 66、48 段（→ 98 个点）
-   *   四防：直径 22（v1.8.0）、贴四角内侧 8 → 圆心 (19,19) / (131,19) / (19,131) / (131,131)
+   * token2 包围盒 150×150、dpi 150 → s=1：
+   *   条：96×15 @ (75,136.5)；左侧三圆：直径 24、x=21、y=51/81/111（上→下 强/反/意）；
+   *   AC 盾：30×32.4 @ (129,127.8)。
    * ===================================================================== */
-  const BAR_KEY = "com.4enext-owlbear/bar";
-  const HPBAR_KEY = "com.4enext-owlbear/hp-bar/enabled";
   const TOKEN2 = "tok-2";
   const token2 = {
     id: TOKEN2,
@@ -385,131 +391,97 @@ const BG = run(OBR, stubBuilder("CURVE"), stubBuilder("SHAPE"), stubBuilder("TEX
   };
   sceneItems.push(token2);
   const barRoleOf = (it) => (it.metadata && it.metadata[BAR_KEY] ? it.metadata[BAR_KEY].role : "");
-  const liveOf = (id) => localItems.filter((it) => it.attachedTo === id);
   const t2role = (role) => liveOf(TOKEN2).filter((it) => barRoleOf(it) === role);
   const t2one = (role) => t2role(role)[0] || null;
-  const shieldKeyOf = (it) => (it.metadata && it.metadata[BAR_KEY] ? it.metadata[BAR_KEY].key : "");
-  const shieldByKey = (key) => t2role("shield").filter((it) => shieldKeyOf(it) === key)[0] || null;
-  /* 一枚图形的外接盒高度 = 折线里最大的 y（圆和盾都从 0 画到直径 D）→ 中心 = position + 外接盒/2 */
-  const shapeH = (it) => Math.max.apply(null, (it.points || [{ y: 0 }]).map((pt) => pt.y));
+  const keyOf = (it) => (it.metadata && it.metadata[BAR_KEY] ? it.metadata[BAR_KEY].key : "");
+  const defByKey = (key) => t2role("def").filter((it) => keyOf(it) === key)[0] || null;
+  const defTextByKey = (key) => t2role("def-text").filter((it) => keyOf(it) === key)[0] || null;
   const centerOf = (it) => ({ x: it.position.x + shapeH(it) / 2, y: it.position.y + shapeH(it) / 2 });
-  const shieldTextByKey = (key, list) => list.filter((it) => shieldKeyOf(it) === key)[0] || null;
-  const radiiOf = (it) => (it.points || []).map((pt) => Math.hypot(pt.x, pt.y));
 
   for (const cb of itemsChangeCbs) cb(sceneItems);
   await sleep(300);
   let t2 = liveOf(TOKEN2);
   const t2roles = t2.map(barRoleOf);
-  const GONE_ROLES = ["bar-bg", "bar-fill", "surge-bg", "surge-fill", "surge-text",
-    "plate", "plate-text", "plate-phase", "divider", "lock-body", "lock-shackle"];
-  if (t2roles.some((r) => GONE_ROLES.indexOf(r) >= 0)) {
-    bad("v1.7.9 不该再画直条 / 蓝条 / Boss 名牌 / 分段 / 锁：" + t2roles.join(","));
-  } else if (t2.length !== 11) {
-    bad("带四防的 token 应画 11 件（环 2 + HP 数字 1 + 四防 4 盾 + 4 数字），实际 " + t2.length + "（" + t2roles.join(",") + "）");
-  } else if (t2role("shield").length !== 4 || t2role("shield-text").length !== 4) {
-    bad("四防不是 4 盾 + 4 数字：" + t2roles.join(","));
-  } else if (t2.some((it) => it.layer !== "ATTACHMENT" || it.attachedTo !== TOKEN2)) {
-    bad("血条不在 ATTACHMENT 层 / 没 attachedTo");
-  } else if (t2.some((it) => !Array.isArray(it.disableAttachmentBehavior) || it.disableAttachmentBehavior.indexOf("SCALE") < 0)) {
-    bad("血条没有禁用 SCALE 继承");
-  } else {
-    ok("v1.7.9：带四防的 token 画 11 件（环形 2 + HP 数字 1 + 四防 4 盾 + 4 数字），" +
-      "没有直条 / 蓝条 / 名牌 / 分段 / 锁");
+  {
+    const gone = t2roles.filter((r) => ["ring-bg", "ring-fill", "surge-bg", "surge-fill", "surge-text",
+      "plate", "plate-text", "plate-phase", "divider", "lock-body", "lock-shackle"].indexOf(r) >= 0);
+    if (gone.length) bad("v1.10.5 不该再画环形 / 蓝条 / Boss 名牌 / 分段 / 锁：" + gone.join(","));
+    else if (t2.length !== 11) bad("带四防的 token 应画 11 件（条 2 + 数字 1 + 3 圆 + 3 数字 + AC 盾 + AC 数字），实际 " + t2.length + "（" + t2roles.join(",") + "）");
+    else if (t2role("def").length !== 3 || t2role("def-text").length !== 3 || t2role("ac-shield").length !== 1 || t2role("ac-text").length !== 1) {
+      bad("四防图形不是 3 圆 + 3 数字 + AC 盾 + AC 数字：" + t2roles.join(","));
+    } else if (t2.some((it) => it.layer !== "ATTACHMENT" || it.attachedTo !== TOKEN2)) {
+      bad("血条不在 ATTACHMENT 层 / 没 attachedTo");
+    } else if (t2.some((it) => !Array.isArray(it.disableAttachmentBehavior) || it.disableAttachmentBehavior.indexOf("SCALE") < 0)) {
+      bad("血条没有禁用 SCALE 继承");
+    } else {
+      ok("v1.10.5：带四防的 token 画 11 件（底部条 2 + 数字 1 + 左侧 3 圆 + 3 数字 + 右下 AC 盾 + AC 数字）");
+    }
   }
 
-  /* ---- 环：Ro 73 / Ri 66（v1.8.0 环厚 7）/ 48 段（98 点）/ 环心 = token 中心 ---- */
+  /* ---- 底部条：96×15 @ (75,136.5)、比例填充 0.6、文字在条内 ---- */
   {
-    const bg = t2one("ring-bg");
-    const fill = t2one("ring-fill");
-    const bgR = bg ? radiiOf(bg) : [];
-    const fillR = fill ? radiiOf(fill) : [];
+    const bg = t2one("bar-bg");
+    const fill = t2one("bar-fill");
     const textItem = t2one("bar-text");
     const textCenter = textItem && textItem.text
       ? { x: textItem.position.x + textItem.text.width / 2, y: textItem.position.y + textItem.text.height / 2 }
       : null;
-    if (!bg || !fill) bad("环形血条没画（ring-bg / ring-fill 缺）");
-    else if (bg.points.length !== 2 * (48 + 1)) bad("环不是 48 段（应 98 个点）：" + bg.points.length);
-    else if (Math.abs(Math.max.apply(null, bgR) - 73) > 0.01 || Math.abs(Math.min.apply(null, bgR) - 66) > 0.01) {
-      bad("环的半径不对（Ro 应 73、Ri 应 66）：外 " + Math.max.apply(null, bgR) + " / 内 " + Math.min.apply(null, bgR));
-    } else if (Math.abs(fillR[0] - 73) > 0.01) {
-      bad("填充环的半径不对：" + fillR[0]);
-    } else if (Math.abs(bg.position.x - 75) > 0.01 || Math.abs(bg.position.y - 75) > 0.01) {
-      bad("环心不在 token 中心：" + JSON.stringify(bg.position));
-    } else if (bg.fillColor !== "#0b0f14" || !(bg.fillOpacity > 0 && bg.fillOpacity < 0.8)) {
-      bad("底环不是暗色：fill=" + bg.fillColor + "@" + bg.fillOpacity);
-    } else if (fill.fillColor !== "#a52424" || fill.visible !== true) {
-      bad("填充环的颜色 / 可见性不对：fill=" + fill.fillColor + " visible=" + fill.visible);
-    } else if (!textItem || !textItem.text || textItem.text.plainText !== "12/20 +3") {
-      bad("HP 文本不对（应 12/20 +3）：" + JSON.stringify(textItem && textItem.text));
-    } else if (!textCenter || Math.abs(textCenter.x - 75) > 0.5 ||
-      Math.abs(textCenter.y - (75 + 66 * 0.52)) > 0.6) {
-      bad("HP 数字不在环内底部（x 居中、y = 环心 + Ri×0.52）：" + JSON.stringify(textCenter));
-    } else if (!(bg.zIndex < fill.zIndex && fill.zIndex < t2one("shield").zIndex &&
-      t2one("shield").zIndex < t2one("shield-text").zIndex && t2one("shield-text").zIndex < textItem.zIndex)) {
-      bad("zIndex 顺序不对：" + [bg.zIndex, fill.zIndex, t2one("shield").zIndex, t2one("shield-text").zIndex, textItem.zIndex].join("/"));
-    } else {
-      ok("环形血条：48 段（98 点）、Ro 73 / Ri 66（v1.8.0 环厚 7）、环心 = token 中心 (75,75)、底环 #0b0f14@" + bg.fillOpacity +
-        "、填充 #a52424；HP 数字「12/20 +3」在环内底部（不压 token 脸）；zIndex 9500/9800/15000/16000/30000");
-    }
+    if (!bg || !fill) bad("底部血条没画（bar-bg / bar-fill 缺）");
+    else if (Math.abs(shapeW(bg) - 96) > 0.01 || Math.abs(shapeH(bg) - 15) > 0.01) {
+      bad("底部条不是 96×15：" + shapeW(bg) + "×" + shapeH(bg));
+    } else if (Math.abs(bg.position.x - 75) > 0.01 || Math.abs(bg.position.y - 136.5) > 0.01) {
+      bad("底部条不在底部居中：" + JSON.stringify(bg.position));
+    } else if (bg.fillColor !== "#3a1414") bad("轨道底色不是 #3a1414：" + bg.fillColor);
+    else if (fill.fillColor !== "#b00000" || fill.visible !== true) {
+      bad("填充色 / 可见性不对：" + fill.fillColor + " visible=" + fill.visible);
+    } else if (Math.abs(shapeW(fill) - 96 * 0.6) > 0.02) bad("填充宽度不是 96×0.6：" + shapeW(fill));
+    else if (!textItem || !textItem.text || textItem.text.plainText !== "12/20 +3") bad("条内数字不对：" + JSON.stringify(textItem && textItem.text));
+    else if (!textCenter || Math.abs(textCenter.x - 75) > 0.6 || Math.abs(textCenter.y - 136.5) > 0.6) {
+      bad("条内数字没有居中在血条里：" + JSON.stringify(textCenter));
+    } else ok("底部条：96×15 @ (75,136.5)、轨道 #3a1414、填充 60%（#b00000）、数字「12/20 +3」居中在条内");
   }
 
-  /* ---- 四防回到四角：左上强韧 / 右上反射 / 左下意志 / 右下 AC 盾 ---- */
+  /* ---- 左侧三圆：上→下 强韧 / 反射 / 意志，直径 24、x=21、y=51/81/111 ---- */
   {
-    const shields = t2role("shield");
-    const CIRCLE_SEG = 24;
-    const circleOk = (it) => {
-      if (!it || Math.abs(shapeH(it) - 22) > 0.01) return false;
-      if (!Array.isArray(it.points) || it.points.length !== CIRCLE_SEG) return false;
-      const r = shapeH(it) / 2;
-      return it.points.every((pt) => Math.abs(Math.hypot(pt.x - r, pt.y - r) - r) < 0.01);
-    };
-    const shieldShapeOk = (it) => {
-      if (!it || Math.abs(shapeH(it) - 22) > 0.01) return false;
-      if (!Array.isArray(it.points) || it.points.length <= CIRCLE_SEG) return false;
-      return it.points.some((pt) => Math.abs(pt.x - 11) < 0.01 && Math.abs(pt.y - 22) < 0.01);
-    };
     const WANT = {
-      fort: { x: 19, y: 19, color: "#e3b341" },
-      reflex: { x: 131, y: 19, color: "#56d364" },
-      will: { x: 19, y: 131, color: "#a371f7" },
-      ac: { x: 131, y: 131, color: "#ffffff" }
+      fort: { y: 51, color: "#f0a5ab", text: "23" },
+      reflex: { y: 81, color: "#f5e884", text: "25" },
+      will: { y: 111, color: "#8e9dd6", text: "25" }
     };
     const wrong = [];
     for (const k of Object.keys(WANT)) {
-      const it = shieldByKey(k);
+      const it = defByKey(k);
       if (!it) { wrong.push(k + " 没画"); continue; }
       const c = centerOf(it);
-      if (Math.abs(c.x - WANT[k].x) > 0.01 || Math.abs(c.y - WANT[k].y) > 0.01) {
-        wrong.push(k + " 不在角上（" + Math.round(c.x * 100) / 100 + "," + Math.round(c.y * 100) / 100 + "）");
-      } else if (it.fillColor !== WANT[k].color) {
-        wrong.push(k + " 颜色不对（" + it.fillColor + "）");
-      }
+      if (Math.abs(c.x - 21) > 0.01 || Math.abs(c.y - WANT[k].y) > 0.01) {
+        wrong.push(k + " 位置不对（" + Math.round(c.x * 100) / 100 + "," + Math.round(c.y * 100) / 100 + "）");
+      } else if (it.fillColor !== WANT[k].color) wrong.push(k + " 颜色不对（" + it.fillColor + "）");
+      else if (Math.abs(shapeH(it) - 24) > 0.01 || it.points.length !== 24) wrong.push(k + " 不是 24 段圆（" + shapeH(it) + "/" + it.points.length + "）");
+      else if (it.strokeColor !== "#1c2330") wrong.push(k + " 描边不是 #1c2330");
     }
-    const ac = shieldByKey("ac");
-    if (shields.length !== 4) bad("四防不是 4 枚：" + shields.length + "（" + shields.map(shieldKeyOf).join(",") + "）");
-    else if (wrong.length) bad("四角四防不对：" + wrong.join(" / "));
-    else if (["fort", "reflex", "will"].some((k) => !circleOk(shieldByKey(k)))) {
-      bad("三防不是直径 22 的圆（24 段折线）：" +
-        ["fort", "reflex", "will"].map((k) => k + "=" + (shieldByKey(k) ? shapeH(shieldByKey(k)) + "/" + shieldByKey(k).points.length + "点" : "无")).join(" "));
-    } else if (!shieldShapeOk(ac)) {
-      bad("AC 不是直径 22 的盾形（外接盒 " + shapeH(ac) + "、" + (ac.points || []).length + " 点）");
-    } else if (ac.fillColor !== "#ffffff" || !(ac.fillOpacity > 0 && ac.fillOpacity <= 0.3) ||
-      ac.strokeColor !== "#ffffff" || !(ac.strokeOpacity >= 0.8)) {
-      bad("AC 不是半透明白盾：fill=" + ac.fillColor + "@" + ac.fillOpacity + " stroke=" + ac.strokeColor + "@" + ac.strokeOpacity);
-    } else {
-      const texts = t2role("shield-text");
-      const acText = shieldTextByKey("ac", texts);
-      const fortText = shieldTextByKey("fort", texts);
-      const fontOk = (it) => it && it.text && it.text.style && Math.abs(it.text.style.fontSize - 11) < 0.01;
-      if (!acText || !acText.text || acText.text.plainText !== "28") bad("AC 的数字不是 28：" + JSON.stringify(acText && acText.text));
-      else if (!fontOk(acText) || !fontOk(fortText)) bad("四防字号不是 11：" +
-        JSON.stringify([acText && acText.text.style, fortText && fortText.text.style]));
-      else ok("四防回到四角：左上强韧(19,19) 黄 / 右上反射(131,19) 绿 / 左下意志(19,131) 紫 / 右下 AC(131,131) 半透明白盾；" +
-        "四枚都是直径 22（三防 24 段圆、AC 盾形）、字号 11");
+    const texts = t2role("def-text");
+    for (const k of Object.keys(WANT)) {
+      if (!defTextByKey(k) || defTextByKey(k).text.plainText !== WANT[k].text) wrong.push(k + " 数字不对");
     }
+    if (t2role("def").length !== 3) bad("三防圆不是 3 个：" + t2role("def").length);
+    else if (wrong.length) bad("左侧三圆不对：" + wrong.join(" / "));
+    else ok("左侧三圆：上→下 强韧(21,51) 粉 / 反射(21,81) 黄 / 意志(21,111) 蓝，直径 24、深色描边，数字 23/25/25");
   }
 
-  /* ---- v1.7.9：hp.boss 只是旧数据，**不再画任何 Boss 元素** ---- */
+  /* ---- 右下 AC 盾：30×32.4 @ (129,127.8)，深灰蓝底 + 白描边 + AC 数字 ---- */
+  {
+    const sh = t2one("ac-shield");
+    const acText = t2one("ac-text");
+    if (!sh) bad("右下 AC 盾没画");
+    else if (Math.abs(shapeW(sh) - 30) > 0.01 || Math.abs(shapeH(sh) - 32.4) > 0.05) bad("AC 盾不是 30×32.4：" + shapeW(sh) + "×" + shapeH(sh));
+    else if (Math.abs(sh.position.x + shapeW(sh) / 2 - 129) > 0.01 || Math.abs(sh.position.y + shapeH(sh) / 2 - 127.8) > 0.05) {
+      bad("AC 盾不在右下角：" + JSON.stringify(sh.position));
+    } else if (sh.fillColor !== "#393e50" || sh.strokeColor !== "#ffffff") bad("AC 盾颜色不对：" + sh.fillColor + " / " + sh.strokeColor);
+    else if (!acText || !acText.text || acText.text.plainText !== "28") bad("AC 数字不是 28：" + JSON.stringify(acText && acText.text));
+    else ok("右下 AC 盾：30×32.4 @ (129,127.8)，#393e50 底 + 白描边，AC 数字 28");
+  }
+
+  /* ---- hp.boss 旧数据不再画任何 Boss 元素 ---- */
   token2.metadata[HP_KEY].boss = { enabled: true, segments: 3, phase: "阶段二" };
   for (const cb of itemsChangeCbs) cb(sceneItems);
   await sleep(300);
@@ -519,95 +491,63 @@ const BG = run(OBR, stubBuilder("CURVE"), stubBuilder("SHAPE"), stubBuilder("TEX
     const bossBits = roles.filter((r) => ["plate", "plate-text", "plate-phase", "divider", "lock-body", "lock-shackle"].indexOf(r) >= 0);
     if (bossBits.length) bad("hp.boss 还在画名牌 / 分段 / 锁：" + bossBits.join(","));
     else if (t2.length !== 11) bad("hp.boss 不该改变画多少件（仍 11 件），实际 " + t2.length + "：" + roles.join(","));
-    else ok("hp.boss（旧数据 { enabled:true, segments:3, phase }）被忽略：不画名牌 / 分段 / 锁，仍是环形血条 11 件");
+    else ok("hp.boss（旧数据）被忽略：不画名牌 / 分段 / 锁，仍是样板血条 11 件");
     delete token2.metadata[HP_KEY].boss;
   }
 
-  /* ---- v1.7.9：窄 token 退化 —— 两枚并排放不下时按 DEF_DROP 丢，AC 最后才丢 ---- */
+  /* ---- 窄 token：三圆 + AC 盾仍按比例画，不出现 NaN ---- */
   {
     const TOKEN3 = "tok-3";
     const token3 = {
-      id: TOKEN3,
-      type: "IMAGE",
-      name: "窄 token",
-      layer: "CHARACTER",
-      createdUserId: "user-owner",
-      position: { x: 0, y: 0 },
-      scale: { x: 1, y: 1 },
-      metadata: {
-        [HP_KEY]: {
-          cur: 9, max: 10, surges: 2, surgesMax: 3,
-          defenses: { ac: 21, fort: 15, reflex: 17, will: 19 },
-          locked: true, updatedAt: 4
-        }
-      }
+      id: TOKEN3, type: "IMAGE", name: "窄 token", layer: "CHARACTER", createdUserId: "user-owner",
+      position: { x: 0, y: 0 }, scale: { x: 1, y: 1 },
+      metadata: { [HP_KEY]: { cur: 9, max: 10, surges: 2, surgesMax: 3,
+        defenses: { ac: 21, fort: 15, reflex: 17, will: 19 }, locked: true, updatedAt: 4 } }
     };
     sceneItems.push(token3);
-    const t3keys = () => liveOf(TOKEN3).filter((it) => barRoleOf(it) === "shield").map(shieldKeyOf).join(",");
-    const t3roles = () => liveOf(TOKEN3).map(barRoleOf);
-
-    /* ① 20×20：s 夹到 0.2 → 四枚直径 4.4s、两枚并排只要 12 ≤ 20 → 四枚都画 */
-    boundsFor[TOKEN3] = { min: { x: 0, y: 0 }, max: { x: 20, y: 20 }, center: { x: 10, y: 10 }, width: 20, height: 20 };
-    for (const cb of itemsChangeCbs) cb(sceneItems);
-    await sleep(340);
-    if (t3keys() !== "fort,reflex,will,ac") bad("小 token（20×20）四角放得下时应该四枚都画：" + t3keys());
-    else ok("小 token（20×20，s=0.2）：四枚直径 4.4s 的四角都放得下 → 四防 4 枚全画");
-
-    /* ② 13×40（v1.8.0：直径 22s / 内缩 8s）：两枚并排 = 2×4.4 + 2×1.6 = 12 ≤ 13 → 四枚都放得下 */
-    boundsFor[TOKEN3] = { min: { x: 0, y: 0 }, max: { x: 13, y: 40 }, center: { x: 6.5, y: 20 }, width: 13, height: 40 };
-    for (const cb of itemsChangeCbs) cb(sceneItems);
-    await sleep(340);
-    const keys13 = t3keys();
-    if (keys13 !== "fort,reflex,will,ac") bad("窄 token（13×40）四角都放得下时应画满四枚，实际：" + keys13);
-    else if (liveOf(TOKEN3).filter((it) => barRoleOf(it) === "shield-text").length !== 4) bad("窄 token（13×40）四防数字少了");
-    else ok("窄 token（13×40，v1.8.0 22s/8s）：两枚并排 12 ≤ 13 → 四枚四防都放得下（旧版 30s 会退化到只剩 AC）");
-
-    /* ③ 6×40：连一枚 AC 都放不下（7.6 > 6）→ 一枚盾都不画，环照旧 */
-    boundsFor[TOKEN3] = { min: { x: 0, y: 0 }, max: { x: 6, y: 40 }, center: { x: 3, y: 20 }, width: 6, height: 40 };
-    for (const cb of itemsChangeCbs) cb(sceneItems);
-    await sleep(340);
-    if (t3keys() !== "") bad("极窄 token（6×40）连 AC 都放不下，应该一枚盾都不画：" + t3keys());
-    else if (!t3roles().some((r) => r === "ring-bg") || !t3roles().some((r) => r === "bar-text")) {
-      bad("极窄 token 把环形血条也弄没了（只该不画盾）：" + t3roles().join(","));
-    } else ok("极窄 token（6×40）：四防一枚都不画（四防仍能在速览 / 编辑窗里看），环形血条照旧");
-
-    /* 收尾：把这枚临时 token 移出场景（后面的断言只看 tok-2） */
+    for (const [w, h] of [[20, 20], [6, 40]]) {
+      boundsFor[TOKEN3] = { min: { x: 0, y: 0 }, max: { x: w, y: h }, center: { x: w / 2, y: h / 2 }, width: w, height: h };
+      for (const cb of itemsChangeCbs) cb(sceneItems);
+      await sleep(340);
+      const items = liveOf(TOKEN3);
+      const roles3 = items.map(barRoleOf);
+      if (items.some((it) => (it.points || []).some((pt) => !isFinite(pt.x) || !isFinite(pt.y)))) bad(w + "×" + h + "：血条点出现 NaN");
+      else if (roles3.filter((r) => r === "def").length !== 3 || !roles3.includes("ac-shield")) bad(w + "×" + h + "：四防图形不齐：" + roles3.join(","));
+    }
+    ok("窄 token（20×20 / 6×40）：三圆 + AC 盾按比例绘制，没有 NaN");
     sceneItems = sceneItems.filter((it) => it.id !== TOKEN3);
     delete boundsFor[TOKEN3];
     for (const cb of itemsChangeCbs) cb(sceneItems);
     await sleep(340);
   }
 
-  /* ---- v1.7.9：不再画锁 —— 切 locked 只改精确度，不重建 item ---- */
+  /* ---- 不再画锁 —— 切 locked 只改精确度，不重建 item ---- */
   token2.metadata[HP_KEY].locked = false;
   const addsBeforeLock = all("local.addItems").length;
   for (const cb of itemsChangeCbs) cb(sceneItems);
   await sleep(300);
   if (all("local.addItems").length !== addsBeforeLock) bad("切「解锁」不应该重建 item");
-  else if (t2role("lock-body").length || t2role("lock-shackle").length) bad("v1.7.9 还在画锁（应该全删）");
+  else if (t2role("lock-body").length || t2role("lock-shackle").length) bad("v1.10.5 还在画锁（应该全删）");
   else if (!t2one("bar-text") || t2one("bar-text").visible !== true) bad("城主端 HP 数字不见了");
   else ok("锁图标已删（切 locked 只改精确度、不重建 item；城主端数字照常显示）");
 
-  /* ---- 玩家端：其他玩家 + locked → 阶梯比例、不画数字与四防 ---- */
+  /* ---- 玩家端：阶梯比例、不画数字与四防（只剩底部条 3 件） ---- */
   token2.metadata[HP_KEY].locked = true;
   role = "PLAYER";
   for (const cb of itemsChangeCbs) cb(sceneItems);
   await sleep(300);
   t2 = liveOf(TOKEN2);
   {
-    const fill = t2one("ring-fill");
-    /* 12/20 = 0.6 → 25% 阶梯向上取整 = 0.75；环从 12 点顺时针扫 0.75×360°=270°
-     * → 外弧最后一个点在 3 点方向的反面（-Ro, 0）。 */
-    const outer = fill ? fill.points.slice(0, 49) : [];
-    const last = outer[outer.length - 1];
-    if (t2.some((it) => barRoleOf(it) === "shield")) {
-      bad("玩家端仍画了四防盾（locked 时应隐藏）");
+    const fill = t2one("bar-fill");
+    /* 12/20 = 0.6 → 25% 阶梯向上取整 = 0.75 → 填充宽度 96×0.75 = 72。 */
+    if (t2.some((it) => barRoleOf(it) === "def" || barRoleOf(it) === "def-text" || barRoleOf(it) === "ac-shield" || barRoleOf(it) === "ac-text")) {
+      bad("玩家端仍画了四防图形（locked 时应隐藏）");
     } else if (!t2one("bar-text") || t2one("bar-text").visible !== false) {
       bad("玩家端仍显示精确数字");
-    } else if (!last || Math.abs(last.x + 73) > 0.6 || Math.abs(last.y) > 0.6) {
-      bad("玩家端比例没按 25% 阶梯向上取整（0.6 → 0.75，外弧终点应 ≈(-73,0)）：" + JSON.stringify(last));
+    } else if (!fill || Math.abs(shapeW(fill) - 96 * 0.75) > 0.02) {
+      bad("玩家端比例没按 25% 阶梯向上取整（0.6 → 0.75，填充应 72 宽）：" + (fill ? shapeW(fill) : "无"));
     } else {
-      ok("玩家端（其他玩家 + locked）：0.6 → 0.75 阶梯比例（环扫 270°），不画数字与四防（" + t2.length + " 件）");
+      ok("玩家端（其他玩家 + locked）：0.6 → 0.75 阶梯比例（填充 72 宽），不画数字与四防（" + t2.length + " 件）");
     }
   }
   role = "GM";
@@ -1299,7 +1239,7 @@ const BG = run(OBR, stubBuilder("CURVE"), stubBuilder("SHAPE"), stubBuilder("TEX
       const roles = items.map(barRoleOf);
       if (!items.length) bad("保存后血条没有画出来（hp-edit-saved 没触发重画）");
       else if (items.length !== 11) bad("杂兵保存后应画 11 件（环 2 + HP 数字 1 + 四盾 + 4 数字），实际 " + items.length + "：" + roles.join(","));
-      else if (!items.some((it) => barRoleOf(it) === "shield" && it.metadata["com.4enext-owlbear/bar"].key === "ac")) {
+      else if (!items.some((it) => barRoleOf(it) === "ac-shield" && it.metadata["com.4enext-owlbear/bar"].key === "ac")) {
         bad("四防盾没有按 key=ac 画出来");
       } else ok("没绑角色卡的杂兵：保存 20/20 + 临时 3 + 四防 → 血条立刻画出 11 件（环形 + 四角四防，含 AC 盾）");
     }
@@ -1311,8 +1251,8 @@ const BG = run(OBR, stubBuilder("CURVE"), stubBuilder("SHAPE"), stubBuilder("TEX
     for (const cb of itemsChangeCbs) cb(sceneItems);
     await sleep(300);
     const items = liveOf(HPE_MONSTER);
-    const shields = items.filter((it) => barRoleOf(it) === "shield");
-    const shieldTexts = items.filter((it) => barRoleOf(it) === "shield-text");
+    const shields = items.filter((it) => ["def", "ac-shield"].indexOf(barRoleOf(it)) >= 0);
+    const shieldTexts = items.filter((it) => ["def-text", "ac-text"].indexOf(barRoleOf(it)) >= 0);
     if (!cleared.ok) bad("清空四防保存失败：" + JSON.stringify(cleared));
     else if (meta && "defenses" in meta) bad("清空四防后 metadata 里还留着 defenses 键：" + JSON.stringify(meta));
     else if (shields.length || shieldTexts.length) bad("空四防仍然画了 " + shields.length + " 枚盾（应该一枚都不画）");
