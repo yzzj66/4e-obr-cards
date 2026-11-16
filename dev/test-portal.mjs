@@ -466,6 +466,23 @@ ok("从真实源码拿到 window.__4ePortal（portalMeta / 螺旋 / 墙避让 / 
 
 }
 
+/* ---- ①k 目的地选择窗接进窗口框架 ---- */
+{
+  const destHtml = fs.readFileSync(path.join(ROOT, "portal-dest.html"), "utf8");
+  const destJs = fs.readFileSync(path.join(ROOT, "assets", "portal-dest-page.js"), "utf8");
+  if (coreSrc.indexOf("portalDest: { id: ID_PORTAL_DEST") >= 0 &&
+    coreSrc.indexOf("async function openDestinationPopover(") >= 0 &&
+    coreSrc.indexOf('openWin("portalDest"') >= 0 &&
+    coreSrc.indexOf("openDestinationPopover(origin.portal.itemId, tokenIds)") >= 0)
+    ok("①k WINS.portalDest + openDestinationPopover 走 openWin（可拖动/位置记忆/reclamp）");
+  else bad("①k 目的地窗没有接进窗口框架");
+  if (destHtml.indexOf('class="win-head"') >= 0 && destHtml.indexOf('id="head"') >= 0 &&
+    destJs.indexOf('createWindow({ name: "portalDest"') >= 0 &&
+    destJs.indexOf('closeSelf(ID_PORTAL_DEST, "portalDest")') >= 0)
+    ok("①k 目的地页为标准窗口页（.win-head / createWindow portalDest / closeSelf）");
+  else bad("①k 目的地页没有 windowize");
+}
+
 /* ---- ② 同 tag 目的地 ---- */
 {
   const portals = [

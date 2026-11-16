@@ -3952,5 +3952,26 @@ console.log("== v2.1.0 传送落点/冷却不重复触发（轻量版）");
   else bad("v2.1.0：test-portal 缺少冷却/落点断言");
 }
 
+console.log("== v2.1.0 目的地选择窗可拖动");
+{
+  const coreDest = fs.readFileSync(path.join(ROOT, "assets", "background.core.js"), "utf8");
+  const destPage = fs.readFileSync(path.join(ROOT, "assets", "portal-dest-page.js"), "utf8");
+  const destHtml = fs.readFileSync(path.join(ROOT, "portal-dest.html"), "utf8");
+  if (coreDest.indexOf("portalDest: { id: ID_PORTAL_DEST") >= 0 &&
+    coreDest.indexOf("async function openDestinationPopover(") >= 0 &&
+    coreDest.indexOf('openWin("portalDest"') >= 0 &&
+    coreDest.indexOf("PORTAL_DEST_W") >= 0 && coreDest.indexOf("PORTAL_DEST_H") >= 0)
+    ok("v2.1.0：WINS.portalDest（360×320）+ openDestinationPopover 走 openWin");
+  else bad("v2.1.0：目的地窗未注册 / 未走 openWin");
+  if (destHtml.indexOf('class="win-head"') >= 0 && destPage.indexOf('createWindow({ name: "portalDest"') >= 0 &&
+    destPage.indexOf('closeSelf(ID_PORTAL_DEST, "portalDest")') >= 0)
+    ok("v2.1.0：portal-dest 页面 windowize（.win-head / createWindow / closeSelf）");
+  else bad("v2.1.0：portal-dest 页面未 windowize");
+  if (coreDest.indexOf("openDestinationPopover(origin.portal.itemId, tokenIds)") >= 0 &&
+    fs.readFileSync(path.join(ROOT, "dev", "test-portal.mjs"), "utf8").indexOf("①k 目的地选择窗接进窗口框架") >= 0)
+    ok("v2.1.0：检测→目的地窗调用已接入 + test-portal 断言");
+  else bad("v2.1.0：目的地打开调用 / 测试断言缺失");
+}
+
 console.log(fail ? "\n" + fail + " 个问题" : "\n全部通过");
 process.exit(fail ? 1 : 0);

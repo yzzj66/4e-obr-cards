@@ -1,6 +1,7 @@
 // v2.1.0：传送目的地选择（玩家 / GM）。列表 = 同 tag 的其它传送门；点选后广播 CH_PORTAL_TELEPORT。
 import OBR from "../vendor/obr-sdk.js";
-import { CH_PORTAL_TELEPORT, ID_PORTAL_DEST, KEY_PORTAL, NS, onReady } from "./common.js";
+import { CH_PORTAL_TELEPORT, ID_PORTAL_DEST, KEY_PORTAL, onReady } from "./common.js";
+import { closeSelf, createWindow } from "./window.js";
 
 var params = new URLSearchParams(location.search);
 var sourceId = params.get("portal") || "";
@@ -10,8 +11,11 @@ var hintEl = document.getElementById("pd-hint");
 var closeEl = document.getElementById("pd-close");
 var portals = [];
 
-function closeSelf() {
-  try { var p = OBR.popover.close(ID_PORTAL_DEST); if (p && p.catch) p.catch(function () {}); } catch (e) { /* 忽略 */ }
+/* v2.1.0：标准窗口页（拖动标题栏 / 位置记忆 / reclamp 走 assets/window.js）。 */
+var win = createWindow({ name: "portalDest", head: document.getElementById("head") });
+
+function closePortalDest() {
+  closeSelf(ID_PORTAL_DEST, "portalDest");
 }
 
 function esc(s) {
@@ -61,7 +65,7 @@ function choose(destId) {
     var p = OBR.broadcast.sendMessage(CH_PORTAL_TELEPORT, { destinationId: destId, tokenIds: tokenIds, at: Date.now() }, { destination: "LOCAL" });
     if (p && typeof p.catch === "function") p.catch(function () { /* 后台没起来就无法传送 */ });
   } catch (e) { /* 忽略 */ }
-  closeSelf();
+  closePortalDest();
 }
 
 onReady(function () {
@@ -71,7 +75,9 @@ onReady(function () {
       if (btn) choose(btn.getAttribute("data-dest"));
     });
   }
-  if (closeEl) closeEl.addEventListener("click", closeSelf);
-  document.addEventListener("keydown", function (ev) { if (ev.key === "Escape") closeSelf(); });
+  if (closeEl) closeEl.addEventListener("click", closePortalDest);
+  document.addEventListener("keydown", function (ev) { if (ev.key === "Escape") closePortalDest(); });
+  var closeX = document.getElementById("pd-close-x");
+  if (closeX) closeX.addEventListener("click", closePortalDest);
   void load();
 });

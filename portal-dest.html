@@ -6,27 +6,33 @@
 <title>4eNEXT to owlbear · 传送目的地</title>
 <link rel="stylesheet" href="assets/ui.css?v=2.1.0">
 <style>
-  body.pd-page { padding: 10px; overflow: hidden; height: 100vh; }
-  .pd { height: calc(100vh - 20px); display: flex; flex-direction: column; gap: 7px; }
-  .pd h3 { margin: 0; font-size: 13px; color: #e6edf3; }
-  .pd .list { flex: 1 1 auto; overflow: auto; display: flex; flex-direction: column; gap: 6px; }
-  .pd button.dest {
+  body.pd-page .win { height: 100vh; max-height: 100vh; }
+  .pd-body { padding: 8px 10px 10px; display: flex; flex-direction: column; gap: 7px; overflow: hidden; }
+  .pd-body .list { flex: 1 1 auto; overflow: auto; display: flex; flex-direction: column; gap: 6px; }
+  .pd-body button.dest {
     display: flex; justify-content: space-between; align-items: center; gap: 8px;
     padding: 7px 9px; border: 1px solid var(--line); border-radius: 8px;
     background: #101820; color: #e6edf3; cursor: pointer; text-align: left; font-size: 12px;
   }
-  .pd button.dest:hover { border-color: #3f8bff; background: #14202b; }
-  .pd .tag { font-size: 10px; color: #93a1b0; }
-  .pd .hint { font-size: 10.5px; color: #93a1b0; line-height: 1.5; }
-  .pd .foot { display: flex; justify-content: flex-end; }
+  .pd-body button.dest:hover { border-color: #3f8bff; background: #14202b; }
+  .pd-body .tag { font-size: 10px; color: #93a1b0; }
+  .pd-body .hint { font-size: 10.5px; color: #93a1b0; line-height: 1.5; }
+  .pd-body .foot { display: flex; justify-content: flex-end; }
+  .pd-close { font-size: 14px; line-height: 1; }
 </style>
 </head>
-<body class="pd-page">
-<div class="pd">
-  <h3>选择传送目的地</h3>
-  <div class="list" id="pd-list"></div>
-  <p class="hint" id="pd-hint">同一标签的其它传送门会出现在这里。</p>
-  <div class="foot"><button class="btn" id="pd-close" type="button" data-bg-soft>取消</button></div>
+<body class="win-page pd-page">
+<div class="win pd">
+  <div class="win-head" id="head" title="按住这里拖动窗口（位置会记住）">
+    <span class="grip" aria-hidden="true" title="拖动柄">⣿</span>
+    <div class="t"><b>选择传送目的地</b></div>
+    <div class="sp"><button class="icon-btn pd-close" id="pd-close-x" type="button" title="关闭（Esc）">✕</button></div>
+  </div>
+  <div class="win-body pd-body">
+    <div class="list" id="pd-list"></div>
+    <p class="hint" id="pd-hint">同一标签的其它传送门会出现在这里。</p>
+    <div class="foot"><button class="btn" id="pd-close" type="button" data-bg-soft>取消</button></div>
+  </div>
 </div>
 <script type="module" src="assets/portal-dest-page.js?v=2.1.0"></script>
 </body>

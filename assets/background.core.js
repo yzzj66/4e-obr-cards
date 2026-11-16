@@ -309,6 +309,8 @@ var PORTAL_WALL_PADDING = 8;
 var PORTAL_SUPPRESS_MS = 700;
 var PORTAL_EDIT_W = 360;
 var PORTAL_EDIT_H = 390;
+var PORTAL_DEST_W = 360;
+var PORTAL_DEST_H = 320;
 var PORTAL_PREVIEW_TAG = NS + "/portal-preview";
 
 /* ---- 1. 日志 / 通知 / 失败上报（成功不打扰，失败必可见） ---- */
@@ -403,7 +405,9 @@ var WINS = {
 
   hpEdit: { id: ID_HP_EDIT, url: URL_HP_EDIT, width: HPE_W, height: HPE_H },
 
-  portalEdit: { id: ID_PORTAL_EDIT, url: URL_PORTAL_EDIT, width: PORTAL_EDIT_W, height: PORTAL_EDIT_H }
+  portalEdit: { id: ID_PORTAL_EDIT, url: URL_PORTAL_EDIT, width: PORTAL_EDIT_W, height: PORTAL_EDIT_H },
+
+  portalDest: { id: ID_PORTAL_DEST, url: URL_PORTAL_DEST, width: PORTAL_DEST_W, height: PORTAL_DEST_H }
 };
 
 var winOpen = {};
@@ -4466,7 +4470,7 @@ async function onPortalTeleport(ev) {
       for (var w = 0; w < tokens.length; w++) delete portalWritingIds[tokens[w].id];
     }, 500);
     pageLog("info", "传送完成：" + tokens.length + " 枚 token → " + dest.name);
-    try { await OBR.popover.close(ID_PORTAL_DEST); } catch (e2) {  }
+    try { await closeWin("portalDest"); } catch (e2) {  }
   } catch (e) {
     stepFail("执行传送", e);
   }
@@ -4477,6 +4481,20 @@ async function onPortalItemsChange() {
     portalDetectTimer = null;
     void portalDetectDragEnd();
   }, 200);
+}
+/** v2.1.0：目的地选择窗接进通用窗口框架（可拖动 / 位置记忆 / reclamp）。 */
+async function openDestinationPopover(portalId, tokenIds) {
+  portalDestOpen = true;
+  try {
+    await openWin("portalDest", URL_PORTAL_DEST + "?portal=" + encodeURIComponent(portalId) +
+      "&tokens=" + encodeURIComponent((tokenIds || []).join(",")));
+    setTimeout(function () { portalDestOpen = false; }, 10000);
+    return true;
+  } catch (e) {
+    portalDestOpen = false;
+    pageLog("err", "打开传送目的地选择失败：" + errText(e));
+    return false;
+  }
 }
 async function portalDetectDragEnd() {
   var role = "";
@@ -4541,21 +4559,7 @@ async function portalDetectDragEnd() {
   for (var s2 = 0; s2 < sel.length; s2++) if (tokenMap[sel[s2]]) tokenIds.push(sel[s2]);
   for (var c2 = 0; c2 < candidates.length; c2++) if (tokenIds.indexOf(candidates[c2].id) < 0) tokenIds.push(candidates[c2].id);
   try {
-    portalDestOpen = true;
-    await OBR.popover.open({
-      id: ID_PORTAL_DEST,
-      url: URL_PORTAL_DEST + "?portal=" + encodeURIComponent(origin.portal.itemId) +
-        "&tokens=" + encodeURIComponent(tokenIds.join(",")),
-      width: 360,
-      height: 320,
-      anchorReference: "POSITION",
-      anchorPosition: { left: 60, top: 100 },
-      anchorOrigin: { horizontal: "LEFT", vertical: "TOP" },
-      transformOrigin: { horizontal: "LEFT", vertical: "TOP" },
-      hidePaper: false,
-      disableClickAway: false
-    });
-    setTimeout(function () { portalDestOpen = false; }, 10000);
+    await openDestinationPopover(origin.portal.itemId, tokenIds);
   } catch (e5) {
     portalDestOpen = false;
     pageLog("err", "打开传送目的地选择失败：" + errText(e5));
