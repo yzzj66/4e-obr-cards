@@ -57,7 +57,7 @@ var TOOL_SETTINGS_ID = NS + "/settings-tool";
 var CH_HELLO = NS + "/diag-hello";
 var CH_PING = NS + "/diag-ping";
 var CH_PONG = NS + "/diag-pong";
-var PLUGIN_VERSION = "1.10.0";
+var PLUGIN_VERSION = "1.10.1";
 
 var KEY_HP = NS + "/hp";
 

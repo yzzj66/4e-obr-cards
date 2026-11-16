@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>4eNEXT to owlbear · 血条组件</title>
-<link rel="stylesheet" href="assets/ui.css?v=1.10.0">
+<link rel="stylesheet" href="assets/ui.css?v=1.10.1">
 </head>
 <body class="win-page hpe-page">
 <!-- v1.10.0：血条编辑窗照 Full Suite 的 hp-bar 重做（第一批：布局 + 字段）。
@@ -28,16 +28,16 @@
 
   <div class="hpe-body">
     <div class="hpe-row hpe-pills">
-      <div class="hpe-pill hpe-hp-pill" id="hpe-hp-pill" title="生命：当前 / 上限（背景按当前/上限比例填充）">
+      <label class="hpe-pill hpe-hp-pill" id="hpe-hp-pill" for="hpe-cur" title="生命：当前 / 上限（点这里也能编辑）">
         <input class="hpe-num" id="hpe-cur" type="text" inputmode="numeric" autocomplete="off" spellcheck="false" data-bg-soft placeholder="0" aria-label="当前生命">
         <span class="hpe-sep">/</span>
         <input class="hpe-num" id="hpe-max" type="text" inputmode="numeric" autocomplete="off" spellcheck="false" data-bg-soft placeholder="20" aria-label="生命上限">
         <span class="hpe-unit">HP</span>
-      </div>
-      <div class="hpe-pill hpe-temp-pill" title="临时生命（0~999，不参与血条比例）">
+      </label>
+      <label class="hpe-pill hpe-temp-pill" for="hpe-temp" title="临时生命（0~999，点这里也能编辑）">
         <span class="hpe-unit">临时</span>
-        <input class="hpe-num" id="hpe-temp" type="text" inputmode="numeric" autocomplete="off" spellcheck="false" data-bg-soft placeholder="0" aria-label="临时生命">
-      </div>
+        <input class="hpe-num" id="hpe-temp" type="text" inputmode="numeric" autocomplete="off" spellcheck="false" data-bg-soft placeholder="—" aria-label="临时生命">
+      </label>
     </div>
 
     <div class="hpe-row hpe-defs">
@@ -57,6 +57,6 @@
     </div>
   </div>
 </div>
-<script type="module" src="assets/hp-edit-page.js?v=1.10.0"></script>
+<script type="module" src="assets/hp-edit-page.js?v=1.10.1"></script>
 </body>
 </html>

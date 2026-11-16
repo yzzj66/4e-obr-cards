@@ -1,4 +1,4 @@
-/*! 4eNEXT to owlbear · background.bundle.js  (v1.10.0)
+/*! 4eNEXT to owlbear · background.bundle.js  (v1.10.1)
  * ---------------------------------------------------------------------------
  * 这是后台页唯一加载的脚本：纯「经典脚本」，没有 type="module"，没有 import/export，
  * 不依赖任何 CDN。内容是：
@@ -7,7 +7,7 @@
  *
  * 不要手改本文件。改逻辑请改 assets/background.core.js，然后：
  *     node dev/build-background.mjs
- * 生成时间：2026-11-16T07:05:34.350Z
+ * 生成时间：2026-11-16T07:20:31.680Z
  * --------------------------------------------------------------------------- */
 (function () {
 "use strict";
@@ -98,7 +98,7 @@ var TOOL_SETTINGS_ID = NS + "/settings-tool";
 var CH_HELLO = NS + "/diag-hello";
 var CH_PING = NS + "/diag-ping";
 var CH_PONG = NS + "/diag-pong";
-var PLUGIN_VERSION = "1.10.0";
+var PLUGIN_VERSION = "1.10.1";
 
 var KEY_HP = NS + "/hp";
 

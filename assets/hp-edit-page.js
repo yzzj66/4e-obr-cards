@@ -150,6 +150,7 @@ function applyDisabled() {
     list[k].disabled = dis;
     list[k].readOnly = dis;
   }
+  document.body.classList.toggle("hpe-readonly", dis);
   paintTools();
 }
 

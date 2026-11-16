@@ -1220,9 +1220,11 @@ body.hpe-page .hpe-icon[disabled] { opacity: .3; cursor: not-allowed; }
 .hpe-pills { min-height: 26px; }
 .hpe-pill {
   position: relative; display: flex; align-items: center; gap: 2px;
-  height: 24px; padding: 0 9px; border: 1px solid var(--line); border-radius: 999px;
-  background: #0e141b; overflow: hidden;
+  height: 24px; padding: 0 7px; border: 1px solid var(--line); border-radius: 999px;
+  background: #0e141b; overflow: hidden; cursor: text;
+  transition: border-color .12s, background .12s;
 }
+body:not(.hpe-readonly) .hpe-pill:hover { border-color: #3f566f; background: #121c26; }
 .hpe-hp-pill { flex: 1 1 auto; min-width: 0; }
 .hpe-hp-pill::before {
   content: ""; position: absolute; left: 0; top: 0; bottom: 0; z-index: 0;
@@ -1233,26 +1235,34 @@ body.hpe-page .hpe-icon[disabled] { opacity: .3; cursor: not-allowed; }
 .hpe-hp-pill.low::before {
   background: linear-gradient(90deg, rgba(127, 20, 22, .96), rgba(127, 20, 22, .62));
 }
-.hpe-temp-pill { flex: 0 0 86px; justify-content: center; }
+.hpe-temp-pill { flex: 0 0 104px; justify-content: center; cursor: text; }
+.hpe-temp-pill .hpe-unit { margin-right: 1px; }
 .hpe-num {
-  position: relative; z-index: 1; min-width: 0; height: 20px; padding: 0 2px;
-  border: 0; border-radius: 999px; background: transparent; color: var(--text);
+  position: relative; z-index: 1; min-width: 0; height: 20px; padding: 0 3px;
+  border: 1px solid var(--line); border-radius: 6px; background: #101820; color: var(--text);
   font: 700 13px/1 ui-monospace, "Cascadia Code", Consolas, monospace;
-  font-variant-numeric: tabular-nums; text-align: center;
+  font-variant-numeric: tabular-nums; text-align: center; cursor: text;
+  transition: border-color .12s, background .12s, box-shadow .12s;
 }
 .hpe-num::placeholder { color: #7f8b96; font-weight: 500; }
-.hpe-num:hover { background: rgba(255, 255, 255, .04); }
-.hpe-num:focus { outline: none; box-shadow: inset 0 0 0 1px rgba(86, 211, 100, .7); }
+.hpe-num:hover { border-color: #3f566f; background: #14202b; }
+.hpe-num:focus {
+  outline: none; border-color: rgba(86, 211, 100, .85); background: #0f1b16;
+  box-shadow: 0 0 0 2px rgba(86, 211, 100, .22);
+}
 .hpe-num[readonly], .hpe-num:disabled { opacity: .55; cursor: not-allowed; }
-#hpe-cur { flex: 0 0 34px; }
-#hpe-max { flex: 0 0 40px; }
-#hpe-temp { flex: 1 1 auto; }
+#hpe-cur { flex: 0 0 40px; }
+#hpe-max { flex: 0 0 46px; }
+#hpe-temp { flex: 1 1 auto; min-width: 34px; }
 .hpe-sep, .hpe-unit { position: relative; z-index: 1; flex: 0 0 auto; font-size: 10px; color: var(--muted); }
 .hpe-defs { gap: 4px; }
 .hpe-def { flex: 1 1 0; display: flex; align-items: center; gap: 2px; min-width: 0; }
 .hpe-def span { flex: 0 0 auto; font-size: 10px; color: var(--muted); white-space: nowrap; }
-.hpe-def .hpe-num { flex: 1 1 auto; width: 0; height: 20px; padding: 0 3px; border: 1px solid var(--line); background: #0e141b; font-size: 11.5px; }
-.hpe-def .hpe-num:focus { border-color: rgba(86, 211, 100, .65); box-shadow: 0 0 0 2px rgba(86, 211, 100, .16); }
+.hpe-def { cursor: text; }
+.hpe-def .hpe-num { flex: 1 1 auto; width: 0; height: 20px; padding: 0 3px; border: 1px solid var(--line); background: #101820; font-size: 11.5px; }
+.hpe-def .hpe-num:hover { border-color: #3f566f; background: #14202b; }
+.hpe-def .hpe-num:focus { border-color: rgba(86, 211, 100, .85); background: #0f1b16; box-shadow: 0 0 0 2px rgba(86, 211, 100, .22); }
+body.hpe-readonly .hpe-def, body.hpe-readonly .hpe-pill { cursor: not-allowed; }
 .hpe-status {
   position: relative; flex: 1 1 auto; min-height: 14px;
   display: flex; align-items: center;

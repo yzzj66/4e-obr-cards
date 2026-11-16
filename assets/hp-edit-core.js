@@ -388,7 +388,8 @@ export function maxText(view) {
 }
 export function tempText(view) {
   const v = view || {};
-  return v.temp === null || v.temp === undefined ? "0" : String(Math.round(v.temp));
+  /* v1.10.1：0 也留空，让 placeholder「—」提示这里可以填；空值保存仍按 0 处理。 */
+  return v.temp ? String(Math.round(v.temp)) : "";
 }
 
 /** 生命比例（0~1，给药丸背景填充用）；没有上限时按 0。 */

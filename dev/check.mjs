@@ -19,7 +19,7 @@ const NOTES_PATH = path.join(ROOT, "docs", "NOTES.md");
 const NOTES = exists(NOTES_PATH) ? fs.readFileSync(NOTES_PATH, "utf8") : "";
 const notesHas = (s) => NOTES.indexOf(s) >= 0;
 /* 当前版本号：所有「版本全链路」断言都读它，升版本只改这一处（+ 各文件里的真实版本号）。 */
-const VER = "1.10.0";
+const VER = "1.10.1";
 
 function walk(dir, out = []) {
   for (const name of fs.readdirSync(dir)) {
@@ -3448,6 +3448,26 @@ console.log("== v1.9.2 骰子 action 入口 / 记录窗口自动打开");
     settingsPageV192.indexOf("readDiceHistAutostart") >= 0 && settingsPageV192.indexOf("writeDiceHistAutostart") >= 0)
     ok("设置页：骰子记录窗口自动打开开关（读写本机偏好）");
   else bad("设置页缺少骰子记录窗口自动打开开关");
+}
+
+console.log("== v1.10.1 血条编辑窗输入可发现性");
+{
+  const cssV1101 = fs.readFileSync(path.join(ROOT, "assets", "ui.css"), "utf8");
+  const htmlV1101 = fs.readFileSync(path.join(ROOT, "hp-edit.html"), "utf8");
+  const pageV1101 = fs.readFileSync(path.join(ROOT, "assets", "hp-edit-page.js"), "utf8");
+  if (/\.hpe-temp-pill \{ flex: 0 0 104px/.test(cssV1101) &&
+    /#hpe-cur \{ flex: 0 0 40px/.test(cssV1101) && /#hpe-max \{ flex: 0 0 46px/.test(cssV1101) &&
+    /\.hpe-num \{[\s\S]{0,260}?border: 1px solid var\(--line\)/.test(cssV1101) &&
+    /body:not\(\.hpe-readonly\) \.hpe-pill:hover/.test(cssV1101) &&
+    /body\.hpe-readonly \.hpe-def/.test(cssV1101))
+    ok("v1.10.1：输入框有 1px 边框 + 浅底，cur/max 40/46、临时药丸 104，可编辑 hover 提亮、只读灰");
+  else bad("v1.10.1：输入可发现性样式不完整（边框/加宽/104px/hover/只读）");
+  if (/<label class="hpe-pill hpe-hp-pill"[^>]*for="hpe-cur"/.test(htmlV1101) &&
+    /<label class="hpe-pill hpe-temp-pill"[^>]*for="hpe-temp"/.test(htmlV1101) &&
+    /id="hpe-temp"[^>]*placeholder="—"/.test(htmlV1101) &&
+    pageV1101.indexOf('classList.toggle("hpe-readonly", dis)') >= 0)
+    ok("v1.10.1：生命 / 临时药丸点文字即可聚焦输入（label for），空临时生命显示「—」");
+  else bad("v1.10.1：label 聚焦 / 临时空占位 / 只读类没接上");
 }
 
 console.log(fail ? "\n" + fail + " 个问题" : "\n全部通过");
