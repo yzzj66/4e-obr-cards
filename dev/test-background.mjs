@@ -45,6 +45,7 @@ const boundsFor = {
 // 预置一个「上一次会话残留」的血条 item：后台启动后应该把它清掉，否则血条会叠成两层
 let localItems = [{ id: "stale-bar-1", type: "CURVE", metadata: { "com.4enext-owlbear/bar": { owner: "old-token", role: "bg" } } }];
 const itemsChangeCbs = [];
+const roomChangeCbs = [];
 const localChangeCbs = [];
 const playerChangeCbs = [];
 const viewportChangeCbs = [];
@@ -174,7 +175,7 @@ const OBR = {
       for (const k of Object.keys(update || {})) roomMeta[k] = JSON.parse(JSON.stringify(update[k]));
       return Promise.resolve();
     },
-    onMetadataChange(fn) { record("room.onMetadataChange", true); return noopUnsub(); }
+    onMetadataChange(fn) { record("room.onMetadataChange", true); roomChangeCbs.push(fn); return noopUnsub(); }
   },
   broadcast: {
     sendMessage(channel, data, opts) { record("broadcast.sendMessage", { channel, data, opts }); return Promise.resolve(); },
@@ -209,7 +210,7 @@ globalThis.localStorage = {
 // 这里传打桩版本，才能在不装 SDK 的情况下验证血条代码真的在跑。
 let readyCb = null;
 let sceneReadyCb = null;
-const run = new Function("OBR", "buildCurve", "buildShape", "buildText", CORE + "\nreturn { boot: typeof boot === 'function' ? boot : null, hasHpBarData: typeof hasHpBarData === 'function' ? hasHpBarData : null };");
+const run = new Function("OBR", "buildCurve", "buildShape", "buildText", CORE + "\nreturn { boot: typeof boot === 'function' ? boot : null, hasHpBarData: typeof hasHpBarData === 'function' ? hasHpBarData : null, openGlance: typeof openGlance === 'function' ? openGlance : null };");
 const BG = run(OBR, stubBuilder("CURVE"), stubBuilder("SHAPE"), stubBuilder("TEXT"));
 
 (async () => {
@@ -1222,14 +1223,14 @@ const BG = run(OBR, stubBuilder("CURVE"), stubBuilder("SHAPE"), stubBuilder("TEX
         bad("「添加血条组件」没有打开血条编辑窗（用户要的就是这个入口）");
       } else if (win.id !== "com.4enext-owlbear/hp-edit") {
         bad("编辑窗的 popover id 不对：" + win.id);
-      } else if (win.width !== 340 || win.height !== 150) {
-        bad("编辑窗尺寸不是 340×150：" + win.width + "×" + win.height);
+      } else if (win.width !== 340 || win.height !== 122) {
+        bad("编辑窗尺寸不是 340×122：" + win.width + "×" + win.height);
       } else if (!new RegExp("hp-edit\\.html\\?item=" + HPE_MONSTER + "&session=").test(win.url)) {
         bad("编辑窗 url 没带 item / session：" + win.url);
       } else if (win.hidePaper !== true || win.disableClickAway !== true) {
         bad("编辑窗 popover 参数不对（hidePaper / disableClickAway）");
       } else {
-        ok("右键「添加血条组件」→ 写 true + 打开 /hp-edit（340×150，url 带 item + session）");
+        ok("右键「添加血条组件」→ 写 true + 打开 /hp-edit（340×122，url 带 item + session）");
       }
     }
     const targets = all("broadcast.sendMessage").map((c) => c[1]).filter((m) => /\/hp-edit-target$/.test(m.channel));
@@ -1301,6 +1302,44 @@ const BG = run(OBR, stubBuilder("CURVE"), stubBuilder("SHAPE"), stubBuilder("TEX
     else if (!items.some((it) => barRoleOf(it) === "bar-text")) bad("清空四防把 HP 条也弄没了（只该不画盾）");
     else ok("空四防：metadata 删掉 defenses、一枚盾都不画，HP 条照旧");
   }
+  /* ---- 4b) v1.8.5：血条编辑窗改「即改即生效」——没有保存按钮 / 底栏，输入自动保存 ---- */
+  {
+    const editHtml = fs.readFileSync(path.join(ROOT, "hp-edit.html"), "utf8");
+    const editPage = fs.readFileSync(path.join(ROOT, "assets", "hp-edit-page.js"), "utf8");
+    if (editHtml.indexOf("hpe-save") < 0 && editHtml.indexOf("hpe-foot") < 0 && editHtml.indexOf("win-foot") < 0)
+      ok("v1.8.5：血条编辑窗没有保存按钮、没有底栏（即改即生效）");
+    else bad("v1.8.5：编辑窗还留着保存按钮 / 底栏");
+    const wired = editPage.indexOf('el.addEventListener("input"') >= 0 &&
+      editPage.indexOf('el.addEventListener("change"') >= 0 &&
+      editPage.indexOf('el.addEventListener("blur"') >= 0 &&
+      editPage.indexOf('commit("enter", el)') >= 0 &&
+      editPage.indexOf("function scheduleSave()") >= 0 &&
+      /SAVE_DEBOUNCE_MS = 500/.test(editPage) &&
+      editPage.indexOf("hpPatchEqualsView(built.patch") >= 0 &&
+      editPage.indexOf("CH_HP_EDIT_SAVED") >= 0 &&
+      editPage.indexOf("els.save") < 0;
+    if (wired) ok("v1.8.5：自动保存接线齐全（input 防抖 500ms + change/blur/Enter 立即提交 + 同值不写 + 广播 CH_HP_EDIT_SAVED）");
+    else bad("v1.8.5：自动保存接线缺项（input/change/blur/Enter/去抖/去重/广播）");
+    const view = { cur: 20, max: 20, surges: 2, surgesMax: 3, defenses: { ac: 18, fort: 15, reflex: 17, will: 16 } };
+    const samePatch = { cur: 20, max: 20, defenses: { ac: 18, fort: 15, reflex: 17, will: 16 } };
+    if (typeof HPE.hpPatchEqualsView === "function" && HPE.hpPatchEqualsView(samePatch, view) === true &&
+      HPE.hpPatchEqualsView({ cur: 19 }, view) === false &&
+      HPE.hpPatchEqualsView({ defenses: null }, view) === false &&
+      HPE.hpPatchEqualsView({ defenses: null }, { defenses: null }) === true)
+      ok("v1.8.5：hpPatchEqualsView 同值判重（cur/max/四防逐字段比较，相同不写）");
+    else bad("v1.8.5：hpPatchEqualsView 判重不对");
+    const badHp = HPE.buildHpEditPatch({ hp: "20/", surge: "", defs: {} }, view);
+    if (!badHp.ok) ok("v1.8.5：非法 / 半截输入（20/）不生成 patch → 不会写 token");
+    else bad("v1.8.5：半截输入也能生成 patch（会写坏数据）");
+    const ro = await HPE.writeHpEdit({
+      getItems: async (ids) => sceneItems.filter((it) => ids.includes(it.id)).map((it) => JSON.parse(JSON.stringify(it))),
+      updateItems: async (ids, fn) => { await OBR.scene.items.updateItems(ids, fn); },
+      getRole: async () => "PLAYER",
+      getId: async () => "u-other"
+    }, HPE_MONSTER, { cur: 1, max: 1 });
+    if (!ro.ok) ok("v1.8.5：只读（无权限 / locked）不写 token");
+    else bad("v1.8.5：只读还写 token");
+  }
   {
     /* 拖动编辑窗：位置跟手、尺寸不变、url 里的 ?item= 不能丢（丢了就编错 token） */
     const cfgBefore = all("popover.open").map((c) => c[1]).filter((c) => /hp-edit\.html/.test(String(c.url))).pop();
@@ -1316,7 +1355,7 @@ const BG = run(OBR, stubBuilder("CURVE"), stubBuilder("SHAPE"), stubBuilder("TEX
         bad("拖动血条编辑窗没有跟手：" + JSON.stringify(moved && moved.anchorPosition));
       } else if (!new RegExp("\\?item=" + HPE_MONSTER + "&session=").test(moved.url)) {
         bad("拖动重开编辑窗时把 ?item= 丢了：" + moved.url);
-      } else if (moved.width !== 340 || moved.height !== 150) {
+      } else if (moved.width !== 340 || moved.height !== 122) {
         bad("拖动时编辑窗尺寸变了：" + moved.width + "×" + moved.height);
       } else {
         ok("拖动血条编辑窗：位置跟手、尺寸不变、url 里的 ?item= 没丢");
@@ -1487,8 +1526,8 @@ const BG = run(OBR, stubBuilder("CURVE"), stubBuilder("SHAPE"), stubBuilder("TEX
     if (hpOpens().length === h0) bad("选中「没绑定卡但有血条数据」的 token 没有弹血条编辑窗（用户要的就是这个入口）");
     else if (!win || win.id !== "com.4enext-owlbear/hp-edit") bad("自动弹出的 popover id 不是 /hp-edit：" + (win && win.id));
     else if (!new RegExp("hp-edit\\.html\\?item=" + AUTO_ID + "&session=").test(win.url)) bad("自动弹的编辑窗 url 没带这枚 token：" + win.url);
-    else if (win.width !== 340 || win.height !== 150) bad("自动弹的编辑窗不是 340×150：" + win.width + "×" + win.height);
-    else ok("v1.7.7 分支②：没绑定卡 + 有血条数据 → 选中即弹 /hp-edit（340×150，url 带 item + session）");
+    else if (win.width !== 340 || win.height !== 122) bad("自动弹的编辑窗不是 340×122：" + win.width + "×" + win.height);
+    else ok("v1.7.7 分支②：没绑定卡 + 有血条数据 → 选中即弹 /hp-edit（340×122，url 带 item + session）");
 
     /* ③ 只有开关（hp-bar/enabled = true）、没有 hp 数值 → 也算有血条 */
     h0 = hpOpens().length;
@@ -1600,6 +1639,41 @@ const BG = run(OBR, stubBuilder("CURVE"), stubBuilder("SHAPE"), stubBuilder("TEX
     await sleep(240);
     if (hpOpens().length !== h0) bad("取消选中再选回「已移除血条组件」的 token 又弹了编辑窗");
     else ok("v1.8.4：取消选中后再选回「已移除血条组件」的 token 仍不弹（反复触发也不弹）");
+
+    /* ⑩ v1.8.5：用户手动 ✕ 关掉速览后，选中不变之前不再自动弹回（修「莫名其妙跳出来」） */
+    const WIN_CLOSE_CH = "com.4enext-owlbear/win-close";
+    const winCloseCb2 = (broadcastCbs[WIN_CLOSE_CH] || [])[0];
+    await select([]);
+    await select([TOKEN_ID]);
+    const infoWinNow = infoOpens().slice(-1)[0];
+    if (!infoWinNow || !winCloseCb2) bad("v1.8.5 前置失败：选中绑卡 token 没弹速览 / 没有 win-close 订阅");
+    else {
+      winCloseCb2({ data: { op: "close-win", name: "info" } });
+      await sleep(80);
+      const afterClose = infoOpens().length;
+      for (const cb of itemsChangeCbs) cb(sceneItems);
+      for (const cb of roomChangeCbs) cb(roomMeta);
+      await sleep(320);
+      if (infoOpens().length !== afterClose) bad("手动 ✕ 关掉速览后，items / room metadata 变动又把速览弹回来了（真机 bug）");
+      else ok("v1.8.5：手动 ✕ 关掉速览后，items / room metadata 变动不再自动弹回");
+      const beforeRepeat = infoOpens().length;
+      for (const cb of playerChangeCbs) cb();
+      await sleep(300);
+      if (infoOpens().length !== beforeRepeat) bad("同一选中下 player.onChange 又把速览弹回来了");
+      else ok("v1.8.5：同一选中下反复 player.onChange 不再弹速览");
+      await select([PLAIN_ID]);
+      await select([TOKEN_ID]);
+      if (infoOpens().length > beforeRepeat) ok("v1.8.5：选中换到别的 token 再换回来 → 允许重新自动弹一次");
+      else bad("选中换了再回来也不弹速览（选中变化没清掉「手动关过」记忆）");
+      winCloseCb2({ data: { op: "close-win", name: "info" } });
+      await sleep(80);
+      const beforeManual = infoOpens().length;
+      const opened = BG.openGlance ? await BG.openGlance("测试手动速览") : false;
+      await sleep(120);
+      if (opened && infoOpens().length > beforeManual)
+        ok("v1.8.5：工具栏 openGlance() 手动路径仍能打开速览（不受自动弹记忆影响）");
+      else bad("openGlance 手动打开速览被挡住了");
+    }
 
     /* ⑨ Boss 锁（hp.locked）→ 非城主的编辑窗只读（藏保存 + 提示「已锁定」） */
     const coreSrcSplit = fs.readFileSync(path.join(ROOT, "assets", "hp-edit-core.js"), "utf8");

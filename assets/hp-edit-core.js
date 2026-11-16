@@ -202,7 +202,6 @@ export function buildHpEditPatch(form, base) {
 /* ---------------------------------------------------------------------------
  * 3) 夹取 + 写盘（参考实现 edit.ts：跨字段夹取，每次都做）
  * ------------------------------------------------------------------------- */
-
 /**
  * 把 patch 合进当前 metadata，返回新的 hp 对象（**不改入参**）。
  * 跨字段夹取：cur ≤ max（4E 到负上限即死亡，所以下限是 −max）、surges ≤ surgesMax；
@@ -316,6 +315,36 @@ export async function writeHpEdit(deps, itemId, patch) {
   }
   if (!next) return { ok: false, message: "没写进去：这枚 token 没有返回草稿（可能刚被删掉）" };
   return { ok: true, hp: next };
+}
+
+/**
+ * v1.8.5：自动保存去重 —— buildHpEditPatch 的结果与当前 view 相同就不写 token。
+ * 只比较 patch 里出现的字段（cur / max / surges / surgesMax / defenses），
+ * defenses 按四个盾逐个比（缺字段 = null）；返回 true 表示「无需写盘」。
+ */
+export function hpPatchEqualsView(patch, view) {
+  const p = patch || {};
+  const v = view || {};
+  const pairs = [["cur", "cur"], ["max", "max"], ["surges", "surges"], ["surgesMax", "surgesMax"]];
+  for (const pair of pairs) {
+    const pk = pair[0];
+    const vk = pair[1];
+    if (!(pk in p)) continue;
+    const a = p[pk] === null || p[pk] === undefined ? null : Math.round(p[pk]);
+    const b = v[vk] === null || v[vk] === undefined ? null : Math.round(v[vk]);
+    if (a !== b) return false;
+  }
+  const pa = p.defenses || null;
+  const va = v.defenses || null;
+  if (!pa && !va) return true;
+  if (!pa || !va) return false;
+  for (let i = 0; i < HPE_DEF_KEYS.length; i++) {
+    const key = HPE_DEF_KEYS[i];
+    const a = pa[key] === null || pa[key] === undefined ? null : Math.round(pa[key]);
+    const b = va[key] === null || va[key] === undefined ? null : Math.round(va[key]);
+    if (a !== b) return false;
+  }
+  return true;
 }
 
 /* ---------------------------------------------------------------------------

@@ -118,11 +118,7 @@
 .gl4-skill b { font-weight: 600; }
 .gl4-skill.trained { border-color: rgba(86, 211, 100, .45); background: rgba(46, 160, 67, .12); }
 .gl4-skill.trained b::before { content: "●"; color: var(--gl4-green); font-size: 8px; margin-right: 3px; vertical-align: middle; }
-.gl4-chip.feat { border-color: rgba(88, 166, 255, .3); }
-.gl4-chip .gl4-tag {
-  font-style: normal; font-size: 10px; color: var(--gl4-muted);
-  border-left: 1px solid var(--gl4-line); padding-left: 4px; margin-left: 2px;
-}
+/* v1.8.6：专长区块不再渲染（.gl4-chip.feat / .gl4-chip .gl4-tag 样式随之删除） */
 .gl4-chip.used, .gl4-item.used { opacity: .42; }
 .gl4-chip.used { text-decoration: line-through; }
 
@@ -382,18 +378,11 @@ button.gl4-item.used:hover { background: rgba(227, 179, 65, .1); }
 }
 .gl4-surge-temp .gl4-step { width: 18px; height: 18px; font-size: 11px; }
 
-/* 装备行的物品等级档位（L3 8 13 18 23 28） */
-.gl4-item .gl4-lv {
-  font-size: 10px; color: var(--gl4-muted); opacity: .85; white-space: nowrap;
-  border: 1px solid var(--gl4-line); border-radius: 5px; padding: 0 4px;
-}
-
 /* 紧凑模式：动作标签 / 可用总数 / 临时值都再小一号，别把弹窗撑宽 */
 .gl4-compact .gl4-chip .gl4-act { font-size: 9.5px; padding-left: 3px; }
 .gl4-compact .gl4-h .gl4-avail { font-size: 10.5px; }
 .gl4-compact .gl4-def-temp em, .gl4-compact .gl4-def-delta { font-size: 10px; }
 .gl4-compact .gl4-atk-temp { gap: 5px; }
-.gl4-compact .gl4-item .gl4-lv { font-size: 9.5px; }
 
 /* ===========================================================================
  * v1.7.13：速览窗「全部点不动」的回归兜底 —— pointer-events 显式写回 auto

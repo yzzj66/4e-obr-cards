@@ -18,8 +18,8 @@ import OBR from "../vendor/obr-sdk.js";
 import { CH_HP_EDIT_READY, CH_HP_EDIT_SAVED, CH_HP_EDIT_TARGET, ID_HP_EDIT, KEY_BIND, findCard, getCards, onReady } from "./common.js";
 import { closeSelf, createWindow, feedback } from "./window.js";
 import {
-  HPE_DEF_KEYS, buildHpEditPatch, createHpEditLease, defText,
-  hpEditReadOnly, hpEditView, hpText, mayEditToken, surgeText, writeHpEdit
+  HPE_DEF_KEYS, HPE_DEF_LABELS, buildHpEditPatch, createHpEditLease, defText,
+  hpEditReadOnly, hpEditView, hpPatchEqualsView, hpText, mayEditToken, surgeText, writeHpEdit
 } from "./hp-edit-core.js";
 
 /** v1.7.7：token 上的 hp 元数据（锁 / 数值都在里面）。 */
@@ -42,7 +42,6 @@ var els = {
   hp: document.getElementById("hpe-hp"),
   surge: document.getElementById("hpe-surge"),
   note: document.getElementById("hpe-note"),
-  save: document.getElementById("hpe-save"),
   close: document.getElementById("close"),
   off: document.getElementById("hpe-off")
 };
@@ -50,7 +49,7 @@ for (var di = 0; di < HPE_DEF_KEYS.length; di++) {
   els["def_" + HPE_DEF_KEYS[di]] = document.getElementById("hpe-def-" + HPE_DEF_KEYS[di]);
 }
 
-var state = { item: null, view: null, editable: false, locked: false, busy: false };
+var state = { item: null, view: null, editable: false, locked: false, busy: false, pending: false };
 
 /* 后台在线状态：只在标题栏挂一个小标记（窗口只有 340×150，放不下整条 bg-strip）。
  * 注意保存**不依赖**后台（页面自己写 token 元数据），所以离线只是「血条不会立刻重画」。 */
@@ -103,7 +102,6 @@ function setEditable(on) {
   }
   if (els.hp) els.hp.readOnly = !on;
   if (els.surge) els.surge.readOnly = !on;
-  if (els.save) els.save.hidden = !on;   /* 只读时只藏「保存」，「取消 / ✕ / Esc」照旧能关窗 */
 }
 
 /* ---------------------------------------------------------------------------
@@ -206,7 +204,7 @@ function refreshNote() {
   } else if (!state.editable) {
     note("只读：只有城主或这枚 token 的创建者能改血量与四防", "warn");
   } else if (view.fromCard) {
-    note("已按绑定角色卡带入默认值，改完点保存", "ok");
+    note("已按绑定角色卡带入默认值；改动会自动保存", "ok");
   } else if (view.max === null) {
     note("填生命上限（比如 20）就能画出第一根血条", "warn");
   } else {
@@ -221,19 +219,68 @@ function broadcast(channel, payload) {
   } catch (e) { /* 不在枭熊里打开本页时会走到这 */ }
 }
 
-async function save() {
-  if (state.busy) return;
-  if (!state.editable) {
-    if (state.locked) {
-      note("已锁定：这枚 token 的血量对玩家隐藏（城主解锁后才能改）", "warn");
-      feedback("已锁定：这枚 token 只能由城主解锁后再改", "WARNING");
-      return;
-    }
-    feedback("只读：只有城主或这枚 token 的创建者能改血量与四防", "WARNING");
-    return;
+/* ---------------------------------------------------------------------------
+ * v1.8.5：自动保存（照 Full Suite 的「即改即生效」架构，没有保存按钮）
+ * ---------------------------------------------------------------------------
+ * input 防抖 500ms / change / blur / Enter 都会触发 commit()：
+ *   · buildHpEditPatch 把表单换算成 patch；与 state.view 相同就不写、也不广播；
+ *   · 非法 / 半截输入（如 "20/"）不写，失焦时恢复成当前值；
+ *   · 写成功后更新 state.view、短暂提示「已保存：…」并广播 CH_HP_EDIT_SAVED（后台立刻重画）；
+ *   · 写失败仍弹 ERROR（不静默）；只读（locked / 无权限）绝不写。
+ */
+var SAVE_DEBOUNCE_MS = 500;
+var saveTimer = 0;
+var noteTimer = 0;
+
+function clearSaveTimer() {
+  if (saveTimer) { clearTimeout(saveTimer); saveTimer = 0; }
+}
+
+function scheduleSave() {
+  clearSaveTimer();
+  saveTimer = setTimeout(function () { saveTimer = 0; void commit("debounce"); }, SAVE_DEBOUNCE_MS);
+}
+
+function defSummary(view) {
+  var d = view && view.defenses ? view.defenses : null;
+  if (!d) return "";
+  var short = { ac: "AC", fort: "强", reflex: "反", will: "意" };
+  var out = [];
+  for (var i = 0; i < HPE_DEF_KEYS.length; i++) {
+    var k = HPE_DEF_KEYS[i];
+    if (typeof d[k] === "number") out.push(short[k] + d[k]);
   }
-  /* 版本租约的安全网：后台已经把「当前编辑谁」换成别的 token 时，这个旧窗口不许再写
-   * （正常路径下 target 一到就 load() 跟过去了，这里兜住极端时序）。 */
+  return out.length ? "四防 " + out.join(" ") : "";
+}
+
+/** 写成功后短暂显示「已保存 …」（1.6s 后回到常规提示；不弹通知中心）。 */
+function showSaved(view) {
+  var txt = hpText(view || {});
+  var def = defSummary(view);
+  if (noteTimer) clearTimeout(noteTimer);
+  note("已保存" + (txt ? "：" + txt : "") + (def ? " · " + def : ""), "ok");
+  noteTimer = setTimeout(function () {
+    noteTimer = 0;
+    refreshNote();
+  }, 1600);
+}
+
+/** 只回填一个输入框（失焦 / Enter 提交后恢复规范值；不碰其它正在编辑的格子）。 */
+function fillOne(el, view) {
+  if (!el) return;
+  var v = view || {};
+  if (el === els.hp) { el.value = hpText(v); return; }
+  if (el === els.surge) { el.value = surgeText(v); return; }
+  for (var i = 0; i < HPE_DEF_KEYS.length; i++) {
+    var key = HPE_DEF_KEYS[i];
+    if (el === els["def_" + key]) { el.value = defText(v, key); return; }
+  }
+}
+
+async function commit(trigger, sourceEl) {
+  if (state.busy) { state.pending = true; return; }
+  if (!state.editable) return; /* 只读 / 锁定：绝不写 */
+  /* 版本租约的安全网：后台已经把「当前编辑谁」换成别的 token 时，这个旧窗口不许再写。 */
   var leaseNow = lease.capture();
   if (leaseNow && leaseNow.itemId !== itemId) {
     note("这个窗口已经过期：请重新右键「编辑血条」", "error");
@@ -242,15 +289,17 @@ async function save() {
   }
   var built = buildHpEditPatch(formValues(), state.view || {});
   if (!built.ok) {
-    note(built.message, "warn");
-    feedback(built.message, "WARNING");
-    var focusKey = built.field && built.field !== "hp" && built.field !== "surge" ? "def_" + built.field : built.field;
-    var focusEl = focusKey ? els[focusKey] : null;
-    if (focusEl && focusEl.focus) focusEl.focus();
+    if (trigger === "blur" || trigger === "change" || trigger === "enter") {
+      /* 半截 / 非法输入：只把这一格恢复成当前值，不写 token（别动其它正在编辑的格子） */
+      fillOne(sourceEl, state.view || {});
+      refreshNote();
+    } else {
+      note(built.message, "warn");
+    }
     return;
   }
+  if (hpPatchEqualsView(built.patch, state.view)) return; /* 同值不写、不广播（避免元数据抖动） */
   state.busy = true;
-  if (els.save) els.save.disabled = true;
   var res = await writeHpEdit({
     getItems: function (ids) { return OBR.scene.items.getItems(ids); },
     updateItems: function (ids, fn) { return OBR.scene.items.updateItems(ids, fn); },
@@ -258,8 +307,10 @@ async function save() {
     getId: playerIdOf
   }, itemId, built.patch);
   state.busy = false;
-  if (els.save) els.save.disabled = false;
-
+  if (state.pending) {
+    state.pending = false;
+    scheduleSave();
+  }
   if (!res.ok) {
     /* 写失败绝不静默（用户明确要求）：通知中心 ERROR + 窗口内红字 */
     note(res.message, "error");
@@ -267,10 +318,9 @@ async function save() {
     return;
   }
   state.view = hpEditView(res.hp, null);
-  fillForm(state.view);
-  /* v1.7.8：不再写「已保存 …」、也不再弹「已保存：50/100，四防已写入」——
-   * token 上的血条与四防立刻重画就是反馈；提示行只留状态（多少血 / 留空的四防不画盾）。 */
-  refreshNote();
+  /* 失焦 / Enter 提交成功时，把这一格回填成夹取后的规范值（如 171/20 → 20/20）；正在别的格子输入时不动它 */
+  if (sourceEl) fillOne(sourceEl, state.view);
+  showSaved(state.view);
   /* 让后台立刻重画（也兜住「后台没收到 scene.items.onChange」的情况） */
   broadcast(CH_HP_EDIT_SAVED, { itemId: itemId, hp: res.hp, at: Date.now() });
 }
@@ -284,16 +334,18 @@ function closeWindow() {
  * 事件
  * ------------------------------------------------------------------------- */
 if (els.close) els.close.addEventListener("click", closeWindow);
-/* v1.8.3：底栏只留「保存」——取消按钮已移除；✕ 与 Esc（window.js / 输入框 keydown）仍能关窗。 */
-if (els.save) els.save.addEventListener("click", function () { void save(); });
 
 var inputs = [els.hp, els.surge];
 for (var k = 0; k < HPE_DEF_KEYS.length; k++) inputs.push(els["def_" + HPE_DEF_KEYS[k]]);
 for (var i = 0; i < inputs.length; i++) {
   var el = inputs[i];
   if (!el) continue;
+  /* v1.8.5：自动保存接线 —— input 防抖 500ms；change / blur / Enter 立即提交（带上触发的那一格）。 */
+  el.addEventListener("input", function () { scheduleSave(); });
+  el.addEventListener("change", function () { void commit("change", el); });
+  el.addEventListener("blur", function () { void commit("blur", el); });
   el.addEventListener("keydown", function (ev) {
-    if (ev.key === "Enter") { ev.preventDefault(); void save(); }
+    if (ev.key === "Enter") { ev.preventDefault(); clearSaveTimer(); void commit("enter", el); }
     else if (ev.key === "Escape") { ev.preventDefault(); closeWindow(); }
   });
 }

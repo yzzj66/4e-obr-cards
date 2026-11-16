@@ -4,23 +4,24 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>4eNEXT to owlbear · 血条组件</title>
-<link rel="stylesheet" href="assets/ui.css?v=1.8.4">
+<link rel="stylesheet" href="assets/ui.css?v=1.8.6">
 </head>
 <body class="win-page hpe-page">
 <!-- v1.7.2：血条组件编辑小窗（**独立 popover**，id = com.4enext-owlbear/hp-edit）。
      为什么要有它：右键「添加血条组件」过去只写开关，没绑定角色卡的怪物 / 杂兵没有任何
      入口填血量与四防（用户真机反馈）。参考 FullPeople/obr-suite 的 src/modules/hpBar/：
      选中 token → 弹一个可拖动的小面板，里面就是「生命 / 四防 / 回复力」三个输入。
-     尺寸 340×150（参考实现只有一条 HP，所以它是 320×78；我们多一排四防 + 回复力）。
+     尺寸 340×122（参考实现只有一条 HP，所以它是 320×78；我们多一排四防 + 回复力）。
      窗口壳（拖动 / 位置记忆 / 后台在线检测 / 统一反馈）与其它窗口共用 assets/window.js；
      语法解析 / 夹取 / 权限 / 写盘在 assets/hp-edit-core.js（纯函数，Node 可测）。
      v1.7.7：**选中**一枚「没绑定卡但有血条」的 token 也会自动开这个窗（不必先右键）；
-     Boss 锁（hp.locked）时对非城主只读：输入框 readonly、藏「保存」、下面提示「已锁定」。 -->
+     Boss 锁（hp.locked）时对非城主只读：输入框 readonly + 提示「已锁定」。
+     v1.8.5：照 Full Suite 改成**即改即生效**——没有保存按钮、没有底栏；输入 / 失焦自动写 token。 -->
 <div class="win hpe">
   <div class="win-head hpe-head" id="head" title="按住这里拖动窗口（位置会记住）">
     <span class="grip" aria-hidden="true">⠿</span>
     <div class="t"><b id="hpe-name">未命名</b></div>
-    <span class="hpe-off" id="hpe-off" hidden title="后台脚本没有响应：保存仍会写进 token，但血条要等后台恢复才会重画">后台未连接</span>
+    <span class="hpe-off" id="hpe-off" hidden title="后台脚本没有响应：改动仍会写进 token，但血条要等后台恢复才会重画">后台未连接</span>
     <div class="sp">
       <button class="icon-btn" id="pin" title="回到默认位置（清除本窗口记住的位置）">⌖</button>
       <button class="icon-btn" id="close" title="关闭编辑窗（血条组件保持开启）">✕</button>
@@ -55,11 +56,7 @@
       <span class="win-flash" id="win-flash"></span>
     </div>
   </div>
-
-  <div class="win-foot hpe-foot">
-    <button class="btn small primary hpe-btn" id="hpe-save" type="button" data-bg-soft style="min-width:84px">保存</button>
-  </div>
 </div>
-<script type="module" src="assets/hp-edit-page.js?v=1.8.4"></script>
+<script type="module" src="assets/hp-edit-page.js?v=1.8.6"></script>
 </body>
 </html>

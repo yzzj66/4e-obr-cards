@@ -110,21 +110,29 @@ const G = await import(pathToFileURL(path.join(tmp, "assets", "glance.js")).href
 const T = await import(pathToFileURL(path.join(tmp, "assets", "track.js")).href);
 
 /* ---------------------------------------------------------------------------
- * 3) 卡索引：按需加载 + 内容抽查
+ * 3) 卡索引：按需加载 + 内容抽查（v1.8.6 精简结构：{v,c,p}，只有使用频率/动作类型）
  * ------------------------------------------------------------------------- */
 console.log("\n== A) 卡索引（data/card-index.js，懒加载）");
 const index = await G.loadCardIndex();
-if (index && index.powers && index.feats) ok("loadCardIndex() 加载成功（" + Object.keys(index.powers).length + " 个威能 / " + Object.keys(index.feats).length + " 个专长）");
-else bad("card-index.js 没有加载出来");
-if (index && index.powers["双重攻击 Twin Strike"] && index.powers["双重攻击 Twin Strike"][1] === "标准动作")
+const idxCombo = (id) => {
+  if (!index || !index.c || !index.p) return null;
+  const ci = index.p[id];
+  return typeof ci === "number" ? index.c[ci] : null;
+};
+if (index && index.v === 1 && Array.isArray(index.c) && index.p) ok("loadCardIndex() 加载成功（" + Object.keys(index.p).length + " 个威能 / " + index.c.length + " 个频率+动作组合）");
+else bad("card-index.js 没有加载出来 / 结构不是 {v,c,p}");
+if (idxCombo("双重攻击 Twin Strike") && idxCombo("双重攻击 Twin Strike")[1] === "标准动作")
   ok("威能索引：双重攻击 → 动作 = 标准动作");
 else bad("威能索引里没有双重攻击 / 动作类型不对");
-if (index && index.feats["美德士兵 <兼职圣武士> Soldier of Virtue <Multiclass Paladin>"] === "d")
-  ok("专长索引：美德士兵 → 每日（d）");
-else bad("专长索引里没有美德士兵 / 频率不对");
-if (index && index.powers["迅雷箭 Lightning Shot"] && /vs\.\s*AC/.test(index.powers["迅雷箭 Lightning Shot"][2] || ""))
-  ok("威能索引带攻击行（迅雷箭 → " + JSON.stringify(index.powers["迅雷箭 Lightning Shot"].slice(0, 3)) + "）");
-else bad("威能索引的攻击行提取失败");
+if (idxCombo("迅雷箭 Lightning Shot") && idxCombo("迅雷箭 Lightning Shot")[1] === "即时反应")
+  ok("威能索引：迅雷箭 → 动作 = 即时反应");
+else bad("威能索引里迅雷箭的动作类型不对");
+if (!Object.prototype.hasOwnProperty.call(index, "feats") && !Object.prototype.hasOwnProperty.call(index, "powers"))
+  ok("索引只有 v/c/p（没有 powers 正文列、没有 feats 频率表）");
+else bad("索引里还残留 powers 正文 / feats 字段");
+if (!index.c.some((c) => /vs\.|\[W\]|伤害/.test(String(c[0]) + String(c[1]))))
+  ok("组合表里没有攻击 / 命中正文（只剩使用频率与动作类型）");
+else bad("索引里混进了攻击 / 命中正文");
 
 /* ---------------------------------------------------------------------------
  * 4) 渲染：动作类型 / 可用总数 / 专长频率 / 装备等级 / 新控件
@@ -165,21 +173,22 @@ for (const n of ["1", "5", "10"]) {
   else bad("HP 快捷按钮 ±" + n + " 缺失");
 }
 const idxBytes = fs.statSync(path.join(ROOT, "data", "card-index.js")).size;
-if (idxBytes > 500 * 1024 && idxBytes < 2 * 1024 * 1024) ok("card-index.js 体积 " + (idxBytes / 1024).toFixed(0) + " KB（500KB~2MB，可接受）");
-else bad("card-index.js 体积异常：" + idxBytes + " bytes");
+if (idxBytes <= 350 * 1024) ok("card-index.js 体积 " + (idxBytes / 1024).toFixed(0) + " KB（≤350KB）");
+else bad("card-index.js 体积过大：" + (idxBytes / 1024).toFixed(0) + " KB（应 ≤350KB）");
 
-const featsHtml = between(html, '<section class="gl4-card gl4-feats">', "</section>");
-if (featsHtml.indexOf("美德士兵") >= 0 && featsHtml.indexOf("每日") >= 0)
-  ok("专长「美德士兵」带「每日」标记");
-else bad("专长区里美德士兵没有每日标记");
-if (featsHtml.indexOf("赠送") >= 0) ok("专长「赠送」标记保留（职业赠送专长）");
-else bad("专长区没有「赠送」标记");
-
+/* v1.8.6：专长区块整块不渲染；装备行不再有物品等级档位；tooltip 不再拼攻击/命中 */
+if (html.indexOf("gl4-feats") < 0 && html.indexOf('class="gl4-chip feat"') < 0)
+  ok("专长区块整块不渲染（无 gl4-feats / feat chip）");
+else bad("专长区块还在渲染");
+if (html.indexOf('class="gl4-tag"') < 0 && html.indexOf("赠送") < 0) ok("专长「每日 / 赠送」标记都不再出现");
+else bad("专长标记还在渲染");
 const itemsHtml = between(html, '<section class="gl4-card gl4-items">', "</section>");
-if (itemsHtml.indexOf("L3 8 13 18 23 28") >= 0) ok("装备行带物品等级「L3 8 13 18 23 28」");
-else bad("装备行没有物品等级档位");
+if (itemsHtml.indexOf("gl4-lv") < 0 && !/L\d/.test(itemsHtml)) ok("装备行没有物品等级档位（L2 7 12…）");
+else bad("装备行还有物品等级档位");
 if (itemsHtml.indexOf("增强 +6") >= 0) ok("装备行「增强 +N」保留（增强 +6）");
 else bad("装备行没有「增强 +N」");
+if (html.indexOf("攻击：") < 0 && html.indexOf("命中：") < 0) ok("title 不再拼「攻击：… / 命中：…」");
+else bad("tooltip 里还有攻击 / 命中文本");
 
 const skillsHtml = between(html, '<section class="gl4-card gl4-skills">', "</section>");
 const skillRows = count(skillsHtml, /class="gl4-skill(?: trained)?"/g);
@@ -221,8 +230,6 @@ async function ctxNow() {
   const loaded = await T.loadState("c-test");
   state = loaded.state;
   const derived = G.deriveGlance(char, undefined, { hp: hp, state: state });
-  const idx = G.cardIndex();
-  const encounterFeatKeys = (derived.feats || []).filter((f) => idx && idx.feats && idx.feats[f.id] === "e").map((f) => f.key);
   return {
     cardId: "c-test",
     itemId: "tok-1",
@@ -232,7 +239,6 @@ async function ctxNow() {
     surgesMax: derived.surgesMax || derived.surges,
     defenses: derived.defenses,
     surgeValue: derived.surgeValue + (state.surgeTemp || 0),
-    encounterFeatKeys: encounterFeatKeys,
     canHp: true,
     itemDailyMax: 2
   };
@@ -267,21 +273,16 @@ if (hpNow.surges === 7 && hpNow.cur === 100 + d0.surgeValue + 3)
   ok("使用回复力：回复力 8 → 7，HP 100 → " + hpNow.cur + "（回复值 " + d0.surgeValue + " + 临时 3）");
 else bad("使用回复力结果不对：HP " + hpNow.cur + " / 回复力 " + hpNow.surges);
 
-/* ⑦ 短休：清遭遇威能 / 遭遇专长 / 临时加值，每日威能保留 */
+/* ⑦ 短休：清遭遇威能 / 临时加值，每日威能保留；没有 feats 索引 → 专长标记按降级保留（只清威能） */
 token.metadata[KEY_HP] = Object.assign({}, baseHp);
 roomMeta[NS + "/state/c-test"] = seedState(Object.assign({}, baseState, {
   powerUsed: { "encounter-0": true, "daily-0": true },
+  featUsed: { "g-test-encounter": true },
   atkTemp: 2,
   dmgTemp: 2,
   surgeTemp: 2,
   defTemp: { ac: 2, fort: 0, ref: 0, will: 0 }
 }));
-let ctx = await ctxNow();
-const encKey = ctx.encounterFeatKeys[0] || "";
-if (encKey) {
-  await T.applyAction("feat", elOf({ k: encKey }), await ctxNow());
-  ctx = await ctxNow();
-}
 res = await T.applyAction("rest-short", elOf({}), await ctxNow());
 const sShort = T.normalizeState(roomMeta[NS + "/state/c-test"]);
 if (!sShort.powerUsed["encounter-0"] && sShort.powerUsed["daily-0"]) ok("短休：遭遇威能恢复、每日威能保留");
@@ -289,16 +290,8 @@ else bad("短休清错：powerUsed = " + JSON.stringify(sShort.powerUsed));
 if (sShort.atkTemp === 0 && sShort.dmgTemp === 0 && sShort.surgeTemp === 0 && sShort.defTemp.ac === 0 && sShort.defTemp.will === 0)
   ok("短休：临时命中 / 伤害 / 回复值 / 四防全部清零");
 else bad("短休没清临时加值：" + JSON.stringify({ atk: sShort.atkTemp, dmg: sShort.dmgTemp, surge: sShort.surgeTemp, def: sShort.defTemp }));
-if (!encKey || !sShort.featUsed[encKey]) ok("短休：遭遇类专长已用标记清掉" + (encKey ? "（" + encKey + "）" : "（本卡无遭遇专长，跳过）"));
-else bad("短休没清遭遇专长：" + encKey);
-/* 用合成 key 验证「遭遇专长清标记」分支（真实卡可能没有遭遇类专长） */
-roomMeta[NS + "/state/c-test"] = seedState(Object.assign({}, baseState, { featUsed: { "g-test-encounter": true } }));
-ctx = await ctxNow();
-ctx.encounterFeatKeys = ["g-test-encounter"];
-await T.applyAction("rest-short", elOf({}), ctx);
-const sShort2 = T.normalizeState(roomMeta[NS + "/state/c-test"]);
-if (!sShort2.featUsed["g-test-encounter"]) ok("短休：按 encounterFeatKeys 清遭遇专长标记（合成 key 验证）");
-else bad("短休没有清 encounterFeatKeys 里的专长");
+if (sShort.featUsed["g-test-encounter"]) ok("短休降级：没有 feats 索引时专长已用标记保留（只清遭遇威能）");
+else bad("短休降级不对：没传 encounterFeatKeys 却清了专长标记");
 
 /* ⑧ 临时命中 / 临时防御：显示值 +1 */
 roomMeta[NS + "/state/c-test"] = seedState(baseState);
@@ -349,5 +342,5 @@ if (oldState.atkTemp === 0 && oldState.dmgTemp === 0 && oldState.surgeTemp === 0
   ok("旧状态兼容：缺临时字段 = 0（向后兼容）");
 } else bad("旧状态兼容失败：" + JSON.stringify(oldState));
 
-console.log(fail ? "\n" + fail + " 个问题" : "\n全部通过（速览对齐 4E NEXT：动作 / 专长频率 / 装备等级 / 可用总数 / HP·回复力·临时加值 / 短休）");
+console.log(fail ? "\n" + fail + " 个问题" : "\n全部通过（v1.8.6 速览：动作标签 / 可用总数 / 无专长区块 / 无装备等级 / HP·回复力·临时加值 / 短休 / 索引 ≤350KB）");
 process.exit(fail ? 1 : 0);

@@ -4,12 +4,12 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>4eNEXT to owlbear · Owlbear Rodeo 插件</title>
-<link rel="stylesheet" href="assets/ui.css?v=1.8.4">
-<link rel="stylesheet" href="assets/glance.css?v=1.8.4">
+<link rel="stylesheet" href="assets/ui.css?v=1.8.6">
+<link rel="stylesheet" href="assets/glance.css?v=1.8.6">
 </head>
 <body>
 <article class="doc">
-  <h1>4eNEXT to owlbear <span class="tag">Owlbear Rodeo 插件</span> <span class="tag">v1.8.4</span></h1>
+  <h1>4eNEXT to owlbear <span class="tag">Owlbear Rodeo 插件</span> <span class="tag">v1.8.6</span></h1>
   <p class="muted">在枭熊里看 4E NEXT 的「速览」页：右键 token 绑定角色卡，之后选中这枚 token 就会弹出速览。
     v1.2.0 起还能在弹窗里直接加减血量（token 上会画出血条），并把威能 / 装备点掉记成「已用」；
     v1.2.1 把速览弹窗加宽到 660×700；v1.2.2 弹窗可以按住标题栏拖动、位置按 token 记住。
@@ -46,7 +46,7 @@
     一起透明，地图照常可见、骰子浮在上面；播完 2600 ms 自己关，另加 <b>3000 ms 兜底</b>与
     <b>ESC / 点击任意处立即关</b>。
     <b>v1.7.2</b> 修「点了『添加血条组件』却没地方填数值」：右键「添加血条组件」现在会**顺带打开一个
-    编辑小窗**（340×150，可拖动、位置单独记住）——<b>生命</b>支持 <code>20</code>（设上限）、
+    编辑小窗**（340×122，可拖动、位置单独记住）——<b>生命</b>支持 <code>20</code>（设上限）、
     <code>20/20</code>（当前/上限）、<code>+5</code> / <code>-3</code>（加减），还有
     <b>四防</b>（AC / 强韧 / 反射 / 意志，留空 = 不画那枚盾）与<b>回复力</b>（<code>3/3</code>）；
     保存写进 token 的 <code>com.4enext-owlbear/hp</code>，血条立刻刷新。
@@ -69,10 +69,10 @@
     <code>.win</code> / <code>.win-body</code> 也透明，只留卡片与控制行的半透明底）；④ token 上四防一排<b>重排</b>：
     四枚统一 <b>30s</b>、字放大到 <b>15s</b>、整排<b>左右铺满 token 并均分</b>，<b>AC 半透明白盾仍在最右</b>。
     <b>v1.7.7</b> <b>选中 token 就能改血条</b>：单选一枚<b>没绑定角色卡</b>、但已经有血条的 token
-    （有生命 / 四防 / 回复力数据，或开着「血条组件」）→ 直接弹出 <b>340×150 的血条编辑窗</b>，
+    （有生命 / 四防 / 回复力数据，或开着「血条组件」）→ 直接弹出 <b>340×122 的血条编辑窗</b>，
     不用先去右键；<b>已绑定角色卡</b>的 token 照旧弹速览，多选 / 没血条的照旧不弹。
     同一个 token 只会自动弹一次（关掉之后想再改就右键新增的「<b>编辑血条</b>」）；
-    <b>Boss 锁</b>（玩家端隐藏精确数字）时，非城主的编辑窗是<b>只读</b>的（藏保存 + 提示「已锁定」）。
+    <b>Boss 锁</b>（玩家端隐藏精确数字）时，非城主的编辑窗是<b>只读</b>的（输入框只读 + 提示「已锁定」，没有保存按钮）。
     <b>v1.7.9</b> 血条<b>全部改环形</b>（48 段 / 环厚 10s / <code>Ro = 半短边 − 2s</code>），<b>去掉 Boss 模式</b>
     （名牌 / 分段 / 锁 / 右键两项全删，<code>hp.boss</code> 只为旧数据保留）；<b>直的 HP 条与蓝色回复力条不再画</b>；
     <b>四防回到四角</b>（左上强韧 / 右上反射 / 左下意志 / 右下 AC 白盾）。
@@ -245,6 +245,6 @@ dev/                 开发期工具（普通用户用不到）</code></pre>
 
   <p class="muted" style="margin-top:28px;font-size:12px">非官方作品，与 Owlbear Rodeo、4E NEXT 均无隶属关系。角色卡数据只在你自己的房间与浏览器里流转。</p>
 </article>
-<script type="module" src="assets/index.js?v=1.8.4"></script>
+<script type="module" src="assets/index.js?v=1.8.6"></script>
 </body>
 </html>

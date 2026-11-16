@@ -487,11 +487,14 @@ onReady(function () {
   } catch (e) {
     console.error(e);
   }
-  /* v1.8.1：面板预览也要显示威能动作类型 / 专长每日 / 装备等级（与速览弹窗同一份 card-index）；
-   * 先按需加载再首帧刷新，加载失败静默（loadCardIndex 内部已 catch），面板照常打开。 */
-  void loadCardIndex()
-    .then(function () { return refresh(); })
-    .then(refreshSelection, function (e) {
-      feedback("读取角色卡失败：" + (e && e.message ? e.message : e), "ERROR");
-    });
+  /* v1.8.6：首帧不阻塞 —— 先刷新列表 / 预览（此时没有动作标签），
+   * 再异步加载精简索引（~305KB）→ 重绘一次补动作类型标签；加载失败静默。 */
+  void refresh().then(refreshSelection, function (e) {
+    feedback("读取角色卡失败：" + (e && e.message ? e.message : e), "ERROR");
+  });
+  void loadCardIndex().then(function () {
+    void refresh();
+  }, function () {
+    /* 静默：首帧已经渲染，索引失败只是少动作标签 */
+  });
 });

@@ -19,7 +19,7 @@ const NOTES_PATH = path.join(ROOT, "docs", "NOTES.md");
 const NOTES = exists(NOTES_PATH) ? fs.readFileSync(NOTES_PATH, "utf8") : "";
 const notesHas = (s) => NOTES.indexOf(s) >= 0;
 /* 当前版本号：所有「版本全链路」断言都读它，升版本只改这一处（+ 各文件里的真实版本号）。 */
-const VER = "1.8.4";
+const VER = "1.8.6";
 
 function walk(dir, out = []) {
   for (const name of fs.readdirSync(dir)) {
@@ -1567,10 +1567,17 @@ console.log("== v1.7.2 血条组件编辑小窗（HP / 四防 / 回复力）");
   const missingDef = DEF_IDS.filter((k) => !has(editHtmlV172, 'id="hpe-def-' + k + '"'));
   if (!missingDef.length) ok("编辑窗有四个四防输入框：AC / 强韧 / 反射 / 意志（hpe-def-ac/fort/reflex/will）");
   else bad("编辑窗缺少四防输入框：" + missingDef.join(" / "));
-  if (has(editHtmlV172, "hpe-hp") && has(editHtmlV172, "hpe-surge") && has(editHtmlV172, "hpe-save") &&
-    !has(editHtmlV172, "hpe-cancel"))
-    ok("编辑窗底部只有生命 / 回复力 / 保存（取消按钮已移除，✕ / Esc 仍可关窗）");
-  else bad("编辑窗底栏应只有生命 / 回复力 / 保存、且没有取消按钮");
+  if (has(editHtmlV172, "hpe-hp") && has(editHtmlV172, "hpe-surge") &&
+    !has(editHtmlV172, "hpe-save") && !has(editHtmlV172, "hpe-foot") && !has(editHtmlV172, "hpe-cancel"))
+    ok("编辑窗底部没有保存按钮 / 取消 / 底栏（v1.8.5「即改即生效」，✕ / Esc 仍可关窗）");
+  else bad("编辑窗底栏应只保留生命 / 回复力输入（没有保存 / 取消 / 底栏）");
+  /* v1.8.5：自动保存接线（input 防抖 + change/blur/Enter 立即提交 + 同值不写 + 广播） */
+  if (has(editJsV172, 'el.addEventListener("input"') && has(editJsV172, 'el.addEventListener("change"') &&
+    has(editJsV172, 'el.addEventListener("blur"') && has(editJsV172, 'commit("enter", el)') &&
+    has(editJsV172, "function scheduleSave()") && has(editJsV172, "hpPatchEqualsView(built.patch") &&
+    has(editJsV172, "CH_HP_EDIT_SAVED") && !has(editJsV172, "els.save"))
+    ok("v1.8.5：编辑窗自动保存接线（input 防抖 500ms + change/blur/Enter + 同值不写 + CH_HP_EDIT_SAVED）");
+  else bad("v1.8.5：编辑窗自动保存接线不完整");
   if (has(editHtmlV172, "20 / 20/20 / +5 / -3"))
     ok("生命输入的提示里写清了 20 / 20/20 / +5 / -3");
   else bad("生命输入没有语法提示（用户不知道能填什么）");
@@ -1613,9 +1620,9 @@ console.log("== v1.7.2 血条组件编辑小窗（HP / 四防 / 回复力）");
     ok("URL_HP_EDIT → hp-edit.html（后台开窗 / 页面侧同一个地址）");
   else bad("URL_HP_EDIT 没接上 hp-edit.html");
   if (has(coreV172, "hpEdit: { id: ID_HP_EDIT, url: URL_HP_EDIT, width: HPE_W, height: HPE_H }") &&
-    has(coreV172, "var HPE_W = 340;") && has(coreV172, "var HPE_H = 150;"))
-    ok("WINS.hpEdit 注册（340×150，可拖动 / 记位置 / 视口夹紧）");
-  else bad("WINS 没有注册 hpEdit（或尺寸不是 340×150）");
+    has(coreV172, "var HPE_W = 340;") && has(coreV172, "var HPE_H = 122;"))
+    ok("WINS.hpEdit 注册（340×122，可拖动 / 记位置 / 视口夹紧）");
+  else bad("WINS 没有注册 hpEdit（或尺寸不是 340×122）");
   if (has(coreV172, "async function openWin(name, urlOverride)") && has(coreV172, "async function openHpEdit(itemId)") &&
     has(coreV172, 'URL_HP_EDIT + "?item=" + encodeURIComponent(itemId)') && has(coreV172, 'await openWin("hpEdit", url)'))
     ok("openWin(name, urlOverride) + openHpEdit：开窗带 ?item=<tokenId>&session=<uuid>");
@@ -2269,6 +2276,14 @@ console.log("== v1.7.7 选中 token 就弹血条编辑窗（三分支 / 不重�
   if (has(coreV177, "if (!hpBarEnabled(item)) return false;"))
     ok("hasHpBarData 先看组件开关：显式「移除血条组件」（enabled=false）后不再算「有血条」（v1.8.4 真机 bug）");
   else bad("hasHpBarData 没检查 hp-bar/enabled=false（移除组件后选中仍会弹编辑窗）");
+  /* v1.8.5：手动 ✕ 关掉速览后不再被 onChange 自动弹回（infoAutoPopped，与 hpAutoPopped 对称） */
+  if (has(coreV177, "var infoAutoPopped = {};") &&
+    /if \(infoAutoPopped\[item\.id\]\) return;/.test(coreV177) &&
+    /infoAutoPopped\[item\.id\] = true;/.test(coreV177) &&
+    /if \(infoItemId\) infoAutoPopped\[infoItemId\] = true;/.test(coreV177) &&
+    /infoAutoPopped = \{\};/.test(coreV177))
+    ok("v1.8.5：用户手动 ✕ 关速览后记住该 token（infoAutoPopped；选中变化清空、手动 openGlance 不受影响）");
+  else bad("v1.8.5「关掉速览后不再自动弹回」的 infoAutoPopped 记忆没接上");
 
   /* ---- 2) 选中即弹的三分支（refreshInfo） ---- */
   if (/async function selectedItem\(/.test(coreV177) && /async function boundCardId\(/.test(coreV177)) {
@@ -2307,9 +2322,9 @@ console.log("== v1.7.7 选中 token 就弹血条编辑窗（三分支 / 不重�
   /* [v1.7.8 改] 提示行抽成 refreshNote()（成功类提示不再写），锁定分支变成 if (state.locked)。 */
   if (has(editJsV177, "hpEditReadOnly(hpMetaOf(item), role)") && has(editJsV177, "setEditable(editable)") &&
     has(editJsV177, "已锁定") && has(editJsV177, "function refreshNote()") && has(editJsV177, "if (state.locked) {") &&
-    has(editJsV177, "if (els.save) els.save.hidden = !on;")) {
-    ok("编辑窗：锁定时 setEditable(false)（藏保存）+ 提示「已锁定」+ 保存时再拦一次（v1.7.8：提示行在 refreshNote()）");
-  } else bad("编辑窗没有接「锁定 → 只读 / 藏保存 / 提示已锁定」");
+    has(editJsV177, "el.readOnly = !on")) {
+    ok("编辑窗：锁定时 setEditable(false)（输入框只读）+ 提示「已锁定」+ 自动保存不再写（v1.8.5：无保存按钮）");
+  } else bad("编辑窗没有接「锁定 → 输入框只读 / 提示已锁定 / 不写」");
 
   /* ---- 5) 版本 / bundle / 文档 / 自测 ---- */
   if (man.version === VER && manRel.version === VER && verOf(commonV177) === VER &&
@@ -2454,9 +2469,10 @@ console.log("== v1.7.8 减少打扰：成功类通知 = 0，只保留 ERROR / WA
   if (has(coreV178, 'if (diagNotifyEnabled() && !allOk) notify(okLine, "WARNING");'))
     ok("启动汇总：成功不弹「已加载 …」，只有某个入口没注册上才 WARNING");
   else bad("启动汇总还是会弹成功通知（应是 diagNotifyEnabled() && !allOk 才 WARNING）");
-  if (has(editJsV178, "function refreshNote()") && !has(stripComments(editJsV178), "已保存"))
-    ok("血条编辑窗保存后不再弹「已保存：50/100，四防已写入」，窗口内也只写状态行（refreshNote）");
-  else bad("血条编辑窗还在写「已保存」");
+  if (has(editJsV178, "function showSaved(") && has(editJsV178, 'note("已保存"') &&
+    has(editJsV178, "broadcast(CH_HP_EDIT_SAVED") && !has(editJsV178, 'feedback("已保存'))
+    ok("v1.8.5：血条编辑窗写成功只在状态行短暂提示「已保存 …」（不弹通知中心），随后广播重画");
+  else bad("血条编辑窗自动保存的成功反馈不对（应只写状态行、不弹通知）");
   if (!has(stripComments(initPageV178), 'feedback(message, "SUCCESS")') &&
     has(initPageV178, 'feedback("先攻没能写进房间数据：已暂存在本机'))
     ok("先攻页：写成功不弹、写失败降级仍 WARNING（不静默）");
@@ -2837,10 +2853,10 @@ console.log("== v1.7.12 速览资源追踪补全（威能 / 装备全部可点�
     ok("③ glance.css：顶部一组（.gl4-head-right）+ 共享数据 chip（.gl4-share / .on 绿色高亮）");
   } else bad("③ glance.css 缺少 .gl4-head-right / .gl4-share");
 
-  /* ---- ④ 专长仍纯展示 + info.js 接线 ---- */
-  if (!has(glanceV1712, 'data-act="feat"') && has(glanceV1712, "gl4-chip feat")) {
-    ok("④ 专长仍纯展示（没有 data-act=feat）");
-  } else bad("④ 专长又被做成可点了");
+  /* ---- ④ 专长区块（v1.8.6 用户确认整块不显示） + info.js 接线 ---- */
+  if (!has(glanceV1712, 'data-act="feat"') && !has(glanceV1712, "gl4-feats")) {
+    ok("④ 专长区块整块不渲染（v1.8.6：名称 / 每日 / 赠送都不出现，也不可点）");
+  } else bad("④ 专长区块又被渲染了");
   if (has(infoV1712, "deriveGlance(card.char, undefined, { hp: hp, state: state })") &&
     has(infoV1712, 'closest("[data-act]")')) {
     ok("④ info.js：同一个 [data-act] 事件委托覆盖威能 / 装备 / 共享数据；推导带实时 hp / state");
@@ -3273,6 +3289,69 @@ console.log("== v1.8.2 先攻条：点卡片不弹速览（CH_GLANCE_SUPPRESS）
   if (sendIdx >= 0 && selIdx >= 0 && sendIdx < selIdx)
     ok("先攻条页面：先发 CH_GLANCE_SUPPRESS 再 select（避免速览抢在抑制之前弹）");
   else bad("先攻条页面没有「先发抑制再 select」");
+}
+
+/* ===========================================================================
+ * v1.8.6：速览首屏提速 —— 索引瘦身 / 首帧不阻塞 / 后台预热
+ * ======================================================================== */
+console.log("== v1.8.6 速览首屏提速：索引瘦身 / 首帧不阻塞 / 后台预热");
+{
+  const has = (src, sub) => String(src).indexOf(sub) >= 0;
+  const infoV186 = fs.readFileSync(path.join(ROOT, "assets", "info.js"), "utf8");
+  const glanceV186 = fs.readFileSync(path.join(ROOT, "assets", "glance.js"), "utf8");
+  const coreV186 = fs.readFileSync(corePath, "utf8");
+  const glanceCodeV186 = stripComments(glanceV186);
+  const idxPath = path.join(ROOT, "data", "card-index.js");
+  const detailsPath = path.join(ROOT, "data", "card-index-details.js");
+
+  /* ---- ① 首帧不阻塞：先 refresh(true)，再 loadCardIndex().then 二次刷新 ---- */
+  const firstRefresh = infoV186.indexOf("void refresh(true)");
+  const firstLoad = infoV186.indexOf("loadCardIndex().then");
+  if (firstRefresh >= 0 && firstLoad > firstRefresh) {
+    ok("① info.js 首帧不阻塞：先 refresh(true) 立即渲染，索引加载完再二次刷新补标签");
+  } else bad("① info.js 仍在首帧 await 索引（refresh 必须早于 loadCardIndex）");
+  if (has(infoV186, "refreshWithIndex(")) ok("① info.js 有「索引到位后补渲染」逻辑（busy 时重试，避免二次刷新被吞）");
+  else bad("① info.js 没有索引到位后的补渲染逻辑");
+  const panelV186 = fs.readFileSync(path.join(ROOT, "assets", "panel.js"), "utf8");
+  const pFirstRefresh = panelV186.indexOf("void refresh().then");
+  const pFirstLoad = panelV186.indexOf("loadCardIndex().then");
+  if (pFirstRefresh >= 0 && pFirstLoad > pFirstRefresh) ok("① panel.js 预览同样先绘制、索引到位后再重绘");
+  else bad("① panel.js 仍在 await 索引后首绘");
+
+  /* ---- ② 索引只留使用频率+动作类型，glance 不再引用 feats / 攻击命中 / 装备等级 ---- */
+  if (!has(glanceCodeV186, "CARD_INDEX.feats") && !has(glanceCodeV186, "loadCardDetails") &&
+    !has(glanceCodeV186, "card-index-details")) {
+    ok("② glance.js 只加载一份精简索引（没有 feats / details 分支）");
+  } else bad("② glance.js 还在引用 feats / card-index-details");
+  if (!has(glanceCodeV186, "攻击：") && !has(glanceCodeV186, "命中：") && !has(glanceCodeV186, '"攻击："') &&
+    !has(glanceCodeV186, "equipLevelText") && !has(glanceCodeV186, "gl4-lv") && !has(glanceCodeV186, "gl4-feats")) {
+    ok("② glance.js 不再拼攻击/命中 tooltip、不再渲染专长区块 / 装备等级档位");
+  } else bad("② glance.js 还残留攻击命中 tooltip / 专长 / 装备等级代码");
+  if (has(glanceV186, "gl4-act")) ok("② 威能动作类型标签保留（gl4-act）");
+  else bad("② 威能动作类型标签被误删");
+
+  /* ---- ③ 索引文件：存在、唯一、文件头、体积 ≤350KB ---- */
+  if (exists(idxPath)) {
+    const text = fs.readFileSync(idxPath, "utf8");
+    const bytes = fs.statSync(idxPath).size;
+    if (has(text, "自动生成") && has(text, "重新生成：node dev/gen-card-index.mjs") && bytes <= 350 * 1024) {
+      ok("③ data/card-index.js：" + (bytes / 1024).toFixed(0) + " KB（≤350KB）、有自动生成 / 重生成文件头");
+    } else bad("③ card-index.js 文件头或体积不对：" + (bytes / 1024).toFixed(0) + " KB");
+  } else bad("③ 缺少 data/card-index.js");
+  if (!exists(detailsPath)) ok("③ 没有 card-index-details.js（v1.8.6 不再生成第二个索引）");
+  else bad("③ data/card-index-details.js 还在（v1.8.6 应删除）");
+  const genV186 = fs.readFileSync(path.join(ROOT, "dev", "gen-card-index.mjs"), "utf8");
+  if (has(genV186, "data/card-index.js") && !has(genV186, "card-index-details.js") && has(genV186, 'v: 1')) {
+    ok("③ gen-card-index.mjs 只生成单文件精简索引（v/c/p 结构）");
+  } else bad("③ gen-card-index.mjs 仍生成旧结构 / details 文件");
+
+  /* ---- ④ 后台预热索引（延迟、失败静默、不影响启动） ---- */
+  if (has(coreV186, "data/card-index.js") && has(coreV186, 'cache: "force-cache"') &&
+    has(coreV186, "pageUrl(\"data/card-index.js\")") && has(coreV186, "}, 2000);")) {
+    ok("④ background.core.js：启动后延迟 2s 用 fetch(force-cache) 预热 data/card-index.js");
+  } else bad("④ background.core.js 没有后台预热索引（缺 fetch / force-cache / 2s 延迟）");
+  if (!/await\s+fetch\(prewarm/.test(coreV186)) ok("④ 预热不 await、不影响启动");
+  else bad("④ 预热被 await 了（会拖慢启动）");
 }
 
 console.log(fail ? "\n" + fail + " 个问题" : "\n全部通过");

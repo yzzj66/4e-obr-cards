@@ -1,19 +1,24 @@
-// 生成 data/card-index.js：速览页要用的「轻量词条索引」（v1.8.1）。
+// 生成 data/card-index.js：速览页威能 chip 的「使用频率 / 动作类型」轻量索引（v1.8.6）。
 // ---------------------------------------------------------------------------
 // 为什么单独建索引：
-//   4E NEXT 的速览页里，威能 chip 会显示动作类型（标准动作 / 即时反应 / …）、
-//   hover 能看到攻击与命中；专长会标「每日 / 遭遇」。这些字段在 4E NEXT 导出的角色卡里
-//   **没有**（卡里只有词条 id），必须查词条库。完整 power.json 19MB / feat.json 4MB 太大，
-//   这里只裁出速览实际用到的几列，产物约 1MB，由 assets/glance.js 在打开速览时按需加载。
+//   速览页的威能 chip 会显示动作类型（标准动作 / 即时反应 / 移动动作 / 自由动作 …）。
+//   这个字段在 4E NEXT 导出的角色卡里**没有**（卡里只有词条 id），必须查词条库；
+//   完整 power.json 约 19MB 太大，这里只裁出「使用频率 + 动作类型」两列。
 //
-// 输入：<4E-NEXT>/out/categories/power.json 与 feat.json（装备物品等级用现有 data/rules.js，不用重导）。
+// v1.8.6 瘦身（用户确认）：
+//   · 不再收录攻击 / 命中正文（tooltip 已去掉，省 ~560KB）；
+//   · 不再生成专长频率（专长区块整块不显示）；
+//   · 用「组合表 + 下标」压到 ~300KB：powers 的值只是 c 数组的下标。
+//
+// 输入：<4E-NEXT>/out/categories/power.json
 // 用法：node dev/gen-card-index.mjs
 //       FOUR_E_SRC=<4E-NEXT-main 目录> node dev/gen-card-index.mjs
 // 产物：data/card-index.js（ESM，`export const CARD_INDEX`；已提交进仓库，运行时不依赖 4E NEXT 源码）
 //
 // 结构：
-//   powers: { 威能id: [使用频率, 动作类型, 攻击行(≤90字), 命中行(≤90字)] }
-//   feats:  { 专长id: "d" | "e" }   // d = 每日，e = 遭遇；都没有就不收录
+//   { v: 1,
+//     c: [[使用频率, 动作类型], …],          // 去重后的组合表（如 ["随意","标准动作"]）
+//     p: { 威能id: c 的下标 } }              // 速览按 id 查下标，再取 c[下标]
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -45,90 +50,60 @@ function findSource() {
 const SRC = findSource();
 const readJson = (p) => JSON.parse(fs.readFileSync(p, "utf8"));
 
-/* ---- HTML 行提取（与 notes/4enext-schema.md §6.3 的口径一致） ---- */
-function stripHtml(s) {
+/** 去掉标签 / HTML 实体，压成一行纯文本（动作类型字段偶有 `<br>` 脏数据）。 */
+function cleanText(s) {
   return String(s == null ? "" : s)
-    .replace(/<br\s*\/?>/gi, " / ")
+    .replace(/<br\s*\/?>/gi, " ")
     .replace(/<[^>]+>/g, " ")
     .replace(/&nbsp;/g, " ")
     .replace(/&amp;/g, "&")
-    .replace(/&lt;/g, "<")
-    .replace(/&gt;/g, ">")
     .replace(/\s+/g, " ")
     .trim();
 }
-function detailsRows(details) {
-  const out = [];
-  const re = /<tr[^>]*>\s*<th>([\s\S]*?)<\/th>\s*<td>([\s\S]*?)<\/td>\s*<\/tr>/g;
-  let m;
-  while ((m = re.exec(String(details || "")))) {
-    const label = stripHtml(m[1]).replace(/[：:]\s*$/, "");
-    out.push([label, stripHtml(m[2])]);
-  }
-  return out;
-}
-function firstRow(rows, exact, suffix) {
-  for (const r of rows) if (exact.indexOf(r[0]) >= 0) return r[1];
-  for (const r of rows) if (r[0].endsWith(suffix)) return r[1];
-  return "";
-}
-function cut(s, n) {
-  const t = String(s || "");
-  return t.length > n ? t.slice(0, n) : t;
-}
 
 const USAGE_ZH = { "at-will": "随意", encounter: "遭遇", daily: "每日" };
-const POWER_USAGE_OK = { 随意: 1, 遭遇: 1, 每日: 1 };
 
-/* ---- 1) 威能 ---- */
-const powersRaw = readJson(path.join(SRC, "out", "categories", "power.json"));
+/* ---- 组合表 + 下标：powers 的值只占 1~3 个字符，能压到 ~300KB ---- */
+const combos = [];
+const comboIndex = new Map();
 const powers = {};
-let withAttack = 0;
-for (const e of powersRaw) {
+let skipped = 0;
+
+for (const e of readJson(path.join(SRC, "out", "categories", "power.json"))) {
   const id = e && typeof e.id === "string" ? e.id : "";
   if (!id) continue;
-  const rows = detailsRows(e.details);
-  const attack = cut(firstRow(rows, ["攻击", "主攻击"], "攻击"), 90);
-  const hit = cut(firstRow(rows, ["命中", "主命中"], "命中"), 90);
-  const usage = String(e.usageZh || USAGE_ZH[e.usage] || "").trim();
-  const action = String(e.actionType || "").trim();
-  if (!usage && !action && !attack && !hit) continue;
-  if (attack) withAttack++;
-  powers[id] = [usage, action, attack, hit];
+  const usage = cleanText(e.usageZh || USAGE_ZH[e.usage] || "").slice(0, 8);
+  const action = cleanText(e.actionType || "").slice(0, 24);
+  if (!usage && !action) { skipped++; continue; }
+  const key = usage + "\u0001" + action;
+  let ci = comboIndex.get(key);
+  if (ci === undefined) {
+    ci = combos.length;
+    comboIndex.set(key, ci);
+    combos.push([usage, action]);
+  }
+  powers[id] = ci;
 }
 
-/* ---- 2) 专长频率：benefit / fields.special（私设再看 sourceText 的正文） ---- */
-function featText(e) {
-  const body = String(e.benefit || "") + " " + String((e.fields && e.fields.special) || "");
-  const src = String(e.sourceText || "");
-  /* 官方专长 sourceText 只是宏占位 <<feat-format>>，别把宏名当正文扫进去 */
-  return body + " " + (/<<[^>]*>>/.test(src) && src.indexOf("feat-format") >= 0 ? "" : src);
-}
-const featsRaw = readJson(path.join(SRC, "out", "categories", "feat.json"));
-const feats = {};
-let daily = 0;
-let encounter = 0;
-for (const e of featsRaw) {
-  const id = e && typeof e.id === "string" ? e.id : "";
-  if (!id) continue;
-  const text = featText(e);
-  if (/每日|每天|一日一次/.test(text)) { feats[id] = "d"; daily++; }
-  else if (/每次遭遇|每遭遇|该遭遇一次|遭遇一次/.test(text)) { feats[id] = "e"; encounter++; }
-}
-
-/* ---- 3) 输出 ---- */
-const body = JSON.stringify({ powers: powers, feats: feats });
+/* ---- 输出（文件头写清自动生成 / 来源 / 重生成命令 / 结构） ---- */
 const header =
   "// 自动生成，请勿手改。重新生成：node dev/gen-card-index.mjs（可用 FOUR_E_SRC 指到 4E-NEXT-main）\n" +
-  "// 来源：4E NEXT out/categories/{power,feat}.json（" + path.basename(SRC) + "）\n" +
-  "// 用途：速览页「威能动作类型 / 攻击命中摘要」与「专长每日·遭遇标记」；由 assets/glance.js 按需加载。\n" +
-  "// powers: [使用频率, 动作类型, 攻击行(≤90字), 命中行(≤90字)]；feats: \"d\"=每日 / \"e\"=遭遇。\n";
+  "// 来源：4E NEXT out/categories/power.json（" + path.basename(SRC) + "）\n" +
+  "// 用途：速览页威能 chip 的「使用频率 / 动作类型」标签；由 assets/glance.js 按需加载。\n" +
+  "// 结构：{ v:1, c:[[使用频率, 动作类型], …], p:{ 威能id: c 的下标 } }。\n" +
+  "// 不含攻击 / 命中正文与专长频率（v1.8.6 用户确认去掉）。\n";
+const body = JSON.stringify({ v: 1, c: combos, p: powers });
 const text = header + "export const CARD_INDEX = " + body + ";\n\nexport default CARD_INDEX;\n";
 
 fs.mkdirSync(path.dirname(OUT), { recursive: true });
 fs.writeFileSync(OUT, text, "utf8");
+const bytes = fs.statSync(OUT).size;
 const kb = (n) => (n / 1024).toFixed(1) + " KB";
 console.log("== gen-card-index");
-console.log("  powers:", Object.keys(powers).length, "（有攻击行 " + withAttack + "）");
-console.log("  feats :", Object.keys(feats).length, "（每日 " + daily + " / 遭遇 " + encounter + "）");
-console.log("  wrote :", path.relative(ROOT, OUT), fs.statSync(OUT).size + " bytes（" + kb(fs.statSync(OUT).size) + "）");
+console.log("  powers :", Object.keys(powers).length, "（跳过无频率/动作 " + skipped + "）");
+console.log("  combos :", combos.length);
+console.log("  wrote  :", path.relative(ROOT, OUT), bytes + " bytes（" + kb(bytes) + "）");
+if (bytes > 350 * 1024) {
+  console.error("  [warn] 产物超过 350KB 目标（" + kb(bytes) + "），请检查是否混入了正文列");
+  process.exitCode = 1;
+}

@@ -58,7 +58,7 @@ var TOOL_SETTINGS_ID = NS + "/settings-tool";
 var CH_HELLO = NS + "/diag-hello";
 var CH_PING = NS + "/diag-ping";
 var CH_PONG = NS + "/diag-pong";
-var PLUGIN_VERSION = "1.8.4";
+var PLUGIN_VERSION = "1.8.6";
 
 var KEY_HP = NS + "/hp";
 
@@ -206,7 +206,7 @@ var CH_HP_EDIT_READY = NS + "/hp-edit-ready";
 var CH_HP_EDIT_SAVED = NS + "/hp-edit-saved";
 
 var HPE_W = 340;
-var HPE_H = 150;
+var HPE_H = 122;
 
 var STRIP_COLLAPSED_W = 120;
 var STRIP_COLLAPSED_H = 40;
@@ -506,6 +506,8 @@ async function closeWinById(name) {
   var def = name === "info" ? { id: ID_INFO } : winDef(name);
   if (!def) return false;
   if (name === "info") {
+    /* v1.8.5：用户手动 ✕ 关掉速览 → 记住这枚 token，选中不变之前不再自动弹回（修「莫名其妙跳出来」）。 */
+    if (infoItemId) infoAutoPopped[infoItemId] = true;
     infoOpen = false;
     infoItemId = null;
     infoGeom = null;
@@ -842,6 +844,10 @@ var hpEditTarget = { session: "", version: 0, itemId: null, pending: false };
 
 var hpAutoSel = null;
 var hpAutoPopped = {};
+/* v1.8.5：自动弹速览的「手动关过」记忆（与 hpAutoPopped 对称）。
+ * 用户点 ✕ 关掉某 token 的速览后，选中不变之前任何 onChange 都不再自动弹回；
+ * 选中变化（selId !== hpAutoSel）时清空，允许重新自动弹一次；工具栏 / 右键手动入口不受影响。 */
+var infoAutoPopped = {};
 
 function newHpEditSession() {
   try {
@@ -2031,6 +2037,7 @@ async function refreshInfo() {
   if (selId !== hpAutoSel) {
     hpAutoSel = selId;
     hpAutoPopped = {};
+    infoAutoPopped = {};
     /* v1.8.1 诊断：选中变化时才重置「自动弹过」记录。真机排查时看这行就知道是不是选择事件在抖。 */
     pageLog("info", "选中变化 → " + (selId || "无") + "（自动弹窗记录已重置）");
   }
@@ -2041,8 +2048,12 @@ async function refreshInfo() {
 
   var cardId = await boundCardId(item);
   if (cardId) {
+    /* v1.8.5：用户手动 ✕ 关过这枚 token 的速览 → 选中不变之前不再自动弹回（先于「已开则返回」判断）。 */
+    if (infoAutoPopped[item.id]) return;
     if (infoOpen && infoItemId === item.id && infoCardId === cardId) return;
     if (infoOpen) await closeInfo();
+    /* 打开之前先置位：即使 openInfo 抛错也不在后续 onChange 里重试刷屏。 */
+    infoAutoPopped[item.id] = true;
     try {
       await openInfo(item.id, cardId);
     } catch (e) {
@@ -3518,6 +3529,17 @@ async function boot() {
 
   await watchLocalBars();
   scheduleBars();
+
+  /* v1.8.6：后台预热速览精简索引（data/card-index.js，约 305KB），让 info iframe 首次 import
+   * 直接命中 HTTP 缓存（GitHub Pages 冷缓存时尤其有用）。延迟 2s、不 await、失败静默；
+   * 用 BASE/pageUrl 拼绝对地址，背景脚本不依赖当前页面路径。 */
+  setTimeout(function () {
+    try {
+      var prewarm = pageUrl("data/card-index.js") + "?v=" + encodeURIComponent(PLUGIN_VERSION);
+      var p = fetch(prewarm, { cache: "force-cache" });
+      if (p && typeof p.catch === "function") p.catch(function () { /* 静默：离线 / 无网时 info 自己会降级 */ });
+    } catch (e) { /* 静默：fetch 不可用不影响启动 */ }
+  }, 2000);
 
   var mark = function (v) { return v ? "✓" : "✗"; };
   var okLine = "4eNEXT to owlbear v" + PLUGIN_VERSION + " 已加载：工具栏×5 " + mark(bootStatus.tool) +

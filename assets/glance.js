@@ -32,10 +32,10 @@
 
 import { RULES } from "../data/rules.js";
 
-/* v1.8.1：速览增强索引（威能动作类型 / 攻击命中摘要、专长每日·遭遇标记）。
- * 该文件约 1.2MB，**不**做静态 import：glance.js 会被角色卡面板、先攻、骰子等页面用
- * （那里不需要这些标签），只在速览弹窗（info.js）打开时调用 loadCardIndex() 按需加载。
- * 加载失败 / 还没加载完时，所有依赖它的标签自动降级为不显示，数值与点击不受影响。
+/* v1.8.6：速览增强索引（威能使用频率 / 动作类型）约 305KB，**不**做静态 import：
+ * glance.js 也会被角色卡面板、先攻、骰子等页面用到（那里不需要动作标签），
+ * 只在速览弹窗 / 面板预览打开时调用 loadCardIndex() 按需加载。
+ * 加载失败 / 还没加载完时，动作标签自动不显示，数值与点击不受影响。
  * Node 自测可直接 import 后 setCardIndex(CARD_INDEX) 注入。 */
 let CARD_INDEX = null;
 /** 注入 / 清空索引（info.js 加载完调用；Node 自测也用它）。 */
@@ -46,6 +46,12 @@ export function setCardIndex(index) {
 /** 当前已加载的索引（可能为 null）。 */
 export function cardIndex() {
   return CARD_INDEX;
+}
+/** 威能 id → [使用频率, 动作类型]；索引未加载 / 没收录时返回 null。 */
+function comboOf(id) {
+  if (!CARD_INDEX || !CARD_INDEX.p || !CARD_INDEX.c) return null;
+  const ci = CARD_INDEX.p[id];
+  return typeof ci === "number" ? (CARD_INDEX.c[ci] || null) : null;
 }
 /** 按需加载 data/card-index.js；?v= 跟当前 glance.js 的版本查询串一致（缓存破坏）。 */
 export async function loadCardIndex() {
@@ -58,7 +64,7 @@ export async function loadCardIndex() {
     const mod = await import("../data/card-index.js" + (q ? "?v=" + encodeURIComponent(q) : ""));
     setCardIndex(mod.CARD_INDEX || mod.default || null);
   } catch (e) {
-    console.warn("[4enext] card-index 加载失败（动作类型 / 专长频率标签将缺失）", e);
+    console.warn("[4enext] card-index 加载失败（动作类型标签将缺失）", e);
   }
   return CARD_INDEX;
 }
@@ -100,13 +106,6 @@ function stateTemps(st) {
     surge: n0(st.surgeTemp),
     def: { ac: n0(d.ac), fort: n0(d.fort), ref: n0(d.ref), will: n0(d.will) }
   };
-}
-
-/** 装备物品等级档位（RULES.equips[id] = [等级列表, 增强指向]）→「L3 8 13 18 23 28」。 */
-function equipLevelText(id) {
-  const row = id && RULES && RULES.equips ? RULES.equips[id] : null;
-  const levels = row && row[0] ? String(row[0]).trim() : "";
-  return levels ? "L" + levels : "";
 }
 
 // ---------- 小工具 ----------
@@ -680,17 +679,15 @@ function renderPowerGroup(d, powerUsed, ed) {
     const key = d.key + "-" + x.i;
     const isUsed = !!powerUsed[key];
     const name = esc(zhName(x.id));
-    /* v1.8.1：动作类型 / 攻击 / 命中来自 data/card-index.js（4E NEXT 的角色卡里只有 id）。 */
-    const info = CARD_INDEX && CARD_INDEX.powers ? CARD_INDEX.powers[x.id] : null;
-    const act = info && info[1] ? String(info[1]) : "";
-    const tips = [];
-    if (info && info[2]) tips.push("攻击：" + info[2]);
-    if (info && info[3]) tips.push("命中：" + info[3]);
+    /* v1.8.6：动作类型来自 data/card-index.js（4E NEXT 的角色卡里只有 id）；
+     * 用户确认去掉攻击 / 命中 tooltip，title 只保留「点击标记已使用」这类提示。 */
+    const combo = comboOf(x.id);
+    const act = combo && combo[1] ? String(combo[1]) : "";
     const label = '<span class="gl4-chip-name">' + name + "</span>" +
       (act ? '<em class="gl4-act">' + esc(act) + "</em>" : "");
-    const title = (d.track
+    const title = d.track
       ? (isUsed ? "点击恢复：" : "点击标记已使用：") + x.id
-      : "随意威能，无需追踪消耗") + (tips.length ? " ｜ " + tips.join(" ｜ ") : "");
+      : "随意威能，无需追踪消耗";
     if (ed.track && d.track) {
       return '<button type="button" class="gl4-chip' + (isUsed ? " used" : "") + '" data-act="power" data-k="' + esc(key) +
         '" aria-pressed="' + (isUsed ? "true" : "false") + '" title="' + esc(title) + '">' + label + "</button>";
@@ -799,24 +796,8 @@ export function renderGlanceHTML(char, opts) {
       groups.map((g) => renderPowerGroup(g, d.powerUsed, ed)).join("") + "</section>";
   })();
 
-  /* v1.2.1：专长改为纯展示 —— 不再生成可点的 button，也不再显示「已用 x / y」。
-     状态字段 featUsed 仍然保留在数据里（键名不变，老状态能读、长休照旧清空），只是界面不写它。 */
-  const feats = (function () {
-    if (!d.feats.length) return '<section class="gl4-card"><h3 class="gl4-h">专长</h3><p class="gl4-empty">这张卡还没有选专长。</p></section>';
-    const body = d.feats.map(function (f) {
-      const name = esc(zhName(f.id));
-      /* v1.8.1：专长频率标记来自 data/card-index.js 的 feats（"d"=每日 / "e"=遭遇）；
-       * 职业赠送的专长继续标「赠送」。专长仍是纯展示（不生成可点按钮 / 不写专长动作）。 */
-      const freq = CARD_INDEX && CARD_INDEX.feats ? CARD_INDEX.feats[f.id] : "";
-      const tag = freq === "d" ? "每日" : freq === "e" ? "遭遇" : "";
-      const extra = (tag ? '<em class="gl4-tag">' + tag + "</em>" : "") +
-        (f.granted ? '<em class="gl4-tag">赠送</em>' : "");
-      return '<span class="gl4-chip feat" title="' + esc(f.id + (tag ? " ｜ " + tag : "")) + '">' + name + extra + "</span>";
-    }).join("");
-    /* v1.7.6：删掉「纯展示，不追踪使用」小字，只留总数。 */
-    return '<section class="gl4-card gl4-feats"><h3 class="gl4-h">专长 <span class="gl4-count">' + d.feats.length +
-      '</span></h3><div class="gl4-chips">' + body + "</div></section>";
-  })();
+  /* v1.8.6：**专长区块整块不渲染**（用户确认：名称与「每日/赠送」都不要）。
+   * deriveGlance 仍然返回 d.feats（info.js 的短休按 encounterFeatKeys 清理时可用），只是界面上不输出。 */
 
   const equips = (function () {
     if (!d.equipRows.length) return '<section class="gl4-card"><h3 class="gl4-h">装备与魔法物品</h3><p class="gl4-empty">这张卡还没有装备物品。</p></section>';
@@ -824,11 +805,10 @@ export function renderGlanceHTML(char, opts) {
     const rows = d.equipRows.map(function (r) {
       const isUsed = !!d.equipmentUsed[r.key];
       const name = esc(zhName(r.id));
-      const lv = equipLevelText(r.id);
+      /* v1.8.6：去掉物品等级档位（L2 7 12…），保留槽位 / 名称 / 增强 +N。 */
       const inner = '<span class="gl4-item-slot">' + esc(r.slot) + "</span>" +
         '<span class="gl4-item-name">' + name + "</span>" +
-        (r.enh ? '<span class="gl4-item-enh">增强 +' + r.enh + "</span>" : "") +
-        (lv ? '<span class="gl4-lv">' + esc(lv) + "</span>" : "");
+        (r.enh ? '<span class="gl4-item-enh">增强 +' + r.enh + "</span>" : "");
       if (ed.track) {
         /* v1.7.12：动作名改成 equipment（测试断言用这个名字）；track.js 仍兼容老的 item。 */
         return '<button type="button" class="gl4-item' + (isUsed ? " used" : "") + '" data-act="equipment" data-k="' + esc(r.key) +
@@ -874,7 +854,6 @@ export function renderGlanceHTML(char, opts) {
     skills +
     attacks +
     powers +
-    feats +
     equips +
     rest +
     note +
