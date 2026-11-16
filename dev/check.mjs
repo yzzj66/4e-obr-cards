@@ -4004,5 +4004,22 @@ console.log("== v2.1.0 目的地窗布局（420 高 / 列表可滚 / 底栏固�
   else bad("v2.1.0：目的地窗布局仍可能裁切");
 }
 
+console.log("== v2.1.0 目的地窗防重 / 清残留");
+{
+  const coreDf = fs.readFileSync(path.join(ROOT, "assets", "background.core.js"), "utf8");
+  const testDf = fs.readFileSync(path.join(ROOT, "dev", "test-portal.mjs"), "utf8");
+  if (coreDf.indexOf("var portalDestOpening = false;") >= 0 &&
+    coreDf.indexOf("portal dest skip（已开/并发）") >= 0 &&
+    coreDf.indexOf("portalOldDestId") >= 0 &&
+    coreDf.indexOf("清理旧传送门窗口残留（boot）") >= 0 &&
+    coreDf.indexOf("portalDestLastKey") >= 0 && coreDf.indexOf("500ms 内重复触发") >= 0)
+    ok("v2.1.0：目的地窗并发锁 / 旧 id 清理 / boot 清理 / 500ms 触发去重");
+  else bad("v2.1.0：目的地窗防重或清残留缺失");
+  if (testDf.indexOf("①n openDestinationPopover 并发两次只打开一次") >= 0 &&
+    testDf.indexOf("①n boot 清理旧 id") >= 0)
+    ok("v2.1.0：test-portal 有并发防重 / 清残留断言");
+  else bad("v2.1.0：缺少目的地窗防重断言");
+}
+
 console.log(fail ? "\n" + fail + " 个问题" : "\n全部通过");
 process.exit(fail ? 1 : 0);

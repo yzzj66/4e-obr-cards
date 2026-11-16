@@ -548,6 +548,8 @@ async function closeWin(name) {
   var st = winOpen[name];
   if (st && st.timer) { clearTimeout(st.timer); st.timer = null; }
   delete winOpen[name];
+  if (name === "portalDest") portalDestOpen = false;
+  if (name === "portalEdit") portalEditItemId = "";
   var def = winDef(name);
   if (!def) return;
   try { await OBR.popover.close(def.id); } catch (e) {  }
@@ -3994,6 +3996,10 @@ var portalBaseline = {};
 var portalBaselineReady = false;
 var portalSuppressUntil = 0;
 var portalDestOpen = false;
+var portalDestOpening = false;
+var portalDestLastKey = "";
+var portalDestLastAt = 0;
+var portalOldDestId = NS + "/portal-dest-pop";
 var portalKnown = {};
 var portalLifecycleReady = false;
 var portalRadiusInflight = {};
@@ -4490,16 +4496,26 @@ async function onPortalItemsChange() {
 }
 /** v2.1.0：目的地选择窗接进通用窗口框架（可拖动 / 位置记忆 / reclamp）。 */
 async function openDestinationPopover(portalId, tokenIds) {
-  portalDestOpen = true;
+  if (portalDestOpening || portalDestOpen) {
+    pageLog("info", "portal dest skip（已开/并发）");
+    return false;
+  }
+  portalDestOpening = true;
   try {
+    /* 打开前先清同 id（以及历史旧 id）残留，避免新旧两个目的地窗叠在一起。 */
+    try { await OBR.popover.close(ID_PORTAL_DEST); } catch (e0) {  }
+    try { await OBR.popover.close(portalOldDestId); } catch (e0b) {  }
     await openWin("portalDest", URL_PORTAL_DEST + "?portal=" + encodeURIComponent(portalId) +
       "&tokens=" + encodeURIComponent((tokenIds || []).join(",")));
+    portalDestOpen = true;
+    pageLog("info", "portal dest open（锁）");
     setTimeout(function () { portalDestOpen = false; }, 10000);
     return true;
   } catch (e) {
-    portalDestOpen = false;
     pageLog("err", "打开传送目的地选择失败：" + errText(e));
     return false;
+  } finally {
+    portalDestOpening = false;
   }
 }
 async function portalDetectDragEnd() {
@@ -4564,6 +4580,14 @@ async function portalDetectDragEnd() {
   var tokenIds = [];
   for (var s2 = 0; s2 < sel.length; s2++) if (tokenMap[sel[s2]]) tokenIds.push(sel[s2]);
   for (var c2 = 0; c2 < candidates.length; c2++) if (tokenIds.indexOf(candidates[c2].id) < 0) tokenIds.push(candidates[c2].id);
+  var triggerKey = origin.portal.itemId + "|" + tokenIds.slice().sort().join(",");
+  var triggerNow = Date.now();
+  if (triggerKey === portalDestLastKey && triggerNow - portalDestLastAt < 500) {
+    pageLog("info", "portal dest skip（500ms 内重复触发）");
+    return;
+  }
+  portalDestLastKey = triggerKey;
+  portalDestLastAt = triggerNow;
   try {
     await openDestinationPopover(origin.portal.itemId, tokenIds);
   } catch (e5) {
@@ -4723,6 +4747,13 @@ async function boot() {
   });
   /* v2.1.0：OBR SDK 没有 viewport.onChange → 安装 500ms 轮询重锚。
    * 视口变化时：按钮重新 open 到右下角（同 id+url），各窗口 / 先攻条用新 vp reclamp。 */
+  await attempt("清理旧传送门窗口残留（boot）", function () {
+    try { void OBR.popover.close(ID_PORTAL_DEST); } catch (e1) {  }
+    try { void OBR.popover.close(ID_PORTAL_EDIT); } catch (e2) {  }
+    try { void OBR.popover.close(portalOldDestId); } catch (e3) {  }
+    pageLog("info", "portal dest 清理残留");
+    return true;
+  });
   await attempt("安装视口轮询重锚（500ms）", function () {
     addViewportAnchorListener(function (vp) {
       return (async function () {
@@ -4898,6 +4929,7 @@ if (typeof window !== "undefined") {
     portalRadiusFromScale: portalRadiusFromScale,
     portalScaleRadiusSync: portalScaleRadiusSync,
     portalDetectDragEnd: portalDetectDragEnd,
+    openDestinationPopover: openDestinationPopover,
     portalTeleportLanded: function () { return portalTeleportLanded; },
     onPortalSave: onPortalSave,
     portalSceneDpi: portalSceneDpi,

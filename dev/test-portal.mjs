@@ -518,6 +518,30 @@ ok("从真实源码拿到 window.__4ePortal（portalMeta / 螺旋 / 墙避让 / 
   else bad("①m 空状态/取消按钮缺失，或底部提示未删");
 }
 
+/* ---- ①n 目的地窗防重 / 清残留 ---- */
+{
+  let opens = 0, closes = 0;
+  sandbox.OBR = {
+    popover: { open: async () => { opens++; }, close: async () => { closes++; } }
+  };
+  const p1 = P.openDestinationPopover("p-one", ["t1"]);
+  const p2 = P.openDestinationPopover("p-one", ["t1"]);
+  const rs = await Promise.all([p1, p2]);
+  if (opens === 1 && closes >= 1 && rs.filter(Boolean).length === 1)
+    ok("①n openDestinationPopover 并发两次只打开一次，且打开前先 popover.close 清同 id 残留");
+  else bad("①n 目的地窗并发/清残留不对：" + JSON.stringify({ opens, closes, rs }));
+  if (coreSrc.indexOf("portalDestOpening") >= 0 && coreSrc.indexOf("portal dest skip（已开/并发）") >= 0 &&
+    coreSrc.indexOf("portalOldDestId") >= 0 &&
+    coreSrc.indexOf("清理旧传送门窗口残留（boot）") >= 0 &&
+    coreSrc.indexOf("portal dest 清理残留") >= 0)
+    ok("①n boot 清理旧 id + 打开并发锁 + 日志齐全");
+  else bad("①n boot 清理/并发锁缺失");
+  if (coreSrc.indexOf("portalDestLastKey") >= 0 && coreSrc.indexOf("portalDestLastAt") >= 0 &&
+    coreSrc.indexOf("500ms 内重复触发") >= 0)
+    ok("①n 检测触发 500ms 内同 portal+tokenIds 只触发一次");
+  else bad("①n 检测触发没有 500ms 去重");
+}
+
 /* ---- ② 同 tag 目的地 ---- */
 {
   const portals = [
