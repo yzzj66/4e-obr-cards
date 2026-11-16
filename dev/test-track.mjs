@@ -94,6 +94,7 @@ const modPath = path.join(tmp, "track.mjs");
 fs.writeFileSync(modPath, src, "utf8");
 
 const T = await import(pathToFileURL(modPath).href);
+const C = await import(pathToFileURL(path.join(tmp, "common.mjs")).href);
 /* v1.8.1：再拷一份 track.mjs 当「第二个页面实例」（info 弹窗 / panel 面板是两个独立 iframe，
  * 各有自己的模块状态与缓存），用来测两个页面交替点同一张卡会不会互相覆盖。 */
 const modPathB = path.join(tmp, "track-b.mjs");
@@ -323,6 +324,39 @@ const seeded3 = await T.syncTokenStats(item.id, T.hpView(null, { maxHp: 40, surg
 if (seeded3 === false && !item.metadata[T.KEY_HP])
   ok("显式「移除血条组件」（enabled=false）的 token：syncTokenStats 不播种 HP");
 else bad("syncTokenStats 给移除血条组件的 token 又写了 HP：" + JSON.stringify(item.metadata));
+
+/* ---------------------------------------------------------------------------
+ * 15. v2.0.0：四防临时值不被 syncTokenStats 回写（combineDefenses + ctx.defTemp）
+ * ------------------------------------------------------------------------- */
+console.log("== 15 四防临时值联动不被 syncTokenStats 回写");
+{
+  const comb = C.combineDefenses({ ac: 18, fort: 17, reflex: 16 }, { ac: 0, fort: 2, ref: 1, will: 0 });
+  if (comb && comb.ac === 18 && comb.fort === 19 && comb.reflex === 17 && !("will" in comb))
+    ok("v2.0.0：combineDefenses ← ref→reflex、卡片基础 + 临时值、卡片没有的项不返回（保留 token 原值）");
+  else bad("v2.0.0：combineDefenses 合并不对：" + JSON.stringify(comb));
+  const comb2 = C.combineDefenses({ ac: 10, fort: 5 }, { fort: -3.6, ac: 2.4 });
+  if (comb2 && comb2.ac === 12 && comb2.fort === 1)
+    ok("v2.0.0：combineDefenses 先 round 再加、结果 clamp 到 ≥0（10+2.4→12、5-3.6→1）");
+  else bad("v2.0.0：combineDefenses round / clamp 不对：" + JSON.stringify(comb2));
+
+  const baseDef = { ac: 18, fort: 17, reflex: 16 };
+  item.metadata = { [T.KEY_HP]: { cur: 10, max: 20, surges: 4, surgesMax: 4, defenses: { ac: 18, fort: 19, reflex: 17 } } };
+  const hpPlus = T.hpView(item.metadata[T.KEY_HP], { maxHp: 20, surges: 4 });
+  const noisy = await T.syncTokenStats(item.id, hpPlus, {
+    maxHp: 20, surgesMax: 4, defenses: [{ key: "ac", value: 18 }, { key: "fort", value: 17 }, { key: "ref", value: 16 }],
+    defTemp: { ac: 0, fort: 2, ref: 1, will: 0 }
+  });
+  if (noisy === false && item.metadata[T.KEY_HP].defenses.fort === 19)
+    ok("v2.0.0：token 已是 base+temp、defTemp 也带同样临时值 → syncTokenStats 返回 false 且不写（旧逻辑会回写 base）");
+  else bad("v2.0.0：token=base+temp 仍被回写：" + JSON.stringify({ noisy, def: item.metadata[T.KEY_HP].defenses }));
+  const zeroed = await T.syncTokenStats(item.id, T.hpView(item.metadata[T.KEY_HP], { maxHp: 20, surges: 4 }), {
+    maxHp: 20, surgesMax: 4, defenses: [{ key: "ac", value: 18 }, { key: "fort", value: 17 }, { key: "ref", value: 16 }],
+    defTemp: { ac: 0, fort: 0, ref: 0, will: 0 }
+  });
+  if (zeroed === true && item.metadata[T.KEY_HP].defenses.fort === 17 && item.metadata[T.KEY_HP].defenses.reflex === 16)
+    ok("v2.0.0：临时值清零后 token 仍是 base+temp → syncTokenStats 正确写回 base（短/长休还原路径）");
+  else bad("v2.0.0：清零后没有写回 base：" + JSON.stringify({ zeroed, def: item.metadata[T.KEY_HP].defenses }));
+}
 
 console.log(fail ? "\n" + fail + " 个问题" : "\n全部通过");
 process.exit(fail ? 1 : 0);

@@ -36,6 +36,20 @@ export function withModifier(base, n) {
 }
 
 /**
+ * v2.0.0：track.loadState(cardId) 返回的是 **{ state, scope }**，临时命中 / 伤害在 `.state` 里。
+ * 之前 dice-page 直接读 loadState 返回值（st.atkTemp）→ 永远 undefined → 联动恒为 0。
+ * 这里集中剥一层，调用方只认这个 helper（也方便单测）。
+ */
+export function tempsFromLoaded(loaded) {
+  const st = loaded && typeof loaded === "object" && loaded.state && typeof loaded.state === "object"
+    ? loaded.state : {};
+  return {
+    atkTemp: Number.isFinite(st.atkTemp) ? st.atkTemp : 0,
+    dmgTemp: Number.isFinite(st.dmgTemp) ? st.dmgTemp : 0
+  };
+}
+
+/**
  * 生成三组预设（v1.7.0：豁免 / 先攻已去掉）。
  * 返回 {
  *   ok, name,
@@ -44,8 +58,12 @@ export function withModifier(base, n) {
  * }
  * groups 顺序固定：攻击 / 伤害 / 技能。
  */
-export function presetsFor(char, rules) {
+export function presetsFor(char, rules, opts) {
   if (!char || typeof char !== "object") return { ok: false, name: "", defenses: [], groups: [] };
+  const o = opts && typeof opts === "object" ? opts : {};
+  const atkTemp = Number.isFinite(o.atkTemp) ? Math.round(o.atkTemp) : 0;
+  const dmgTemp = Number.isFinite(o.dmgTemp) ? Math.round(o.dmgTemp) : 0;
+  const tempTag = function (v) { return v ? "（临时 " + (v > 0 ? "+" : "-") + Math.abs(v) + "）" : ""; };
   const g = deriveGlance(char, rules, null);
   const name = String(char.name || "角色").trim() || "角色";
 
@@ -55,10 +73,12 @@ export function presetsFor(char, rules) {
 
   const attacks = (g.attacks || []).slice(0, 6).map(function (a) {
     const title = String(a.label || "攻击").trim() || "攻击";
+    /* v2.0.0：临时命中先加到 total 再 withModifier，表达式格式不变；非 0 时标签标注临时值。 */
+    const total = a.total + atkTemp;
     return {
-      label: title + " " + plus(a.total),
+      label: title + " " + plus(total) + tempTag(atkTemp),
       name: title,
-      expr: withModifier("1d20", a.total),
+      expr: withModifier("1d20", total),
       mode: "attack"
     };
   });
@@ -66,8 +86,9 @@ export function presetsFor(char, rules) {
   const damages = (g.damages || []).slice(0, 6).map(function (d) {
     const title = String(d.label || "武器").trim() || "武器";
     const dice = String(d.dice || "1d8").trim() || "1d8";
-    const expr = withModifier(dice, d.total);
-    return { label: title + " " + expr, name: title, expr: expr, mode: "damage" };
+    const total = d.total + dmgTemp;
+    const expr = withModifier(dice, total);
+    return { label: title + " " + expr + tempTag(dmgTemp), name: title, expr: expr, mode: "damage" };
   });
 
   const skills = (g.skills || []).map(function (s) {

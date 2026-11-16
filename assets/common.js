@@ -51,7 +51,7 @@ export const ID_SETTINGS_WIN = NS + "/settings-window";
  * id 与其它窗口都不同 → 可以和速览 / 先攻条同时开着；位置按窗口名 "hpEdit" 单独记。 */
 export const ID_HP_EDIT = NS + "/hp-edit";
 
-export const PLUGIN_VERSION = "1.10.6";
+export const PLUGIN_VERSION = "2.0.0";
 
 /**
  * 站点根地址。
@@ -196,9 +196,9 @@ export const CH_DICE_HIST_STATE = NS + "/dice-hist-state";
 export const CH_HP_EDIT_TARGET = NS + "/hp-edit-target";
 export const CH_HP_EDIT_READY = NS + "/hp-edit-ready";
 export const CH_HP_EDIT_SAVED = NS + "/hp-edit-saved";
-/** v1.10.2：页面切换/载入完成回 ack，后台据此判断「单窗换目标」是否成功（600ms 无 ack 兜底重开一次）。 */
+/** v2.0.0：页面切换/载入完成回 ack，后台据此判断「单窗换目标」是否成功（600ms 无 ack 兜底重开一次）。 */
 export const CH_HP_EDIT_ACK = NS + "/hp-edit-ack";
-/** v1.10.0：编辑窗「重绘血条」按钮 → 后台强制重算这张 token 的血条环 / 四防盾 / 资源徽记。 */
+/** v2.0.0：编辑窗「重绘血条」按钮 → 后台强制重算这张 token 的血条环 / 四防盾 / 资源徽记。 */
 export const CH_HP_REPAINT = NS + "/hp-repaint";
 export const LS_DICE_ANIM = "4enext/dice/anim";
 /** 记录窗口默认只显示最近几条（其余滚 / 点「展开全部」看）。 */
@@ -856,6 +856,95 @@ export async function propagateCardStats(cards, updatedIds) {
       }
     }
   });
+  return plan.length;
+}
+
+/**
+ * v2.0.0：把「卡片基础四防 + 速览临时四防」合并成 token 该有的 defenses。
+ * base 用 token 侧键名（ac/fort/reflex/will）；defTemp 用 track state 键名（ac/fort/ref/reflex/will）。
+ * 只覆盖 base 里存在的项（卡片没有的项 = 不返回 → 调用方保留 token 原值）；round + clamp 到 ≥0。
+ * syncDefTempToTokens（写 token）与 track.syncTokenStats（比较是否回写）**必须共用这一套**，
+ * 否则会出现「临时值写进去 → 速览刷新又按基础值写回」的抖动（v2.0.0 bug）。
+ */
+export function combineDefenses(base, defTemp) {
+  /* 只用 track state 的键名（ac / fort / ref / will）逐项取临时值；base 侧键名是 ac/fort/reflex/will。
+   * 注意不能同时遍历 ref 与 reflex（会互相覆盖），reflex 仅作为 dt.ref 缺省时的兼容回退。 */
+  const pairs = [["ac", "ac"], ["fort", "fort"], ["ref", "reflex"], ["will", "will"]];
+  const src = base && typeof base === "object" ? base : null;
+  if (!src) return null;
+  const dt = defTemp && typeof defTemp === "object" ? defTemp : {};
+  const out = {};
+  let any = false;
+  for (const [srcKey, dstKey] of pairs) {
+    if (typeof src[dstKey] !== "number" || !isFinite(src[dstKey])) continue;
+    let raw = dt[srcKey];
+    if (srcKey === "ref" && (typeof raw !== "number" || !isFinite(raw)) && typeof dt.reflex === "number" && isFinite(dt.reflex)) {
+      raw = dt.reflex;
+    }
+    const add = typeof raw === "number" && isFinite(raw) ? Math.round(raw) : 0;
+    out[dstKey] = Math.max(0, Math.round(src[dstKey]) + add);
+    any = true;
+  }
+  return any ? out : null;
+}
+
+/**
+ * v2.0.0：速览「四防临时加值」→ 绑定该卡 token 的 hp.defenses（单向联动，地图血条只显示）。
+ * 目标值 = 卡片基础四防 + defTemp（只覆盖卡片有值的项；卡片没有的项保持 token 原值）。
+ * 保留 cur / max / temp / locked / surges；值没变不写；无权限（非 GM 且非创建者）的 token 跳过；
+ * 写失败静默（血条下次重算）。
+ * 注意：手动在血条编辑窗改的四防，会被下一次临时加值联动覆盖（绑卡本来就会覆盖四防，已知取舍）。
+ * defTemp 用 track.js 的键名（ac/fort/ref/will），合并规则见 combineDefenses()。
+ */
+export async function syncDefTempToTokens(cardId, defTemp) {
+  if (!cardId) return 0;
+  let card = null;
+  try { card = findCard(await getCards(), cardId); } catch (e) { return 0; }
+  if (!card || !card.char) return 0;
+  let base = null;
+  try {
+    const glance = await import("./glance.js");
+    const d = glance.deriveGlance(card.char);
+    base = defensesFromDerived(d && d.defenses);
+  } catch (e2) {
+    return 0;
+  }
+  if (!base) return 0;
+  const combined = combineDefenses(base, defTemp);
+  if (!combined) return 0;
+  let role = "";
+  let pid = "";
+  try { role = await OBR.player.getRole(); } catch (e3) { role = ""; }
+  try { pid = await OBR.player.getId(); } catch (e4) { pid = ""; }
+  let items = [];
+  try { items = await OBR.scene.items.getItems(); } catch (e5) { return 0; }
+  const plan = [];
+  for (const it of items || []) {
+    if (!it || !it.metadata || it.metadata[KEY_BIND] !== cardId) continue;
+    if (role !== "GM" && !(pid && it.createdUserId === pid)) continue;
+    const prevHp = it.metadata[KEY_HP] && typeof it.metadata[KEY_HP] === "object" ? it.metadata[KEY_HP] : {};
+    /* 先保留 token 已有项，再用「卡片项 + 临时值」覆盖 → 卡片没有的项保持原值。 */
+    const out = Object.assign({}, prevHp.defenses && typeof prevHp.defenses === "object" ? prevHp.defenses : {}, combined);
+    if (sameDefenses(prevHp.defenses, out)) continue;
+    plan.push({ id: it.id, defenses: out });
+  }
+  if (!plan.length) return 0;
+  const byItem = {};
+  for (const p of plan) byItem[p.id] = p;
+  try {
+    await OBR.scene.items.updateItems(plan.map(function (p) { return p.id; }), function (drafts) {
+      for (const it of drafts) {
+        const p = byItem[it.id];
+        if (!p) continue;
+        if (!it.metadata || typeof it.metadata !== "object") it.metadata = {};
+        const prev = it.metadata[KEY_HP] && typeof it.metadata[KEY_HP] === "object" ? it.metadata[KEY_HP] : {};
+        /* 只改 defenses，其余 hp 字段原样保留（cur/max/temp/locked/surges）。 */
+        it.metadata[KEY_HP] = Object.assign({}, prev, { defenses: p.defenses });
+      }
+    });
+  } catch (e6) {
+    return 0; /* 写失败静默：血条下次会重算 */
+  }
   return plan.length;
 }
 

@@ -307,7 +307,7 @@ const BG = run(OBR, stubBuilder("CURVE"), stubBuilder("SHAPE"), stubBuilder("TEX
   if (swept.indexOf("stale-bar-1") >= 0) ok("启动时清掉了上一次会话残留的血条 item");
   else bad("没有清理残留的血条 item（会导致血条叠两层）");
 
-  /* v1.10.5：血条 = 用户样板布局（底部比例横条 + 左侧三圆 + 右下盾），不再用环形。
+  /* v2.0.0：血条 = 用户样板布局（底部比例横条 + 左侧三圆 + 右下盾），不再用环形。
    * tok-1 包围盒 150×150、dpi 150 → s=1：条 96×15 @ (75,136.5)，圆角 7.5。 */
   const BAR_KEY = "com.4enext-owlbear/bar";
   const HPBAR_KEY = "com.4enext-owlbear/hp-bar/enabled";
@@ -327,7 +327,7 @@ const BG = run(OBR, stubBuilder("CURVE"), stubBuilder("SHAPE"), stubBuilder("TEX
     const text = added.find((it) => roleOf1(it) === "bar-text");
     if (!bg || !fill || !text) bad("底部血条不齐：bar-bg=" + !!bg + " bar-fill=" + !!fill + " bar-text=" + !!text);
     else if (added.some((it) => ["ring-bg", "ring-fill", "surge-bg", "surge-fill", "surge-text"].indexOf(roleOf1(it)) >= 0)) {
-      bad("v1.10.5 不该再画环形 / 直条 / 蓝条：" + added.map(roleOf1).join(","));
+      bad("v2.0.0 不该再画环形 / 直条 / 蓝条：" + added.map(roleOf1).join(","));
     } else if (bg.points.length !== 28) bad("圆角条不是 24 段近似（应 28 点）：" + bg.points.length);
     else if (Math.abs(shapeW(bg) - 96) > 0.01 || Math.abs(shapeH(bg) - 15) > 0.01) {
       bad("底部条尺寸不对（应 96×15）：" + shapeW(bg) + "×" + shapeH(bg));
@@ -336,7 +336,7 @@ const BG = run(OBR, stubBuilder("CURVE"), stubBuilder("SHAPE"), stubBuilder("TEX
     } else if (bg.attachedTo !== TOKEN_ID || bg.layer !== "ATTACHMENT") bad("血条没有 attachedTo / ATTACHMENT");
     else if (!(bg.zIndex < fill.zIndex && fill.zIndex < text.zIndex)) bad("血条 zIndex 顺序不对：" + bg.zIndex + "/" + fill.zIndex + "/" + text.zIndex);
     else if (!text.text || text.text.plainText !== "12/20") bad("条内数字不对：" + JSON.stringify(text.text));
-    else ok("v1.10.5：底部圆角血条已画（96×15 @75,136.5、28 点、填充 12/20、ATTACHMENT），没有环形 / 直条 / 蓝条");
+    else ok("v2.0.0：底部圆角血条已画（96×15 @75,136.5、28 点、填充 12/20、ATTACHMENT），没有环形 / 直条 / 蓝条");
   }
 
   /* 血量变了 → 走 updateItems 刷新（不是重建） */
@@ -405,7 +405,7 @@ const BG = run(OBR, stubBuilder("CURVE"), stubBuilder("SHAPE"), stubBuilder("TEX
   {
     const gone = t2roles.filter((r) => ["ring-bg", "ring-fill", "surge-bg", "surge-fill", "surge-text",
       "plate", "plate-text", "plate-phase", "divider", "lock-body", "lock-shackle"].indexOf(r) >= 0);
-    if (gone.length) bad("v1.10.5 不该再画环形 / 蓝条 / Boss 名牌 / 分段 / 锁：" + gone.join(","));
+    if (gone.length) bad("v2.0.0 不该再画环形 / 蓝条 / Boss 名牌 / 分段 / 锁：" + gone.join(","));
     else if (t2.length !== 11) bad("带四防的 token 应画 11 件（条 2 + 数字 1 + 3 圆 + 3 数字 + AC 盾 + AC 数字），实际 " + t2.length + "（" + t2roles.join(",") + "）");
     else if (t2role("def").length !== 3 || t2role("def-text").length !== 3 || t2role("ac-shield").length !== 1 || t2role("ac-text").length !== 1) {
       bad("四防图形不是 3 圆 + 3 数字 + AC 盾 + AC 数字：" + t2roles.join(","));
@@ -414,7 +414,7 @@ const BG = run(OBR, stubBuilder("CURVE"), stubBuilder("SHAPE"), stubBuilder("TEX
     } else if (t2.some((it) => !Array.isArray(it.disableAttachmentBehavior) || it.disableAttachmentBehavior.indexOf("SCALE") < 0)) {
       bad("血条没有禁用 SCALE 继承");
     } else {
-      ok("v1.10.5：带四防的 token 画 11 件（底部条 2 + 数字 1 + 左侧 3 圆 + 3 数字 + 右下 AC 盾 + AC 数字）");
+      ok("v2.0.0：带四防的 token 画 11 件（底部条 2 + 数字 1 + 左侧 3 圆 + 3 数字 + 右下 AC 盾 + AC 数字）");
     }
   }
 
@@ -527,7 +527,7 @@ const BG = run(OBR, stubBuilder("CURVE"), stubBuilder("SHAPE"), stubBuilder("TEX
   for (const cb of itemsChangeCbs) cb(sceneItems);
   await sleep(300);
   if (all("local.addItems").length !== addsBeforeLock) bad("切「解锁」不应该重建 item");
-  else if (t2role("lock-body").length || t2role("lock-shackle").length) bad("v1.10.5 还在画锁（应该全删）");
+  else if (t2role("lock-body").length || t2role("lock-shackle").length) bad("v2.0.0 还在画锁（应该全删）");
   else if (!t2one("bar-text") || t2one("bar-text").visible !== true) bad("城主端 HP 数字不见了");
   else ok("锁图标已删（切 locked 只改精确度、不重建 item；城主端数字照常显示）");
 
@@ -1039,7 +1039,7 @@ const BG = run(OBR, stubBuilder("CURVE"), stubBuilder("SHAPE"), stubBuilder("TEX
   fs.copyFileSync(path.join(ROOT, "assets", "hp-edit-core.js"), hpeModPath);
   const HPE = await import(pathToFileURL(hpeModPath).href);
 
-  /* ---- 1) v1.10.0 字段：当前 / 上限 / 临时生命 / 四防（独立输入框、clamp、留空 = null） ---- */
+  /* ---- 1) v2.0.0 字段：当前 / 上限 / 临时生命 / 四防（独立输入框、clamp、留空 = null） ---- */
   {
     const max = HPE.parseMaxInput("20");
     const curHigh = HPE.parseCurInput("25", { max: 20 });
@@ -1057,7 +1057,7 @@ const BG = run(OBR, stubBuilder("CURVE"), stubBuilder("SHAPE"), stubBuilder("TEX
     else if (!emptyDef.ok || emptyDef.value !== null) bad("四防留空不是 null（应该「不画那枚盾」）：" + JSON.stringify(emptyDef));
     else if (!def.ok || def.value !== 18) bad("四防「18」解析不对：" + JSON.stringify(def));
     else if (badDef.ok) bad("四防填非数字应该拒绝：" + JSON.stringify(badDef));
-    else ok("v1.10.0 字段：当前 0~上限 / 上限 ≥1 / 临时 0~999 / 四防留空 = null，非法输入拒绝");
+    else ok("v2.0.0 字段：当前 0~上限 / 上限 ≥1 / 临时 0~999 / 四防留空 = null，非法输入拒绝");
   }
   {
     const view = { cur: 12, max: 20, temp: 0, defenses: { ac: 18 } };
@@ -1275,36 +1275,36 @@ const BG = run(OBR, stubBuilder("CURVE"), stubBuilder("SHAPE"), stubBuilder("TEX
       editPage.indexOf("hpPatchEqualsView(built.patch") >= 0 &&
       editPage.indexOf("CH_HP_EDIT_SAVED") >= 0 &&
       editPage.indexOf("els.save") < 0;
-    if (wired) ok("v1.10.0：自动保存接线齐全（input 防抖 500ms + change/blur/Enter 立即提交 + 同值不写 + 广播 CH_HP_EDIT_SAVED）");
-    else bad("v1.10.0：自动保存接线缺项（input/change/blur/Enter/去抖/去重/广播）");
+    if (wired) ok("v2.0.0：自动保存接线齐全（input 防抖 500ms + change/blur/Enter 立即提交 + 同值不写 + 广播 CH_HP_EDIT_SAVED）");
+    else bad("v2.0.0：自动保存接线缺项（input/change/blur/Enter/去抖/去重/广播）");
     if (editHtml.indexOf("hpe-temp") >= 0 && editHtml.indexOf("hpe-pin") >= 0 &&
       editHtml.indexOf("hpe-lock") >= 0 && editHtml.indexOf("hpe-repaint") >= 0 &&
       editHtml.indexOf("hpe-hp-pill") >= 0 && editHtml.indexOf("hpe-surge") < 0)
-      ok("v1.10.0：布局有生命药丸 / 临时生命 / 钉住 / 锁定 / 重绘，回复力输入已去掉");
-    else bad("v1.10.0：编辑窗布局字段不全 / 还留着回复力");
+      ok("v2.0.0：布局有生命药丸 / 临时生命 / 钉住 / 锁定 / 重绘，回复力输入已去掉");
+    else bad("v2.0.0：编辑窗布局字段不全 / 还留着回复力");
     if (editPage.indexOf("--hp-ratio") >= 0 && editPage.indexOf("PIN_KEY") >= 0 &&
       editPage.indexOf("CH_HP_REPAINT") >= 0 && editPage.indexOf("el.select()") >= 0 &&
       editPage.indexOf("setBusy(") >= 0 && editPage.indexOf("disabled = dis") >= 0 &&
       editPage.indexOf("toggleLock") >= 0 && editPage.indexOf("repaintBars") >= 0)
-      ok("v1.10.0：页面接药丸比例 / 钉住 / 锁定 / 重绘 / 聚焦全选 / saving 禁用输入");
-    else bad("v1.10.0：页面交互接线缺项（比例/钉住/锁定/重绘/聚焦/saving）");
+      ok("v2.0.0：页面接药丸比例 / 钉住 / 锁定 / 重绘 / 聚焦全选 / saving 禁用输入");
+    else bad("v2.0.0：页面交互接线缺项（比例/钉住/锁定/重绘/聚焦/saving）");
     const view = { cur: 20, max: 20, temp: 2, defenses: { ac: 18, fort: 15, reflex: 17, will: 16 } };
     const samePatch = { cur: 20, max: 20, temp: 2, defenses: { ac: 18, fort: 15, reflex: 17, will: 16 } };
     if (typeof HPE.hpPatchEqualsView === "function" && HPE.hpPatchEqualsView(samePatch, view) === true &&
       HPE.hpPatchEqualsView({ cur: 19 }, view) === false &&
       HPE.hpPatchEqualsView({ defenses: null }, view) === false &&
       HPE.hpPatchEqualsView({ defenses: null }, { defenses: null }) === true)
-      ok("v1.10.0：hpPatchEqualsView 同值判重（cur/max/temp/四防逐字段比较，相同不写）");
-    else bad("v1.10.0：hpPatchEqualsView 判重不对");
+      ok("v2.0.0：hpPatchEqualsView 同值判重（cur/max/temp/四防逐字段比较，相同不写）");
+    else bad("v2.0.0：hpPatchEqualsView 判重不对");
     const badHp = HPE.buildHpEditPatch({ cur: "20/", max: "20", temp: "0", defs: {} }, view);
-    if (!badHp.ok) ok("v1.10.0：非法 / 半截输入（20/）不生成 patch → 不会写 token");
-    else bad("v1.10.0：半截输入也能生成 patch（会写坏数据）");
+    if (!badHp.ok) ok("v2.0.0：非法 / 半截输入（20/）不生成 patch → 不会写 token");
+    else bad("v2.0.0：半截输入也能生成 patch（会写坏数据）");
     const lockOn = await HPE.writeHpEdit(sceneDeps, HPE_MONSTER, { locked: true });
     const lockMeta = hpeMonster.metadata[HP_E_KEY];
     const lockOff = await HPE.writeHpEdit(sceneDeps, HPE_MONSTER, { locked: false });
     if (lockOn.ok && lockMeta && lockMeta.locked === true && lockOff.ok && hpeMonster.metadata[HP_E_KEY].locked === false)
-      ok("v1.10.0：锁定切换写 hp.locked（true → false）");
-    else bad("v1.10.0：锁定切换没有写 hp.locked");
+      ok("v2.0.0：锁定切换写 hp.locked（true → false）");
+    else bad("v2.0.0：锁定切换没有写 hp.locked");
     const ro = await HPE.writeHpEdit({
       getItems: async (ids) => sceneItems.filter((it) => ids.includes(it.id)).map((it) => JSON.parse(JSON.stringify(it))),
       updateItems: async (ids, fn) => { await OBR.scene.items.updateItems(ids, fn); },
@@ -1314,7 +1314,7 @@ const BG = run(OBR, stubBuilder("CURVE"), stubBuilder("SHAPE"), stubBuilder("TEX
     if (!ro.ok) ok("v1.8.5：只读（无权限 / locked）不写 token");
     else bad("v1.8.5：只读还写 token");
   }
-  /* v1.10.0：钉住（选中变化 / 取消选中不关窗）与「重绘血条」频道 */
+  /* v2.0.0：钉住（选中变化 / 取消选中不关窗）与「重绘血条」频道 */
   {
     const HPE_ID = "com.4enext-owlbear/hp-edit";
     const wcCb = (broadcastCbs["com.4enext-owlbear/win-close"] || [])[0];
@@ -1332,23 +1332,23 @@ const BG = run(OBR, stubBuilder("CURVE"), stubBuilder("SHAPE"), stubBuilder("TEX
     await select([HPE_MONSTER]);
     const c0 = closeCount();
     await select([]);
-    if (closeCount() !== c0) bad("v1.10.0：钉住后取消选中仍然自动关窗");
-    else ok("v1.10.0：钉住 → 取消选中不自动关窗");
+    if (closeCount() !== c0) bad("v2.0.0：钉住后取消选中仍然自动关窗");
+    else ok("v2.0.0：钉住 → 取消选中不自动关窗");
     lsStore["4enext/hp-edit/pinned"] = "0";
     await select([HPE_MONSTER]);
     const c1 = closeCount();
     await select([]);
-    if (closeCount() === c1) bad("v1.10.0：未钉住时取消选中没有自动关窗");
-    else ok("v1.10.0：未钉住 → 取消选中自动关窗（跟随选中）");
+    if (closeCount() === c1) bad("v2.0.0：未钉住时取消选中没有自动关窗");
+    else ok("v2.0.0：未钉住 → 取消选中自动关窗（跟随选中）");
     const repaintCbs = broadcastCbs["com.4enext-owlbear/hp-repaint"] || [];
-    if (!repaintCbs.length) bad("v1.10.0：没有订阅 CH_HP_REPAINT（重绘按钮没用）");
+    if (!repaintCbs.length) bad("v2.0.0：没有订阅 CH_HP_REPAINT（重绘按钮没用）");
     else {
       const before = liveOf(HPE_MONSTER).length;
       for (const cb of repaintCbs) cb({ data: { itemId: HPE_MONSTER } });
       await sleep(320);
       const after = liveOf(HPE_MONSTER).length;
-      if (before > 0 && after > 0) ok("v1.10.0：CH_HP_REPAINT 触发强制重算（血条件数 " + before + " → " + after + "，环 / 盾 / 徽记重建）");
-      else bad("v1.10.0：重绘后血条件数变了 / 没画出来：" + before + " → " + after);
+      if (before > 0 && after > 0) ok("v2.0.0：CH_HP_REPAINT 触发强制重算（血条件数 " + before + " → " + after + "，环 / 盾 / 徽记重建）");
+      else bad("v2.0.0：重绘后血条件数变了 / 没画出来：" + before + " → " + after);
     }
     await select([HPE_MONSTER]); /* 给后面的拖动用例留一个开着的编辑窗 */
   }
@@ -1541,7 +1541,7 @@ const BG = run(OBR, stubBuilder("CURVE"), stubBuilder("SHAPE"), stubBuilder("TEX
       const ackHp = !opts || opts.ackHp !== false;
       selection = ids.slice();
       for (const cb of playerChangeCbs) cb();
-      /* v1.10.2：等 target 真的切到目标 token 再 ack（否则 600ms 后后台兜底重开会多一次 popover.open）。
+      /* v2.0.0：等 target 真的切到目标 token 再 ack（否则 600ms 后后台兜底重开会多一次 popover.open）。
        * 同时顺手 ack info-target，避免本 helper 的等待拖到 info 的 700ms 兜底。 */
       const want = ids[0] || "";
       const infoAckCbs = broadcastCbs["com.4enext-owlbear/info-ack"] || [];
@@ -1795,13 +1795,13 @@ const BG = run(OBR, stubBuilder("CURVE"), stubBuilder("SHAPE"), stubBuilder("TEX
       ok("v1.9.0：ack 及时到达 → 不触发兜底重开（正常路径不抖动）");
     else bad("v1.9.0：ack 及时仍重开了 popover（多开了 " + (infoOpens().length - openBeforeAckOk) + " 次）");
 
-    /* v1.10.2 bugfix：7 个输入框 focus 时 select() 必须选中自己（抓 var 闭包让焦点全跑到意志） */
+    /* v2.0.0 bugfix：7 个输入框 focus 时 select() 必须选中自己（抓 var 闭包让焦点全跑到意志） */
     {
       const src = fs.readFileSync(path.join(ROOT, "assets", "hp-edit-page.js"), "utf8");
       const start = src.indexOf("inputs.forEach(function (el) {");
       const end = src.indexOf('document.addEventListener("keydown"', start);
       if (start < 0 || end < 0) {
-        bad("v1.10.2 bugfix：找不到输入框绑定循环（应该用 inputs.forEach 捕获每个 el）");
+        bad("v2.0.0 bugfix：找不到输入框绑定循环（应该用 inputs.forEach 捕获每个 el）");
       } else {
         const snippet = src.slice(start, end);
         const ids = ["hpe-cur", "hpe-max", "hpe-temp", "hpe-def-ac", "hpe-def-fort", "hpe-def-reflex", "hpe-def-will"];
@@ -1818,22 +1818,22 @@ const BG = run(OBR, stubBuilder("CURVE"), stubBuilder("SHAPE"), stubBuilder("TEX
         fn(inputs, function () { saveCalls++; }, function () { commitCalls++; }, function () {}, function () {});
         for (const one of inputs) for (const cb of (one.listeners.focus || [])) cb();
         const okAll = ids.every((id, i) => selected[i] === id);
-        if (okAll) ok("v1.10.2 bugfix：7 个输入框各自 focus → select() 选中的就是自己（意志不会再抢焦点）");
-        else bad("v1.10.2 bugfix：focus 时 select 选错了框（var 闭包 bug）：" + JSON.stringify(selected));
+        if (okAll) ok("v2.0.0 bugfix：7 个输入框各自 focus → select() 选中的就是自己（意志不会再抢焦点）");
+        else bad("v2.0.0 bugfix：focus 时 select 选错了框（var 闭包 bug）：" + JSON.stringify(selected));
       }
     }
 
-    /* v1.10.2：页面在 lease.accept 之前先 commit 当前输入（假 DOM 级静态顺序锁） */
+    /* v2.0.0：页面在 lease.accept 之前先 commit 当前输入（假 DOM 级静态顺序锁） */
     {
       const hpPageSrc = fs.readFileSync(path.join(ROOT, "assets", "hp-edit-page.js"), "utf8");
       const iCommit = hpPageSrc.indexOf('commit("switch", document.activeElement)');
       const iAccept = hpPageSrc.indexOf("lease.accept(data)");
       if (iCommit >= 0 && iAccept >= 0 && iCommit < iAccept)
-        ok("v1.10.2：页面 target 切换先 commit 当前输入，再 lease.accept / load（不会丢未保存输入）");
-      else bad("v1.10.2：页面没有「先 commit 再 accept」的顺序");
+        ok("v2.0.0：页面 target 切换先 commit 当前输入，再 lease.accept / load（不会丢未保存输入）");
+      else bad("v2.0.0：页面没有「先 commit 再 accept」的顺序");
     }
 
-    /* v1.10.2：血条编辑窗单窗常驻（换 token 只广播 target，不重建 iframe；无 ack 600ms 兜底重开一次；钉住不换目标） */
+    /* v2.0.0：血条编辑窗单窗常驻（换 token 只广播 target，不重建 iframe；无 ack 600ms 兜底重开一次；钉住不换目标） */
     {
       const mkHp = (id) => ({
         id, type: "IMAGE", name: "常驻测试 " + id, layer: "CHARACTER", createdUserId: "user-gm",
@@ -1854,24 +1854,24 @@ const BG = run(OBR, stubBuilder("CURVE"), stubBuilder("SHAPE"), stubBuilder("TEX
       await select([HP3]);
       if (hpOpens().length === opensBeforeReuse && lastHpTarget() && lastHpTarget().itemId === HP3 &&
         hpTargets().length > targetsBeforeReuse)
-        ok("v1.10.2：换 token 只广播 target 换目标（iframe 不重建、popover.open 不增加）");
-      else bad("v1.10.2：换 token 又重开了编辑窗：opens " + opensBeforeReuse + "→" + hpOpens().length +
+        ok("v2.0.0：换 token 只广播 target 换目标（iframe 不重建、popover.open 不增加）");
+      else bad("v2.0.0：换 token 又重开了编辑窗：opens " + opensBeforeReuse + "→" + hpOpens().length +
         " target " + (lastHpTarget() && lastHpTarget().itemId));
       /* 故意不回 ack → 600ms 后兜底重开一次 */
       const opensBeforeNoAck = hpOpens().length;
       await select([HP2], { ackHp: false });
       await sleep(750);
       if (hpOpens().length === opensBeforeNoAck + 1 && lastHpTarget() && lastHpTarget().itemId === HP2)
-        ok("v1.10.2：换目标 600ms 无 ack → 兜底关闭重开一次（内容也能换过去）");
-      else bad("v1.10.2：无 ack 没有兜底重开一次：" + opensBeforeNoAck + "→" + hpOpens().length);
+        ok("v2.0.0：换目标 600ms 无 ack → 兜底关闭重开一次（内容也能换过去）");
+      else bad("v2.0.0：无 ack 没有兜底重开一次：" + opensBeforeNoAck + "→" + hpOpens().length);
       /* 钉住：选中别的 token 不换 target、不关窗 */
       lsStore["4enext/hp-edit/pinned"] = "1";
       const pinnedItem = lastHpTarget() && lastHpTarget().itemId;
       const opensPinned = hpOpens().length;
       await select([HP3], { ackInfo: false });
       if (lastHpTarget() && lastHpTarget().itemId === pinnedItem && hpOpens().length === opensPinned)
-        ok("v1.10.2：钉住时选中别的 token 不换 target、不关窗（保持当前 token）");
-      else bad("v1.10.2：钉住时 target 被换了：" + pinnedItem + "→" + (lastHpTarget() && lastHpTarget().itemId));
+        ok("v2.0.0：钉住时选中别的 token 不换 target、不关窗（保持当前 token）");
+      else bad("v2.0.0：钉住时 target 被换了：" + pinnedItem + "→" + (lastHpTarget() && lastHpTarget().itemId));
       lsStore["4enext/hp-edit/pinned"] = "0";
     }
 

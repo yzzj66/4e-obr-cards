@@ -2,6 +2,50 @@
 
 > 这份文件是历史更新记录。安装与使用请看 [README](README.md)。
 
+**v2.0.0：攒批汇总发布（1.10.7～1.10.12 合并为一个大版本）**（2026-11-16）——
+- **用户矢量图标**：血条编辑窗钉住 / 锁定、速览「共享数据」改用 `assets/icons/pin|lock|unlock.svg` 内联（currentColor，按状态切换 lock/unlock）。
+- **先攻条卡片底部加高**：`.item-count` 24% → 34%、头像 72%、血条 bottom 34%（合计下方 `(骰+加值)` 公式不再被裁；有意偏离 Full Suite 原比例）。
+- **地图血条改用户样板布局**：去掉环形，改为「底部 64% 宽圆角比例横条 + 左侧竖排三圆（强/反/意）+ 右下 AC 盾」，数字放图形内；玩家端只显示比例、不显示数字与四防。
+- **先攻条点卡片偶发弹速览竞态**：先 `await CH_GLANCE_SUPPRESS` 送达再 `player.select`。
+- **四防临时值联动 token**：速览 ± 把 `hp.defenses = 卡片基础 + defTemp` 写回绑定 token（地图圆/盾联动），短/长休清空并还原；**修 `syncTokenStats` 用基础值回写导致「变一下又变回去」**（`combineDefenses` 共用、info 传 `defTemp`）。
+- **骰子 4E 预设联动临时命中/伤害**：读取 `track` 的 `atkTemp/dmgTemp`，攻击/伤害 total 相加并标注「（临时 +2）」；订阅房间/token 变化 200ms 防抖刷新；**修 `loadState` 少剥一层（`.state`）导致联动恒为 0**。
+- **骰子 action 防缓存 + 诊断日志**：manifest `action.popover` 带 `?v=2.0.0`；控制台输出页面就绪 / 按钮 click / doRoll 分步日志（parse → payload → rendered → broadcast → history → anim → done）与 catch stack。
+- 此前 1.10.x 的其它内容（1.10.0 血条编辑窗药丸布局/临时生命/锁定/钉住/重绘、1.10.1 输入可发现性、1.10.2 单窗常驻与焦点修复）一并包含；详见下方各 1.10.x 条目。
+
+**v1.10.12：修骰子 4E 预设读状态少剥一层**（2026-11-16）——
+`track.loadState(cardId)` 返回 `{ state, scope }`，但 `dice-page.refreshPresets` 之前直接读返回值（`st.atkTemp`），
+导致临时命中/伤害恒为 0、4E 预设永远不带联动。修复：`dice-4e.js` 导出 `tempsFromLoaded(loaded)`（只从 `loaded.state`
+读 `atkTemp/dmgTemp`，缺省 0），dice-page 改用它；test-dice 增集成断言 + 错误形状 = 0，check 加静态锁。
+
+**v1.10.11：骰子投掷分步诊断日志（定位点击后无反应）**（2026-11-16）——
+`doRoll()` 只加日志、不改行为：`step parse ok` / `busy-return` / `busy-set` / `payload` / `rendered`（含结果区子节点数 / 隐藏状态）/
+`flash` / `broadcast sent=` / `history` / `anim-start|skip|done` / `catch` / `finally step done`；
+`catch` 改为 `console.error("[4enext][dice] doRoll failed", e.stack)`（之前只 feedback，控制台看不到堆栈）。
+manifest×2 的 action.popover 同步 `?v=1.10.11`。
+
+**v1.10.10：骰子 action 页面防旧缓存 + 点击诊断**（2026-11-16）——
+manifest×2 的 `action.popover` 改为带版本参数（`dice.html?v=<当前版本>`），以后每次升版本必须同步改（README 版本升级清单已写）；
+骰子页启动在控制台打 `[4enext][dice] 页面就绪 v=… action=…`，投掷按钮 click 与 `doRoll` 入口各打一条诊断（便于区分「没触发」还是「触发后失败」）；
+action 模式正文 / 滚动容器补 `pointer-events:auto`，旧标题栏隐藏后点击不被覆盖。
+
+**v1.10.9：修四防临时值联动被 syncTokenStats 回写基础值**（2026-11-16）——
+真机现象：速览加四防临时值后，地图圆/盾数字「变一下又变回去」。根因：`track.syncTokenStats` 每次速览刷新用
+**卡片基础四防**比较 token，发现 token 是 base+temp 就写回 base。修复：`common.js` 抽出 `combineDefenses(base, defTemp)`
+（ref→reflex、round/clamp、卡片缺项保留 token 原值），`syncDefTempToTokens` 与 `syncTokenStats` 共用；
+`info.js` 先 `loadState` 再把 `defTemp` 传给 `syncTokenStats`。短期清零 / 短长休后 defTemp=0，仍会写回基础值。
+
+**v1.10.7：速览四防临时加值单向联动 token（地图圆/盾）+ 短/长休还原**（2026-11-16）——
+只在速览里点「四防临时加值」的 ±；成功后 `common.syncDefTempToTokens(cardId, defTemp)` 把绑定该卡的 token
+`hp.defenses` 写成「卡片基础四防 + defTemp」（只覆盖卡片有值的项，保留 cur/max/temp/locked/surges，同值不写，
+无权限 token 跳过，写失败静默）。四防临时值清零 / 短休 / 长休后同样写回卡片基础值，地图左侧三圆与 AC 盾还原；
+地图端只是显示，不可点。手动在血条编辑窗改的四防会被下一次临时加值联动覆盖（绑卡本来就会覆盖四防，已知取舍）。
+
+**v1.10.8：骰子 4E 预设联动速览临时命中 / 临时伤害**（2026-11-16）——
+速览里点「临时命中 / 临时伤害」的 ± 后，骰子窗的 4E 预设会读 `track.js` 的 `atkTemp` / `dmgTemp` 并即时刷新：
+攻击组 `1d20 + total+atkTemp`、伤害组 `武器骰 + total+dmgTemp`（先加到 total 再 `withModifier`，表达式格式不变）；
+临时值非 0 时标签追加「（临时 +2）」/「（临时 -3）」，为 0 时输出与旧版完全一致。骰子页订阅房间数据与 token 变化
+（200ms 防抖），所以速览 ± 与短 / 长休后预设自动更新。
+
 **v1.10.6：先攻条点卡片偶发弹速览（竞态修复）**（2026-11-16）——
 根因：`initiative-page.js` 的 `onCardClick()` 里 `void OBR.broadcast.sendMessage(CH_GLANCE_SUPPRESS, …)` 后立刻
 `await OBR.player.select(...)`，真机上偶尔 select 触发的后台 `refreshInfo` 比抑制消息先到 → 速览弹一次。

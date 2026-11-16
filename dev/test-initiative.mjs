@@ -1344,9 +1344,9 @@ console.log("== v1.7.10 先攻加值可编辑 + 无卡 token 加入先攻");
 
 console.log("== 静态检查");
 const man = JSON.parse(fs.readFileSync(path.join(ROOT, "manifest.json"), "utf8"));
-if (man.name === "4eNEXT to owlbear" && man.version === "1.10.6") ok("manifest 名称 / 版本 = 4eNEXT to owlbear 1.10.6");
+if (man.name === "4eNEXT to owlbear" && man.version === "2.0.0") ok("manifest 名称 / 版本 = 4eNEXT to owlbear 2.0.0");
 else bad("manifest 名称 / 版本不对：" + man.name + " " + man.version);
-if (man.action && /^https:\/\//.test(man.action.popover) && /\/dice\.html$/.test(man.action.popover))
+if (man.action && /^https:\/\//.test(man.action.popover) && /\/dice\.html(?:\?v=[0-9.]+)?$/.test(man.action.popover))
   ok("manifest.action = 骰子左上角入口（dice.html，绝对 URL，v1.9.2）");
 else bad("manifest.action 缺失 / 未指向 dice.html");
 
@@ -1400,11 +1400,11 @@ if (initPageSrc.indexOf("CH_GLANCE_SUPPRESS") >= 0 &&
   initPageSrc.indexOf("sendMessage(CH_GLANCE_SUPPRESS") < initPageSrc.indexOf("OBR.player.select"))
   ok("点先攻条卡片：先广播 CH_GLANCE_SUPPRESS 再 OBR.player.select（地图高亮保留、不再弹速览）");
 else bad("点卡片没有先广播 CH_GLANCE_SUPPRESS / 顺序不对（速览还是会弹）");
-/* v1.10.6：动态顺序断言 —— 抑制广播的 promise resolve 之前，player.select 绝不能被调用。 */
+/* v2.0.0：动态顺序断言 —— 抑制广播的 promise resolve 之前，player.select 绝不能被调用。 */
 {
   const start = initPageSrc.indexOf("async function onCardClick(tokenId) {");
   const end = initPageSrc.indexOf("\n\n/** 玩家「结束我的回合」", start);
-  if (start < 0 || end < 0) bad("v1.10.6：抽不出 onCardClick()（页面结构变了）");
+  if (start < 0 || end < 0) bad("v2.0.0：抽不出 onCardClick()（页面结构变了）");
   else {
     const snippet = initPageSrc.slice(start, end);
     const order = [];
@@ -1430,8 +1430,8 @@ else bad("点卡片没有先广播 CH_GLANCE_SUPPRESS / 顺序不对（速览还
     if (release) release();
     await pending;
     if (before === "send" && order.join(",") === "send,select")
-      ok("v1.10.6：先 await 抑制广播送达，再 player.select（旧写法会在广播 resolve 前就 select → 偶发弹速览）");
-    else bad("v1.10.6：抑制广播未 await 就 select（顺序 " + before + " → " + order.join(",") + "）");
+      ok("v2.0.0：先 await 抑制广播送达，再 player.select（旧写法会在广播 resolve 前就 select → 偶发弹速览）");
+    else bad("v2.0.0：抑制广播未 await 就 select（顺序 " + before + " → " + order.join(",") + "）");
   }
 }
 

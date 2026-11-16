@@ -85,12 +85,14 @@ globalThis.localStorage = {
   removeItem: (k) => { delete localStore[k]; }
 };
 const notes = [];
+let roleNow = "GM";
+let idNow = "user-gm";
 globalThis.__OBR__ = {
   isAvailable: true,
   notification: { show(msg, variant) { notes.push({ msg: msg, variant: variant }); return Promise.resolve("n"); } },
   player: {
-    getRole: async () => "GM",
-    getId: async () => "user-gm"
+    getRole: async () => roleNow,
+    getId: async () => idNow
   },
   scene: {
     items: {
@@ -108,6 +110,7 @@ globalThis.__OBR__ = {
 
 const G = await import(pathToFileURL(path.join(tmp, "assets", "glance.js")).href);
 const T = await import(pathToFileURL(path.join(tmp, "assets", "track.js")).href);
+const C = await import(pathToFileURL(path.join(tmp, "assets", "common.js")).href);
 
 /* ---------------------------------------------------------------------------
  * 3) 卡索引：按需加载 + 内容抽查（v1.8.6 精简结构：{v,c,p}，只有使用频率/动作类型）
@@ -341,6 +344,77 @@ if (oldState.atkTemp === 0 && oldState.dmgTemp === 0 && oldState.surgeTemp === 0
   oldState.defTemp && oldState.defTemp.ac === 0 && oldState.defTemp.will === 0) {
   ok("旧状态兼容：缺临时字段 = 0（向后兼容）");
 } else bad("旧状态兼容失败：" + JSON.stringify(oldState));
+
+/* ---- v2.0.0：四防临时加值单向写回绑定 token（地图血条联动） ---- */
+{
+  const dBase = G.deriveGlance(char);
+  const base = {};
+  for (const d of (dBase.defenses || [])) base[d.key === "ref" ? "reflex" : d.key] = d.value;
+  const CARD_ID = "c-sync";
+  roomMeta[NS + "/cards"] = { v: 1, updatedAt: 1, cards: [{ id: CARD_ID, name: "同步测试", char: char }] };
+  const baseHp = { cur: 5, max: 20, temp: 2, surges: 3, locked: false, defenses: { ac: 1, fort: 1, reflex: 1, will: 1 } };
+  token.createdUserId = "user-gm";
+  token.metadata = { [NS + "/cardId"]: CARD_ID, [KEY_HP]: JSON.parse(JSON.stringify(baseHp)) };
+  roleNow = "GM"; idNow = "user-gm";
+  let n = await C.syncDefTempToTokens(CARD_ID, { ac: 0, fort: 2, ref: 1, will: 0 });
+  let hpNow = token.metadata[KEY_HP];
+  if (n === 1 && hpNow.defenses.ac === base.ac && hpNow.defenses.fort === base.fort + 2 &&
+    hpNow.defenses.reflex === base.reflex + 1 && hpNow.defenses.will === base.will &&
+    hpNow.cur === 5 && hpNow.max === 20 && hpNow.temp === 2 && hpNow.surges === 3 && hpNow.locked === false) {
+    ok("v2.0.0：def-temp fort+2 / reflex+1 → token hp.defenses = 卡片基础+临时，cur/max/temp/surges/locked 全保留");
+  } else bad("v2.0.0：临时四防没有正确写回 token：" + JSON.stringify(hpNow));
+  const sameAgain = await C.syncDefTempToTokens(CARD_ID, { ac: 0, fort: 2, ref: 1, will: 0 });
+  if (sameAgain === 0) ok("v2.0.0：同一组临时值再次同步 → 值没变不写（返回 0）");
+  else bad("v2.0.0：同值仍然写盘（返回 " + sameAgain + "）");
+  const restored = await C.syncDefTempToTokens(CARD_ID, { ac: 0, fort: 0, ref: 0, will: 0 });
+  hpNow = token.metadata[KEY_HP];
+  if (restored === 1 && hpNow.defenses.ac === base.ac && hpNow.defenses.fort === base.fort &&
+    hpNow.defenses.reflex === base.reflex && hpNow.defenses.will === base.will) {
+    ok("v2.0.0：临时值清零（短/长休）→ 四防写回卡片基础值，地图圆/盾还原");
+  } else bad("v2.0.0：清零后四防没有还原：" + JSON.stringify(hpNow.defenses));
+  /* 无权限：非 GM 且非创建者 → 跳过、一个字节都不写 */
+  token.createdUserId = "someone-else";
+  token.metadata[KEY_HP] = JSON.parse(JSON.stringify(baseHp));
+  roleNow = "PLAYER"; idNow = "user-me";
+  const denied = await C.syncDefTempToTokens(CARD_ID, { ac: 0, fort: 2, ref: 0, will: 0 });
+  if (denied === 0 && token.metadata[KEY_HP].defenses.fort === 1) ok("v2.0.0：无权限 token 跳过（不写别人的 token）");
+  else bad("v2.0.0：无权限 token 仍然被写：" + JSON.stringify(token.metadata[KEY_HP].defenses));
+  roleNow = "GM"; idNow = "user-gm";
+  token.createdUserId = "user-gm";
+}
+
+/* ---- v2.0.0：端到端顺序 —— 临时四防写 token 后，紧随的 syncTokenStats 不能回写 base ---- */
+{
+  const dBase = G.deriveGlance(char);
+  const base = {};
+  for (const d of (dBase.defenses || [])) base[d.key === "ref" ? "reflex" : d.key] = d.value;
+  roomMeta[NS + "/cards"] = { v: 1, updatedAt: 1, cards: [{ id: "c-test", name: "同步端到端", char: char }] };
+  token.createdUserId = "user-gm";
+  token.metadata = {
+    [NS + "/cardId"]: "c-test",
+    [KEY_HP]: { cur: 10, max: 20, temp: 0, surges: 3, surgesMax: 4, locked: false,
+      defenses: { ac: base.ac, fort: base.fort, reflex: base.reflex, will: base.will } }
+  };
+  const st = T.normalizeState(Object.assign({}, baseState, { defTemp: { ac: 0, fort: 2, ref: 1, will: 0 } }));
+  roomMeta[NS + "/state/c-test"] = seedState(st);
+  await C.syncDefTempToTokens("c-test", st.defTemp);
+  let hpNow = token.metadata[KEY_HP];
+  if (hpNow.defenses.fort === base.fort + 2 && hpNow.defenses.reflex === base.reflex + 1)
+    ok("v2.0.0：def-temp 后 token 四防 = 卡片基础 + 临时（fort+" + 2 + " / reflex+" + 1 + "）");
+  else bad("v2.0.0：def-temp 后 token 四防不对：" + JSON.stringify(hpNow.defenses));
+  const wrote = await T.syncTokenStats(token.id, T.hpView(hpNow, { maxHp: 20, surges: 4 }), {
+    maxHp: 20, surgesMax: 4, defenses: dBase.defenses, defTemp: st.defTemp
+  });
+  hpNow = token.metadata[KEY_HP];
+  if (wrote === false && hpNow.defenses.fort === base.fort + 2 && hpNow.defenses.reflex === base.reflex + 1)
+    ok("v2.0.0：紧随的 syncTokenStats 带 ctx.defTemp → 返回 false、不回写基础值（修复「变一下又变回去」）");
+  else bad("v2.0.0：syncTokenStats 又把临时四防写回去了：" + JSON.stringify({ wrote, def: hpNow.defenses }));
+  await C.syncDefTempToTokens("c-test", { ac: 0, fort: 0, ref: 0, will: 0 });
+  hpNow = token.metadata[KEY_HP];
+  if (hpNow.defenses.fort === base.fort && hpNow.defenses.reflex === base.reflex)
+    ok("v2.0.0：临时四防清零 → token 写回卡片基础值（短/长休还原）");
+  else bad("v2.0.0：清零后没有写回基础值：" + JSON.stringify(hpNow.defenses));
+}
 
 console.log(fail ? "\n" + fail + " 个问题" : "\n全部通过（v1.8.6 速览：动作标签 / 可用总数 / 无专长区块 / 无装备等级 / HP·回复力·临时加值 / 短休 / 索引 ≤350KB）");
 process.exit(fail ? 1 : 0);

@@ -14,13 +14,13 @@
 //         子元素 stopPropagation、甚至正文外层被包一层都不会丢点击）；④ 渲染层 / 读写层带 ?v=1.7.14，
 //         避免浏览器 / 宿主继续用旧缓存的 glance.js（旧版威能 chip 根本不是 button）。
 import OBR from "../vendor/obr-sdk.js";
-import { CH_INFO_ACK, CH_INFO_READY, CH_INFO_TARGET, CH_INFO_DRAG, ID_INFO, ID_PANEL, INFO_DRAG_THROTTLE_MS, URL_PANEL, KEY_BIND, getCards, findCard, esc, onReady, notify } from "./common.js";
+import { CH_INFO_ACK, CH_INFO_READY, CH_INFO_TARGET, CH_INFO_DRAG, ID_INFO, ID_PANEL, INFO_DRAG_THROTTLE_MS, URL_PANEL, KEY_BIND, getCards, findCard, esc, onReady, notify, syncDefTempToTokens } from "./common.js";
 /* v1.7.13：带版本查询串 —— 旧缓存的 glance.js / track.js 正是「chip 点不动」的另一种可能，
  * 更新后必须让浏览器重新取这两个文件（info.html 的入口也带了 ?v=）。 */
-import { renderGlanceHTML, deriveGlance, magicItemDailyUses, loadCardIndex } from "./glance.js?v=1.10.6";
+import { renderGlanceHTML, deriveGlance, magicItemDailyUses, loadCardIndex } from "./glance.js?v=2.0.0";
 /* v1.7.10：✕ 统一走「OBR.popover.close(正确 id) + OBR.modal.close + 后台 {op:"close-win"}」双保险。 */
 import { closeSelf } from "./window.js";
-import { KEY_HP, applyAction, hpView, loadState, mayEditItem, readItem, scopeText, syncTokenStats } from "./track.js?v=1.10.6";
+import { KEY_HP, applyAction, hpView, loadState, mayEditItem, readItem, scopeText, syncTokenStats } from "./track.js?v=2.0.0";
 
 const params = new URLSearchParams(location.search);
 let itemId = params.get("item") || "";
@@ -223,12 +223,18 @@ async function refresh(force) {
     const d0 = deriveGlance(card.char);
     canHp = token ? await mayEditItem(token) : false;
     hp = hpView(token && token.metadata ? token.metadata[KEY_HP] : null, { maxHp: d0.hpMax, surges: d0.surges });
+    /* v2.0.0：先读 state，syncTokenStats 需要知道速览临时四防（defTemp），
+     * 否则它会把「卡片基础 + 临时值」误判成不一致又写回基础值。 */
+    const loaded = await loadState(card.id);
+    state = loaded.state;
+    scope = loaded.scope;
     /* v1.6.0：老 token 没有 surgesMax / 四防 → 趁打开速览写一次（只在真不一样时写），
      * 这样蓝色回复力条与四角盾第一次打开速览就能看见，不用城主动手加点。 */
     if (canHp && token) {
       try {
         const wrote = await syncTokenStats(token.id, hp, {
-          maxHp: d0.hpMax, surgesMax: d0.surgesMax, defenses: d0.defenses
+          maxHp: d0.hpMax, surgesMax: d0.surgesMax, defenses: d0.defenses,
+          defTemp: state && state.defTemp
         });
         if (wrote) {
           token = await readItem(itemId);
@@ -236,9 +242,6 @@ async function refresh(force) {
         }
       } catch (e) { /* 写不进去（玩家 / 只读 token）就算了，血条仍按已有字段画 */ }
     }
-    const loaded = await loadState(card.id);
-    state = loaded.state;
-    scope = loaded.scope;
     if (force) lastSig = "";
     render();
     /* 标题：只留角色名（v1.7.6 删掉「token：xxx」这类副标题小字） */
@@ -287,6 +290,12 @@ async function runAction(act, el) {
     if (res.hp) hp = hpView(res.hp, { maxHp: derived.hpMax, surges: derived.surges });
     if (res.state) state = res.state;
     if (res.scope) scope = res.scope;
+    /* v2.0.0：四防临时加值单向写回绑定该卡的 token（地图血条只显示）——
+     * def-temp 改了值，短/长休已清空 defTemp；写回后 scene.items.onChange 会让血条自动重画。
+     * 注意：手动在血条编辑窗改的四防会被下一次联动覆盖（绑卡本来就会覆盖四防，已知取舍）。 */
+    if (act === "def-temp" || act === "rest-short" || act === "rest-long") {
+      try { await syncDefTempToTokens(card.id, state && state.defTemp); } catch (eSync) { /* 写失败静默 */ }
+    }
     /* v1.7.8：成功 / 普通提示不再弹；只有 applyAction 报的 WARNING（写不进房间数据 → 降级本机）才出声。 */
     if (res.message && res.tone === "WARNING") notify(res.message, "WARNING");
     render();

@@ -30,7 +30,7 @@ import {
   CH_DICE_HIST_CMD, CH_DICE_HIST_STATE, CH_ROLL, CH_ROLL_CLEAR,
   ID_DICE_HIST, ID_DICE_WIN, KEY_BIND, LS_DICE_COMBOS, LS_DICE_LAST, LS_DICE_LOCAL,
   NS, URL_DICE_HIST, URL_EFFECT,
-  appendDiceHistoryRow, clearDiceHistory, esc, findCard, getCards, onReady, readDiceAnim
+  PLUGIN_VERSION, appendDiceHistoryRow, clearDiceHistory, esc, findCard, getCards, onReady, readDiceAnim
 } from "./common.js";
 import { closeSelf, createWindow, feedback } from "./window.js";
 import {
@@ -73,7 +73,8 @@ var els = {
   presets: document.getElementById("presets"),
   combos: document.getElementById("combos"),
   comboName: document.getElementById("comboName"),
-  result: document.getElementById("result")
+  result: document.getElementById("result"),
+  resultSec: document.getElementById("resultSec")
 };
 
 var MODE_LABEL = { attack: "攻击", damage: "伤害", save: "豁免", skill: "技能", init: "先攻", free: "投掷" };
@@ -321,19 +322,31 @@ async function playEffect(row, origin) {
   }
 }
 
+/* v2.0.0：doRoll 分步诊断日志（只加日志，不改行为）。用户控制台看到哪一步停住就能定位。 */
+function dlog(msg) {
+  try { console.log("[4enext][dice] " + msg); } catch (e) { /* 忽略 */ }
+}
+
 async function doRoll() {
+  /* v2.0.0：用户「点投掷没反应」诊断 —— 有这行说明点击已触发，可继续看后面是否报错。 */
+  try { console.log("[4enext][dice] 点击投掷 expr=" + (els.exprInput ? els.exprInput.value : "")); } catch (e) { /* 忽略 */ }
   if (busy) {
+    dlog("step busy-return（上一掷还在 260ms 收尾）");
     shake(els.btnRoll);
     feedback("上一次投掷还没结算完，稍等一下再掷", "WARNING");
     return;
   }
   var parsed = parseExpr(els.exprInput ? els.exprInput.value : "");
-  if (parsedIsEmpty(parsed)) {
+  var isEmpty = parsedIsEmpty(parsed);
+  dlog("step parse ok empty=" + isEmpty + " expr=" + (els.exprInput ? els.exprInput.value : ""));
+  if (isEmpty) {
+    dlog("step parse-empty-return");
     shake(els.btnRoll);
     feedback("公式是空的（或看不懂）：点一颗骰子，或输入 2d6 + 5 这样的公式", "WARNING");
     return;
   }
   busy = true;
+  dlog("step busy-set");
   try {
     var result = rollParsed(parsed, { crit: critOn });
     var payload = rollToPayload({
@@ -347,7 +360,9 @@ async function doRoll() {
       mode: pendingMode || "free",
       crit: critOn
     });
+    dlog("step payload " + (payload ? "ok total=" + payload.total + " rollId=" + payload.rollId : "null"));
     if (!payload) {
+      dlog("step payload-null-return");
       feedback("投掷结果不合法（内部错误），已丢弃", "ERROR");
       return;
     }
@@ -355,6 +370,8 @@ async function doRoll() {
     lsSet(LS_DICE_LAST, lastExpr);
 
     renderResult(payload);
+    dlog("step rendered resultChildren=" + (els.result ? els.result.childElementCount : -1) +
+      " resultHidden=" + !!(els.resultSec && els.resultSec.hidden));
 
     if (payload.critDegraded) {
       flash("重击未生效：公式里有包裹（adv / max 等），本次按普通投掷", "WARNING");
@@ -362,20 +379,30 @@ async function doRoll() {
       flash((payload.crit ? "重击 · 伤害取满：" : "掷出：") + formatExpr(parsed) + " = " + payload.total +
         (result.rowCount > 1 ? "（" + result.rowCount + " 行）" : ""), "SUCCESS");
     }
+    dlog("step flash");
 
     var sent = await broadcast(CH_ROLL, payload);
+    dlog("step broadcast sent=" + sent);
     if (!sent) flash("广播没发出去：本机记录已保存，但这次结果同步不到其它人。", "WARNING");
     /* v1.9.2：骰子历史改为本机保存 —— 投掷方自己先落一条（广播 LOCAL 不一定回环到自己）。 */
     appendDiceHistoryRow(payload);
+    dlog("step history");
 
     /* 结果已经算完 / 已经广播，最后才开动画（失败也不影响上面任何一步） */
     if (readDiceAnim()) {
+      dlog("step anim-start");
       var origin = await effectOrigin();
       await playEffect(payload, origin);
+      dlog("step anim-done");
+    } else {
+      dlog("step anim-skip");
     }
   } catch (e) {
+    dlog("step catch " + (e && e.message ? e.message : e));
+    try { console.error("[4enext][dice] doRoll failed", e && e.stack ? e.stack : e); } catch (e2) { /* 忽略 */ }
     feedback("投掷失败：" + (e && e.message ? e.message : e), "ERROR");
   } finally {
+    dlog("step done");
     setTimeout(function () { busy = false; }, 260);
   }
 }
@@ -439,6 +466,9 @@ var histBusy = false;
 /** v1.9.2：最近一次成功打开记录窗口的时间 —— 900ms 内又点按钮视为「窗口不可见」兜底。 */
 var lastHistOpenAt = 0;
 var histRepeatWarned = false;
+/* v2.0.0：速览临时命中/伤害变化 → 防抖刷新 4E 预设（读 track state）。 */
+var presetRefreshTimer = 0;
+var presetPending = false;
 /** 等后台补齐的回执计时器。 */
 var histTimer = 0;
 
@@ -579,7 +609,7 @@ async function toggleHistory() {
  * 4) 4E 预设（选中已绑定角色卡的 token 时出现）
  * ------------------------------------------------------------------------- */
 async function refreshPresets() {
-  if (presetBusy) return;
+  if (presetBusy) { presetPending = true; return; }
   presetBusy = true;
   try {
     var sel = await OBR.player.getSelection();
@@ -601,12 +631,29 @@ async function refreshPresets() {
       return;
     }
     var mod = await import("./dice-4e.js");
-    renderPresets(mod.presetsFor(card.char), card.name || "");
+    /* v2.0.0：track.loadState 返回 { state, scope } —— 必须取 .state，否则临时值恒为 0。
+     * 统一走 dice-4e 的 tempsFromLoaded（单测覆盖）。 */
+    var temps = { atkTemp: 0, dmgTemp: 0 };
+    try {
+      var track = await import("./track.js");
+      var loaded = await track.loadState(card.id);
+      temps = mod.tempsFromLoaded(loaded);
+    } catch (e2) { /* 读不到状态就按 0，不影响原有预设 */ }
+    renderPresets(mod.presetsFor(card.char, undefined, temps), card.name || "");
   } catch (e) {
     renderPresets(null, "");
   } finally {
     presetBusy = false;
+    if (presetPending) { presetPending = false; schedulePresetRefresh(); }
   }
+}
+
+function schedulePresetRefresh() {
+  if (presetRefreshTimer) clearTimeout(presetRefreshTimer);
+  presetRefreshTimer = setTimeout(function () {
+    presetRefreshTimer = 0;
+    void refreshPresets();
+  }, 200);
 }
 
 function renderPresets(data, cardName) {
@@ -752,7 +799,11 @@ function wireEvents() {
   if (els.btnModPlus) els.btnModPlus.addEventListener("click", function () { onModifierStep(1); });
   if (els.btnAdvantage) els.btnAdvantage.addEventListener("click", onAdvantage);
   if (els.btnCrit) els.btnCrit.addEventListener("click", onCrit);
-  if (els.btnRoll) els.btnRoll.addEventListener("click", function () { void doRoll(); });
+  if (els.btnRoll) els.btnRoll.addEventListener("click", function () {
+  /* v2.0.0：先打一行「按钮确实收到点击」，再交给 doRoll（避免只看到结果、分不清是没绑上还是中途失败）。 */
+  try { console.log("[4enext][dice] 投掷按钮 click"); } catch (e) { /* 忽略 */ }
+  void doRoll();
+});
   if (els.btnSave) els.btnSave.addEventListener("click", onSaveCombo);
   if (els.btnClear) els.btnClear.addEventListener("click", function () { void clearHistory(); });
   if (els.btnHist) els.btnHist.addEventListener("click", function () { void toggleHistory(); });
@@ -810,7 +861,11 @@ onReady(function () {
   void actionModeNow().then(function (open) {
     ACTION_MODE = !!open;
     if (ACTION_MODE) document.body.classList.add("dice-action");
-  }, function () { /* 忽略 */ });
+    /* v2.0.0：页面就绪诊断（控制台可判：是否加载到新页面 / 是否 action 模式）。 */
+    try { console.log("[4enext][dice] 页面就绪 v=" + PLUGIN_VERSION + " action=" + ACTION_MODE); } catch (e) { /* 忽略 */ }
+  }, function () {
+    try { console.log("[4enext][dice] 页面就绪 v=" + PLUGIN_VERSION + " action=false（isOpen 不可用）"); } catch (e) { /* 忽略 */ }
+  });
 
   var saved = lsGet(LS_DICE_LAST);
   if (saved) {
@@ -838,6 +893,15 @@ onReady(function () {
     }
     await refreshPresets();
   })();
+
+  /* v2.0.0：速览里点「临时命中 / 临时伤害」或短/长休后，房间数据 / token 会变 →
+   * 防抖 200ms 重新读 state 刷新 4E 预设。 */
+  try {
+    OBR.room.onMetadataChange(schedulePresetRefresh);
+  } catch (eRoom) { /* 忽略 */ }
+  try {
+    OBR.scene.items.onChange(schedulePresetRefresh);
+  } catch (eItems) { /* 忽略 */ }
 
   /* v1.9.2：别人掷的骰子（REMOTE / LOCAL）也落进本机历史，记录窗口随后打开就能看到。 */
   try {

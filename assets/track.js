@@ -22,7 +22,7 @@
 
 import OBR from "../vendor/obr-sdk.js";
 /* v1.7.15：写房间数据前先过体积预算（超了就**不写** + ERROR 通知，再降级本机）。 */
-import { NS, ROOM_FULL_MESSAGE, notify, writeRoomKey } from "./common.js";
+import { NS, ROOM_FULL_MESSAGE, combineDefenses, notify, writeRoomKey } from "./common.js";
 
 /** token 上的血量键。 */
 export const KEY_HP = NS + "/hp";
@@ -408,7 +408,9 @@ export async function syncTokenStats(itemId, hp, ctx) {
   if (barOff) return false;
   const needHp = !!wantMax && !barOff && !(typeof rawHp.max === "number" && rawHp.max > 0);
   const wantSurge = ctx.surgesMax > 0 ? Math.round(ctx.surgesMax) : null;
-  const wantDef = defensesFromDerived(ctx.defenses);
+  /* v2.0.0：wantDef 必须包含速览临时四防，否则 base+temp 会被误判成「与卡片基础不一致」
+   * 又写回基础值，真机表现为「地图数字变一下又变回去」。合并规则与 syncDefTempToTokens 共用 combineDefenses。 */
+  const wantDef = combineDefenses(defensesFromDerived(ctx.defenses), ctx.defTemp);
   const curDef = hp.defenses || null;
   const sameSurge = !wantSurge || hp.surgesMax === wantSurge;
   const sameDef = !wantDef || !!curDef &&
