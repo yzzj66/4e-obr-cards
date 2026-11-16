@@ -1,4 +1,4 @@
-/*! 4eNEXT to owlbear · background.bundle.js  (v1.8.9)
+/*! 4eNEXT to owlbear · background.bundle.js  (v1.9.0)
  * ---------------------------------------------------------------------------
  * 这是后台页唯一加载的脚本：纯「经典脚本」，没有 type="module"，没有 import/export，
  * 不依赖任何 CDN。内容是：
@@ -7,7 +7,7 @@
  *
  * 不要手改本文件。改逻辑请改 assets/background.core.js，然后：
  *     node dev/build-background.mjs
- * 生成时间：2026-11-16T05:49:06.580Z
+ * 生成时间：2026-11-16T06:03:47.458Z
  * --------------------------------------------------------------------------- */
 (function () {
 "use strict";
@@ -99,7 +99,7 @@ var TOOL_SETTINGS_ID = NS + "/settings-tool";
 var CH_HELLO = NS + "/diag-hello";
 var CH_PING = NS + "/diag-ping";
 var CH_PONG = NS + "/diag-pong";
-var PLUGIN_VERSION = "1.8.9";
+var PLUGIN_VERSION = "1.9.0";
 
 var KEY_HP = NS + "/hp";
 
@@ -248,6 +248,8 @@ var CH_HP_EDIT_SAVED = NS + "/hp-edit-saved";
 /* v1.8.9：信息窗单次挂载 —— 目标租约（换 token 只广播 target，不重开 popover）+ ready 握手。 */
 var CH_INFO_TARGET = NS + "/info-target";
 var CH_INFO_READY = NS + "/info-ready";
+/* v1.9.0：页面刷新成功 ack —— 700ms 没收到就兜底关闭重开一次（极端情况下内容也能换过去）。 */
+var CH_INFO_ACK = NS + "/info-ack";
 
 var HPE_W = 340;
 var HPE_H = 122;
@@ -1641,6 +1643,9 @@ var infoCardId = null;
  * 不 reload iframe。session 内的 version 必须严格递增；页面 READY 时后台重发当前 target（防丢首条）。 */
 var infoSession = "";
 var infoTarget = { session: "", version: 0, itemId: null, cardId: null };
+/* v1.9.0：target 广播后的 ack 兜底 —— 700ms 没收到页面 ack 就关闭重开一次（只记日志、不弹通知）。 */
+var infoAckTimer = null;
+var infoAckPending = null;
 
 function newInfoSession() {
   try {
@@ -1651,7 +1656,16 @@ function newInfoSession() {
   return "info-" + Date.now().toString(36) + "-" + Math.random().toString(36).slice(2, 8);
 }
 
-function publishInfoTarget(itemId, cardId) {
+function perfShort(v) {
+  return String(v == null ? "" : v).slice(0, 8);
+}
+
+function clearInfoAckTimer() {
+  if (infoAckTimer) { clearTimeout(infoAckTimer); infoAckTimer = null; }
+  infoAckPending = null;
+}
+
+function publishInfoTarget(itemId, cardId, expectAck) {
   if (!infoSession) infoSession = newInfoSession();
   infoTarget = {
     session: infoSession,
@@ -1659,10 +1673,42 @@ function publishInfoTarget(itemId, cardId) {
     itemId: typeof itemId === "string" ? itemId : (itemId || ""),
     cardId: typeof cardId === "string" ? cardId : (cardId || "")
   };
-  return sendHello(CH_INFO_TARGET, infoTarget);
+  /* v1.9.0：无条件诊断日志（经 console；info 页面自己的日志经 CH_PERF 中转回来）。 */
+  try {
+    console.log("[4enext-perf] bg target v=" + infoTarget.version + " item=" + perfShort(infoTarget.itemId) +
+      " card=" + perfShort(infoTarget.cardId) + " session=" + perfShort(infoSession));
+  } catch (e) { /* 日志失败不影响逻辑 */ }
+  var sent = sendHello(CH_INFO_TARGET, infoTarget);
+  if (expectAck) {
+    clearInfoAckTimer();
+    infoAckPending = {
+      session: infoSession,
+      version: infoTarget.version,
+      itemId: infoTarget.itemId,
+      cardId: infoTarget.cardId
+    };
+    infoAckTimer = setTimeout(function () {
+      infoAckTimer = null;
+      var pend = infoAckPending;
+      infoAckPending = null;
+      if (!pend || !infoOpen) return;
+      /* 只记日志不弹通知：极端情况下页面没刷新，主动关掉重开一次保证内容换过去。 */
+      pageLog("err", "速览 target v=" + pend.version + " 700ms 无 ack → 兜底关闭重开一次");
+      void (async function () {
+        try {
+          await closeInfo();
+          await openInfo(pend.itemId, pend.cardId);
+        } catch (e) {
+          stepFail("兜底重开速览窗", e);
+        }
+      })();
+    }, 700);
+  }
+  return sent;
 }
 
 function resetInfoTarget() {
+  clearInfoAckTimer();
   infoSession = "";
   infoTarget = { session: "", version: 0, itemId: null, cardId: null };
 }
@@ -1674,6 +1720,15 @@ function onInfoReady(ev) {
   if (!infoSession) return;
   /* 页面刚挂载 / 拖动重开后会发 READY：重发当前 target（第一条广播可能在 iframe 加载前丢了）。 */
   void sendHello(CH_INFO_TARGET, infoTarget);
+}
+
+function onInfoAck(ev) {
+  var data = ev && ev.data !== undefined ? ev.data : ev;
+  if (!data || typeof data !== "object") return;
+  var session = typeof data.session === "string" ? data.session : "";
+  if (!session || session !== infoSession) return;
+  var version = typeof data.version === "number" ? data.version : 0;
+  if (infoAckPending && version >= infoAckPending.version) clearInfoAckTimer();
 }
 
 var infoGeom = null;
@@ -1880,7 +1935,8 @@ async function openInfo(itemId, cardId) {
   if (infoOpen) {
     infoItemId = itemId;
     infoCardId = cardId;
-    await publishInfoTarget(itemId, cardId);
+    /* 复用路径要 ack 兜底：700ms 内页面没刷新（无 ack）就关闭重开一次。 */
+    await publishInfoTarget(itemId, cardId, true);
     return;
   }
   var vp = await infoViewport();
@@ -3656,6 +3712,10 @@ async function boot() {
   /* v1.8.9：信息窗页面 ready → 重发当前 target（防第一条 target 在 iframe 加载前丢掉）。 */
   await attempt("订阅 " + CH_INFO_READY + "（速览页 ready 握手）", function () {
     OBR.broadcast.onMessage(CH_INFO_READY, onInfoReady);
+  });
+  /* v1.9.0：页面刷新成功的 ack（同一 session + version ≥ pending 才清兜底计时器）。 */
+  await attempt("订阅 " + CH_INFO_ACK + "（速览页刷新 ack）", function () {
+    OBR.broadcast.onMessage(CH_INFO_ACK, onInfoAck);
   });
   await attempt("订阅 viewport.onChange", function () {
     if (!OBR.viewport || typeof OBR.viewport.onChange !== "function") return;

@@ -51,7 +51,7 @@ export const ID_SETTINGS_WIN = NS + "/settings-window";
  * id 与其它窗口都不同 → 可以和速览 / 先攻条同时开着；位置按窗口名 "hpEdit" 单独记。 */
 export const ID_HP_EDIT = NS + "/hp-edit";
 
-export const PLUGIN_VERSION = "1.8.9";
+export const PLUGIN_VERSION = "1.9.0";
 
 /**
  * 站点根地址。
@@ -96,6 +96,8 @@ export const CH_PERF = NS + "/perf";
 export const CH_INFO_TARGET = NS + "/info-target";
 /** v1.8.9：信息窗页面 ready 握手 —— 后台收到后重发当前 target，防第一条广播早于 iframe 加载。 */
 export const CH_INFO_READY = NS + "/info-ready";
+/** v1.9.0：页面刷新成功的 ack（{session, version, itemId}）—— 后台 700ms 没收到就兜底重开一次。 */
+export const CH_INFO_ACK = NS + "/info-ack";
 
 /* ---- v1.5.0：骰子（团队共享）----
  * CH_ROLL        任何人 → 全桌：一次投掷（LOCAL + REMOTE；投掷者自己也听 LOCAL）

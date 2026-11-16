@@ -171,13 +171,18 @@ const save = JSON.parse(fs.readFileSync(path.join(ROOT, "samples", "sample-card.
 const char = save.pages.character;
 const CARD_ID = "c-test";
 const CARD2_ID = "c-test-2";
+const CARD3_ID = "c-test-3";
 const TOKEN_ID = "tok-1";
 const TOKEN2_ID = "tok-2";
+const TOKEN3_ID = "tok-3";
 const NS = "com.4enext-owlbear";
+const CARD2 = { id: CARD2_ID, name: "第二角色", level: char.level, char: char };
+const CARD3 = { id: CARD3_ID, name: "第三角色", level: char.level, char: char };
+/* 注意：第二 / 第三张卡在点击测试后才推进房间数据（否则 3 份示例卡 JSON 会超 14KB 预算，
+ * 影响 5b~5d 的 track.js 写入断言）。 */
 const roomMeta = {
   [NS + "/cards"]: { v: 1, updatedAt: 1, cards: [
-    { id: CARD_ID, name: char.name, level: char.level, char: char },
-    { id: CARD2_ID, name: "第二角色", level: char.level, char: char }
+    { id: CARD_ID, name: char.name, level: char.level, char: char }
   ] }
 };
 const token = {
@@ -198,6 +203,17 @@ const token2 = {
   createdUserId: "user-gm",
   metadata: {
     [NS + "/cardId"]: CARD2_ID,
+    [NS + "/hp"]: { cur: 171, max: 171, temp: 0, surges: 8, surgesMax: 8, locked: true, updatedAt: 1 }
+  }
+};
+/* v1.9.0：第三枚绑卡 token —— 测「busy 时 target 不丢」（连发两个 target，最终应停在第三个）。 */
+const token3 = {
+  id: TOKEN3_ID,
+  type: "IMAGE",
+  name: "第三角色",
+  createdUserId: "user-gm",
+  metadata: {
+    [NS + "/cardId"]: CARD3_ID,
     [NS + "/hp"]: { cur: 171, max: 171, temp: 0, surges: 8, surgesMax: 8, locked: true, updatedAt: 1 }
   }
 };
@@ -226,7 +242,7 @@ const fakeOBR = {
     onReadyChange() { return () => {}; },
     items: {
       getItems: async (ids) => {
-        const all = [token, token2];
+        const all = [token, token2, token3];
         return Array.isArray(ids) ? all.filter((it) => ids.indexOf(it.id) >= 0) : all;
       },
       updateItems: async (ids, fn) => {
@@ -385,6 +401,8 @@ if (!errNotes.length) ok("正常点击全程没有 ERROR / WARNING（v1.7.8：�
 else bad("正常点击弹出了错误提示：" + JSON.stringify(errNotes));
 
 /* ---- 6) v1.8.9：收到 CH_INFO_TARGET → 换 itemId/cardId 重渲染（不 reload 页面） ---- */
+/* 点击测试跑完，再把第二 / 第三张卡加进房间数据（避免撑爆 14KB 预算影响前面的 track 写入断言）。 */
+roomMeta[NS + "/cards"].cards.push(CARD2, CARD3);
 const infoTargetCbs = broadcastHandlers[NS + "/info-target"] || [];
 const readySent = broadcastSent.filter((x) => x.ch === NS + "/info-ready");
 if (!infoTargetCbs.length) bad("v1.8.9：info.js 没有订阅 CH_INFO_TARGET");
@@ -409,6 +427,27 @@ else {
   if (domMap["title-text"].textContent === titleBefore) ok("v1.8.9：version 不递增的 target 被忽略（幂等防抖）");
   else bad("v1.8.9：旧 version 的 target 也生效了");
 }
+
+/* ---- 7) v1.9.0：busy 时收到 target 不丢（pendingRefresh 补跑）+ 刷新成功回 ACK ---- */
+const ackSent = () => broadcastSent.filter((x) => x.ch === NS + "/info-ack");
+if (!broadcastHandlers[NS + "/info-ack"]) {
+  /* 页面是接收方，不订阅 ACK；这里只断言它发过 ACK。 */
+}
+const ackBefore = ackSent().length;
+for (const cb of infoTargetCbs) {
+  cb({ data: { session: "sess-test", version: 2, itemId: TOKEN_ID, cardId: CARD_ID } });
+  cb({ data: { session: "sess-test", version: 3, itemId: TOKEN3_ID, cardId: CARD3_ID } });
+}
+await sleep(520);
+if (domMap["title-text"].textContent === "第三角色")
+  ok("v1.9.0：busy 时连续收到两个 target 也不丢 —— 最终渲染到最后一个目标「第三角色」");
+else bad("v1.9.0：busy 时 target 被吞了（最终 title=" + domMap["title-text"].textContent + "）");
+const ackAfter = ackSent();
+const lastAck = ackAfter[ackAfter.length - 1];
+if (ackAfter.length > ackBefore && lastAck && lastAck.data.session === "sess-test" &&
+  lastAck.data.version === 3 && lastAck.data.itemId === TOKEN3_ID)
+  ok("v1.9.0：刷新成功后回 CH_INFO_ACK（session / version / itemId 都对）");
+else bad("v1.9.0：没有回 CH_INFO_ACK 或字段不对：" + JSON.stringify(ackAfter.slice(ackBefore)));
 
 console.log(fail ? "\n" + fail + " 个问题" : "\n全部通过");
 process.exit(fail ? 1 : 0);

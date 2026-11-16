@@ -14,13 +14,13 @@
 //         子元素 stopPropagation、甚至正文外层被包一层都不会丢点击）；④ 渲染层 / 读写层带 ?v=1.7.14，
 //         避免浏览器 / 宿主继续用旧缓存的 glance.js（旧版威能 chip 根本不是 button）。
 import OBR from "../vendor/obr-sdk.js";
-import { CH_INFO_READY, CH_INFO_TARGET, CH_INFO_DRAG, CH_PERF, ID_INFO, ID_PANEL, INFO_DRAG_THROTTLE_MS, URL_PANEL, KEY_BIND, getCards, findCard, esc, onReady, notify } from "./common.js";
+import { CH_INFO_ACK, CH_INFO_READY, CH_INFO_TARGET, CH_INFO_DRAG, CH_PERF, ID_INFO, ID_PANEL, INFO_DRAG_THROTTLE_MS, URL_PANEL, KEY_BIND, getCards, findCard, esc, onReady, notify } from "./common.js";
 /* v1.7.13：带版本查询串 —— 旧缓存的 glance.js / track.js 正是「chip 点不动」的另一种可能，
  * 更新后必须让浏览器重新取这两个文件（info.html 的入口也带了 ?v=）。 */
-import { renderGlanceHTML, deriveGlance, magicItemDailyUses, loadCardIndex } from "./glance.js?v=1.8.9";
+import { renderGlanceHTML, deriveGlance, magicItemDailyUses, loadCardIndex } from "./glance.js?v=1.9.0";
 /* v1.7.10：✕ 统一走「OBR.popover.close(正确 id) + OBR.modal.close + 后台 {op:"close-win"}」双保险。 */
 import { closeSelf } from "./window.js";
-import { KEY_HP, applyAction, hpView, loadState, mayEditItem, readItem, scopeText, syncTokenStats } from "./track.js?v=1.8.9";
+import { KEY_HP, applyAction, hpView, loadState, mayEditItem, readItem, scopeText, syncTokenStats } from "./track.js?v=1.9.0";
 
 /* v1.8.7：临时性能计时（只 console.log，不改行为、不弹通知；定位「速览打开慢 / 黑屏」，
  * 用户真机点一次拿到数字后即可整段删除）。时间基准 = iframe 内 performance.now()（导航起点）。 */
@@ -210,9 +210,22 @@ function render() {
 
 /* ---------------- 读数据 ---------------- */
 
+/* v1.9.0：refresh 不能被 busy 吞掉 —— busy 时收到的刷新请求先记 pending，本轮结束再补跑一次。 */
+let pendingRefresh = false;
+let pendingRefreshForce = false;
+
 async function refresh(force) {
-  if (busy) return;
+  if (busy) {
+    pendingRefresh = true;
+    if (force) pendingRefreshForce = true;
+    return;
+  }
   busy = true;
+  /* ACK 用「本轮开始时」的 target version：刷新过程中又来的 target 由 pending 补跑，避免提前 ack。 */
+  const __ackVersion = infoTargetVersion;
+  /* v1.9.0：每次 refresh 都无条件打（不再首帧 gate），用来确认 target 到达后页面到底有没有刷新。 */
+  perfLog("refresh item=" + String(itemId || "").slice(0, 8) + " card=" + String(cardId || "").slice(0, 8) +
+    " force=" + (force ? 1 : 0));
   var __p0 = perfNow();
   var __cardMs = 0;
   var __cardDone = 0, __tokStart = 0, __tokDone = 0, __stateStart = 0, __stateDone = 0, __renderStart = 0, __renderDone = 0;
@@ -279,10 +292,18 @@ async function refresh(force) {
       bodyEl.insertAdjacentHTML("afterbegin",
         '<div class="gl4-warn">这枚 token 已不在场景里（或血条被清掉了）：血条会自动重建；token 被删除时请重新绑定。</div>');
     }
+    /* v1.9.0：刷新成功 → ack 后台（session + 本轮开始时的 target version），后台据此取消 700ms 兜底重开。 */
+    ackInfoTarget(__ackVersion);
   } catch (e) {
     console.error("[4enext] 刷新速览失败", e);
   } finally {
     busy = false;
+    if (pendingRefresh) {
+      pendingRefresh = false;
+      const __force = pendingRefreshForce;
+      pendingRefreshForce = false;
+      void refresh(__force);
+    }
   }
 }
 
@@ -384,21 +405,42 @@ function refreshWithIndex(tries, done) {
   if (typeof done === "function") void Promise.resolve(p).then(done);
 }
 
-/** v1.8.9：收到后台「换目标」广播 → 只更新 itemId/cardId 后重渲染，**不 reload 页面 / 不重建 iframe**。 */
+/** v1.9.0：刷新成功 ack —— 后台收到才取消「700ms 无 ack 就重开」的兜底。 */
+function ackInfoTarget(version) {
+  try {
+    OBR.broadcast.sendMessage(CH_INFO_ACK, {
+      session: infoSession,
+      version: typeof version === "number" ? version : infoTargetVersion,
+      itemId: itemId,
+      at: Date.now()
+    }, { destination: "LOCAL" });
+  } catch (e) { /* 没有 broadcast 也能靠 URL 首绘 */ }
+}
+
+/** v1.8.9：收到后台「换目标」广播 → 只更新 itemId/cardId 后重渲染，**不 reload 页面 / 不重建 iframe**。
+ *  v1.9.0：无条件诊断日志；busy 时不丢（refresh 内部记 pending，本轮结束补跑）；同目标也回 ack。 */
 function onInfoTarget(ev) {
   var data = ev && ev.data !== undefined ? ev.data : ev;
   if (!data) return;
   var session = typeof data.session === "string" ? data.session : "";
+  var sessionOk = !session || !infoSession || session === infoSession;
   if (!infoSession) infoSession = session;
-  else if (session && session !== infoSession) return;
   var version = typeof data.version === "number" ? data.version : 0;
-  if (version && version <= infoTargetVersion) return;
-  infoTargetVersion = version;
+  var versionOld = !!(version && version <= infoTargetVersion);
   var nextItem = typeof data.itemId === "string" ? data.itemId : "";
   var nextCard = typeof data.cardId === "string" ? data.cardId : "";
+  var sameTarget = nextItem === itemId && nextCard === (cardId || "") && !!card;
+  var applied = sessionOk && !versionOld && !!nextItem && !sameTarget;
+  perfLog("target recv v=" + version + " session=" + (sessionOk ? "ok" : "mismatch") +
+    " version=" + (versionOld ? "old" : "new") + " effect=" + (applied ? "applied" : "skipped"));
+  if (!sessionOk) return;
+  if (versionOld) return;
+  infoTargetVersion = version;
   if (!nextItem) return;
-  /* 同目标（首次挂载后后台补发 target）不重复刷新。 */
-  if (nextItem === itemId && nextCard === (cardId || "") && card) return;
+  /* 同目标（首次挂载后后台补发 target）不重复渲染，但要立刻 ack，避免后台误判超时重开。 */
+  if (sameTarget) { ackInfoTarget(version); return; }
+  /* target 优先于普通 schedule 防抖：先清掉 pending 定时器，再直接刷新（busy 由 refresh 内部排队）。 */
+  if (pending) { clearTimeout(pending); pending = null; }
   itemId = nextItem;
   cardId = nextCard;
   card = null;

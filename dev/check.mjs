@@ -19,7 +19,7 @@ const NOTES_PATH = path.join(ROOT, "docs", "NOTES.md");
 const NOTES = exists(NOTES_PATH) ? fs.readFileSync(NOTES_PATH, "utf8") : "";
 const notesHas = (s) => NOTES.indexOf(s) >= 0;
 /* 当前版本号：所有「版本全链路」断言都读它，升版本只改这一处（+ 各文件里的真实版本号）。 */
-const VER = "1.8.9";
+const VER = "1.9.0";
 
 function walk(dir, out = []) {
   for (const name of fs.readdirSync(dir)) {
@@ -3326,7 +3326,7 @@ console.log("== v1.8.9 信息窗单窗挂载（CH_INFO_TARGET / CH_INFO_READY）
     if (c && k && c[1] === k[1]) ok("信息窗频道一致：" + ch + " = " + c[1]);
     else bad(ch + " 不一致：common=" + (c && c[1]) + " core=" + (k && k[1]));
   }
-  if (/if \(infoOpen\) \{[\s\S]{0,220}?publishInfoTarget\(itemId, cardId\)/.test(coreSrcV189) &&
+  if (/if \(infoOpen\) \{[\s\S]{0,220}?publishInfoTarget\(itemId, cardId/.test(coreSrcV189) &&
     /&session=" \+ encodeURIComponent\(infoSession\)/.test(coreSrcV189) &&
     /onMessage\(CH_INFO_READY/.test(coreSrcV189) && /function onInfoReady\(/.test(coreSrcV189) &&
     /function publishInfoTarget\(/.test(coreSrcV189) && /function resetInfoTarget\(/.test(coreSrcV189))
@@ -3336,6 +3336,23 @@ console.log("== v1.8.9 信息窗单窗挂载（CH_INFO_TARGET / CH_INFO_READY）
     /function onInfoTarget\(/.test(infoSrcV189) && /infoTargetVersion/.test(infoSrcV189))
     ok("info.js：订阅 CH_INFO_TARGET 换目标（session + version 校验）+ onReady 发 CH_INFO_READY");
   else bad("info.js 没有接 target 订阅 / READY 握手");
+  /* v1.9.0：ACK 频道 + busy 不吞刷新 + 无条件诊断日志 + 700ms 兜底 */
+  {
+    const c = /export const CH_INFO_ACK = NS \+ "([^"]+)";/.exec(commonSrcV189);
+    const k = /var CH_INFO_ACK = NS \+ "([^"]+)";/.exec(coreSrcV189);
+    if (c && k && c[1] === k[1]) ok("v1.9.0 信息窗频道一致：CH_INFO_ACK = " + c[1]);
+    else bad("v1.9.0 CH_INFO_ACK 不一致：common=" + (c && c[1]) + " core=" + (k && k[1]));
+    if (/onMessage\(CH_INFO_ACK/.test(coreSrcV189) && /function onInfoAck\(/.test(coreSrcV189) &&
+      /infoAckTimer = setTimeout\(/.test(coreSrcV189) && /\}, 700\);/.test(coreSrcV189) &&
+      /兜底关闭重开/.test(coreSrcV189))
+      ok("v1.9.0 后台：订阅 ACK + 700ms 无 ack 兜底关闭重开（只记日志不弹通知）");
+    else bad("v1.9.0 后台 ACK 订阅 / 700ms 兜底没接上");
+    if (/pendingRefresh = true/.test(infoSrcV189) && /pendingRefresh = false/.test(infoSrcV189) &&
+      /sendMessage\(CH_INFO_ACK/.test(infoSrcV189) && /function ackInfoTarget\(/.test(infoSrcV189) &&
+      /perfLog\("refresh item=/.test(infoSrcV189) && /target recv v=/.test(infoSrcV189))
+      ok("v1.9.0 info.js：busy 时 pendingRefresh 补跑 + 刷新成功回 ACK + 无条件 refresh/target 诊断日志");
+    else bad("v1.9.0 info.js 的 pending 刷新 / ACK / 诊断日志缺项");
+  }
 }
 
 /* ===========================================================================

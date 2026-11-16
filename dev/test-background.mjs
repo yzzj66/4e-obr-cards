@@ -1701,6 +1701,13 @@ const BG = run(OBR, stubBuilder("CURVE"), stubBuilder("SHAPE"), stubBuilder("TEX
     if (versions.length >= 2 && versions[versions.length - 1] > versions[0] && sessions.size === 1)
       ok("v1.8.9：target 广播 version 严格递增（" + versions.join("→") + "），session 一致");
     else bad("v1.8.9：target version / session 不对：" + JSON.stringify({ versions, sessions: Array.from(sessions) }));
+    /* 页面 ACK 及时回 → 取消 700ms 兜底计时器（避免本组测试被兜底重开打断） */
+    const ackCb9 = (broadcastCbs["com.4enext-owlbear/info-ack"] || [])[0];
+    const lastTarget9 = targetMsgs[targetMsgs.length - 1] || {};
+    if (ackCb9 && lastTarget9.session) {
+      ackCb9({ data: { session: lastTarget9.session, version: lastTarget9.version, itemId: lastTarget9.itemId } });
+      await sleep(50);
+    }
     /* 页面 READY → 后台重发当前 target（防第一条广播早于 iframe 加载） */
     const readyCb9 = (broadcastCbs["com.4enext-owlbear/info-ready"] || [])[0];
     const session9 = Array.from(sessions)[0] || "";
@@ -1719,6 +1726,25 @@ const BG = run(OBR, stubBuilder("CURVE"), stubBuilder("SHAPE"), stubBuilder("TEX
     if (infoOpens().length === infoBeforeReopen + 1)
       ok("v1.8.9：关闭速览后再打开会重新 popover.open（session 重新分配）");
     else bad("v1.8.9：关闭后重新打开没有新建 popover");
+
+    /* v1.9.0：reuse target 后 700ms 无 ack → 兜底关闭重开一次 */
+    const openBeforeNoAck = infoOpens().length;
+    await select([BOUND2_ID]); /* 换 target（复用 popover），故意不回 ack */
+    const openAfterArm = infoOpens().length;
+    await sleep(950);
+    if (infoOpens().length === openAfterArm + 1)
+      ok("v1.9.0：target 广播后 700ms 无 ack → 兜底关闭重开一次（内容也能换过去）");
+    else bad("v1.9.0：无 ack 没有触发兜底重开（" + openBeforeNoAck + "→" + openAfterArm + "→" + infoOpens().length + "）");
+    /* ack 及时 → 不重开 */
+    const openBeforeAckOk = infoOpens().length;
+    await select([TOKEN_ID]); /* 再换一次 target，这次马上 ack */
+    const lastTargetNow = (all("broadcast.sendMessage").map((c) => c[1]).filter((m) => /\/info-target$/.test(m.channel)).pop() || {}).data || {};
+    const ackCbNow = (broadcastCbs["com.4enext-owlbear/info-ack"] || [])[0];
+    if (ackCbNow && lastTargetNow.session) ackCbNow({ data: { session: lastTargetNow.session, version: lastTargetNow.version, itemId: lastTargetNow.itemId } });
+    await sleep(950);
+    if (infoOpens().length === openBeforeAckOk)
+      ok("v1.9.0：ack 及时到达 → 不触发兜底重开（正常路径不抖动）");
+    else bad("v1.9.0：ack 及时仍重开了 popover（多开了 " + (infoOpens().length - openBeforeAckOk) + " 次）");
 
     /* ⑨ Boss 锁（hp.locked）→ 非城主的编辑窗只读（藏保存 + 提示「已锁定」） */
     const coreSrcSplit = fs.readFileSync(path.join(ROOT, "assets", "hp-edit-core.js"), "utf8");

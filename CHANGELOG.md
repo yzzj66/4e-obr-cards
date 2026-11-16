@@ -2,6 +2,17 @@
 
 > 这份文件是历史更新记录。安装与使用请看 [README](README.md)。
 
+**v1.9.0：修「信息窗单窗挂载后切换 token 没反应」+ target/ack 诊断与兜底**（2026-11-16）——
+真机：选中另一枚绑卡 token 时后台走「复用 + 广播 target」（bg open=1ms），但 info 页面没有新一轮渲染 →
+内容没换过去。修复：
+① **页面刷新不再被 busy 吞掉**：`info.js` 的 `refresh()` busy 时记 `pendingRefresh`，本轮结束自动补跑一次；
+target 触发会清掉普通 schedule 防抖并直接刷新（target 优先）；busy 时 target 也不会丢。
+② **无条件诊断日志**（经 CH_PERF 中转，前缀 `[4enext-perf]`，不再首帧 gate）：
+`bg target v=.. item=.. card=.. session=..`、`info target recv v=.. session=ok|mismatch version=old|new effect=applied|skipped`、
+每次刷新 `info refresh item=.. card=.. force=0|1`。
+③ **ACK 兜底**：新增 `CH_INFO_ACK`；页面每次刷新成功回 `{session,version,itemId}`；后台广播 target 后 700ms 内没收到同
+session 且 version ≥ pending 的 ack，就关闭重开一次（只记 WARNING 日志、**不弹通知**）；ack 及时则什么都不做。
+
 **v1.8.9：信息窗单次挂载 + 广播换目标（切换 token 不再重建 iframe/黑屏）**（2026-11-16）——
 真机数据确认内容渲染只要 ~7ms，慢在「每次打开都新建 iframe 并重新下载/解析 ~430KB 脚本」+ 索引下载慢。本版照 Full Suite
 `characterCards` 改成**单窗挂载**：`info` popover 只开一次，之后切换 token 只通过 `CH_INFO_TARGET` 广播（session +
