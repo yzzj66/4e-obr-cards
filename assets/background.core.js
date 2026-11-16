@@ -7,7 +7,7 @@
  * 窗口（各自一个 popover id，可同时打开；尺寸都是常量，见 WINS / *_W / *_H）：
  *   /info 速览 · /panel 角色卡 · /initiative-window 先攻列表 · /initiative-strip 先攻条
  *   /dice-window 骰子 · /dice-history-window 记录 · /hp-edit 血条编辑 · /settings-window 设置
- * 入口：工具栏 ×5（速览 / 角色卡 / 先攻 / 骰子 / 设置）、右下浮动按钮、右键 IMAGE token
+ * 入口：工具栏 ×4（速览 / 角色卡 / 先攻 / 设置）+ manifest action 骰子按钮、右下浮动按钮、右键 IMAGE token
  *   （绑定角色卡 / 加入 · 移出先攻 / 添加 · 移除血条组件 / 编辑血条）。
  *
  * 房间数据（键前缀 com.4enext-owlbear/，宿主硬上限 16 KB）：
@@ -57,7 +57,7 @@ var TOOL_SETTINGS_ID = NS + "/settings-tool";
 var CH_HELLO = NS + "/diag-hello";
 var CH_PING = NS + "/diag-ping";
 var CH_PONG = NS + "/diag-pong";
-var PLUGIN_VERSION = "2.0.1";
+var PLUGIN_VERSION = "2.0.2";
 
 var KEY_HP = NS + "/hp";
 
@@ -209,9 +209,9 @@ var CH_DICE_HIST_STATE = NS + "/dice-hist-state";
 var CH_HP_EDIT_TARGET = NS + "/hp-edit-target";
 var CH_HP_EDIT_READY = NS + "/hp-edit-ready";
 var CH_HP_EDIT_SAVED = NS + "/hp-edit-saved";
-/* v2.0.1：页面切换/载入完成回 ack（单窗换目标确认；600ms 无 ack 兜底重开一次）。 */
+/* v2.0.2：页面切换/载入完成回 ack（单窗换目标确认；600ms 无 ack 兜底重开一次）。 */
 var CH_HP_EDIT_ACK = NS + "/hp-edit-ack";
-/* v2.0.1：血条编辑窗「重绘」按钮 → 后台强制重算这张 token 的血条环 / 四防盾 / 资源徽记。 */
+/* v2.0.2：血条编辑窗「重绘」按钮 → 后台强制重算这张 token 的血条环 / 四防盾 / 资源徽记。 */
 var CH_HP_REPAINT = NS + "/hp-repaint";
 /* v1.8.9：信息窗单次挂载 —— 目标租约（换 token 只广播 target，不重开 popover）+ ready 握手。 */
 var CH_INFO_TARGET = NS + "/info-target";
@@ -628,7 +628,31 @@ function endWinDrag(name) {
   st.drag = null;
 }
 
-function onWinDrag(ev) {
+/* v2.0.2：拖动改用「start 时最新视口 + 本轮 base/size」模型（照 Full Suite panelDrag/panelLayout）。
+ * 旧实现用 st.geom.vp（打开窗口时的快照）clamp，视口变大后向下拖会卡在旧下限。 */
+async function beginWinDrag(name, st) {
+  var vp = await infoViewport();
+  if (!(vp.width > 0 && vp.height > 0)) vp = st.geom.vp && st.geom.vp.width > 0 ? st.geom.vp : lastVp;
+  var size = { width: st.geom.width, height: st.geom.height };
+  var pos = clampInfoPos(st.geom.left, st.geom.top, size, vp);
+  st.geom.vp = { width: vp.width, height: vp.height };
+  if (pos.left !== st.geom.left || pos.top !== st.geom.top) {
+    st.geom.left = pos.left;
+    st.geom.top = pos.top;
+    try {
+      var def = winDef(name);
+      if (def) await OBR.popover.open(winPopoverOptions(def, pos, size, st.geom.url));
+    } catch (e) {  }
+  }
+  st.drag = {
+    base: { left: st.geom.left, top: st.geom.top },
+    vp: { width: vp.width, height: vp.height },
+    size: size,
+    moved: false
+  };
+}
+
+async function onWinDrag(ev) {
   var data = ev && ev.data !== undefined ? ev.data : ev;
   if (!data || typeof data.phase !== "string") return;
   var name = String(data.win == null ? "" : data.win);
@@ -639,6 +663,7 @@ function onWinDrag(ev) {
   if (data.phase === "reset") {
     clearWinPos(name);
     st.drag = null;
+    st._dragReady = null;
     if (st.timer) { clearTimeout(st.timer); st.timer = null; }
     void resetWin(name);
     return;
@@ -648,10 +673,15 @@ function onWinDrag(ev) {
   var dy = typeof data.dy === "number" && isFinite(data.dy) ? data.dy : 0;
 
   if (data.phase === "start" || !st.drag) {
-
-    st.drag = { base: { left: st.geom.left, top: st.geom.top }, moved: false };
+    st.drag = null;
+    /* start 时只 await 一次最新视口（move 帧不再 await，避免卡顿）。 */
+    var ready = beginWinDrag(name, st);
+    st._dragReady = ready;
+    try { await ready; } catch (e0) { st._dragReady = null; }
+    st._dragReady = null;
     touchWinDrag(name);
     if (data.phase === "start") return;
+    if (!st.drag) return;
   }
 
   if (Math.abs(dx) > 1 || Math.abs(dy) > 1) st.drag.moved = true;
@@ -661,20 +691,24 @@ function onWinDrag(ev) {
     return;
   }
 
-  var target = clampInfoPos(st.drag.base.left + dx, st.drag.base.top + dy, st.geom, st.geom.vp);
+  var target = clampInfoPos(st.drag.base.left + dx, st.drag.base.top + dy, st.drag.size, st.drag.vp);
   queueWinDrag(name, target);
   touchWinDrag(name);
 
   if (data.phase === "end") {
     writeWinPos(name, target);
+    /* end 时刷新一次视口，供下次拖动 / 后续 clamp 使用。 */
+    try {
+      var vpEnd = await infoViewport();
+      if (vpEnd.width > 0 && vpEnd.height > 0) st.geom.vp = { width: vpEnd.width, height: vpEnd.height };
+    } catch (e1) {  }
     endWinDrag(name);
   }
 }
-
-async function reclampWins() {
+async function reclampWins(vpArg) {
   var names = Object.keys(winOpen);
   if (!names.length) return;
-  var vp = await infoViewport();
+  var vp = vpArg && vpArg.width > 0 && vpArg.height > 0 ? vpArg : await infoViewport();
   for (var i = 0; i < names.length; i++) {
     var name = names[i];
     var def = winDef(name);
@@ -943,7 +977,7 @@ function publishHpEditTarget(itemId, pending) {
   return sendHello(CH_HP_EDIT_TARGET, hpEditTarget);
 }
 
-/* v2.0.1：单窗常驻的 ack 等待（照 info 的 700ms 模式，这里 600ms）。
+/* v2.0.2：单窗常驻的 ack 等待（照 info 的 700ms 模式，这里 600ms）。
  * 页面收到 target → commit 未保存输入 → load → 回 CH_HP_EDIT_ACK {session,version,itemId}。 */
 var hpEditAckWait = null;
 function waitHpEditAck(session, version, itemId, ms) {
@@ -982,7 +1016,7 @@ async function openHpEdit(itemId) {
   hpAutoPopped[itemId] = true;
   if (winOpen["hpEdit"] && hpEditTarget.itemId === itemId && !hpEditTarget.pending) return true;
   if (!hpEditSession) hpEditSession = newHpEditSession();
-  /* v2.0.1：窗口已挂载 → 不重开 iframe；广播 target 换目标，等页面 ack；600ms 没 ack 兜底重开一次。 */
+  /* v2.0.2：窗口已挂载 → 不重开 iframe；广播 target 换目标，等页面 ack；600ms 没 ack 兜底重开一次。 */
   if (winOpen["hpEdit"]) {
     var expectVersion = hpEditTarget.version + 1;
     var ackP = waitHpEditAck(hpEditSession, expectVersion, itemId, 600);
@@ -1028,12 +1062,12 @@ function onHpEditSaved(ev) {
   stepOk("血条编辑窗已保存：" + itemId);
 }
 
-/* v2.0.1：编辑窗「钉住」偏好（默认关）——钉住后选中变化 / 取消选中不自动关窗。 */
+/* v2.0.2：编辑窗「钉住」偏好（默认关）——钉住后选中变化 / 取消选中不自动关窗。 */
 function hpEditPinned() {
   try { return localStorage.getItem("4enext/hp-edit/pinned") === "1"; } catch (e) { return false; }
 }
 
-/* v2.0.1：编辑窗「重绘」→ 丢掉这张 token 的血条缓存，下一次 scheduleBars 强制重建（环 / 盾 / 徽记）。 */
+/* v2.0.2：编辑窗「重绘」→ 丢掉这张 token 的血条缓存，下一次 scheduleBars 强制重建（环 / 盾 / 徽记）。 */
 function onHpRepaint(ev) {
   var data = ev && ev.data !== undefined ? ev.data : ev;
   var itemId = data && typeof data.itemId === "string" ? data.itemId : "";
@@ -1324,9 +1358,9 @@ function onStripDrag(ev) {
   }
 }
 
-async function reclampStrip() {
+async function reclampStrip(vpArg) {
   if (!stripOpen || !stripGeom) return;
-  var vp = await infoViewport();
+  var vp = vpArg && vpArg.width > 0 && vpArg.height > 0 ? vpArg : await infoViewport();
   var size = { width: stripGeom.width, height: stripGeom.height };
   var off = stripGeom.offset || readStripOffset();
   var pos = stripPosFor(off.dx, off.dy, size, vp);
@@ -1419,6 +1453,126 @@ async function openButton() {
 async function closeButton() {
   try { await OBR.popover.close(ID_BUTTON); } catch (e) {  }
   buttonOpen = false;
+}
+
+/* v2.0.2：移植 Full Suite viewportAnchor —— OBR SDK **没有 viewport.onChange**，
+ * 所以用后台 500ms 轮询 getWidth/getHeight；变化时回调（按钮重锚 + 窗口 reclamp）。
+ * 只在有监听者时跑；读失败退避 2s；首读只记 baseline 不触发。 */
+var vpAnchorTimer = null;
+var vpAnchorListeners = [];
+var vpAnchorVw = 0;
+var vpAnchorVh = 0;
+var vpAnchorBusy = false;
+var vpAnchorFailUntil = 0;
+
+async function readViewportSize() {
+  if (!OBR.viewport || typeof OBR.viewport.getWidth !== "function" || typeof OBR.viewport.getHeight !== "function") return null;
+  try {
+    var arr = await Promise.allSettled([OBR.viewport.getWidth(), OBR.viewport.getHeight()]);
+    if (!arr[0] || arr[0].status !== "fulfilled" || !arr[1] || arr[1].status !== "fulfilled") return null;
+    var w = arr[0].value, h = arr[1].value;
+    if (!(typeof w === "number" && w > 0 && typeof h === "number" && h > 0)) return null;
+    return { width: w, height: h };
+  } catch (e) {
+    return null;
+  }
+}
+
+async function pollViewportAnchor() {
+  if (vpAnchorBusy) return false;
+  if (!vpAnchorListeners.length) {
+    if (vpAnchorTimer) { clearInterval(vpAnchorTimer); vpAnchorTimer = null; }
+    return false;
+  }
+  if (Date.now() < vpAnchorFailUntil) return false;
+  vpAnchorBusy = true;
+  try {
+    var vp = await readViewportSize();
+    if (!vp) { vpAnchorFailUntil = Date.now() + 2000; return false; }
+    lastVp = { width: vp.width, height: vp.height };
+    if (!(vpAnchorVw > 0 && vpAnchorVh > 0)) {
+      vpAnchorVw = vp.width;
+      vpAnchorVh = vp.height;
+      return false;
+    }
+    if (vp.width === vpAnchorVw && vp.height === vpAnchorVh) return false;
+    vpAnchorVw = vp.width;
+    vpAnchorVh = vp.height;
+    pageLog("info", "viewport " + vp.width + "×" + vp.height + " → 重锚按钮/窗口");
+    for (var i = 0; i < vpAnchorListeners.length; i++) {
+      try { await vpAnchorListeners[i](vp); } catch (e) { /* 单个监听者失败不影响其它 */ }
+    }
+    return true;
+  } finally {
+    vpAnchorBusy = false;
+  }
+}
+
+function installViewportAnchor() {
+  if (!vpAnchorTimer) {
+    vpAnchorTimer = setInterval(function () { void pollViewportAnchor(); }, 500);
+  }
+  /* 后台 iframe 能拿到 window.resize / visualViewport.resize 的话再加一层即时触发（拿不到忽略）。 */
+  try {
+    if (typeof window !== "undefined" && typeof window.addEventListener === "function" && !window.__4eVpResizeBound) {
+      window.__4eVpResizeBound = true;
+      window.addEventListener("resize", function () { void pollViewportAnchor(); });
+    }
+    if (typeof window !== "undefined" && window.visualViewport && typeof window.visualViewport.addEventListener === "function" && !window.__4eVpVvBound) {
+      window.__4eVpVvBound = true;
+      window.visualViewport.addEventListener("resize", function () { void pollViewportAnchor(); });
+    }
+  } catch (e) { /* 忽略 */ }
+}
+
+function stopViewportAnchor() {
+  if (vpAnchorTimer) { clearInterval(vpAnchorTimer); vpAnchorTimer = null; }
+}
+
+function addViewportAnchorListener(cb) {
+  if (typeof cb !== "function") return function () {};
+  vpAnchorListeners.push(cb);
+  installViewportAnchor();
+  return function () {
+    var i = vpAnchorListeners.indexOf(cb);
+    if (i >= 0) vpAnchorListeners.splice(i, 1);
+    if (!vpAnchorListeners.length && vpAnchorTimer) {
+      clearInterval(vpAnchorTimer);
+      vpAnchorTimer = null;
+    }
+  };
+}
+
+/** 按给定视口把右下角 4E 浮动按钮重新 open 到右下角（同 id+同 url，OBR 原地更新）。 */
+async function reanchorButton(vpArg) {
+  if (!buttonOpen) return false;
+  var w = vpArg && vpArg.width > 0 ? vpArg.width : 0;
+  var h = vpArg && vpArg.height > 0 ? vpArg.height : 0;
+  if (!(w > 0 && h > 0)) {
+    var vp = await infoViewport();
+    w = vp.width;
+    h = vp.height;
+  }
+  if (!(w > 0 && h > 0)) return false;
+  try {
+    await OBR.popover.open({
+      id: ID_BUTTON,
+      url: URL_BUTTON,
+      width: BUTTON_SIZE,
+      height: BUTTON_SIZE,
+      anchorReference: "POSITION",
+      anchorPosition: { left: w - RIGHT_OFFSET, top: h - BOTTOM_OFFSET },
+      anchorOrigin: { horizontal: "RIGHT", vertical: "BOTTOM" },
+      transformOrigin: { horizontal: "RIGHT", vertical: "BOTTOM" },
+      hidePaper: true,
+      disableClickAway: true
+    });
+    pageLog("info", "按钮重定位 " + w + "×" + h + " → " + (w - RIGHT_OFFSET) + "," + (h - BOTTOM_OFFSET));
+    return true;
+  } catch (e) {
+    pageLog("err", "按钮重定位失败：" + errText(e));
+    return false;
+  }
 }
 
 async function registerOneTool(def) {
@@ -1900,10 +2054,13 @@ async function anchorOf(itemId) {
   }
 }
 
+/* v2.0.2：最近一次成功读到的视口尺寸（轮询 / infoViewport 都更新），供拖动 start / clamp 参考。 */
+var lastVp = { width: 0, height: 0 };
 async function infoViewport() {
   var vp = { width: 0, height: 0 };
   try { vp.width = await OBR.viewport.getWidth(); } catch (e) { vp.width = 0; }
   try { vp.height = await OBR.viewport.getHeight(); } catch (e) { vp.height = 0; }
+  if (vp.width > 0 && vp.height > 0) lastVp = { width: vp.width, height: vp.height };
   return vp;
 }
 
@@ -2287,7 +2444,7 @@ async function refreshInfo() {
     pageLog("info", "选中变化 → " + (selId || "无") + "（自动弹窗记录已重置）");
   }
   if (!item) {
-    /* v2.0.1：未钉住时取消选中 → 自动关掉血条编辑窗（钉住则保留）。 */
+    /* v2.0.2：未钉住时取消选中 → 自动关掉血条编辑窗（钉住则保留）。 */
     if (winOpen["hpEdit"] && !hpEditPinned()) await closeWin("hpEdit");
     return closeInfo();
   }
@@ -2297,7 +2454,7 @@ async function refreshInfo() {
 
   var cardId = await boundCardId(item);
   if (cardId) {
-    /* v2.0.1：选了绑定卡的 token → 速览接管；未钉住时关掉血条编辑窗（钉住则保持当前 token）。 */
+    /* v2.0.2：选了绑定卡的 token → 速览接管；未钉住时关掉血条编辑窗（钉住则保持当前 token）。 */
     if (winOpen["hpEdit"] && !hpEditPinned() && hpEditTarget.itemId !== item.id) {
       await closeWin("hpEdit");
     }
@@ -2321,7 +2478,7 @@ async function refreshInfo() {
   /* v1.8.1 说明：这里不写「窗口开着就 return」，否则「取消选中 → 再选回来」这类正常重弹会被误杀。
    * 防止「保存后关掉又自己弹」的护栏在 openHpEdit()：同一枚 token 的窗口已经开着时直接复用、不重开。 */
   await closeInfo();
-  /* v2.0.1：钉住时保持当前编辑的 token，不换 target。 */
+  /* v2.0.2：钉住时保持当前编辑的 token，不换 target。 */
   if (hpEditPinned() && winOpen["hpEdit"]) return;
   if (!hasHpBarData(item)) {
     if (winOpen["hpEdit"] && hpEditTarget.itemId !== item.id) await closeWin("hpEdit");
@@ -2455,7 +2612,7 @@ async function sceneDpi() {
   return cachedDpi;
 }
 
-/* v2.0.1：用户样板布局 —— 底部比例横条 + 左侧三圆（强/反/意）+ 右下 AC 盾，不再用环形。
+/* v2.0.2：用户样板布局 —— 底部比例横条 + 左侧三圆（强/反/意）+ 右下 AC 盾，不再用环形。
  * 坐标全部相对 token 包围盒（宽 64%、高 10% 短边），s = min(w,h)/dpi 沿用旧缩放。 */
 
 /** 圆角矩形多边形（以中心为原点，24 段近似；血条 / 填充都用它）。 */
@@ -2730,7 +2887,7 @@ function buildBarItems(tokenId, L) {
   var bar = L.bar;
   var i;
 
-  /* v2.0.1 底部圆角横条：深红轨道 + 按 cur/max 比例的左→右填充。 */
+  /* v2.0.2 底部圆角横条：深红轨道 + 按 cur/max 比例的左→右填充。 */
   items.push(barCurveItem(tokenId, "bar-bg",
     roundedRectPoints(bar.width, bar.height, bar.radius, 24), bar.cx, bar.cy,
     { fill: bar.track, fillOpacity: bar.trackOpacity }));
@@ -3662,7 +3819,7 @@ async function sendHello(channel, payload) {
   }
 }
 
-/* ---- 10. 启动：工具栏 ×5 / 右键 / 浮动按钮 / 各频道订阅 ---- */
+/* ---- 10. 启动：工具栏 ×4 / 右键 / 浮动按钮 / 各频道订阅 ---- */
 async function boot() {
   if (booted) return;
   booted = true;
@@ -3781,20 +3938,17 @@ async function boot() {
   await attempt("订阅 " + CH_INFO_ACK + "（速览页刷新 ack）", function () {
     OBR.broadcast.onMessage(CH_INFO_ACK, onInfoAck);
   });
-  await attempt("订阅 viewport.onChange", function () {
-    if (!OBR.viewport || typeof OBR.viewport.onChange !== "function") return;
-    var timer = null;
-    OBR.viewport.onChange(function () {
-      if (timer) clearTimeout(timer);
-      timer = setTimeout(function () {
-        timer = null;
-        void syncSceneButton();
-
-        void reclampWins();
-
-        void reclampStrip();
-      }, 250);
+  /* v2.0.2：OBR SDK 没有 viewport.onChange → 安装 500ms 轮询重锚。
+   * 视口变化时：按钮重新 open 到右下角（同 id+url），各窗口 / 先攻条用新 vp reclamp。 */
+  await attempt("安装视口轮询重锚（500ms）", function () {
+    addViewportAnchorListener(function (vp) {
+      return (async function () {
+        await reanchorButton(vp);
+        await reclampWins(vp);
+        await reclampStrip(vp);
+      })();
     });
+    return true;
   });
 
   void maybeAutoOpenStrip();
@@ -3835,7 +3989,7 @@ async function boot() {
   }, 1500);
 
   var mark = function (v) { return v ? "✓" : "✗"; };
-  var okLine = "4eNEXT to owlbear v" + PLUGIN_VERSION + " 已加载：工具栏×5 " + mark(bootStatus.tool) +
+  var okLine = "4eNEXT to owlbear v" + PLUGIN_VERSION + " 已加载：工具栏×4 " + mark(bootStatus.tool) +
     " · 右键" + mark(bootStatus.menu) +
     " · 浮动按钮" + (bootStatus.scene ? mark(bootStatus.button) : "（等进地图）");
   var allOk = bootStatus.tool && bootStatus.menu;

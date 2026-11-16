@@ -2,6 +2,13 @@
 
 > 这份文件是历史更新记录。安装与使用请看 [README](README.md)。
 
+**v2.0.2：修缩放/改窗口大小后的位置漂移**（2026-11-16）——
+**移植 Full Suite viewportAnchor**：OBR SDK 没有 `viewport.onChange`，改为后台 **500ms 轮询** `getWidth/getHeight`（只在有监听者时跑，
+首读记 baseline，失败退避 2s），变化时用同 id+url 重新 `popover.open` 把右下角浮动按钮锚回新右下角，并对所有窗口 / 先攻条用新视口 `reclamp`；
+另监听 `window.resize` / `visualViewport.resize` 做即时触发（拿不到忽略）。
+**拖动改「start 时最新视口 + 本轮 base/size」模型**：`beginWinDrag` 在 pointer start 重新 `infoViewport()` 并 clamp 当前位置，
+move/end 用 start 抓的 `vp/size`（不再用打开窗口时的 `st.geom.vp` 快照）→ 视口变大后记录窗口 / 各窗口可正常向下拖到新下限。
+
 **v2.0.1：适配 4E NEXT 新版导出**（2026-11-16）——
 支持 `combatMods.damages[].dieUp`（武器伤害骰提升）：按 `1d4 → 1d6 → 1d8 → 1d10 → 1d12 → 2d6 → 2d8 → 2d10 → 2d12`
 （缺省 / 0 = 不变，负值反向降级，超出范围取端点；原始 2d6/2d8 也按阶梯继续升）提升武器伤害骰；旧导出（无 dieUp）输出逐项不变。
