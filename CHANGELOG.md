@@ -2,6 +2,14 @@
 
 > 这份文件是历史更新记录。安装与使用请看 [README](README.md)。
 
+**v2.1.0：传送门（核心）**（2026-11-17）——
+GM 用新工具**拖动画圆**建门（起点=门心、拖动距离=半径，实时预览，松手半径 ≥16 才创建）；门 item 用自绘 `assets/portal.svg`，
+`ATTACHMENT` + `locked` + `disableHit`，metadata `com.4enext-owlbear/portal = { name, tag, radius, showName, visible, locked }`。
+**同 tag 互联**：玩家拖动自己 token 进入可见门 → 弹目的地选择（同 tag 其它门）；选中后对当前选中 token（含拖动的那枚、多选一起）
+执行传送，落点按**六边形螺旋**排布（间距 = 最大 token 直径 + 8），并读取原生 `WALL`（含 position/rotation/scale 变换）做**墙避让**
+（距离 ≥ token 半径 + 8，搜索不到安全点则提示）；传送后 **700ms 抑制**重复触发。GM 可右键「编辑传送门」改名称/标签/半径/显示名字/
+玩家可见/锁定（保存经广播回后台写 item）。隐形门仅保存字段（单向传送留 v2.2.0）。本版不做迷雾 / 动画 / 成对创建。
+
 **v2.0.2：修缩放/改窗口大小后的位置漂移**（2026-11-16）——
 **移植 Full Suite viewportAnchor**：OBR SDK 没有 `viewport.onChange`，改为后台 **500ms 轮询** `getWidth/getHeight`（只在有监听者时跑，
 首读记 baseline，失败退避 2s），变化时用同 id+url 重新 `popover.open` 把右下角浮动按钮锚回新右下角，并对所有窗口 / 先攻条用新视口 `reclamp`；

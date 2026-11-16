@@ -45,9 +45,9 @@ for (const pair of pairs) {
 const defaultName = named.default;
 if (!defaultName) die("export{...} 里没有 X as default");
 
-// 血条要用 SDK 的具名导出（默认导出只有 OBR 命名空间，没有构建器）。
+// 血条 / 传送门要用 SDK 的具名导出（默认导出只有 OBR 命名空间，没有构建器）。
 // 这里把它们接到同一个作用域，background.core.js 才能写 buildCurve() 这种调用。
-const BUILDERS = ["buildCurve", "buildShape", "buildText"];
+const BUILDERS = ["buildCurve", "buildShape", "buildText", "buildImage"];
 const missing = BUILDERS.filter((n) => !named[n]);
 if (missing.length) die("vendor/obr-sdk.js 里缺少具名导出 " + missing.join(" / ") + "（画 token 血条要用），SDK 版本变了？");
 

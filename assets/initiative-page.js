@@ -446,7 +446,7 @@ async function onCardClick(tokenId) {
   }
   /* 非战斗 / 玩家：把选中切到这枚 token（地图高亮照旧），但**不弹速览**。
    * v1.8.2：先广播 CH_GLANCE_SUPPRESS 再 select —— 后台 refreshInfo 收到抑制信号，1.5s 内不弹窗。
-   * v2.0.2：**必须 await 抑制广播送达后再 select**。之前 `void sendMessage` 直接 select，
+   * v2.1.0：**必须 await 抑制广播送达后再 select**。之前 `void sendMessage` 直接 select，
    * 真机上偶尔 select 引发的 refreshInfo 比抑制消息先到 → 速览弹一次（竞态）。 */
   try {
     await OBR.broadcast.sendMessage(CH_GLANCE_SUPPRESS, { tokenId: tokenId, at: Date.now() }, { destination: "LOCAL" });
