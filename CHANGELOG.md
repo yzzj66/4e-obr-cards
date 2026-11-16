@@ -2,14 +2,17 @@
 
 > 这份文件是历史更新记录。安装与使用请看 [README](README.md)。
 
-**v1.9.0：修「信息窗单窗挂载后切换 token 没反应」+ target/ack 诊断与兜底**（2026-11-16）——
+**v1.9.1：移除临时性能日志**（2026-11-16）——
+v1.8.7–v1.9.0 为定位「速览打开慢 / 黑屏」加的性能计时与诊断日志全部删除（含性能日志中转频道与相关订阅），
+**功能不变**：信息窗单窗挂载（target 广播换目标）、READY / ACK 握手、700ms 无 ack 兜底重开、后台预热队列全部保留。
+自测里对应的日志断言改为「不应存在性能日志」的静态锁。
+
+**v1.9.0：修「信息窗单窗挂载后切换 token 没反应」+ ACK 兜底**（2026-11-16）——
 真机：选中另一枚绑卡 token 时后台走「复用 + 广播 target」（bg open=1ms），但 info 页面没有新一轮渲染 →
 内容没换过去。修复：
 ① **页面刷新不再被 busy 吞掉**：`info.js` 的 `refresh()` busy 时记 `pendingRefresh`，本轮结束自动补跑一次；
 target 触发会清掉普通 schedule 防抖并直接刷新（target 优先）；busy 时 target 也不会丢。
-② **无条件诊断日志**（经 CH_PERF 中转，前缀 `[4enext-perf]`，不再首帧 gate）：
-`bg target v=.. item=.. card=.. session=..`、`info target recv v=.. session=ok|mismatch version=old|new effect=applied|skipped`、
-每次刷新 `info refresh item=.. card=.. force=0|1`。
+② 诊断日志（v1.9.1 已移除）。
 ③ **ACK 兜底**：新增 `CH_INFO_ACK`；页面每次刷新成功回 `{session,version,itemId}`；后台广播 target 后 700ms 内没收到同
 session 且 version ≥ pending 的 ack，就关闭重开一次（只记 WARNING 日志、**不弹通知**）；ack 及时则什么都不做。
 
@@ -19,24 +22,14 @@ session 且 version ≥ pending 的 ack，就关闭重开一次（只记 WARNING
 version 递增租约）让页面换 `itemId/cardId` 后重渲染（**不 reload**）；页面 `onReady` 发 `CH_INFO_READY` 握手，后台重发当前 target
 防丢首条；拖动 / pin 重锚仍会重开 popover，重开后同样补发 target。新增后台**串行预热**：启动 1.5s 后
 `fetch(cache:"force-cache")` 依次预热 `info.html`、`ui.css`/`glance.css`、`info.js`/`common.js`/`window.js`/`glance.js`/`track.js`、
-`vendor/obr-sdk.js`、`data/rules.js`、`data/card-index.js`（失败静默）。v1.8.8 的 perf 日志保留，便于用户验证改善；
+`vendor/obr-sdk.js`、`data/rules.js`、`data/card-index.js`（失败静默）。v1.8.8 的临时日志保留（v1.9.1 已移除）；
 关闭 / 手动 ✕ / `infoAutoPopped` 行为不变。
 
 **v1.8.8：性能日志改为后台中转 + 细分 info 阶段**（2026-11-16）——
-v1.8.7 用户只看到后台的 `bg select/card/open`（open 仅 3~6ms），info iframe 内部的日志没出现；本版：
-① 新增 `CH_PERF` 频道：`info.js` 的计时除本 iframe 控制台外，还经 `OBR.broadcast`（LOCAL）发给后台，
-后台订阅后统一打印 `[4enext-perf] …` —— 用户只看后台控制台也能看到 iframe 内部耗时；
-② info 内部新增细分阶段行 `info stage ready=… card=… token=… state=… render=…`，保留
-`info boot/card/render1`、`info index/render2`、`info iframe-load`。仍**无行为改动、不弹通知**。
+v1.8.7 的用户只能看到后台日志；本版让 info iframe 的计时经后台中转打印，并细分阶段。该临时日志已在 **v1.9.1 移除**。
 
 **v1.8.7：临时性能日志（速览打开耗时定位）**（2026-11-16）——
-只加 `console.log`，**无行为改动、不弹通知**：
-① `background.core.js`：自动开速览与工具栏手动入口各打一行
-`[4enext-perf] bg select=…ms card=…ms open=…ms total=…ms`（select=选中读取、card=绑定解析、open=开窗、
-total=整段；手动入口带 `bg-manual`）；
-② `assets/info.js`：`[4enext-perf] info boot=…ms card=…ms render1=…ms`（首帧）、
-`[4enext-perf] info index=…ms render2=…ms`（索引加载 + 二次渲染）、`[4enext-perf] info iframe-load=…ms`（iframe 资源加载完）。
-用于用户真机点一次后定位「慢 / 黑屏」卡在哪一段；确认后可整段删除。
+只加 `console.log`、无行为改动、不弹通知，用于真机定位「慢 / 黑屏」卡在哪一段；该日志已在 **v1.9.1 移除**。
 
 **v1.8.6：速览首屏提速（不再等 1.25MB 索引）**（2026-11-16）——
 真机反馈「速览弹窗打开后长时间停在『加载中…』」：根因是 `info.js` 先 `await loadCardIndex()`（旧索引 1.25MB）

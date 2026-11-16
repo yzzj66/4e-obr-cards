@@ -1,4 +1,4 @@
-/*! 4eNEXT to owlbear · background.bundle.js  (v1.9.0)
+/*! 4eNEXT to owlbear · background.bundle.js  (v1.9.1)
  * ---------------------------------------------------------------------------
  * 这是后台页唯一加载的脚本：纯「经典脚本」，没有 type="module"，没有 import/export，
  * 不依赖任何 CDN。内容是：
@@ -7,7 +7,7 @@
  *
  * 不要手改本文件。改逻辑请改 assets/background.core.js，然后：
  *     node dev/build-background.mjs
- * 生成时间：2026-11-16T06:03:47.458Z
+ * 生成时间：2026-11-16T06:10:03.263Z
  * --------------------------------------------------------------------------- */
 (function () {
 "use strict";
@@ -99,7 +99,7 @@ var TOOL_SETTINGS_ID = NS + "/settings-tool";
 var CH_HELLO = NS + "/diag-hello";
 var CH_PING = NS + "/diag-ping";
 var CH_PONG = NS + "/diag-pong";
-var PLUGIN_VERSION = "1.9.0";
+var PLUGIN_VERSION = "1.9.1";
 
 var KEY_HP = NS + "/hp";
 
@@ -276,8 +276,6 @@ var CH_STRIP_CMD = NS + "/strip-cmd";
 var CH_WIN_CLOSE = NS + "/win-close";
 /* v1.8.2：先攻条点卡片时页面先广播这个频道，后台 1.5s 内不自动弹速览（与 common.js 逐字一致）。 */
 var CH_GLANCE_SUPPRESS = NS + "/glance-suppress";
-/* v1.8.8：info iframe 的性能计时经此频道中转，后台统一打印到自己的控制台（与 common.js 逐字一致）。 */
-var CH_PERF = NS + "/perf";
 
 var CH_ROLL = NS + "/roll";
 var CH_ROLL_CLEAR = NS + "/roll-clear";
@@ -1656,10 +1654,6 @@ function newInfoSession() {
   return "info-" + Date.now().toString(36) + "-" + Math.random().toString(36).slice(2, 8);
 }
 
-function perfShort(v) {
-  return String(v == null ? "" : v).slice(0, 8);
-}
-
 function clearInfoAckTimer() {
   if (infoAckTimer) { clearTimeout(infoAckTimer); infoAckTimer = null; }
   infoAckPending = null;
@@ -1673,11 +1667,6 @@ function publishInfoTarget(itemId, cardId, expectAck) {
     itemId: typeof itemId === "string" ? itemId : (itemId || ""),
     cardId: typeof cardId === "string" ? cardId : (cardId || "")
   };
-  /* v1.9.0：无条件诊断日志（经 console；info 页面自己的日志经 CH_PERF 中转回来）。 */
-  try {
-    console.log("[4enext-perf] bg target v=" + infoTarget.version + " item=" + perfShort(infoTarget.itemId) +
-      " card=" + perfShort(infoTarget.cardId) + " session=" + perfShort(infoSession));
-  } catch (e) { /* 日志失败不影响逻辑 */ }
   var sent = sendHello(CH_INFO_TARGET, infoTarget);
   if (expectAck) {
     clearInfoAckTimer();
@@ -2159,31 +2148,10 @@ async function boundCardId(item) {
   return hit.cardId;
 }
 
-/* v1.8.7：临时性能计时日志（只 console.log，不改行为、不弹通知；定位「速览打开慢 / 黑屏」，
- * 用户真机点一次拿到数字后即可整段删除）。 */
-function perfNowMs() {
-  try { return (typeof performance !== "undefined" && performance.now) ? performance.now() : Date.now(); }
-  catch (e) { return Date.now(); }
-}
-function perfLogBg(label, t0, t1, t2, t3) {
-  try {
-    console.log("[4enext-perf] bg" + (label ? "-" + label : "") +
-      " select=" + Math.round(t1 - t0) + "ms card=" + Math.round(t2 - t1) +
-      "ms open=" + Math.round(t3 - t2) + "ms total=" + Math.round(t3 - t0) + "ms");
-  } catch (e) { /* 日志失败不影响逻辑 */ }
-}
-
-async function selectedBinding(timing) {
-  var __t0 = perfNowMs();
+async function selectedBinding() {
   var item = await selectedItem();
-  var __t1 = perfNowMs();
-  if (!item) {
-    if (timing) { timing.select = __t1 - __t0; timing.card = 0; }
-    return null;
-  }
+  if (!item) return null;
   var hit = await resolveBinding(item);
-  var __t2 = perfNowMs();
-  if (timing) { timing.select = __t1 - __t0; timing.card = __t2 - __t1; }
   if (!hit) return null;
   if (hit.via === "name" && hit.stale) void healBinding(item.id, hit.cardId);
   return { itemId: item.id, cardId: hit.cardId };
@@ -2191,12 +2159,8 @@ async function selectedBinding(timing) {
 
 async function openGlance(where) {
   var label = where || "工具栏「速览」";
-  var __t0 = perfNowMs();
-  var __timing = {};
-  var bind = await selectedBinding(__timing);
-  var __t1 = perfNowMs();
+  var bind = await selectedBinding();
   if (!bind) {
-    perfLogBg("manual", __t0, __t0 + (__timing.select || 0), __t0 + (__timing.select || 0) + (__timing.card || 0), perfNowMs());
     notify("速览：" + label + " 打开的是「当前选中的 token」。先选中一枚已绑定角色卡的 token" +
       "（右键 token 可「绑定 4E NEXT 角色卡」），再点一次。", "WARNING");
     pageLog("info", label + "：当前选中的不是「已绑定角色卡的单个 token」，已提示用户先选一个");
@@ -2204,11 +2168,9 @@ async function openGlance(where) {
   }
   try {
     await openInfo(bind.itemId, bind.cardId);
-    perfLogBg("manual", __t0, __t0 + (__timing.select || 0), __t0 + (__timing.select || 0) + (__timing.card || 0), perfNowMs());
     stepOk(label + "：已打开速览（token " + bind.itemId + "）");
     return true;
   } catch (e) {
-    perfLogBg("manual", __t0, __t0 + (__timing.select || 0), __t0 + (__timing.select || 0) + (__timing.card || 0), perfNowMs());
     stepFail("打开速览弹窗（" + label + "）", e);
     return false;
   }
@@ -2220,9 +2182,7 @@ var infoErrorShown = false;
 var suppressGlanceUntil = 0;
 
 async function refreshInfo() {
-  var __t0 = perfNowMs();
   var item = await selectedItem();
-  var __t1 = perfNowMs();
   var selId = item && item.id ? item.id : null;
   if (selId !== hpAutoSel) {
     hpAutoSel = selId;
@@ -2237,11 +2197,10 @@ async function refreshInfo() {
   if (Date.now() < suppressGlanceUntil) return;
 
   var cardId = await boundCardId(item);
-  var __t2 = perfNowMs();
   if (cardId) {
     /* v1.8.5：用户手动 ✕ 关过这枚 token 的速览 → 选中不变之前不再自动弹回（先于「已开则返回」判断）。 */
-    if (infoAutoPopped[item.id]) { perfLogBg("", __t0, __t1, __t2, perfNowMs()); return; }
-    if (infoOpen && infoItemId === item.id && infoCardId === cardId) { perfLogBg("", __t0, __t1, __t2, perfNowMs()); return; }
+    if (infoAutoPopped[item.id]) return;
+    if (infoOpen && infoItemId === item.id && infoCardId === cardId) return;
     /* v1.8.9：窗口已开、但不是这枚 token → 不关重开，交给 openInfo 只广播 target 换内容。 */
     /* 打开之前先置位：即使 openInfo 抛错也不在后续 onChange 里重试刷屏。 */
     infoAutoPopped[item.id] = true;
@@ -2253,8 +2212,6 @@ async function refreshInfo() {
         stepFail("打开速览弹窗", e);
       }
     }
-    /* v1.8.7：临时性能日志（select=选中读取 / card=绑定解析 / open=开窗 / total=整段）。 */
-    perfLogBg("", __t0, __t1, __t2, perfNowMs());
     return;
   }
 
@@ -3683,15 +3640,6 @@ async function boot() {
   await attempt("订阅 " + CH_GLANCE_SUPPRESS + "（先攻条点卡片：暂不弹速览）", function () {
     OBR.broadcast.onMessage(CH_GLANCE_SUPPRESS, function () {
       suppressGlanceUntil = Date.now() + 1500;
-    });
-  });
-  /* v1.8.8：info iframe 的性能日志中转 → 打在本控制台，方便用户只看后台日志。 */
-  await attempt("订阅 " + CH_PERF + "（info 性能日志中转）", function () {
-    OBR.broadcast.onMessage(CH_PERF, function (ev) {
-      var data = ev && ev.data !== undefined ? ev.data : ev;
-      try {
-        console.log("[4enext-perf] " + (typeof data === "string" ? data : JSON.stringify(data)));
-      } catch (e) { /* 日志失败不影响逻辑 */ }
     });
   });
   await attempt("订阅 " + CH_ROLL + "（骰子落库：仅城主处理）", function () {
