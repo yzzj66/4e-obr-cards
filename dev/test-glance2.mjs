@@ -345,7 +345,7 @@ if (oldState.atkTemp === 0 && oldState.dmgTemp === 0 && oldState.surgeTemp === 0
   ok("旧状态兼容：缺临时字段 = 0（向后兼容）");
 } else bad("旧状态兼容失败：" + JSON.stringify(oldState));
 
-/* ---- v2.0.0：四防临时加值单向写回绑定 token（地图血条联动） ---- */
+/* ---- v2.0.1：四防临时加值单向写回绑定 token（地图血条联动） ---- */
 {
   const dBase = G.deriveGlance(char);
   const base = {};
@@ -361,29 +361,29 @@ if (oldState.atkTemp === 0 && oldState.dmgTemp === 0 && oldState.surgeTemp === 0
   if (n === 1 && hpNow.defenses.ac === base.ac && hpNow.defenses.fort === base.fort + 2 &&
     hpNow.defenses.reflex === base.reflex + 1 && hpNow.defenses.will === base.will &&
     hpNow.cur === 5 && hpNow.max === 20 && hpNow.temp === 2 && hpNow.surges === 3 && hpNow.locked === false) {
-    ok("v2.0.0：def-temp fort+2 / reflex+1 → token hp.defenses = 卡片基础+临时，cur/max/temp/surges/locked 全保留");
-  } else bad("v2.0.0：临时四防没有正确写回 token：" + JSON.stringify(hpNow));
+    ok("v2.0.1：def-temp fort+2 / reflex+1 → token hp.defenses = 卡片基础+临时，cur/max/temp/surges/locked 全保留");
+  } else bad("v2.0.1：临时四防没有正确写回 token：" + JSON.stringify(hpNow));
   const sameAgain = await C.syncDefTempToTokens(CARD_ID, { ac: 0, fort: 2, ref: 1, will: 0 });
-  if (sameAgain === 0) ok("v2.0.0：同一组临时值再次同步 → 值没变不写（返回 0）");
-  else bad("v2.0.0：同值仍然写盘（返回 " + sameAgain + "）");
+  if (sameAgain === 0) ok("v2.0.1：同一组临时值再次同步 → 值没变不写（返回 0）");
+  else bad("v2.0.1：同值仍然写盘（返回 " + sameAgain + "）");
   const restored = await C.syncDefTempToTokens(CARD_ID, { ac: 0, fort: 0, ref: 0, will: 0 });
   hpNow = token.metadata[KEY_HP];
   if (restored === 1 && hpNow.defenses.ac === base.ac && hpNow.defenses.fort === base.fort &&
     hpNow.defenses.reflex === base.reflex && hpNow.defenses.will === base.will) {
-    ok("v2.0.0：临时值清零（短/长休）→ 四防写回卡片基础值，地图圆/盾还原");
-  } else bad("v2.0.0：清零后四防没有还原：" + JSON.stringify(hpNow.defenses));
+    ok("v2.0.1：临时值清零（短/长休）→ 四防写回卡片基础值，地图圆/盾还原");
+  } else bad("v2.0.1：清零后四防没有还原：" + JSON.stringify(hpNow.defenses));
   /* 无权限：非 GM 且非创建者 → 跳过、一个字节都不写 */
   token.createdUserId = "someone-else";
   token.metadata[KEY_HP] = JSON.parse(JSON.stringify(baseHp));
   roleNow = "PLAYER"; idNow = "user-me";
   const denied = await C.syncDefTempToTokens(CARD_ID, { ac: 0, fort: 2, ref: 0, will: 0 });
-  if (denied === 0 && token.metadata[KEY_HP].defenses.fort === 1) ok("v2.0.0：无权限 token 跳过（不写别人的 token）");
-  else bad("v2.0.0：无权限 token 仍然被写：" + JSON.stringify(token.metadata[KEY_HP].defenses));
+  if (denied === 0 && token.metadata[KEY_HP].defenses.fort === 1) ok("v2.0.1：无权限 token 跳过（不写别人的 token）");
+  else bad("v2.0.1：无权限 token 仍然被写：" + JSON.stringify(token.metadata[KEY_HP].defenses));
   roleNow = "GM"; idNow = "user-gm";
   token.createdUserId = "user-gm";
 }
 
-/* ---- v2.0.0：端到端顺序 —— 临时四防写 token 后，紧随的 syncTokenStats 不能回写 base ---- */
+/* ---- v2.0.1：端到端顺序 —— 临时四防写 token 后，紧随的 syncTokenStats 不能回写 base ---- */
 {
   const dBase = G.deriveGlance(char);
   const base = {};
@@ -400,20 +400,99 @@ if (oldState.atkTemp === 0 && oldState.dmgTemp === 0 && oldState.surgeTemp === 0
   await C.syncDefTempToTokens("c-test", st.defTemp);
   let hpNow = token.metadata[KEY_HP];
   if (hpNow.defenses.fort === base.fort + 2 && hpNow.defenses.reflex === base.reflex + 1)
-    ok("v2.0.0：def-temp 后 token 四防 = 卡片基础 + 临时（fort+" + 2 + " / reflex+" + 1 + "）");
-  else bad("v2.0.0：def-temp 后 token 四防不对：" + JSON.stringify(hpNow.defenses));
+    ok("v2.0.1：def-temp 后 token 四防 = 卡片基础 + 临时（fort+" + 2 + " / reflex+" + 1 + "）");
+  else bad("v2.0.1：def-temp 后 token 四防不对：" + JSON.stringify(hpNow.defenses));
   const wrote = await T.syncTokenStats(token.id, T.hpView(hpNow, { maxHp: 20, surges: 4 }), {
     maxHp: 20, surgesMax: 4, defenses: dBase.defenses, defTemp: st.defTemp
   });
   hpNow = token.metadata[KEY_HP];
   if (wrote === false && hpNow.defenses.fort === base.fort + 2 && hpNow.defenses.reflex === base.reflex + 1)
-    ok("v2.0.0：紧随的 syncTokenStats 带 ctx.defTemp → 返回 false、不回写基础值（修复「变一下又变回去」）");
-  else bad("v2.0.0：syncTokenStats 又把临时四防写回去了：" + JSON.stringify({ wrote, def: hpNow.defenses }));
+    ok("v2.0.1：紧随的 syncTokenStats 带 ctx.defTemp → 返回 false、不回写基础值（修复「变一下又变回去」）");
+  else bad("v2.0.1：syncTokenStats 又把临时四防写回去了：" + JSON.stringify({ wrote, def: hpNow.defenses }));
   await C.syncDefTempToTokens("c-test", { ac: 0, fort: 0, ref: 0, will: 0 });
   hpNow = token.metadata[KEY_HP];
   if (hpNow.defenses.fort === base.fort && hpNow.defenses.reflex === base.reflex)
-    ok("v2.0.0：临时四防清零 → token 写回卡片基础值（短/长休还原）");
-  else bad("v2.0.0：清零后没有写回基础值：" + JSON.stringify(hpNow.defenses));
+    ok("v2.0.1：临时四防清零 → token 写回卡片基础值（短/长休还原）");
+  else bad("v2.0.1：清零后没有写回基础值：" + JSON.stringify(hpNow.defenses));
+}
+
+/* ---- v2.0.1：combatMods.damages[].dieUp（武器伤害骰提升 1d4→…→2d12） ---- */
+{
+  const synth = {
+    name: "dieUp 合成",
+    level: 1,
+    abilities: { str: 10, con: 10, dex: 10, int: 10, wis: 10, cha: 10 },
+    baseItems: { 0: "w:匕首 Dagger" },
+    combatMods: {
+      attacks: [{ label: "匕首", ability: "str", enhanceSlot: 0, profSlot: 0 }],
+      damages: [{ label: "匕首", ability: "str", enhanceSlot: 0 }]
+    },
+    customBonuses: {}
+  };
+  const dieOf = (n) => {
+    const c = JSON.parse(JSON.stringify(synth));
+    if (n !== undefined) c.combatMods.damages[0].dieUp = n;
+    return G.deriveGlance(c).damages[0].dice;
+  };
+  const cases = [[1, "1d6"], [2, "1d8"], [3, "1d10"], [4, "1d12"], [5, "2d6"], [8, "2d12"], [9, "2d12"], [-1, "1d4"]];
+  const wrong = cases.filter(([n, want]) => dieOf(n) !== want);
+  if (!wrong.length) ok("v2.0.1：匕首 dieUp 1/2/3/4/5/8/9/-1 → 1d6/1d8/1d10/1d12/2d6/2d12/2d12/1d4（端点 clamp）");
+  else bad("v2.0.1：dieUp 提升序列不对：" + wrong.map(([n, want]) => n + "→" + dieOf(n) + "（要 " + want + "）").join(" / "));
+  if (dieOf(undefined) === "1d4" && dieOf(0) === "1d4")
+    ok("v2.0.1：dieUp 缺失 / 0 时伤害骰保持武器原始 1d4（旧导出逐字节不变）");
+  else bad("v2.0.1：dieUp 缺失/0 改变了旧伤害骰");
+  /* 旧 fixture（无 dieUp）→ 每个伤害骰仍等于规则里的武器原始 d（逐项核对） */
+  const oldChar = char;
+  const hasDieUp = JSON.stringify((oldChar.combatMods || {}).damages || []).indexOf("dieUp") >= 0;
+  const rulesMod = await import(pathToFileURL(path.join(tmp, "data", "rules.js")).href);
+  const RR = rulesMod.RULES;
+  const oldDmg = G.deriveGlance(oldChar).damages;
+  const expectedOld = (oldChar.combatMods && oldChar.combatMods.damages || []).map(function (r) {
+    const slot = Math.max(0, Number(r.enhanceSlot) || 0);
+    const id = (oldChar.baseItems || {})[slot];
+    if (!id || typeof id !== "string" || id[1] !== ":" || id[0] !== "w") return "";
+    const w = RR.weapons.filter((x) => x.n === id.slice(2))[0];
+    return w ? w.d : "";
+  });
+  const sameOld = oldDmg.length === expectedOld.length &&
+    oldDmg.every((d, i) => d.dice === expectedOld[i]);
+  if (!hasDieUp && sameOld)
+    ok("v2.0.1：旧 fixture（无 dieUp）伤害骰逐项仍等于规则武器原始 d（零变化）");
+  else bad("v2.0.1：旧 fixture 的伤害骰被 dieUp 逻辑改了 / 旧 fixture 意外含 dieUp：" + JSON.stringify({ hasDieUp, got: oldDmg.map((d) => d.dice), want: expectedOld }));
+  /* 武器原始骰本身在阶梯里（2d6 / 2d8）→ 按阶梯继续升；非常规骰原样 */
+  const weapons2d = RR.weapons.filter((w) => w.d === "2d6")[0];
+  if (!weapons2d) {
+    ok("v2.0.1：rules 没有 2d6 武器 → 跳过 2d6 提升断言");
+  } else {
+    const synth2 = JSON.parse(JSON.stringify(synth));
+    synth2.baseItems = { 0: "w:" + weapons2d.n };
+    synth2.combatMods.damages[0].dieUp = 1;
+    const d1 = G.deriveGlance(synth2).damages[0].dice;
+    synth2.combatMods.damages[0].dieUp = 3;
+    const d3 = G.deriveGlance(synth2).damages[0].dice;
+    synth2.combatMods.damages[0].dieUp = 4;
+    const d4 = G.deriveGlance(synth2).damages[0].dice;
+    if (d1 === "2d8" && d3 === "2d12" && d4 === "2d12")
+      ok("v2.0.1：原始 2d6 武器 dieUp 1/3/4 → 2d8/2d12/2d12（2dX 也按阶梯继续升）");
+    else bad("v2.0.1：2d6 原始骰提升不对：" + JSON.stringify({ d1, d3, d4 }));
+  }
+
+  /* 真实新 fixture（存在时）：应能 derive，且第一项伤害骰为 1d6（匕首 dieUp=1） */
+  const newFixture = path.join(ROOT, "dev", "fixtures", "申比软软-new.json");
+  if (!fs.existsSync(newFixture)) {
+    ok("v2.0.1：真实新 fixture 不存在 → 跳过（不依赖用户文件）");
+  } else {
+    try {
+      const saveNew = JSON.parse(fs.readFileSync(newFixture, "utf8"));
+      const charNew = (saveNew.pages && saveNew.pages.character) || saveNew.character || saveNew;
+      const dNew = G.deriveGlance(charNew);
+      const firstDie = dNew.damages[0] ? dNew.damages[0].dice : "";
+      if (firstDie === "1d6") ok("v2.0.1：真实新 fixture 可 derive，第一项伤害骰 = 1d6（dieUp=1 生效）");
+      else bad("v2.0.1：真实新 fixture 第一项伤害骰 = " + firstDie + "（应为 1d6）");
+    } catch (eNew) {
+      bad("v2.0.1：真实新 fixture 无法 derive：" + (eNew && eNew.message ? eNew.message : eNew));
+    }
+  }
 }
 
 console.log(fail ? "\n" + fail + " 个问题" : "\n全部通过（v1.8.6 速览：动作标签 / 可用总数 / 无专长区块 / 无装备等级 / HP·回复力·临时加值 / 短休 / 索引 ≤350KB）");

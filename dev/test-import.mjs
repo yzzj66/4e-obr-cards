@@ -434,5 +434,25 @@ if (exportPath && backupPath) {
   }
 }
 
+/* v2.0.1：真实新版导出（含 combatMods.damages[].dieUp）—— 能导入且第一项伤害骰 = 1d6 */
+{
+  const newFx = path.join(FIX, "申比软软-new.json");
+  if (!fs.existsSync(newFx)) {
+    ok("v2.0.1：真实新版导出文件不存在 → 跳过（不依赖用户文件）");
+  } else {
+    try {
+      const r = I.parse4eFile(fs.readFileSync(newFx, "utf8"));
+      const charNew = r.imports[0] && r.imports[0].char;
+      const dNew = charNew ? G.deriveGlance(charNew) : null;
+      const firstDie = dNew && dNew.damages[0] ? dNew.damages[0].dice : "";
+      if (r.format === "single" && r.imports.length === 1 && firstDie === "1d6")
+        ok("v2.0.1：真实新版导出可导入，第一项伤害骰 = 1d6（dieUp=1）");
+      else bad("v2.0.1：真实新版导出导入 / 伤害骰不对：" + JSON.stringify({ format: r.format, n: r.imports.length, firstDie }));
+    } catch (e) {
+      bad("v2.0.1：真实新版导出解析抛错：" + (e && e.message ? e.message : e));
+    }
+  }
+}
+
 console.log(fail ? "\n" + fail + " 条断言失败" : "\n全部通过（4E NEXT 导入解析 + 真实样例数值口径，exit 0）");
 process.exit(fail ? 1 : 0);

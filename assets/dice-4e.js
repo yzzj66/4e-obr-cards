@@ -36,7 +36,7 @@ export function withModifier(base, n) {
 }
 
 /**
- * v2.0.0：track.loadState(cardId) 返回的是 **{ state, scope }**，临时命中 / 伤害在 `.state` 里。
+ * v2.0.1：track.loadState(cardId) 返回的是 **{ state, scope }**，临时命中 / 伤害在 `.state` 里。
  * 之前 dice-page 直接读 loadState 返回值（st.atkTemp）→ 永远 undefined → 联动恒为 0。
  * 这里集中剥一层，调用方只认这个 helper（也方便单测）。
  */
@@ -73,7 +73,7 @@ export function presetsFor(char, rules, opts) {
 
   const attacks = (g.attacks || []).slice(0, 6).map(function (a) {
     const title = String(a.label || "攻击").trim() || "攻击";
-    /* v2.0.0：临时命中先加到 total 再 withModifier，表达式格式不变；非 0 时标签标注临时值。 */
+    /* v2.0.1：临时命中先加到 total 再 withModifier，表达式格式不变；非 0 时标签标注临时值。 */
     const total = a.total + atkTemp;
     return {
       label: title + " " + plus(total) + tempTag(atkTemp),

@@ -2,6 +2,12 @@
 
 > 这份文件是历史更新记录。安装与使用请看 [README](README.md)。
 
+**v2.0.1：适配 4E NEXT 新版导出**（2026-11-16）——
+支持 `combatMods.damages[].dieUp`（武器伤害骰提升）：按 `1d4 → 1d6 → 1d8 → 1d10 → 1d12 → 2d6 → 2d8 → 2d10 → 2d12`
+（缺省 / 0 = 不变，负值反向降级，超出范围取端点；原始 2d6/2d8 也按阶梯继续升）提升武器伤害骰；旧导出（无 dieUp）输出逐项不变。
+`glance.js` 新增内部 `upgradeDamageDie(dice, steps)`，damages 派生处使用；test-glance2 覆盖合成 dieUp 序列 / 旧 fixture 零变化，
+test-import 覆盖真实新版导出可导入且第一项伤害骰 = 1d6。
+
 **v2.0.0：攒批汇总发布（1.10.7～1.10.12 合并为一个大版本）**（2026-11-16）——
 - **用户矢量图标**：血条编辑窗钉住 / 锁定、速览「共享数据」改用 `assets/icons/pin|lock|unlock.svg` 内联（currentColor，按状态切换 lock/unlock）。
 - **先攻条卡片底部加高**：`.item-count` 24% → 34%、头像 72%、血条 bottom 34%（合计下方 `(骰+加值)` 公式不再被裁；有意偏离 Full Suite 原比例）。

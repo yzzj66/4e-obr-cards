@@ -51,7 +51,7 @@ export const ID_SETTINGS_WIN = NS + "/settings-window";
  * id 与其它窗口都不同 → 可以和速览 / 先攻条同时开着；位置按窗口名 "hpEdit" 单独记。 */
 export const ID_HP_EDIT = NS + "/hp-edit";
 
-export const PLUGIN_VERSION = "2.0.0";
+export const PLUGIN_VERSION = "2.0.1";
 
 /**
  * 站点根地址。
@@ -196,9 +196,9 @@ export const CH_DICE_HIST_STATE = NS + "/dice-hist-state";
 export const CH_HP_EDIT_TARGET = NS + "/hp-edit-target";
 export const CH_HP_EDIT_READY = NS + "/hp-edit-ready";
 export const CH_HP_EDIT_SAVED = NS + "/hp-edit-saved";
-/** v2.0.0：页面切换/载入完成回 ack，后台据此判断「单窗换目标」是否成功（600ms 无 ack 兜底重开一次）。 */
+/** v2.0.1：页面切换/载入完成回 ack，后台据此判断「单窗换目标」是否成功（600ms 无 ack 兜底重开一次）。 */
 export const CH_HP_EDIT_ACK = NS + "/hp-edit-ack";
-/** v2.0.0：编辑窗「重绘血条」按钮 → 后台强制重算这张 token 的血条环 / 四防盾 / 资源徽记。 */
+/** v2.0.1：编辑窗「重绘血条」按钮 → 后台强制重算这张 token 的血条环 / 四防盾 / 资源徽记。 */
 export const CH_HP_REPAINT = NS + "/hp-repaint";
 export const LS_DICE_ANIM = "4enext/dice/anim";
 /** 记录窗口默认只显示最近几条（其余滚 / 点「展开全部」看）。 */
@@ -860,11 +860,11 @@ export async function propagateCardStats(cards, updatedIds) {
 }
 
 /**
- * v2.0.0：把「卡片基础四防 + 速览临时四防」合并成 token 该有的 defenses。
+ * v2.0.1：把「卡片基础四防 + 速览临时四防」合并成 token 该有的 defenses。
  * base 用 token 侧键名（ac/fort/reflex/will）；defTemp 用 track state 键名（ac/fort/ref/reflex/will）。
  * 只覆盖 base 里存在的项（卡片没有的项 = 不返回 → 调用方保留 token 原值）；round + clamp 到 ≥0。
  * syncDefTempToTokens（写 token）与 track.syncTokenStats（比较是否回写）**必须共用这一套**，
- * 否则会出现「临时值写进去 → 速览刷新又按基础值写回」的抖动（v2.0.0 bug）。
+ * 否则会出现「临时值写进去 → 速览刷新又按基础值写回」的抖动（v2.0.1 bug）。
  */
 export function combineDefenses(base, defTemp) {
   /* 只用 track state 的键名（ac / fort / ref / will）逐项取临时值；base 侧键名是 ac/fort/reflex/will。
@@ -889,7 +889,7 @@ export function combineDefenses(base, defTemp) {
 }
 
 /**
- * v2.0.0：速览「四防临时加值」→ 绑定该卡 token 的 hp.defenses（单向联动，地图血条只显示）。
+ * v2.0.1：速览「四防临时加值」→ 绑定该卡 token 的 hp.defenses（单向联动，地图血条只显示）。
  * 目标值 = 卡片基础四防 + defTemp（只覆盖卡片有值的项；卡片没有的项保持 token 原值）。
  * 保留 cur / max / temp / locked / surges；值没变不写；无权限（非 GM 且非创建者）的 token 跳过；
  * 写失败静默（血条下次重算）。
