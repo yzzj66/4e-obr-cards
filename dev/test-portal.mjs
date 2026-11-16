@@ -483,6 +483,22 @@ ok("从真实源码拿到 window.__4ePortal（portalMeta / 螺旋 / 墙避让 / 
   else bad("①k 目的地页没有 windowize");
 }
 
+/* ---- ①l 窗口页 HTML 防缓存：openWin 统一补 v= ---- */
+{
+  const vUrl = P.withWindowVersion("portal-dest.html?portal=p1&tokens=t1");
+  const vUrl2 = P.withWindowVersion("portal-edit.html?item=p1");
+  const withV = P.withWindowVersion("panel.html?v=9.9.9");
+  if (vUrl.indexOf("portal=p1") >= 0 && vUrl.indexOf("&v=" + P.version) >= 0 &&
+    vUrl2.indexOf("?item=p1") >= 0 && vUrl2.indexOf("&v=" + P.version) >= 0 &&
+    withV === "panel.html?v=9.9.9")
+    ok("①l 窗口 URL 统一补 v=<PLUGIN_VERSION>（已有 v= 不重复；目的地/编辑窗都覆盖）");
+  else bad("①l 窗口 URL 版本参数不对：" + JSON.stringify({ vUrl, vUrl2, withV }));
+  if (coreSrc.indexOf("function withWindowVersion(") >= 0 &&
+    coreSrc.indexOf("var url = withWindowVersion(") >= 0)
+    ok("①l openWin 统一经过 withWindowVersion（openDestinationPopover / openPortalEdit 自动带版本）");
+  else bad("①l openWin 没有统一补版本参数");
+}
+
 /* ---- ② 同 tag 目的地 ---- */
 {
   const portals = [

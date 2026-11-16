@@ -233,7 +233,7 @@ const BG = run(OBR, stubBuilder("CURVE"), stubBuilder("SHAPE"), stubBuilder("TEX
     if (BG.openWin) await BG.openWin("dice");
     await sleep(140);
     return all("popover.open").map((c) => c[1]).slice(before)
-      .filter((c) => /\/dice\.html$/.test(String(c.url))).pop() || null;
+      .filter((c) => /\/dice\.html(?:\?.*)?$/.test(String(c.url))).pop() || null;
   }
 
   /* v1.3.1：工具栏上三个并列入口（角色卡 / 先攻 / 骰子），各开各的窗口 */
@@ -270,7 +270,7 @@ const BG = run(OBR, stubBuilder("CURVE"), stubBuilder("SHAPE"), stubBuilder("TEX
   const pop = all("popover.open").map((c) => c[1]).filter((cfg) => cfg.id === "com.4enext-owlbear/button").pop();
   if (!pop) bad("没有调用 OBR.popover.open（右下角浮动按钮）");
   else if (pop.anchorReference !== "POSITION") bad("popover.open 没有用 anchorReference: POSITION");
-  else if (!/\/button\.html$/.test(pop.url)) bad("浮动按钮的 url 不对：" + pop.url);
+  else if (!/\/button\.html(?:\?.*)?$/.test(pop.url)) bad("浮动按钮的 url 不对：" + pop.url);
   else if (pop.hidePaper !== true) bad("浮动按钮没有 hidePaper");
   else ok("OBR.popover.open 的锚点参数与参考实现一致");
 
@@ -708,11 +708,11 @@ const BG = run(OBR, stubBuilder("CURVE"), stubBuilder("SHAPE"), stubBuilder("TEX
   const stripRet = toolInit && typeof toolInit.onClick === "function" ? toolInit.onClick() : null;
   await sleep(140);
   const stripCfg = all("popover.open").map((c) => c[1]).slice(stripOpenBefore)
-    .filter((c) => /\/initiative\.html$/.test(String(c.url))).pop() || null;
+    .filter((c) => /\/initiative\.html(?:\?.*)?$/.test(String(c.url))).pop() || null;
   if (stripRet !== false) bad("工具栏「先攻条」的 onClick 没有返回 false（会把工具切成激活态）");
-  if (!stripCfg) bad("点工具栏「先攻条」没有打开 /\/initiative\.html$/ popover");
+  if (!stripCfg) bad("点工具栏「先攻条」没有打开 /\/initiative\.html(?:\?.*)?$/ popover");
   const diceWin = await openDiceWindow();
-  const panelWin = await openByTool(toolPanel, /\/panel\.html$/, "角色卡");
+  const panelWin = await openByTool(toolPanel, /\/panel\.html(?:\?.*)?$/, "角色卡");
 
   if (!stripCfg || !diceWin || !panelWin) {
     bad("三个工具栏入口没有各自打开窗口");
@@ -783,7 +783,7 @@ const BG = run(OBR, stubBuilder("CURVE"), stubBuilder("SHAPE"), stubBuilder("TEX
   /* =======================================================================
    * v1.3.2：设置窗口自己一个 popover；速览入口给当前选中的 token 重开 /info
    * ===================================================================== */
-  const settingsWin = await openByTool(toolSettings, /\/settings\.html$/, "设置");
+  const settingsWin = await openByTool(toolSettings, /\/settings\.html(?:\?.*)?$/, "设置");
   if (!settingsWin) bad("点工具栏「设置」没有打开设置窗口");
   else if ([stripCfg, diceWin, panelWin].some((c) => c && c.id === settingsWin.id)) {
     bad("设置窗口的 popover id 与别的窗口重复：" + settingsWin.id);
@@ -865,7 +865,7 @@ const BG = run(OBR, stubBuilder("CURVE"), stubBuilder("SHAPE"), stubBuilder("TEX
   if (stripCmdCb) {
     stripCmdCb({ data: { op: "list" } });
     await sleep(180);
-    listWin = opened(/\/initiative\.html\?view=list$/);
+    listWin = opened(/\/initiative\.html\?view=list(?:&v=[^&]*)?$/);
     if (!listWin || listWin.width !== 880 || listWin.height !== 640) {
       bad("先攻条「≡」没有打开列表窗口：" + JSON.stringify(listWin && [listWin.url, listWin.width, listWin.height]));
     } else if (listWin.id !== "com.4enext-owlbear/initiative-window") {
@@ -892,7 +892,7 @@ const BG = run(OBR, stubBuilder("CURVE"), stubBuilder("SHAPE"), stubBuilder("TEX
     winDragCb({ win: "initiative", phase: "start", dx: 0, dy: 0 });
     winDragCb({ win: "initiative", phase: "move", dx: 100, dy: 50 });
     await sleep(90);
-    let movedWin = opened(/\/initiative\.html\?view=list$/);
+    let movedWin = opened(/\/initiative\.html\?view=list(?:&v=[^&]*)?$/);
     if (!movedWin || movedWin.anchorPosition.left !== base.left + 100 || movedWin.anchorPosition.top !== base.top + 50) {
       bad("拖动先攻窗口没有跟手：" + JSON.stringify(movedWin && movedWin.anchorPosition) + "（起点 " + JSON.stringify(base) + "）");
     } else if (movedWin.width !== listWin.width || movedWin.height !== listWin.height) {
@@ -904,7 +904,7 @@ const BG = run(OBR, stubBuilder("CURVE"), stubBuilder("SHAPE"), stubBuilder("TEX
     winDragCb({ win: "initiative", phase: "move", dx: 5000, dy: 5000 });
     winDragCb({ win: "initiative", phase: "end", dx: 5000, dy: 5000 });
     await sleep(90);
-    movedWin = opened(/\/initiative\.html\?view=list$/);
+    movedWin = opened(/\/initiative\.html\?view=list(?:&v=[^&]*)?$/);
     const maxLeft = 1200 - listWin.width - 16;
     const maxTop = 800 - listWin.height - 16;
     if (!movedWin || movedWin.anchorPosition.left !== maxLeft || movedWin.anchorPosition.top !== maxTop) {
@@ -920,7 +920,7 @@ const BG = run(OBR, stubBuilder("CURVE"), stubBuilder("SHAPE"), stubBuilder("TEX
 
     winDragCb({ win: "initiative", phase: "reset" });
     await sleep(160);
-    movedWin = opened(/\/initiative\.html\?view=list$/);
+    movedWin = opened(/\/initiative\.html\?view=list(?:&v=[^&]*)?$/);
     if (!movedWin || movedWin.anchorPosition.left !== base.left || movedWin.anchorPosition.top !== base.top) {
       bad("⌖ 没有把先攻窗口移回默认位置：" + JSON.stringify(movedWin && movedWin.anchorPosition));
     } else {
@@ -942,7 +942,7 @@ const BG = run(OBR, stubBuilder("CURVE"), stubBuilder("SHAPE"), stubBuilder("TEX
   /* 小屏：800×600 下窗口必须夹到视口内（1920×1080 / 1366×768 更不在话下） */
   OBR.viewport.getWidth = async () => 800;
   OBR.viewport.getHeight = async () => 600;
-  const smallPanel = await openByTool(toolPanel, /\/panel\.html$/, "角色卡（小屏）");
+  const smallPanel = await openByTool(toolPanel, /\/panel\.html(?:\?.*)?$/, "角色卡（小屏）");
   if (!smallPanel) bad("小屏下打不开角色卡窗口");
   else if (smallPanel.width > 800 - 32 || smallPanel.height > 600 - 32)
     bad("小屏（800×600）下窗口还是超出视口：" + smallPanel.width + "×" + smallPanel.height);
@@ -959,7 +959,7 @@ const BG = run(OBR, stubBuilder("CURVE"), stubBuilder("SHAPE"), stubBuilder("TEX
     OBR.viewport.getHeight = async () => 800;
     await BG.pollViewportAnchor();
     await sleep(420);
-    const backPanel = opened(/\/panel\.html$/);
+    const backPanel = opened(/\/panel\.html(?:\?.*)?$/);
     if (!backPanel || backPanel.width !== 960) bad("视口变大后窗口没有重新夹紧/恢复：" + JSON.stringify(backPanel && [backPanel.width, backPanel.height]));
     else ok("v2.1.0：视口轮询 → reclampWins 重新夹紧窗口（" + backPanel.width + "×" + backPanel.height + "）");
     const btnOpen = all("popover.open").map((c) => c[1]).filter((c) => String(c.url).indexOf("button.html") >= 0).pop();
@@ -973,7 +973,7 @@ const BG = run(OBR, stubBuilder("CURVE"), stubBuilder("SHAPE"), stubBuilder("TEX
   if (BG.stopViewportAnchor) BG.stopViewportAnchor();
   OBR.viewport.getWidth = async () => 1200;
   OBR.viewport.getHeight = async () => 900;
-  const dragPanel = await openByTool(toolPanel, /\/panel\.html$/, "角色卡（拖动视口测试）");
+  const dragPanel = await openByTool(toolPanel, /\/panel\.html(?:\?.*)?$/, "角色卡（拖动视口测试）");
   if (!dragPanel) bad("v2.1.0：拖动测试的窗口打不开");
   else {
     const hNow = dragPanel.height;
@@ -983,7 +983,7 @@ const BG = run(OBR, stubBuilder("CURVE"), stubBuilder("SHAPE"), stubBuilder("TEX
     winDragCb({ win: "panel", phase: "move", dx: 0, dy: 700 });
     winDragCb({ win: "panel", phase: "end", dx: 0, dy: 700 });
     await sleep(300);
-    const moved = opened(/\/panel\.html$/);
+    const moved = opened(/\/panel\.html(?:\?.*)?$/);
     const expectedTop = 1100 - hNow - 16;
     const oldTop = 900 - hNow - 16;
     if (!moved) bad("v2.1.0：拖动后窗口没有重新 open");
@@ -1463,7 +1463,7 @@ const BG = run(OBR, stubBuilder("CURVE"), stubBuilder("SHAPE"), stubBuilder("TEX
       else if (first.width !== 300 || first.height !== 240) bad("记录窗口尺寸不是 300×240：" + first.width + "×" + first.height);
       else if (first.anchorReference !== "POSITION" || first.hidePaper !== true || first.disableClickAway !== true)
         bad("记录窗口没有 POSITION / hidePaper / disableClickAway：" + JSON.stringify([first.anchorReference, first.hidePaper, first.disableClickAway]));
-      else if (!first.url.endsWith("/dice-history.html")) bad("记录窗口的 url 不对：" + first.url);
+      else if (!/\/dice-history\.html(?:\?.*)?$/.test(first.url)) bad("记录窗口的 url 不对：" + first.url);
       else {
         const dx = first.anchorPosition.left - diceNow.anchorPosition.left;
         const dy = first.anchorPosition.top - diceNow.anchorPosition.top;

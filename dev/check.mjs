@@ -390,7 +390,7 @@ for (const [file, label] of [["icon-tool.svg", "角色卡"], ["icon-tool-initiat
   if (exists(path.join(ROOT, file))) ok("工具栏图标存在：" + file + "（" + label + "）");
   else bad("缺少工具栏图标：" + file);
 }
-if (man.action && /\/panel\.html$/.test(String(man.action.popover))) ok("manifest.action.popover = panel.html（左上角入口打开角色卡 / 导入面板）");
+if (man.action && /\/panel\.html(?:\?.*)?$/.test(String(man.action.popover))) ok("manifest.action.popover = panel.html（左上角入口打开角色卡 / 导入面板）");
   // [v1.6.1 移除] manifest 不再带 action（真机验证：无 action 也能加载；入口由工具栏 tool 提供）// else bad("manifest.action.popover 不是 panel.html：" + (man.action && man.action.popover));
 if (man.action && !/\?tab=/.test(String(man.action.popover))) ok("action.popover 不再带 ?tab=...（没有 tab 概念了）");
   // [v1.6.1 移除] manifest 不再带 action（真机验证：无 action 也能加载；入口由工具栏 tool 提供）// else bad("action.popover 还带着 ?tab=...");
@@ -3971,6 +3971,21 @@ console.log("== v2.1.0 目的地选择窗可拖动");
     fs.readFileSync(path.join(ROOT, "dev", "test-portal.mjs"), "utf8").indexOf("①k 目的地选择窗接进窗口框架") >= 0)
     ok("v2.1.0：检测→目的地窗调用已接入 + test-portal 断言");
   else bad("v2.1.0：目的地打开调用 / 测试断言缺失");
+}
+
+console.log("== v2.1.0 窗口页 HTML 防缓存（统一 v=）");
+{
+  const coreVer = fs.readFileSync(path.join(ROOT, "assets", "background.core.js"), "utf8");
+  const testVer = fs.readFileSync(path.join(ROOT, "dev", "test-portal.mjs"), "utf8");
+  if (coreVer.indexOf("function withWindowVersion(url)") >= 0 &&
+    coreVer.indexOf("var url = withWindowVersion(") >= 0 &&
+    coreVer.indexOf("encodeURIComponent(PLUGIN_VERSION)") >= 0 &&
+    coreVer.indexOf("openDestinationPopover(origin.portal.itemId, tokenIds)") >= 0)
+    ok("v2.1.0：openWin 统一补 ?v=PLUGIN_VERSION（目的地/编辑窗 HTML 不再吃旧缓存）");
+  else bad("v2.1.0：窗口 URL 版本参数未统一");
+  if (testVer.indexOf("①l 窗口 URL 统一补 v=") >= 0)
+    ok("v2.1.0：test-portal 有 withWindowVersion 断言");
+  else bad("v2.1.0：缺少窗口 URL 版本断言");
 }
 
 console.log(fail ? "\n" + fail + " 个问题" : "\n全部通过");

@@ -7,7 +7,7 @@
  *
  * 不要手改本文件。改逻辑请改 assets/background.core.js，然后：
  *     node dev/build-background.mjs
- * 生成时间：2026-11-16T17:20:57.545Z
+ * 生成时间：2026-11-16T17:26:15.153Z
  * --------------------------------------------------------------------------- */
 (function () {
 "use strict";
@@ -560,10 +560,16 @@ function winPopoverOptions(def, pos, size, url) {
   };
 }
 
+/** v2.1.0：窗口页 HTML 自身也带缓存，打开 URL 统一补 ?v=<PLUGIN_VERSION>（已有 v= 不重复）。 */
+function withWindowVersion(url) {
+  var u = String(url || "");
+  if (/[?&]v=[^&]*/.test(u)) return u;
+  return u + (u.indexOf("?") >= 0 ? "&" : "?") + "v=" + encodeURIComponent(PLUGIN_VERSION);
+}
 async function openWin(name, urlOverride) {
   var def = winDef(name);
   if (!def) throw new Error("未知窗口：" + name);
-  var url = typeof urlOverride === "string" && urlOverride ? urlOverride : def.url;
+  var url = withWindowVersion(typeof urlOverride === "string" && urlOverride ? urlOverride : def.url);
   var vp = await infoViewport();
   var size = winSize(def, vp);
   var saved = readWinPos(name);
@@ -4923,6 +4929,7 @@ if (typeof window !== "undefined") {
     portalSuppressed: portalSuppressed,
     onPortalTeleport: onPortalTeleport,
     syncPortalEditFromSelection: syncPortalEditFromSelection,
+    withWindowVersion: withWindowVersion,
     onPortalEditClosed: onPortalEditClosed,
     portalClearPreviewResidue: portalClearPreviewResidue,
     portalLifecycleSync: portalLifecycleSync,

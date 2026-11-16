@@ -791,7 +791,7 @@ if (stripOpenCfg) {
     stripOpenCfg.disableClickAway === true && stripOpenCfg.width === 720 && stripOpenCfg.height === 170 &&
     stripOpenCfg.anchorOrigin && stripOpenCfg.anchorOrigin.horizontal === "CENTER" &&
     stripOpenCfg.anchorOrigin.vertical === "TOP" && stripOpenCfg.anchorPosition &&
-    stripOpenCfg.anchorPosition.top === 45 && /initiative\.html$/.test(String(stripOpenCfg.url))) {
+    stripOpenCfg.anchorPosition.top === 45 && /initiative\.html(?:\?.*)?$/.test(String(stripOpenCfg.url))) {
     ok("加入先攻后自动打开先攻条（popover：POSITION + CENTER/TOP + 720×170 @ top45 + hidePaper + disableClickAway）");
   } else bad("先攻条的 popover 参数不对：" + JSON.stringify(stripOpenCfg));
 } else bad("加入先攻后没有打开先攻条");
@@ -860,7 +860,7 @@ if (typeof api.onStripDrag === "function" && typeof api.onStripCmd === "function
     stripCfg.anchorOrigin && stripCfg.anchorOrigin.horizontal === "CENTER" &&
     stripCfg.anchorOrigin.vertical === "TOP" && stripCfg.anchorPosition &&
     stripCfg.anchorPosition.left === 600 && stripCfg.anchorPosition.top === 45 &&
-    stripCfg.url && /initiative\.html$/.test(String(stripCfg.url))) {
+    stripCfg.url && /initiative\.html(?:\?.*)?$/.test(String(stripCfg.url))) {
     ok("openStrip → OBR.popover.open（POSITION + CENTER/TOP + 720×170 @ (600,45) + hidePaper + disableClickAway）");
   } else bad("先攻条 popover 参数不对：" + JSON.stringify(stripCfg));
   if (stripModals().length === 0) ok("先攻条不再用 OBR.modal.open（v1.7.10 的 disablePointerEvents 回归已修）");
@@ -918,7 +918,7 @@ if (typeof api.onStripDrag === "function" && typeof api.onStripCmd === "function
   openedPopovers.length = 0;
   api.onStripCmd({ data: { op: "list" } });
   await sleep(140);
-  const listWin = openedPopovers.filter((c) => c && /initiative\.html\?view=list$/.test(String(c.url))).pop();
+  const listWin = openedPopovers.filter((c) => c && /initiative\.html\?view=list(?:&v=[^&]*)?$/.test(String(c.url))).pop();
   if (listWin && listWin.width === 880 && listWin.height === 640) ok("先攻条「≡」打开列表窗口（?view=list，880×640）");
   else bad("列表窗口没打开：" + JSON.stringify(listWin && [listWin.url, listWin.width]));
 
