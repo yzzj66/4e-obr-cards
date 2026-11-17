@@ -1,4 +1,4 @@
-// v2.3.3：血条编辑窗的页面脚本（hp-edit.html）—— 照 Full Suite 的 hp-bar 重做第一批（布局 + 字段）。
+// v2.3.6：血条编辑窗的页面脚本（hp-edit.html）—— 照 Full Suite 的 hp-bar 重做第一批（布局 + 字段）。
 // ---------------------------------------------------------------------------
 // 窗口 344×106：行1 名称 + 钉住 / 锁定 / 重绘 + ✕；行2 生命药丸（按 cur/max 比例填充）+ 临时生命；
 // 行3 四防；行4 状态行。**去掉回复力字段**（surges 数据保留在 token 上，只读不写）。
@@ -10,8 +10,8 @@
 // 钉住：localStorage["4enext/hp-edit/pinned"]（默认关）——钉住后选中变化 / 取消选中不自动关窗。
 import OBR from "../vendor/obr-sdk.js";
 import {
-  CH_HP_EDIT_ACK, CH_HP_EDIT_READY, CH_HP_EDIT_SAVED, CH_HP_EDIT_TARGET, CH_HP_REPAINT, ID_HP_EDIT, KEY_BIND,
-  findCard, getCards, onReady
+  CH_HPEDIT_LOG, CH_HP_EDIT_ACK, CH_HP_EDIT_READY, CH_HP_EDIT_SAVED, CH_HP_EDIT_TARGET, CH_HP_REPAINT, ID_HP_EDIT, KEY_BIND,
+  PLUGIN_VERSION, findCard, getCards, onReady
 } from "./common.js";
 import { closeSelf, createWindow, feedback } from "./window.js";
 import {
@@ -53,7 +53,8 @@ var els = {
   repaint: document.getElementById("hpe-repaint"),
   note: document.getElementById("hpe-note"),
   close: document.getElementById("close"),
-  off: document.getElementById("hpe-off")
+  off: document.getElementById("hpe-off"),
+  diag: document.getElementById("hpe-diag")
 };
 for (var di = 0; di < HPE_DEF_KEYS.length; di++) {
   els["def_" + HPE_DEF_KEYS[di]] = document.getElementById("hpe-def-" + HPE_DEF_KEYS[di]);
@@ -67,7 +68,8 @@ var state = {
   locked: false,
   pinned: readPin(),
   busy: false,
-  pending: false
+  pending: false,
+  dirty: false
 };
 
 /* 后台在线状态：只在标题栏挂一个小标记（窗口只有 344×106，放不下整条 bg-strip）。
@@ -85,6 +87,15 @@ function note(text, tone) {
   els.note.className = "hpe-note" + (text && tone ? " " + String(tone) : "");
 }
 
+function paintDiag() {
+  if (!els.diag) return;
+  var editable = state.editable ? 1 : 0;
+  var dis = (!state.editable || state.busy) ? 1 : 0;
+  var n = document.querySelectorAll ? document.querySelectorAll(".hpe-num").length : 0;
+  els.diag.textContent = "role=" + (state.role || "?") + " editable=" + editable +
+    " dis=" + dis + " inputs=" + n + " v" + PLUGIN_VERSION;
+}
+
 function defsInput() {
   var out = {};
   for (var i = 0; i < HPE_DEF_KEYS.length; i++) {
@@ -96,9 +107,14 @@ function defsInput() {
 }
 
 function formValues() {
+  var cur = els.cur ? els.cur.value : "";
+  var max = els.max ? els.max.value : "";
+  /* v2.3.6：只填了当前或上限任一方时自动补齐另一方（4E：先填一个就能画出第一根血条）。 */
+  if (max === "" && cur !== "") max = cur;
+  if (cur === "" && max !== "") cur = max;
   return {
-    cur: els.cur ? els.cur.value : "",
-    max: els.max ? els.max.value : "",
+    cur: cur,
+    max: max,
     temp: els.temp ? els.temp.value : "",
     defs: defsInput()
   };
@@ -116,14 +132,23 @@ function paintRatio(view) {
 
 function fillForm(view) {
   var v = view || {};
-  if (els.cur) els.cur.value = curText(v);
-  if (els.max) els.max.value = maxText(v);
-  if (els.temp) els.temp.value = tempText(v);
+  var skipped = [];
+  function put(el, text) {
+    if (!el) return;
+    if (document.activeElement === el) { skipped.push(el.id); return; }
+    el.value = text;
+  }
+  put(els.cur, curText(v));
+  put(els.max, maxText(v));
+  put(els.temp, tempText(v));
   for (var i = 0; i < HPE_DEF_KEYS.length; i++) {
     var key = HPE_DEF_KEYS[i];
-    var el = els["def_" + key];
-    if (el) el.value = defText(v, key);
+    put(els["def_" + key], defText(v, key));
   }
+  hlog("fillForm value-cur=" + JSON.stringify(els.cur ? els.cur.value : "") +
+    " max=" + JSON.stringify(els.max ? els.max.value : "") +
+    " temp=" + JSON.stringify(els.temp ? els.temp.value : "") +
+    (skipped.length ? " skipped=" + skipped.join(",") : ""));
   paintRatio(v);
 }
 
@@ -135,7 +160,7 @@ function paintTools() {
   if (els.lock) {
     var locked = !!(state.view && state.view.locked);
     els.lock.classList.toggle("on", locked);
-    /* v2.3.3：锁定状态切换 lock / unlock 两个内联 SVG（不用 innerHTML 重绘按钮）。 */
+    /* v2.3.6：锁定状态切换 lock / unlock 两个内联 SVG（不用 innerHTML 重绘按钮）。 */
     if (els.lockOn) els.lockOn.hidden = !locked;
     if (els.lockOff) els.lockOff.hidden = locked;
     els.lock.title = locked ? "已锁定：玩家看不到精确数字（点击解锁）" : "锁定：玩家看不到精确数字（点击锁定）";
@@ -146,6 +171,8 @@ function paintTools() {
 
 function applyDisabled() {
   var dis = !state.editable || state.busy;
+  try { console.log("[4enext][hpEdit] applyDisabled dis=" + dis + " editable=" + state.editable + " busy=" + state.busy); } catch (e) { /* 忽略 */ }
+  paintDiag();
   var list = [els.cur, els.max, els.temp];
   for (var i = 0; i < HPE_DEF_KEYS.length; i++) list.push(els["def_" + HPE_DEF_KEYS[i]]);
   for (var k = 0; k < list.length; k++) {
@@ -188,7 +215,7 @@ async function playerIdOf() {
   try { return await OBR.player.getId(); } catch (e) { return ""; }
 }
 
-/** 绑定角色卡的默认值：只取「算得出」的几项（上限 / 四防，v2.3.3 不再带回复力）。 */
+/** 绑定角色卡的默认值：只取「算得出」的几项（上限 / 四防，v2.3.6 不再带回复力）。 */
 async function cardDefaults(item) {
   var cardId = item && item.metadata ? item.metadata[KEY_BIND] : null;
   if (typeof cardId !== "string" || !cardId) return null;
@@ -236,14 +263,26 @@ async function load() {
   var pid = await playerIdOf();
   var lockedForPlayer = hpEditReadOnly(hpMetaOf(item), state.role);
   state.locked = lockedForPlayer;
-  state.editable = mayEditToken(item, state.role, pid) && !lockedForPlayer;
+  var may = mayEditToken(item, state.role, pid);
+  if (state.role === "GM") may = true; /* v2.3.6：GM 判定优先，绝不因 createdUserId 只读 */
+  state.editable = may && !lockedForPlayer;
+  try {
+    console.log("[4enext][hpEdit] role=" + state.role + " pid=" + pid +
+      " item.createdUserId=" + (item.createdUserId == null ? "(缺失)" : item.createdUserId) +
+      " editable=" + state.editable + " locked=" + lockedForPlayer);
+  } catch (e2) { /* 忽略 */ }
 
   var card = await cardDefaults(item);
   var view = hpEditView(hpMetaOf(item), card);
   state.view = view;
   if (els.name) els.name.textContent = (item.name || "").trim() || "未命名";
-  fillForm(view);
+  if (state.dirty) {
+    hlog("load skip fillForm (dirty)");
+  } else {
+    fillForm(view);
+  }
   setEditable(state.editable);
+  paintDiag();
   paintTools();
   refreshNote();
 }
@@ -279,6 +318,13 @@ function broadcast(channel, payload) {
  * 非法 / 半截输入不写，失焦时恢复成当前值；写成功更新 state.view 并广播 CH_HP_EDIT_SAVED。
  * saving 时输入 disabled（见 setBusy），失败绝不静默。
  * ------------------------------------------------------------------------- */
+function hlog(msg) {
+  try { console.log("[4enext][hpEdit] " + msg); } catch (e) { /* 忽略 */ }
+  try {
+    var b = OBR.broadcast.sendMessage(CH_HPEDIT_LOG, { msg: String(msg), at: Date.now() }, { destination: "LOCAL" });
+    if (b && typeof b.catch === "function") b.catch(function () {});
+  } catch (e2) { /* 广播失败不影响本页 */ }
+}
 var SAVE_DEBOUNCE_MS = 500;
 var saveTimer = 0;
 var noteTimer = 0;
@@ -289,7 +335,11 @@ function clearSaveTimer() {
 
 function scheduleSave() {
   clearSaveTimer();
-  saveTimer = setTimeout(function () { saveTimer = 0; void commit("debounce"); }, SAVE_DEBOUNCE_MS);
+  saveTimer = setTimeout(function () {
+    saveTimer = 0;
+    var src = document.activeElement;
+    void commit("debounce", src && src.classList && src.classList.contains("hpe-num") ? src : undefined);
+  }, SAVE_DEBOUNCE_MS);
 }
 
 function showSaved(view) {
@@ -318,6 +368,7 @@ function fillOne(el, view) {
 }
 
 async function commit(trigger, sourceEl) {
+  hlog("commit trigger=" + trigger + " id=" + (sourceEl && sourceEl.id) + " value=" + JSON.stringify(sourceEl ? sourceEl.value : ""));
   if (state.busy) { state.pending = true; return; }
   if (!state.editable) return;
   var leaseNow = lease.capture();
@@ -327,15 +378,14 @@ async function commit(trigger, sourceEl) {
     return;
   }
   var built = buildHpEditPatch(formValues(), state.view || {});
+  hlog("commit result trigger=" + trigger + " ok=" + built.ok + " message=" + JSON.stringify(built.message || "") +
+    " patch=" + JSON.stringify(built.patch || null));
   if (!built.ok) {
-    if (trigger === "blur" || trigger === "change" || trigger === "enter") {
-      fillOne(sourceEl, state.view || {});
-      refreshNote();
-    } else {
-      note(built.message, "warn");
-    }
+    /* v2.3.6：非法/半截输入保留用户原值，不清空、不回填（等用户继续输入或修正）。 */
+    note(built.message, "warn");
     return;
   }
+  state.dirty = false;
   if (hpPatchEqualsView(built.patch, state.view)) { paintRatio(state.view); return; }
   setBusy(true);
   refreshNote();
@@ -431,28 +481,38 @@ if (els.repaint) els.repaint.addEventListener("click", repaintBars);
 
 var inputs = [els.cur, els.max, els.temp];
 for (var k = 0; k < HPE_DEF_KEYS.length; k++) inputs.push(els["def_" + HPE_DEF_KEYS[k]]);
-/* v2.3.3 bugfix：这里必须用 forEach 的形参 el 捕获每个输入框。
+/* v2.3.6 bugfix：这里必须用 forEach 的形参 el 捕获每个输入框。
  * 之前用 `for (var el = inputs[i])` + 内部函数：var 是函数作用域共享，循环结束后 el 永远指向
  * 最后一个输入框（hpe-def-will）——任何框 focus 时 select() 都抢到「意志」，用户输入全写进意志。
  * 注意：isFieldEl 的 for (var i) 直接同步返回，不捕获闭包，保留没问题。 */
 inputs.forEach(function (el) {
   if (!el) return;
   el.addEventListener("focus", function () {
+    hlog("focus id=" + el.id);
     try { el.select(); } catch (e) { /* 忽略 */ }
   });
-  el.addEventListener("input", function () { scheduleSave(); });
+  el.addEventListener("beforeinput", function (ev) {
+    hlog("beforeinput id=" + el.id + " data=" + (ev && ev.data == null ? "null" : ev.data));
+  });
+  el.addEventListener("input", function () {
+    state.dirty = true;
+    hlog("input id=" + el.id + " value=" + JSON.stringify(el.value) + " dirty=1");
+    scheduleSave();
+  });
   el.addEventListener("change", function () { void commit("change", el); });
   el.addEventListener("blur", function () { void commit("blur", el); });
   el.addEventListener("keydown", function (ev) {
+    hlog("key=" + (ev.key || "") + " id=" + (ev.target && ev.target.id) + " prevented=" + !!ev.defaultPrevented);
     if (ev.key === "Enter") { ev.preventDefault(); clearSaveTimer(); void commit("enter", el); }
     else if (ev.key === "Escape") { ev.preventDefault(); closeWindow(); }
   });
 });
 document.addEventListener("keydown", function (ev) {
+  hlog("key(capture)=" + (ev.key || "") + " id=" + (ev.target && ev.target.id) + " prevented=" + !!ev.defaultPrevented);
   if (ev.key === "Escape") closeWindow();
-});
+}, true);
 
-/* v2.3.3：单窗常驻 —— 后台换 target 时页面自己 commit 未保存输入再 load（不重建 iframe）。 */
+/* v2.3.6：单窗常驻 —— 后台换 target 时页面自己 commit 未保存输入再 load（不重建 iframe）。 */
 function isFieldEl(el) {
   if (!el) return false;
   for (var i = 0; i < inputs.length; i++) if (inputs[i] === el) return true;
@@ -483,7 +543,10 @@ async function handleHpTarget(data) {
 }
 
 /* 后台版本租约：ready → 后台补发 target（iframe 可能比第一条广播晚加载）。 */
+try { console.log("[4enext][hpEdit] loaded v=" + PLUGIN_VERSION + " url=" + location.href); } catch (e0) { /* 忽略 */ }
 onReady(function () {
+  hlog("page ready, inputs=" + inputs.filter(Boolean).length);
+  paintDiag();
   try {
     OBR.broadcast.onMessage(CH_HP_EDIT_TARGET, function (ev) {
       var data = ev && ev.data !== undefined ? ev.data : ev;

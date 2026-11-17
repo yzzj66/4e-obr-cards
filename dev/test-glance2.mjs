@@ -64,7 +64,7 @@ fs.writeFileSync(path.join(tmp, "vendor", "obr-sdk.js"), [
   "export default globalThis.__OBR__;",
   ""
 ].join("\n"), "utf8");
-for (const f of ["cards-core.js", "cards-scene.js", "common.js", "track.js", "glance.js"]) {
+for (const f of ["cards-core.js", "cards-scene.js", "common.js", "track.js", "glance.js", "hp-edit-core.js"]) {
   fs.copyFileSync(path.join(ROOT, "assets", f), path.join(tmp, "assets", f));
 }
 for (const f of ["rules.js", "card-index.js"]) {
@@ -109,6 +109,7 @@ globalThis.__OBR__ = {
 };
 
 const G = await import(pathToFileURL(path.join(tmp, "assets", "glance.js")).href);
+const H = await import(pathToFileURL(path.join(tmp, "assets", "hp-edit-core.js")).href);
 const T = await import(pathToFileURL(path.join(tmp, "assets", "track.js")).href);
 const C = await import(pathToFileURL(path.join(tmp, "assets", "common.js")).href);
 
@@ -345,7 +346,7 @@ if (oldState.atkTemp === 0 && oldState.dmgTemp === 0 && oldState.surgeTemp === 0
   ok("旧状态兼容：缺临时字段 = 0（向后兼容）");
 } else bad("旧状态兼容失败：" + JSON.stringify(oldState));
 
-/* ---- v2.3.3：四防临时加值单向写回绑定 token（地图血条联动） ---- */
+/* ---- v2.3.6：四防临时加值单向写回绑定 token（地图血条联动） ---- */
 {
   const dBase = G.deriveGlance(char);
   const base = {};
@@ -361,29 +362,29 @@ if (oldState.atkTemp === 0 && oldState.dmgTemp === 0 && oldState.surgeTemp === 0
   if (n === 1 && hpNow.defenses.ac === base.ac && hpNow.defenses.fort === base.fort + 2 &&
     hpNow.defenses.reflex === base.reflex + 1 && hpNow.defenses.will === base.will &&
     hpNow.cur === 5 && hpNow.max === 20 && hpNow.temp === 2 && hpNow.surges === 3 && hpNow.locked === false) {
-    ok("v2.3.3：def-temp fort+2 / reflex+1 → token hp.defenses = 卡片基础+临时，cur/max/temp/surges/locked 全保留");
-  } else bad("v2.3.3：临时四防没有正确写回 token：" + JSON.stringify(hpNow));
+    ok("v2.3.6：def-temp fort+2 / reflex+1 → token hp.defenses = 卡片基础+临时，cur/max/temp/surges/locked 全保留");
+  } else bad("v2.3.6：临时四防没有正确写回 token：" + JSON.stringify(hpNow));
   const sameAgain = await C.syncDefTempToTokens(CARD_ID, { ac: 0, fort: 2, ref: 1, will: 0 });
-  if (sameAgain === 0) ok("v2.3.3：同一组临时值再次同步 → 值没变不写（返回 0）");
-  else bad("v2.3.3：同值仍然写盘（返回 " + sameAgain + "）");
+  if (sameAgain === 0) ok("v2.3.6：同一组临时值再次同步 → 值没变不写（返回 0）");
+  else bad("v2.3.6：同值仍然写盘（返回 " + sameAgain + "）");
   const restored = await C.syncDefTempToTokens(CARD_ID, { ac: 0, fort: 0, ref: 0, will: 0 });
   hpNow = token.metadata[KEY_HP];
   if (restored === 1 && hpNow.defenses.ac === base.ac && hpNow.defenses.fort === base.fort &&
     hpNow.defenses.reflex === base.reflex && hpNow.defenses.will === base.will) {
-    ok("v2.3.3：临时值清零（短/长休）→ 四防写回卡片基础值，地图圆/盾还原");
-  } else bad("v2.3.3：清零后四防没有还原：" + JSON.stringify(hpNow.defenses));
+    ok("v2.3.6：临时值清零（短/长休）→ 四防写回卡片基础值，地图圆/盾还原");
+  } else bad("v2.3.6：清零后四防没有还原：" + JSON.stringify(hpNow.defenses));
   /* 无权限：非 GM 且非创建者 → 跳过、一个字节都不写 */
   token.createdUserId = "someone-else";
   token.metadata[KEY_HP] = JSON.parse(JSON.stringify(baseHp));
   roleNow = "PLAYER"; idNow = "user-me";
   const denied = await C.syncDefTempToTokens(CARD_ID, { ac: 0, fort: 2, ref: 0, will: 0 });
-  if (denied === 0 && token.metadata[KEY_HP].defenses.fort === 1) ok("v2.3.3：无权限 token 跳过（不写别人的 token）");
-  else bad("v2.3.3：无权限 token 仍然被写：" + JSON.stringify(token.metadata[KEY_HP].defenses));
+  if (denied === 0 && token.metadata[KEY_HP].defenses.fort === 1) ok("v2.3.6：无权限 token 跳过（不写别人的 token）");
+  else bad("v2.3.6：无权限 token 仍然被写：" + JSON.stringify(token.metadata[KEY_HP].defenses));
   roleNow = "GM"; idNow = "user-gm";
   token.createdUserId = "user-gm";
 }
 
-/* ---- v2.3.3：端到端顺序 —— 临时四防写 token 后，紧随的 syncTokenStats 不能回写 base ---- */
+/* ---- v2.3.6：端到端顺序 —— 临时四防写 token 后，紧随的 syncTokenStats 不能回写 base ---- */
 {
   const dBase = G.deriveGlance(char);
   const base = {};
@@ -400,23 +401,23 @@ if (oldState.atkTemp === 0 && oldState.dmgTemp === 0 && oldState.surgeTemp === 0
   await C.syncDefTempToTokens("c-test", st.defTemp);
   let hpNow = token.metadata[KEY_HP];
   if (hpNow.defenses.fort === base.fort + 2 && hpNow.defenses.reflex === base.reflex + 1)
-    ok("v2.3.3：def-temp 后 token 四防 = 卡片基础 + 临时（fort+" + 2 + " / reflex+" + 1 + "）");
-  else bad("v2.3.3：def-temp 后 token 四防不对：" + JSON.stringify(hpNow.defenses));
+    ok("v2.3.6：def-temp 后 token 四防 = 卡片基础 + 临时（fort+" + 2 + " / reflex+" + 1 + "）");
+  else bad("v2.3.6：def-temp 后 token 四防不对：" + JSON.stringify(hpNow.defenses));
   const wrote = await T.syncTokenStats(token.id, T.hpView(hpNow, { maxHp: 20, surges: 4 }), {
     maxHp: 20, surgesMax: 4, defenses: dBase.defenses, defTemp: st.defTemp
   });
   hpNow = token.metadata[KEY_HP];
   if (wrote === false && hpNow.defenses.fort === base.fort + 2 && hpNow.defenses.reflex === base.reflex + 1)
-    ok("v2.3.3：紧随的 syncTokenStats 带 ctx.defTemp → 返回 false、不回写基础值（修复「变一下又变回去」）");
-  else bad("v2.3.3：syncTokenStats 又把临时四防写回去了：" + JSON.stringify({ wrote, def: hpNow.defenses }));
+    ok("v2.3.6：紧随的 syncTokenStats 带 ctx.defTemp → 返回 false、不回写基础值（修复「变一下又变回去」）");
+  else bad("v2.3.6：syncTokenStats 又把临时四防写回去了：" + JSON.stringify({ wrote, def: hpNow.defenses }));
   await C.syncDefTempToTokens("c-test", { ac: 0, fort: 0, ref: 0, will: 0 });
   hpNow = token.metadata[KEY_HP];
   if (hpNow.defenses.fort === base.fort && hpNow.defenses.reflex === base.reflex)
-    ok("v2.3.3：临时四防清零 → token 写回卡片基础值（短/长休还原）");
-  else bad("v2.3.3：清零后没有写回基础值：" + JSON.stringify(hpNow.defenses));
+    ok("v2.3.6：临时四防清零 → token 写回卡片基础值（短/长休还原）");
+  else bad("v2.3.6：清零后没有写回基础值：" + JSON.stringify(hpNow.defenses));
 }
 
-/* ---- v2.3.3：combatMods.damages[].dieUp（武器伤害骰提升 1d4→…→2d12） ---- */
+/* ---- v2.3.6：combatMods.damages[].dieUp（武器伤害骰提升 1d4→…→2d12） ---- */
 {
   const synth = {
     name: "dieUp 合成",
@@ -436,11 +437,11 @@ if (oldState.atkTemp === 0 && oldState.dmgTemp === 0 && oldState.surgeTemp === 0
   };
   const cases = [[1, "1d6"], [2, "1d8"], [3, "1d10"], [4, "1d12"], [5, "2d6"], [8, "2d12"], [9, "2d12"], [-1, "1d4"]];
   const wrong = cases.filter(([n, want]) => dieOf(n) !== want);
-  if (!wrong.length) ok("v2.3.3：匕首 dieUp 1/2/3/4/5/8/9/-1 → 1d6/1d8/1d10/1d12/2d6/2d12/2d12/1d4（端点 clamp）");
-  else bad("v2.3.3：dieUp 提升序列不对：" + wrong.map(([n, want]) => n + "→" + dieOf(n) + "（要 " + want + "）").join(" / "));
+  if (!wrong.length) ok("v2.3.6：匕首 dieUp 1/2/3/4/5/8/9/-1 → 1d6/1d8/1d10/1d12/2d6/2d12/2d12/1d4（端点 clamp）");
+  else bad("v2.3.6：dieUp 提升序列不对：" + wrong.map(([n, want]) => n + "→" + dieOf(n) + "（要 " + want + "）").join(" / "));
   if (dieOf(undefined) === "1d4" && dieOf(0) === "1d4")
-    ok("v2.3.3：dieUp 缺失 / 0 时伤害骰保持武器原始 1d4（旧导出逐字节不变）");
-  else bad("v2.3.3：dieUp 缺失/0 改变了旧伤害骰");
+    ok("v2.3.6：dieUp 缺失 / 0 时伤害骰保持武器原始 1d4（旧导出逐字节不变）");
+  else bad("v2.3.6：dieUp 缺失/0 改变了旧伤害骰");
   /* 旧 fixture（无 dieUp）→ 每个伤害骰仍等于规则里的武器原始 d（逐项核对） */
   const oldChar = char;
   const hasDieUp = JSON.stringify((oldChar.combatMods || {}).damages || []).indexOf("dieUp") >= 0;
@@ -457,12 +458,12 @@ if (oldState.atkTemp === 0 && oldState.dmgTemp === 0 && oldState.surgeTemp === 0
   const sameOld = oldDmg.length === expectedOld.length &&
     oldDmg.every((d, i) => d.dice === expectedOld[i]);
   if (!hasDieUp && sameOld)
-    ok("v2.3.3：旧 fixture（无 dieUp）伤害骰逐项仍等于规则武器原始 d（零变化）");
-  else bad("v2.3.3：旧 fixture 的伤害骰被 dieUp 逻辑改了 / 旧 fixture 意外含 dieUp：" + JSON.stringify({ hasDieUp, got: oldDmg.map((d) => d.dice), want: expectedOld }));
+    ok("v2.3.6：旧 fixture（无 dieUp）伤害骰逐项仍等于规则武器原始 d（零变化）");
+  else bad("v2.3.6：旧 fixture 的伤害骰被 dieUp 逻辑改了 / 旧 fixture 意外含 dieUp：" + JSON.stringify({ hasDieUp, got: oldDmg.map((d) => d.dice), want: expectedOld }));
   /* 武器原始骰本身在阶梯里（2d6 / 2d8）→ 按阶梯继续升；非常规骰原样 */
   const weapons2d = RR.weapons.filter((w) => w.d === "2d6")[0];
   if (!weapons2d) {
-    ok("v2.3.3：rules 没有 2d6 武器 → 跳过 2d6 提升断言");
+    ok("v2.3.6：rules 没有 2d6 武器 → 跳过 2d6 提升断言");
   } else {
     const synth2 = JSON.parse(JSON.stringify(synth));
     synth2.baseItems = { 0: "w:" + weapons2d.n };
@@ -473,26 +474,70 @@ if (oldState.atkTemp === 0 && oldState.dmgTemp === 0 && oldState.surgeTemp === 0
     synth2.combatMods.damages[0].dieUp = 4;
     const d4 = G.deriveGlance(synth2).damages[0].dice;
     if (d1 === "2d8" && d3 === "2d12" && d4 === "2d12")
-      ok("v2.3.3：原始 2d6 武器 dieUp 1/3/4 → 2d8/2d12/2d12（2dX 也按阶梯继续升）");
-    else bad("v2.3.3：2d6 原始骰提升不对：" + JSON.stringify({ d1, d3, d4 }));
+      ok("v2.3.6：原始 2d6 武器 dieUp 1/3/4 → 2d8/2d12/2d12（2dX 也按阶梯继续升）");
+    else bad("v2.3.6：2d6 原始骰提升不对：" + JSON.stringify({ d1, d3, d4 }));
   }
 
   /* 真实新 fixture（存在时）：应能 derive，且第一项伤害骰为 1d6（匕首 dieUp=1） */
   const newFixture = path.join(ROOT, "dev", "fixtures", "申比软软-new.json");
   if (!fs.existsSync(newFixture)) {
-    ok("v2.3.3：真实新 fixture 不存在 → 跳过（不依赖用户文件）");
+    ok("v2.3.6：真实新 fixture 不存在 → 跳过（不依赖用户文件）");
   } else {
     try {
       const saveNew = JSON.parse(fs.readFileSync(newFixture, "utf8"));
       const charNew = (saveNew.pages && saveNew.pages.character) || saveNew.character || saveNew;
       const dNew = G.deriveGlance(charNew);
       const firstDie = dNew.damages[0] ? dNew.damages[0].dice : "";
-      if (firstDie === "1d6") ok("v2.3.3：真实新 fixture 可 derive，第一项伤害骰 = 1d6（dieUp=1 生效）");
-      else bad("v2.3.3：真实新 fixture 第一项伤害骰 = " + firstDie + "（应为 1d6）");
+      if (firstDie === "1d6") ok("v2.3.6：真实新 fixture 可 derive，第一项伤害骰 = 1d6（dieUp=1 生效）");
+      else bad("v2.3.6：真实新 fixture 第一项伤害骰 = " + firstDie + "（应为 1d6）");
     } catch (eNew) {
-      bad("v2.3.3：真实新 fixture 无法 derive：" + (eNew && eNew.message ? eNew.message : eNew));
+      bad("v2.3.6：真实新 fixture 无法 derive：" + (eNew && eNew.message ? eNew.message : eNew));
     }
   }
+}
+
+/* ---- v2.3.6：血条编辑窗权限兜底（GM / createdUserId 缺失） ---- */
+{
+  const tokOther = { id: "t1", createdUserId: "other" };
+  const tokMissing = { id: "t2" };
+  const tokMissingEmpty = { id: "t3", createdUserId: "" };
+  const tokMine = { id: "t4", createdUserId: "me" };
+  if (H.mayEditToken(tokOther, "GM", "me") === true &&
+    H.mayEditToken(tokOther, "PLAYER", "me") === false &&
+    H.mayEditToken(tokMissing, "PLAYER", "me") === true &&
+    H.mayEditToken(tokMissingEmpty, "PLAYER", "me") === true &&
+    H.mayEditToken(tokMine, "PLAYER", "me") === true)
+    ok("v2.3.6：GM 始终可编辑；非 GM 在 createdUserId 缺失/空时可编辑；不匹配只读；自己的可编辑");
+  else bad("v2.3.6：hp 编辑权限兜底不对");
+  const lockedMeta = { locked: true };
+  if (H.hpEditReadOnly(lockedMeta, "GM") === false && H.hpEditReadOnly(lockedMeta, "PLAYER") === true &&
+    H.hpEditReadOnly({ locked: false }, "PLAYER") === false)
+    ok("v2.3.6：lockedForPlayer 只对非 GM 生效（GM 永远不被 lock 卡住）");
+  else bad("v2.3.6：lockedForPlayer 判定不对");
+  const pageSrc = fs.readFileSync(path.join(ROOT, "assets", "hp-edit-page.js"), "utf8");
+  if (pageSrc.indexOf("focus id=") >= 0 &&
+    pageSrc.indexOf("key=") >= 0 &&
+    pageSrc.indexOf("key(capture)") >= 0 && pageSrc.indexOf("beforeinput id=") >= 0 &&
+    pageSrc.indexOf("input id=") >= 0 && pageSrc.indexOf("commit trigger=") >= 0 &&
+    pageSrc.indexOf("fillForm value-cur=") >= 0 && pageSrc.indexOf("page ready, inputs=") >= 0 &&
+    pageSrc.indexOf("document.activeElement === el") >= 0 &&
+    pageSrc.indexOf("state.dirty = true") >= 0 && pageSrc.indexOf("load skip fillForm (dirty)") >= 0 &&
+    pageSrc.indexOf("paintDiag()") >= 0 && pageSrc.indexOf("loaded v=") >= 0 &&
+    pageSrc.indexOf("url=") >= 0 && pageSrc.indexOf("CH_HPEDIT_LOG") >= 0 &&
+    pageSrc.indexOf('sendMessage(CH_HPEDIT_LOG') >= 0 &&
+    pageSrc.indexOf('if (max === "" && cur !== "") max = cur;') >= 0 &&
+    pageSrc.indexOf('if (cur === "" && max !== "") cur = max;') >= 0 &&
+    pageSrc.indexOf("commit result trigger=") >= 0 &&
+    pageSrc.indexOf("ok=") >= 0 && pageSrc.indexOf("patch=") >= 0 &&
+    pageSrc.indexOf("document.activeElement") >= 0 &&
+    !/if \(!built\.ok\)[\s\S]{0,240}?fillOne\(/.test(pageSrc))
+    ok("v2.3.6/2.3.6：hpEdit 输入诊断 + fillForm 跳过焦点 / dirty 保护 / 可见诊断 / loaded 版本 URL 齐全");
+  else bad("v2.3.6：hpEdit 输入诊断日志不完整");
+  if (pageSrc.indexOf("[4enext][hpEdit] role=") >= 0 &&
+    pageSrc.indexOf("applyDisabled dis=") >= 0 &&
+    pageSrc.indexOf("state.role === \"GM\"") >= 0)
+    ok("v2.3.6：hpEdit 诊断日志（role/pid/createdUserId/editable/locked + applyDisabled）与 GM 优先兜底存在");
+  else bad("v2.3.6：hpEdit 诊断日志 / GM 兜底缺失");
 }
 
 console.log(fail ? "\n" + fail + " 个问题" : "\n全部通过（v1.8.6 速览：动作标签 / 可用总数 / 无专长区块 / 无装备等级 / HP·回复力·临时加值 / 短休 / 索引 ≤350KB）");

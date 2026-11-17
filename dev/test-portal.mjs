@@ -1,4 +1,4 @@
-// v2.3.3：传送门核心离线自测（node dev/test-portal.mjs）
+// v2.3.6：传送门核心离线自测（node dev/test-portal.mjs）
 // ---------------------------------------------------------------------------
 // 直接加载 **assets/background.core.js 的真实源码**（vm + 浏览器外壳桩，不启动 boot），
 // 从 window.__4ePortal 拿纯函数，断言：
@@ -148,7 +148,7 @@ ok("从真实源码拿到 window.__4ePortal（portalMeta / 螺旋 / 墙避让 / 
   else bad("① portal.svg 仍是黑盘 / 有矩形底");
 }
 
-/* ---- ①b 工具对齐 Full Suite：GM-only / tool→mode / activateMode / 双路径（v2.3.3 真机 bug 回归） ---- */
+/* ---- ①b 工具对齐 Full Suite：GM-only / tool→mode / activateMode / 双路径（v2.3.6 真机 bug 回归） ---- */
 {
   const order = [];
   let toolDef = null, modeDef = null, pairModeDef = null, role = "GM", notified = 0;
@@ -351,7 +351,7 @@ ok("从真实源码拿到 window.__4ePortal（portalMeta / 螺旋 / 墙避让 / 
   else bad("①d 预览/手势诊断日志缺失");
 }
 
-/* ---- ①e 创建验证 / 传送门生命周期诊断（v2.3.3 真机排障） ---- */
+/* ---- ①e 创建验证 / 传送门生命周期诊断（v2.3.6 真机排障） ---- */
 {
   if (coreSrc.indexOf("portal verify id=") >= 0 && coreSrc.indexOf("getItems([item.id])") >= 0 &&
     coreSrc.indexOf("portalLifecycleSync") >= 0 && coreSrc.indexOf("portal added id=") >= 0 &&
@@ -484,7 +484,7 @@ ok("从真实源码拿到 window.__4ePortal（portalMeta / 螺旋 / 墙避让 / 
   else bad("①i readForm 仍包含 radius");
 }
 
-/* ---- ①j 传送落点不重复触发 / 手动再次拖入正常触发（v2.3.3 收窄版） ---- */
+/* ---- ①j 传送落点不重复触发 / 手动再次拖入正常触发（v2.3.6 收窄版） ---- */
 {
   let portalOpen = 0;
   const portal = { id: "p-door", type: "IMAGE", position: { x: 500, y: 500 }, width: 40, height: 40, scale: { x: 0.9333, y: 0.9333 }, visible: true, metadata: { [P.CONSTANTS.KEY_PORTAL]: { name: "门", tag: "城", radius: 70 } } };
@@ -614,7 +614,7 @@ ok("从真实源码拿到 window.__4ePortal（portalMeta / 螺旋 / 墙避让 / 
 
 const NS_PREVIEW_GHOST = P.CONSTANTS.KEY_PORTAL + "-ghost";
 
-/* ---- ①o v2.3.3 隐形门：入口跳过 / 目的地保留 / GM ghost ---- */
+/* ---- ①o v2.3.6 隐形门：入口跳过 / 目的地保留 / GM ghost ---- */
 {
   const portals = [
     { itemId: "v1", name: "显形门", tag: "T", visible: true },
@@ -679,7 +679,7 @@ const NS_PREVIEW_GHOST = P.CONSTANTS.KEY_PORTAL + "-ghost";
   else bad("①p portalMeta 仍输出 effect");
 }
 
-/* ---- ①q v2.3.3 成对创建（两个同 tag 门） ---- */
+/* ---- ①q v2.3.6 成对创建（两个同 tag 门） ---- */
 {
   let added = [];
   const builder = {
@@ -715,7 +715,7 @@ const NS_PREVIEW_GHOST = P.CONSTANTS.KEY_PORTAL + "-ghost";
   else bad("①r 仍有 fx 播放入口");
 }
 
-/* ---- ①s v2.3.3 图标换成用户 PNG（150×150、尺寸仍=2r） ---- */
+/* ---- ①s v2.3.6 图标换成用户 PNG（150×150、尺寸仍=2r） ---- */
 {
   const png = path.join(ROOT, "assets", "portal.png");
   if (!fs.existsSync(png)) bad("①s 缺少 assets/portal.png");

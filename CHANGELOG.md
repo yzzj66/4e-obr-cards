@@ -2,6 +2,23 @@
 
 > 这份文件是历史更新记录。安装与使用请看 [README](README.md)。
 
+**v2.3.6：修血条编辑窗输入被回填覆盖**（2026-11-17）——
+`fillForm` 跳过当前 `document.activeElement` 的输入框，不再覆盖正在编辑的格子；新增 `state.dirty`：
+输入后置 true、commit/失焦清空，`load()` 期间 dirty 则跳过 fillForm（防止异步 load 把刚输入的值覆盖）。
+窗口状态行新增**可见诊断** `role=GM editable=1 dis=0 inputs=7 v2.3.6`；页面加载打印
+`[4enext][hpEdit] loaded v=2.3.6 url=…`，便于确认 iframe 是否新页面/缓存。hpEdit 日志同时通过 `CH_HPEDIT_LOG` 广播到后台打印（后台控制台一定能看到）。
+另修输入消失根因：只填当前生命或上限任一格时自动补齐另一格（20 → 20/20）；非法/半截提交不再 `fillOne` 清空用户输入，改为保留原值 + 警告；debounce 提交带上当前焦点元素；commit 日志追加 ok/message/patch。
+
+**v2.3.5：血条编辑窗输入诊断日志**（2026-11-17）——
+只加日志、不改行为：`focus` / `key` / `key(capture)` / `input` / `beforeinput` / `commit trigger` /
+`fillForm value-cur=…` / `page ready, inputs=…`，全部前缀 `[4enext][hpEdit]`，用于定位「输入框有 focus 但键入无变化」。
+
+**v2.3.4：修复血条编辑窗在部分 token 上被误判只读**（2026-11-17）——
+`mayEditToken` 改为 **GM 优先**（GM 永不因 createdUserId 只读）；非 GM 时若 token 的 `createdUserId` 缺失/为空
+（老 token、导入 token 常见）放宽为可编辑，只有明确不匹配才只读；`lockedForPlayer` 仍只对非 GM 生效。
+`hp-edit-page.js` 增加 `[4enext][hpEdit] role=… pid=… item.createdUserId=… editable=… locked=…` 与
+`applyDisabled dis=…` 诊断日志，便于真机排查输入框为何禁用。
+
 **v2.3.3：角色卡面板文案精简**（2026-11-17）——
 删除面板底部整段帮助说明（双写 / 只读 / 先攻骰子独立窗口）、未选中 token 空状态提示、标题栏卡片计数（N 张卡）、
 标题右侧「导入 / 列表 / 预览」副标题与底部窗口提示；导入区 / 卡片列表 / 预览区 / 按钮全部保留，未选中时隐藏空状态容器。

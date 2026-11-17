@@ -4,10 +4,10 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>4eNEXT to owlbear · 血条组件</title>
-<link rel="stylesheet" href="assets/ui.css?v=2.3.3">
+<link rel="stylesheet" href="assets/ui.css?v=2.3.6">
 </head>
 <body class="win-page hpe-page">
-<!-- v2.3.3：血条编辑窗照 Full Suite 的 hp-bar 重做（第一批：布局 + 字段）。
+<!-- v2.3.6：血条编辑窗照 Full Suite 的 hp-bar 重做（第一批：布局 + 字段）。
      窗口约 344×106：名称行（⣿ 拖动柄 + 居中卡名 + 钉住 / 锁定 / 重绘 + ✕）、
      生命药丸（当前 / 上限，按 cur/max 比例填充）+ 临时生命药丸、四防四个小输入、底部状态行。
      **已去掉「回复力」字段**（surges 数据只读不写，保留在 token 上）；四防保留；新增临时生命 temp。
@@ -53,10 +53,11 @@
 
     <div class="hpe-status">
       <span class="hpe-note" id="hpe-note">填生命上限（比如 20）就能画出第一根血条</span>
+      <span class="hpe-diag" id="hpe-diag" title="页面版本 / 角色 / 可编辑状态 / 绑定输入框数"></span>
       <span class="win-flash" id="win-flash"></span>
     </div>
   </div>
 </div>
-<script type="module" src="assets/hp-edit-page.js?v=2.3.3"></script>
+<script type="module" src="assets/hp-edit-page.js?v=2.3.6"></script>
 </body>
 </html>

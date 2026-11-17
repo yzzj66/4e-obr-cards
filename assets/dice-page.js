@@ -322,13 +322,13 @@ async function playEffect(row, origin) {
   }
 }
 
-/* v2.3.3：doRoll 分步诊断日志（只加日志，不改行为）。用户控制台看到哪一步停住就能定位。 */
+/* v2.3.6：doRoll 分步诊断日志（只加日志，不改行为）。用户控制台看到哪一步停住就能定位。 */
 function dlog(msg) {
   try { console.log("[4enext][dice] " + msg); } catch (e) { /* 忽略 */ }
 }
 
 async function doRoll() {
-  /* v2.3.3：用户「点投掷没反应」诊断 —— 有这行说明点击已触发，可继续看后面是否报错。 */
+  /* v2.3.6：用户「点投掷没反应」诊断 —— 有这行说明点击已触发，可继续看后面是否报错。 */
   try { console.log("[4enext][dice] 点击投掷 expr=" + (els.exprInput ? els.exprInput.value : "")); } catch (e) { /* 忽略 */ }
   if (busy) {
     dlog("step busy-return（上一掷还在 260ms 收尾）");
@@ -466,7 +466,7 @@ var histBusy = false;
 /** v1.9.2：最近一次成功打开记录窗口的时间 —— 900ms 内又点按钮视为「窗口不可见」兜底。 */
 var lastHistOpenAt = 0;
 var histRepeatWarned = false;
-/* v2.3.3：速览临时命中/伤害变化 → 防抖刷新 4E 预设（读 track state）。 */
+/* v2.3.6：速览临时命中/伤害变化 → 防抖刷新 4E 预设（读 track state）。 */
 var presetRefreshTimer = 0;
 var presetPending = false;
 /** 等后台补齐的回执计时器。 */
@@ -631,7 +631,7 @@ async function refreshPresets() {
       return;
     }
     var mod = await import("./dice-4e.js");
-    /* v2.3.3：track.loadState 返回 { state, scope } —— 必须取 .state，否则临时值恒为 0。
+    /* v2.3.6：track.loadState 返回 { state, scope } —— 必须取 .state，否则临时值恒为 0。
      * 统一走 dice-4e 的 tempsFromLoaded（单测覆盖）。 */
     var temps = { atkTemp: 0, dmgTemp: 0 };
     try {
@@ -800,7 +800,7 @@ function wireEvents() {
   if (els.btnAdvantage) els.btnAdvantage.addEventListener("click", onAdvantage);
   if (els.btnCrit) els.btnCrit.addEventListener("click", onCrit);
   if (els.btnRoll) els.btnRoll.addEventListener("click", function () {
-  /* v2.3.3：先打一行「按钮确实收到点击」，再交给 doRoll（避免只看到结果、分不清是没绑上还是中途失败）。 */
+  /* v2.3.6：先打一行「按钮确实收到点击」，再交给 doRoll（避免只看到结果、分不清是没绑上还是中途失败）。 */
   try { console.log("[4enext][dice] 投掷按钮 click"); } catch (e) { /* 忽略 */ }
   void doRoll();
 });
@@ -861,7 +861,7 @@ onReady(function () {
   void actionModeNow().then(function (open) {
     ACTION_MODE = !!open;
     if (ACTION_MODE) document.body.classList.add("dice-action");
-    /* v2.3.3：页面就绪诊断（控制台可判：是否加载到新页面 / 是否 action 模式）。 */
+    /* v2.3.6：页面就绪诊断（控制台可判：是否加载到新页面 / 是否 action 模式）。 */
     try { console.log("[4enext][dice] 页面就绪 v=" + PLUGIN_VERSION + " action=" + ACTION_MODE); } catch (e) { /* 忽略 */ }
   }, function () {
     try { console.log("[4enext][dice] 页面就绪 v=" + PLUGIN_VERSION + " action=false（isOpen 不可用）"); } catch (e) { /* 忽略 */ }
@@ -894,7 +894,7 @@ onReady(function () {
     await refreshPresets();
   })();
 
-  /* v2.3.3：速览里点「临时命中 / 临时伤害」或短/长休后，房间数据 / token 会变 →
+  /* v2.3.6：速览里点「临时命中 / 临时伤害」或短/长休后，房间数据 / token 会变 →
    * 防抖 200ms 重新读 state 刷新 4E 预设。 */
   try {
     OBR.room.onMetadataChange(schedulePresetRefresh);
