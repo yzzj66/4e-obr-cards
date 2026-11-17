@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>4eNEXT to owlbear · 设置 / 关于</title>
-<link rel="stylesheet" href="assets/ui.css?v=2.2.0">
+<link rel="stylesheet" href="assets/ui.css?v=2.3.3">
 </head>
 <body class="win-page">
 <!-- v1.3.2：设置 / 关于窗口（独立 popover，入口 = 左侧工具栏「设置」）。
@@ -14,7 +14,7 @@
 <div class="win">
   <div class="win-head" id="head" title="按住这里拖动窗口（位置会记住）">
     <span class="grip" aria-hidden="true">⠿</span>
-    <div class="t"><b>设置 / 关于 · 4eNEXT to owlbear</b><small id="set-head-sub">加载中…</small></div>
+    <div class="t"><b>设置 / 关于 · 4eNEXT to owlbear</b></div>
     <div class="sp">
       <button class="icon-btn" id="pin" title="回到默认位置（清除本窗口记住的位置）">⌖</button>
       <button class="icon-btn" id="close" title="关闭窗口">✕</button>
@@ -34,7 +34,6 @@
       <button class="set-tab" type="button" data-pane="dice" aria-controls="pane-dice"><span class="ico" aria-hidden="true">⚄</span>骰子</button>
       <button class="set-tab" type="button" data-pane="initiative" aria-controls="pane-initiative"><span class="ico" aria-hidden="true">⚔</span>先攻</button>
       <button class="set-tab" type="button" data-pane="data" aria-controls="pane-data"><span class="ico" aria-hidden="true">▤</span>数据与权限</button>
-      <button class="set-tab" type="button" data-pane="limits" aria-controls="pane-limits"><span class="ico" aria-hidden="true">!</span>已知限制</button>
       <button class="set-tab" type="button" data-pane="reset" aria-controls="pane-reset"><span class="ico" aria-hidden="true">⌫</span>重置本机设置</button>
       <button class="set-tab" type="button" data-pane="thanks" aria-controls="pane-thanks"><span class="ico" aria-hidden="true">♥</span>致谢</button>
     </nav>
@@ -247,33 +246,6 @@
         <p class="set-hint">卸载扩展不会删除房间数据；换房间需要重新导入。自诊断通知的开关只影响提示，不属于上面这些键。</p>
       </section>
 
-      <!-- ---------------- 已知限制 ---------------- -->
-      <section class="set-pane" id="pane-limits">
-        <h3>已知限制</h3>
-        <p class="set-lead">先说清楚做不到的部分，省得在团里踩坑。</p>
-        <ul class="set-list">
-          <li><b>没有真机联调</b>：开发环境起不了 Owlbear 房间，所以「拖动窗口是否重载页面」「血条像素位置」
-            这类只在纸面上按参考实现推过，真机可能有偏差。</li>
-          <li><b>数值是离线推导的</b>：依赖规则正文的加值（职业特性自动加值、部分专长的逐条效果）没有还原，
-            防御 / 攻击等可能与 4E NEXT 差 1~2 点甚至更多，<b>以 4E NEXT 为准</b>。</li>
-          <li><b>血量是快照</b>：<code>hp</code> 存在 token 元数据上，是插件记的一份「本场战斗」数据，
-            不会写回 4E NEXT 的角色卡；重新导入同名卡也不会清掉它。</li>
-          <li><b>房间数据有上限（16 KB）</b>：角色卡<b>双写</b> —— 房间数据里存<b>精简名单副本</b>（只留速览要用的字段，
-            实测一张满级卡从 4.9 KB 压到 1.9 KB；写之前会算总长度，超过 14 KB 就不写并弹 ERROR，避免把房间写死）；
-            当前场景的隐藏 item 里存<b>完整卡</b>（只去立绘，字段不丢）。读的时候按 id 取并集、同 id 用场景里的完整卡；
-            房间名单保证换场景 / 玩家侧仍能看到卡并绑定 token，换场景后完整数据（典范 / 传奇 / 详情等）要等重新导入。
-            两边都写不进才兜底<b>本机</b>（面板分别写「角色卡：本场景」/「角色卡：本机」）；骰子历史也在这块预算里（20 条封顶）。
-            要腾地方：设置 → 数据与权限 →「清理房间数据」（清骰子历史 / 清空角色卡）。</li>
-          <li><b>骰子不做判定</b>：只显示每颗骰子的点数与总点数，没有 TN 输入、不显示命中 / 豁免成败；
-            重击是 4E 口径（只把伤害骰取最大值，d20 与减法骰保持真实掷值），公式里带 adv / max 等包裹时会退化为普通投掷并提示。</li>
-          <li><b>右键菜单只对单个 IMAGE token 出现</b>：多选不显示，玩家（非 GM）看不到这几项。</li>
-          <li><b>先攻条没有镜头跟随</b>：轮到谁不会自动把镜头移过去；先攻条目最多 <b>40 条</b>（房间数据上限），
-      写不进房间数据时会降级到本机并提示。</li>
-          <li><b>窗口位置只记在本机</b>：换电脑 / 清浏览器数据就回到默认点；窗口不跟地图平移缩放走。</li>
-          <li><b>左上角图标打开的那份面板由 Owlbear 定位</b>，拖不动；要拖请用工具栏图标打开。</li>
-        </ul>
-      </section>
-
       <!-- ---------------- 重置本机设置 ---------------- -->
       <section class="set-pane" id="pane-reset">
         <h3>重置本机设置</h3>
@@ -320,9 +292,8 @@
 
   <div class="win-foot">
     <span class="win-flash" id="win-flash"></span>
-    <span class="win-hint">按住标题栏可拖动 · 每个窗口各自记住位置</span>
   </div>
 </div>
-<script type="module" src="assets/settings-page.js?v=2.2.0"></script>
+<script type="module" src="assets/settings-page.js?v=2.3.3"></script>
 </body>
 </html>

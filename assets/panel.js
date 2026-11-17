@@ -21,7 +21,6 @@ import { applyAction, loadState, scopeText } from "./track.js";
 import { createWindow, feedback, closeSelf } from "./window.js";
 
 const listEl = document.getElementById("list");
-const countEl = document.getElementById("count");
 const viewEl = document.getElementById("view");
 const selEl = document.getElementById("sel");
 const fileEl = document.getElementById("file");
@@ -53,8 +52,7 @@ function metaOf(card) {
 }
 
 function renderList() {
-  if (!countEl || !listEl) return;
-  countEl.textContent = cards.length + " 张";
+  if (!listEl) return;
   if (!cards.length) {
     listEl.innerHTML = '<div class="empty-panel" style="padding:24px 12px"><p>还没有导入角色卡。<br>点上面的「导入 JSON」或把文件拖进来。</p></div>';
     return;
@@ -221,9 +219,13 @@ async function refreshSelection() {
     selectedToken = null;
   }
   if (selEl) {
-    selEl.innerHTML = selectedToken
-      ? "已选中 token：<b>" + esc(selectedToken.name || "未命名") + "</b>"
-      : "未选中 token（右键地图上的 token 可直接绑定）";
+    if (selectedToken) {
+      selEl.style.display = "";
+      selEl.innerHTML = "已选中 token：<b>" + esc(selectedToken.name || "未命名") + "</b>";
+    } else {
+      selEl.style.display = "none";
+      selEl.innerHTML = "";
+    }
   }
   void renderView();
 }

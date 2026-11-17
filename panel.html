@@ -4,8 +4,8 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>4eNEXT to owlbear · 角色卡</title>
-<link rel="stylesheet" href="assets/ui.css?v=2.2.0">
-<link rel="stylesheet" href="assets/glance.css?v=2.2.0">
+<link rel="stylesheet" href="assets/ui.css?v=2.3.3">
+<link rel="stylesheet" href="assets/glance.css?v=2.3.3">
 </head>
 <body class="win-page">
 <!-- v1.3.1：「角色卡面板」只负责**导入 / 列表 / 预览 / 绑定**（用户口中的「导入面板」）。
@@ -14,9 +14,8 @@
 <div class="panel">
   <header class="panel-top" id="head" title="按住这里可以拖动窗口（popover 模式下有效，位置会记住）">
     <span class="grip" aria-hidden="true">⠿</span>
-    <div class="panel-title">4eNEXT to owlbear<small id="count">0 张卡</small></div>
+    <div class="panel-title">4eNEXT to owlbear</div>
     <div class="panel-top-right">
-      <span class="panel-sub">4E NEXT 角色卡 · 导入 / 列表 / 预览</span>
       <button class="icon-btn" id="pin" title="回到默认位置（清除本面板记住的位置）">⌖</button>
       <button class="icon-btn" id="close" title="关闭面板">✕</button>
     </div>
@@ -45,21 +44,15 @@
       </div>
       <div class="sel-token" id="sel">未选中 token</div>
       <div class="card-list" id="list"></div>
-      <div class="side-foot">
-        <p>角色卡<b>双写</b>：<b>房间数据</b>存精简名单副本（跨场景 / 全桌可见，用于绑定与速览）；<b>当前场景</b>的隐藏 item 存完整卡（换场景看不到完整数据，但名单仍在）；两边都写不进才兜底到<b>本机</b>。工具栏那一行会写清当前来源。</p>
-        <p>面板只读；改卡仍然在 4E NEXT 里做，改完重新导出导入即可覆盖同名卡。「导出 JSON」把当前卡导出成 4E NEXT 可导入的单角色文件。</p>
-        <p><b>先攻</b>与<b>骰子</b>已经是独立窗口：左侧工具栏的对应图标（或右键「加入先攻」）。</p>
-      </div>
     </aside>
     <main class="panel-main"><div class="panel-main-inner" id="view"></div></main>
   </div>
 
   <div class="win-foot">
     <span class="win-flash" id="win-flash"></span>
-    <span class="win-hint">每个窗口各自记住位置，可以同时打开</span>
   </div>
 </div>
 <div class="drag-overlay" id="overlay"><b>松手导入 4E NEXT JSON（导出存档 / 全量备份）</b></div>
-<script type="module" src="assets/panel.js?v=2.2.0"></script>
+<script type="module" src="assets/panel.js?v=2.3.3"></script>
 </body>
 </html>

@@ -1,19 +1,14 @@
-// 右下角浮动按钮：点一下打开全屏角色卡面板。
+// 右下角浮动按钮（v2.3.3）：打开 4eNEXT to owlbear 设置窗口。
+// 页面只负责发命令；后台已有 settings 窗口逻辑（WINS.settings / openWinOrNotify("settings")），不复制。
 import OBR from "../vendor/obr-sdk.js";
-import { ID_PANEL, URL_PANEL } from "./common.js";
+import { CH_OPEN_SETTINGS } from "./common.js";
 
-const fab = document.getElementById("fab");
+var fab = document.getElementById("fab");
 
 fab.addEventListener("click", async function () {
   try {
-    await OBR.modal.open({ id: ID_PANEL, url: URL_PANEL, fullScreen: true });
+    await OBR.broadcast.sendMessage(CH_OPEN_SETTINGS, { at: Date.now() }, { destination: "LOCAL" });
   } catch (e) {
-    console.error("[4enext] 打开面板失败", e);
-    try {
-      await OBR.modal.close(ID_PANEL);
-      await OBR.modal.open({ id: ID_PANEL, url: URL_PANEL, fullScreen: true });
-    } catch (e2) {
-      console.error(e2);
-    }
+    console.error("[4enext] 打开设置失败", e);
   }
 });

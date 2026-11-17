@@ -100,7 +100,7 @@ function renderRows() {
   els.list.classList.toggle("compact", !expanded);
   paintToggle();
   if (!rows.length) {
-    els.list.innerHTML = '<div class="hist-empty">这台机器还没有骰子记录。掷一次就会出现在这里（本机保存，换房间 / 换机器不跟随）。</div>';
+    els.list.innerHTML = "";
     return;
   }
   var html = "";

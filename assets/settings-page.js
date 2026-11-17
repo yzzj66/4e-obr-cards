@@ -8,7 +8,7 @@
 //   所以「重置本机设置」也不可能顺手改掉别的东西。
 // ---------------------------------------------------------------------------
 // 这个窗口只做两件事：
-//   1) 展示静态说明（关于 / 使用说明 / 数据与权限 / 已知限制 / 致谢）—— 内容写死在 HTML 里，
+//   1) 展示静态说明（关于 / 使用说明 / 数据与权限 / 致谢）—— 内容写死在 HTML 里，
 //      版本号从 common.js 的 PLUGIN_VERSION 取（HTML 里不写死版本），不做多语言；
 //   2) 「重置本机设置」—— 只清**本机 localStorage** 里约定的那几组键：
 //        · 4enext/win-pos      独立窗口位置
@@ -43,9 +43,6 @@ function msgOf(e) {
 /* ---------------- 版本 / 构建（都取自 common.js，不写死） ---------------- */
 const verEl = document.getElementById("set-version");
 if (verEl) verEl.textContent = "v" + PLUGIN_VERSION;
-
-const headSubEl = document.getElementById("set-head-sub");
-if (headSubEl) headSubEl.textContent = "v" + PLUGIN_VERSION + " · 独立窗口 · 可拖动";
 
 const buildEl = document.getElementById("set-build");
 if (buildEl) {

@@ -1,4 +1,4 @@
-// v2.2.0：传送门核心离线自测（node dev/test-portal.mjs）
+// v2.3.3：传送门核心离线自测（node dev/test-portal.mjs）
 // ---------------------------------------------------------------------------
 // 直接加载 **assets/background.core.js 的真实源码**（vm + 浏览器外壳桩，不启动 boot），
 // 从 window.__4ePortal 拿纯函数，断言：
@@ -12,11 +12,73 @@
 //   ⑧ 工具注册 / 预览 / 编辑窗静态接线
 import fs from "node:fs";
 import path from "node:path";
+import zlib from "node:zlib";
 import vm from "node:vm";
 import { fileURLToPath } from "node:url";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const CORE = path.join(ROOT, "assets", "background.core.js");
+/* 读 PNG 四角 alpha：简易 RGBA/8-bit PNG 解码（只用于测试羽化边缘）。 */
+function pngCornerAlphas(file) {
+  const b = fs.readFileSync(file);
+  let off = 8, idat = Buffer.alloc(0), w = 0, h = 0, bd = 0, ct = 0;
+  while (off + 8 <= b.length) {
+    const len = b.readUInt32BE(off);
+    const type = b.slice(off + 4, off + 8).toString("ascii");
+    const data = b.slice(off + 8, off + 8 + len);
+    if (type === "IHDR") { w = data.readUInt32BE(0); h = data.readUInt32BE(4); bd = data[8]; ct = data[9]; }
+    else if (type === "IDAT") idat = Buffer.concat([idat, data]);
+    else if (type === "IEND") break;
+    off += 12 + len;
+  }
+  if (bd !== 8 || ct !== 6 || !w || !h) return null;
+  const raw = zlib.inflateSync(idat);
+  const bpp = 4, stride = w * bpp;
+  let prev = Buffer.alloc(stride), cur = Buffer.alloc(stride);
+  const at = (x, y) => cur[y * bpp + 3];
+  for (let y = 0; y < h; y++) {
+    const f = raw[y * (stride + 1)];
+    const row = raw.slice(y * (stride + 1) + 1, y * (stride + 1) + 1 + stride);
+    for (let i = 0; i < stride; i++) {
+      const a = i >= bpp ? cur[i - bpp] : 0;
+      const bb = prev[i];
+      const c = i >= bpp ? prev[i - bpp] : 0;
+      let v = row[i];
+      if (f === 1) v += a;
+      else if (f === 2) v += bb;
+      else if (f === 3) v += Math.floor((a + bb) / 2);
+      else if (f === 4) {
+        const p2 = a + bb - c, pa = Math.abs(p2 - a), pb = Math.abs(p2 - bb), pc = Math.abs(p2 - c);
+        v += pa <= pb && pa <= pc ? a : (pb <= pc ? bb : c);
+      }
+      cur[i] = v & 255;
+    }
+    prev = Buffer.from(cur);
+  }
+  /* 重新扫一遍取四角（上面的 at 依赖最后一行，改写直接计算） */
+  const rows = [];
+  prev = Buffer.alloc(stride);
+  for (let y = 0; y < h; y++) {
+    const f = raw[y * (stride + 1)];
+    const row = raw.slice(y * (stride + 1) + 1, y * (stride + 1) + 1 + stride);
+    cur = Buffer.alloc(stride);
+    for (let i = 0; i < stride; i++) {
+      const a = i >= bpp ? cur[i - bpp] : 0;
+      const bb = prev[i];
+      const c = i >= bpp ? prev[i - bpp] : 0;
+      let v = row[i];
+      if (f === 1) v += a; else if (f === 2) v += bb; else if (f === 3) v += Math.floor((a + bb) / 2);
+      else if (f === 4) {
+        const p2 = a + bb - c, pa = Math.abs(p2 - a), pb = Math.abs(p2 - bb), pc = Math.abs(p2 - c);
+        v += pa <= pb && pa <= pc ? a : (pb <= pc ? bb : c);
+      }
+      cur[i] = v & 255;
+    }
+    rows.push(cur);
+    prev = cur;
+  }
+  return [rows[0][3], rows[0][stride - 1], rows[h - 1][3], rows[h - 1][stride - 1]];
+}
 let fail = 0;
 const ok = (m) => console.log("  ok   " + m);
 const bad = (m) => { fail++; console.log("  FAIL " + m); };
@@ -86,7 +148,7 @@ ok("从真实源码拿到 window.__4ePortal（portalMeta / 螺旋 / 墙避让 / 
   else bad("① portal.svg 仍是黑盘 / 有矩形底");
 }
 
-/* ---- ①b 工具对齐 Full Suite：GM-only / tool→mode / activateMode / 双路径（v2.2.0 真机 bug 回归） ---- */
+/* ---- ①b 工具对齐 Full Suite：GM-only / tool→mode / activateMode / 双路径（v2.3.3 真机 bug 回归） ---- */
 {
   const order = [];
   let toolDef = null, modeDef = null, pairModeDef = null, role = "GM", notified = 0;
@@ -289,7 +351,7 @@ ok("从真实源码拿到 window.__4ePortal（portalMeta / 螺旋 / 墙避让 / 
   else bad("①d 预览/手势诊断日志缺失");
 }
 
-/* ---- ①e 创建验证 / 传送门生命周期诊断（v2.2.0 真机排障） ---- */
+/* ---- ①e 创建验证 / 传送门生命周期诊断（v2.3.3 真机排障） ---- */
 {
   if (coreSrc.indexOf("portal verify id=") >= 0 && coreSrc.indexOf("getItems([item.id])") >= 0 &&
     coreSrc.indexOf("portalLifecycleSync") >= 0 && coreSrc.indexOf("portal added id=") >= 0 &&
@@ -422,7 +484,7 @@ ok("从真实源码拿到 window.__4ePortal（portalMeta / 螺旋 / 墙避让 / 
   else bad("①i readForm 仍包含 radius");
 }
 
-/* ---- ①j 传送落点不重复触发 / 手动再次拖入正常触发（v2.2.0 收窄版） ---- */
+/* ---- ①j 传送落点不重复触发 / 手动再次拖入正常触发（v2.3.3 收窄版） ---- */
 {
   let portalOpen = 0;
   const portal = { id: "p-door", type: "IMAGE", position: { x: 500, y: 500 }, width: 40, height: 40, scale: { x: 0.9333, y: 0.9333 }, visible: true, metadata: { [P.CONSTANTS.KEY_PORTAL]: { name: "门", tag: "城", radius: 70 } } };
@@ -552,7 +614,7 @@ ok("从真实源码拿到 window.__4ePortal（portalMeta / 螺旋 / 墙避让 / 
 
 const NS_PREVIEW_GHOST = P.CONSTANTS.KEY_PORTAL + "-ghost";
 
-/* ---- ①o v2.2.0 隐形门：入口跳过 / 目的地保留 / GM ghost ---- */
+/* ---- ①o v2.3.3 隐形门：入口跳过 / 目的地保留 / GM ghost ---- */
 {
   const portals = [
     { itemId: "v1", name: "显形门", tag: "T", visible: true },
@@ -617,7 +679,7 @@ const NS_PREVIEW_GHOST = P.CONSTANTS.KEY_PORTAL + "-ghost";
   else bad("①p portalMeta 仍输出 effect");
 }
 
-/* ---- ①q v2.2.0 成对创建（两个同 tag 门） ---- */
+/* ---- ①q v2.3.3 成对创建（两个同 tag 门） ---- */
 {
   let added = [];
   const builder = {
@@ -651,6 +713,33 @@ const NS_PREVIEW_GHOST = P.CONSTANTS.KEY_PORTAL + "-ghost";
     coreSrc.indexOf("portal fx play") < 0)
     ok("①r 调试钩子/日志也不再暴露 fx 播放（传送完全无动画）");
   else bad("①r 仍有 fx 播放入口");
+}
+
+/* ---- ①s v2.3.3 图标换成用户 PNG（150×150、尺寸仍=2r） ---- */
+{
+  const png = path.join(ROOT, "assets", "portal.png");
+  if (!fs.existsSync(png)) bad("①s 缺少 assets/portal.png");
+  else {
+    const b = fs.readFileSync(png);
+    const w = b.readUInt32BE(16), h = b.readUInt32BE(20), colorType = b[25];
+    if (w === 150 && h === 150 && colorType === 6)
+      ok("①s assets/portal.png 为 150×150 RGBA（colorType=6）");
+    else bad("①s portal.png 尺寸/格式不对：" + JSON.stringify({ w, h, colorType }));
+  }
+  const corners = pngCornerAlphas(png);
+  if (corners && corners.every((a) => a === 0))
+    ok("①s portal.png 四角 alpha=0（边缘已羽化，无方形底）");
+  else bad("①s portal.png 四角不是全透明：" + JSON.stringify(corners));
+  if (coreSrc.indexOf('var PORTAL_ICON_URL = pageUrl("assets/portal.png") + "?v=" + PLUGIN_VERSION;') >= 0 &&
+    coreSrc.indexOf('mime: "image/png"') >= 0 &&
+    coreSrc.indexOf("{ width: 150, height: 150, url: PORTAL_ICON_URL") >= 0 &&
+    coreSrc.indexOf("{ dpi: 150, offset: { x: 75, y: 75 } }") >= 0 &&
+    coreSrc.indexOf("portalScaleFor(radius, dpi)") >= 0)
+    ok("①s 传送门 item/预览/ghost 都用 portal.png（150/dpi150/offset75；scale 仍 2r/dpi）");
+  else bad("①s 图标 URL / 150 参数 / scale 公式没接好");
+  if (coreSrc.indexOf("portal.svg") >= 0 && fs.existsSync(path.join(ROOT, "assets", "portal.svg")))
+    ok("①s portal.svg 保留（工具图标仍用 SVG）");
+  else console.log("  ok   ①s portal.svg 已不存在（可接受，工具图标另有来源）");
 }
 
 /* ---- ② 同 tag 目的地 ---- */
