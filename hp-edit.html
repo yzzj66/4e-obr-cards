@@ -4,10 +4,13 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>4eNEXT to owlbear · 血条组件</title>
-<link rel="stylesheet" href="assets/ui.css?v=2.3.6">
+<link rel="stylesheet" href="assets/ui.css?v=2.3.7">
+<style>
+  html, body { width: 420px; height: 126px; overflow: hidden; }
+</style>
 </head>
 <body class="win-page hpe-page">
-<!-- v2.3.6：血条编辑窗照 Full Suite 的 hp-bar 重做（第一批：布局 + 字段）。
+<!-- v2.3.7：血条编辑窗照 Full Suite 的 hp-bar 重做（第一批：布局 + 字段）。
      窗口约 344×106：名称行（⣿ 拖动柄 + 居中卡名 + 钉住 / 锁定 / 重绘 + ✕）、
      生命药丸（当前 / 上限，按 cur/max 比例填充）+ 临时生命药丸、四防四个小输入、底部状态行。
      **已去掉「回复力」字段**（surges 数据只读不写，保留在 token 上）；四防保留；新增临时生命 temp。
@@ -22,13 +25,14 @@
       <button class="icon-btn hpe-icon" id="hpe-pin" title="钉住：选中变化 / 取消选中时不自动关窗"><svg viewBox="0 0 689 699" width="14" height="14" fill="currentColor" aria-hidden="true"><g transform="translate(0,698) scale(1,-1)"><path fill="currentColor" fill-rule="nonzero" d="M522.012 206.343 L667.324 351.625 C672.844 357.117 675.812 364.668 675.512 372.449 C675.211 380.23 671.668 387.531 665.742 392.582 C598.754 450.058 506.742 469.644 422.254 445.234 L270.273 564.058 C275.344 610.308 259.09 656.351 226.113 689.172 C215.207 700.074 197.527 700.074 186.621 689.172 L8.188 510.734 C2.945 505.496 0 498.39 0 490.98 C0 483.57 2.945 476.465 8.188 471.226 C40.996 438.23 87.047 421.972 133.301 427.062 L247.84 280.539 C217.359 193.144 235.605 93.797 296.266 23.105 C301.328 17.199 308.629 13.672 316.402 13.375 C324.18 13.078 331.727 16.039 337.227 21.543 L482.504 166.855 L641.203 8.156 C646.66 2.718 653.809 0 660.941 0 C672.227 0.011 682.398 6.812 686.719 17.242 C691.035 27.672 688.652 39.675 680.676 47.664 L521.992 206.343 Z M522.012 206.343"/></g></svg></button>
       <button class="icon-btn hpe-icon" id="hpe-lock" title="锁定：玩家看不到精确数字（再点解锁）"><span id="hpe-lock-on" hidden><svg viewBox="0 0 613 772" width="14" height="14" fill="currentColor" aria-hidden="true"><g transform="translate(0,771) scale(1,-1)"><path fill="currentColor" fill-rule="nonzero" d="M205.414 462.384 L102.297 462.384 L102.297 582.689 C102.297 608.876 107.48 633.29 117.848 655.931 C128.215 678.576 142.535 698.49 160.812 715.673 C179.09 732.861 200.641 746.365 225.465 756.185 C250.289 766.005 277.43 770.915 306.895 770.915 C333.082 770.915 358.316 766.005 382.594 756.185 C406.871 746.365 428.422 732.861 447.246 715.673 C466.066 698.49 481.07 678.576 492.258 655.931 C503.441 633.29 509.035 608.876 509.035 582.689 L509.035 462.384 L410.008 462.384 L410.008 559.775 C410.008 594.146 400.461 620.744 381.367 639.564 C362.27 658.388 336.355 667.798 303.621 667.798 C274.156 667.798 250.426 658.388 232.422 639.564 C214.414 620.744 205.414 594.146 205.414 559.775 Z M558.137 413.283 C572.867 413.283 585.551 407.962 596.191 397.326 C606.828 386.685 612.148 374.001 612.148 359.271 L612.148 105.572 C612.148 90.841 609.559 77.064 604.375 64.244 C599.191 51.423 592.098 40.236 583.098 30.689 C574.094 21.142 563.457 13.638 551.18 8.185 C538.902 2.728 525.402 0.001 510.672 0.001 L97.387 0.001 C82.656 0.001 69.289 2.728 57.285 8.185 C45.285 13.638 35.055 20.869 26.598 29.872 C18.141 38.872 11.594 49.376 6.957 61.38 C2.32 73.38 0 86.205 0 99.841 L0 359.271 C0 374.001 5.184 386.685 15.551 397.326 C25.914 407.962 38.465 413.283 53.195 413.283 Z M558.137 413.283"/></g></svg></span><span id="hpe-lock-off"><svg viewBox="0 0 814 769" width="14" height="14" fill="currentColor" aria-hidden="true"><g transform="translate(0,768) scale(1,-1)"><path fill="currentColor" fill-rule="nonzero" d="M611.758 767.949 C637.789 767.949 662.871 763.066 687.004 753.305 C711.141 743.543 732.562 730.121 751.273 713.039 C769.984 695.953 785.031 676.023 796.422 653.246 C807.812 630.465 813.504 606.062 813.504 580.031 L813.504 459.629 L715.07 459.629 L715.07 557.25 C715.07 591.418 705.445 617.992 686.191 636.977 C666.938 655.957 641.043 665.449 608.504 665.449 C579.215 665.449 555.625 655.957 537.727 636.977 C519.828 617.992 510.883 591.418 510.883 557.25 L510.883 458.004 L408.379 458.004 L408.379 580.031 C408.379 606.062 413.531 630.465 423.836 653.246 C434.141 676.023 448.379 695.953 466.547 713.039 C484.715 730.121 506.137 743.543 530.812 753.305 C555.488 763.066 582.469 767.949 611.758 767.949 Z M610.129 213.137 L610.129 104.941 C610.129 90.301 607.555 76.469 602.402 63.453 C597.25 50.437 590.199 39.32 581.25 30.102 C572.301 20.879 561.727 13.559 549.523 8.137 C537.32 2.711 523.898 0 509.254 0 L97.621 0 C82.977 0 69.691 2.574 57.758 7.727 C45.828 12.879 35.523 19.93 26.844 28.879 C18.168 37.828 11.523 48.269 6.914 60.199 C2.305 72.133 0 84.875 0 98.434 L0 357.129 C0 372.312 5.289 385.059 15.863 395.363 C26.438 405.668 38.777 410.82 52.879 410.82 L556.438 410.82 C571.625 410.82 584.367 405.668 594.672 395.363 C604.977 385.059 610.129 372.312 610.129 357.129 Z M610.129 213.137"/></g></svg></span></button>
       <button class="icon-btn hpe-icon" id="hpe-repaint" title="重绘血条：强制重算血条环 / 四防盾 / 资源徽记">↻</button>
+      <span class="win-flash hpe-flash" id="win-flash"></span>
       <button class="icon-btn" id="close" title="关闭编辑窗（血条组件保持开启）">✕</button>
     </div>
   </div>
 
   <div class="hpe-body">
     <div class="hpe-row hpe-pills">
-      <label class="hpe-pill hpe-hp-pill" id="hpe-hp-pill" for="hpe-cur" title="生命：当前 / 上限（点这里也能编辑）">
+      <label class="hpe-pill hpe-hp-pill hpe-hp-fields" id="hpe-hp-pill" for="hpe-cur" title="生命：当前 / 上限（点这里也能编辑）">
         <input class="hpe-num" id="hpe-cur" type="text" inputmode="numeric" autocomplete="off" spellcheck="false" data-bg-soft placeholder="0" aria-label="当前生命">
         <span class="hpe-sep">/</span>
         <input class="hpe-num" id="hpe-max" type="text" inputmode="numeric" autocomplete="off" spellcheck="false" data-bg-soft placeholder="20" aria-label="生命上限">
@@ -37,7 +41,14 @@
       <label class="hpe-pill hpe-temp-pill" for="hpe-temp" title="临时生命（0~999，点这里也能编辑）">
         <span class="hpe-unit">临时</span>
         <input class="hpe-num" id="hpe-temp" type="text" inputmode="numeric" autocomplete="off" spellcheck="false" data-bg-soft placeholder="—" aria-label="临时生命">
+        <span class="hpe-hp-temp-note" id="hpe-hp-temp-note" style="display:none"></span>
       </label>
+    </div>
+
+    <div class="hpe-row hpe-hp-bar-row">
+      <div class="hpe-hp-track" id="hpe-hp-track" aria-hidden="true">
+        <span class="hpe-bar-fill" id="hpe-hp-fill"></span>
+      </div>
     </div>
 
     <div class="hpe-row hpe-defs">
@@ -50,14 +61,8 @@
       <label class="hpe-def" title="意志（Will）"><span>意志</span>
         <input class="hpe-num" id="hpe-def-will" data-bg-soft type="text" inputmode="numeric" autocomplete="off" placeholder="—"></label>
     </div>
-
-    <div class="hpe-status">
-      <span class="hpe-note" id="hpe-note">填生命上限（比如 20）就能画出第一根血条</span>
-      <span class="hpe-diag" id="hpe-diag" title="页面版本 / 角色 / 可编辑状态 / 绑定输入框数"></span>
-      <span class="win-flash" id="win-flash"></span>
-    </div>
   </div>
 </div>
-<script type="module" src="assets/hp-edit-page.js?v=2.3.6"></script>
+<script type="module" src="assets/hp-edit-page.js?v=2.3.7"></script>
 </body>
 </html>

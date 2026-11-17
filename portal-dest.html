@@ -4,20 +4,21 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>4eNEXT to owlbear · 传送目的地</title>
-<link rel="stylesheet" href="assets/ui.css?v=2.3.6">
+<link rel="stylesheet" href="assets/ui.css?v=2.3.7">
 <style>
   html, body.pd-page { height: 100%; }
   body.pd-page { margin: 0; padding: 0; overflow: hidden; box-sizing: border-box; }
   body.pd-page .win { height: 100vh; max-height: 100vh; display: flex; flex-direction: column; box-sizing: border-box; }
-  .pd-body { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; gap: 6px; padding: 8px 10px 10px; box-sizing: border-box; overflow: hidden; }
-  .dest-list { flex: 1 1 auto; min-height: 0; overflow-y: auto; overflow-x: hidden; display: flex; flex-direction: column; gap: 6px; }
+  .pd-body { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; gap: 6px; padding: 8px 12px 12px; box-sizing: border-box; overflow: hidden; border: 0; background: transparent; border-radius: 0; box-shadow: none; }
+  .dest-list { flex: 1 1 auto; min-height: 72px; overflow-y: auto; overflow-x: hidden; display: flex; flex-direction: column; border: 0; background: transparent; border-radius: 0; box-shadow: none; }
   .dest-empty { flex: 1 1 auto; display: flex; align-items: center; justify-content: center; padding: 12px; color: #93a1b0; font-size: 11px; text-align: center; }
   .dest-list button.dest {
     flex: 0 0 auto; display: flex; justify-content: space-between; align-items: center; gap: 8px;
-    min-height: 32px; padding: 8px; border: 1px solid var(--line); border-radius: 8px;
-    background: #101820; color: #e6edf3; cursor: pointer; text-align: left; font-size: 12px; box-sizing: border-box;
+    min-height: 32px; padding: 8px 2px; border: 0; border-bottom: 1px solid var(--line); border-radius: 0;
+    background: transparent; color: #e6edf3; cursor: pointer; text-align: left; font-size: 12px; box-sizing: border-box;
   }
-  .dest-list button.dest:hover { border-color: #3f8bff; background: #14202b; }
+  .dest-list button.dest:last-child { border-bottom: 0; }
+  .dest-list button.dest:hover { background: rgba(63, 139, 255, .08); }
   .dest-list .tag { font-size: 10px; color: #93a1b0; }
   .dest-foot { flex: 0 0 auto; display: flex; align-items: center; justify-content: flex-end; gap: 8px; padding-top: 2px; }
   .dest-foot .hint { flex: 1 1 auto; min-width: 0; font-size: 10.5px; color: #93a1b0; line-height: 1.4; }
@@ -35,10 +36,10 @@
   <div class="win-body pd-body">
     <div class="dest-list" id="pd-list"></div>
     <div class="dest-foot">
-      <button class="btn" id="pd-close" type="button" data-bg-soft>取消</button>
+      <button class="win-btn" id="pd-close" type="button" data-bg-soft>取消</button>
     </div>
   </div>
 </div>
-<script type="module" src="assets/portal-dest-page.js?v=2.3.6"></script>
+<script type="module" src="assets/portal-dest-page.js?v=2.3.7"></script>
 </body>
 </html>

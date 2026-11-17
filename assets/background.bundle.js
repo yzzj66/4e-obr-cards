@@ -1,4 +1,4 @@
-/*! 4eNEXT to owlbear · background.bundle.js  (v2.3.6)
+/*! 4eNEXT to owlbear · background.bundle.js  (v2.3.7)
  * ---------------------------------------------------------------------------
  * 这是后台页唯一加载的脚本：纯「经典脚本」，没有 type="module"，没有 import/export，
  * 不依赖任何 CDN。内容是：
@@ -7,7 +7,7 @@
  *
  * 不要手改本文件。改逻辑请改 assets/background.core.js，然后：
  *     node dev/build-background.mjs
- * 生成时间：2026-11-17T09:57:25.222Z
+ * 生成时间：2026-11-17T10:44:44.978Z
  * --------------------------------------------------------------------------- */
 (function () {
 "use strict";
@@ -100,7 +100,7 @@ var TOOL_SETTINGS_ID = NS + "/settings-tool";
 var CH_HELLO = NS + "/diag-hello";
 var CH_PING = NS + "/diag-ping";
 var CH_PONG = NS + "/diag-pong";
-var PLUGIN_VERSION = "2.3.6";
+var PLUGIN_VERSION = "2.3.7";
 
 var KEY_HP = NS + "/hp";
 
@@ -184,6 +184,7 @@ var HP_RING_SEGMENTS = 48;
 var HP_RING_BG_OPACITY = 0.35;
 var PLAYER_THRESHOLD_DEFAULT = 25;
 
+
 var COLOR_HP_FILL = "#a52424";
 /* 4E「血怒（bloodied）」：HP ≤ 上限一半时血量环换成这个更暗的红（只改颜色语义，不动数据）。 */
 var COLOR_HP_BLOODIED = "#7f1416";
@@ -252,9 +253,9 @@ var CH_DICE_HIST_STATE = NS + "/dice-hist-state";
 var CH_HP_EDIT_TARGET = NS + "/hp-edit-target";
 var CH_HP_EDIT_READY = NS + "/hp-edit-ready";
 var CH_HP_EDIT_SAVED = NS + "/hp-edit-saved";
-/* v2.3.6：页面切换/载入完成回 ack（单窗换目标确认；600ms 无 ack 兜底重开一次）。 */
+/* v2.3.7：页面切换/载入完成回 ack（单窗换目标确认；600ms 无 ack 兜底重开一次）。 */
 var CH_HP_EDIT_ACK = NS + "/hp-edit-ack";
-/* v2.3.6：血条编辑窗「重绘」按钮 → 后台强制重算这张 token 的血条环 / 四防盾 / 资源徽记。 */
+/* v2.3.7：血条编辑窗「重绘」按钮 → 后台强制重算这张 token 的血条环 / 四防盾 / 资源徽记。 */
 var CH_HP_REPAINT = NS + "/hp-repaint";
 var CH_HPEDIT_LOG = NS + "/hpedit-log";
 /* v1.8.9：信息窗单次挂载 —— 目标租约（换 token 只广播 target，不重开 popover）+ ready 握手。 */
@@ -263,8 +264,8 @@ var CH_INFO_READY = NS + "/info-ready";
 /* v1.9.0：页面刷新成功 ack —— 700ms 没收到就兜底关闭重开一次（极端情况下内容也能换过去）。 */
 var CH_INFO_ACK = NS + "/info-ack";
 
-var HPE_W = 344;
-var HPE_H = 106;
+var HPE_W = 420;
+var HPE_H = 126;
 
 var STRIP_COLLAPSED_W = 120;
 var STRIP_COLLAPSED_H = 40;
@@ -335,7 +336,7 @@ var URL_SETTINGS = pageUrl("settings.html");
 var URL_BIND = pageUrl("bind.html");
 var URL_BUTTON = pageUrl("button.html");
 
-/* v2.3.6：传送门（核心）。 */
+/* v2.3.7：传送门（核心）。 */
 var KEY_PORTAL = NS + "/portal";
 var TOOL_PORTAL_ID = NS + "/portal-tool";
 var TOOL_PORTAL_MODE_ID = NS + "/portal-mode";
@@ -354,9 +355,9 @@ var PORTAL_MIN_RADIUS = 16;
 var PORTAL_WALL_PADDING = 8;
 var PORTAL_SUPPRESS_MS = 700;
 var PORTAL_EDIT_W = 360;
-var PORTAL_EDIT_H = 390;
+var PORTAL_EDIT_H = 430;
 var PORTAL_DEST_W = 360;
-var PORTAL_DEST_H = 420;
+var PORTAL_DEST_H = 380;
 var PORTAL_PREVIEW_TAG = NS + "/portal-preview";
 var PORTAL_GHOST_TAG = NS + "/portal-ghost";
 var PORTAL_PAIR_TAG = NS + "/portal-pair-preview";
@@ -566,7 +567,7 @@ function winPopoverOptions(def, pos, size, url) {
   };
 }
 
-/** v2.3.6：窗口页 HTML 自身也带缓存，打开 URL 统一补 ?v=<PLUGIN_VERSION>（已有 v= 不重复）。 */
+/** v2.3.7：窗口页 HTML 自身也带缓存，打开 URL 统一补 ?v=<PLUGIN_VERSION>（已有 v= 不重复）。 */
 function withWindowVersion(url) {
   var u = String(url || "");
   if (/[?&]v=[^&]*/.test(u)) return u;
@@ -713,7 +714,7 @@ function endWinDrag(name) {
   st.drag = null;
 }
 
-/* v2.3.6：拖动改用「start 时最新视口 + 本轮 base/size」模型（照 Full Suite panelDrag/panelLayout）。
+/* v2.3.7：拖动改用「start 时最新视口 + 本轮 base/size」模型（照 Full Suite panelDrag/panelLayout）。
  * 旧实现用 st.geom.vp（打开窗口时的快照）clamp，视口变大后向下拖会卡在旧下限。 */
 async function beginWinDrag(name, st) {
   var vp = await infoViewport();
@@ -1062,7 +1063,7 @@ function publishHpEditTarget(itemId, pending) {
   return sendHello(CH_HP_EDIT_TARGET, hpEditTarget);
 }
 
-/* v2.3.6：单窗常驻的 ack 等待（照 info 的 700ms 模式，这里 600ms）。
+/* v2.3.7：单窗常驻的 ack 等待（照 info 的 700ms 模式，这里 600ms）。
  * 页面收到 target → commit 未保存输入 → load → 回 CH_HP_EDIT_ACK {session,version,itemId}。 */
 var hpEditAckWait = null;
 function waitHpEditAck(session, version, itemId, ms) {
@@ -1101,7 +1102,7 @@ async function openHpEdit(itemId) {
   hpAutoPopped[itemId] = true;
   if (winOpen["hpEdit"] && hpEditTarget.itemId === itemId && !hpEditTarget.pending) return true;
   if (!hpEditSession) hpEditSession = newHpEditSession();
-  /* v2.3.6：窗口已挂载 → 不重开 iframe；广播 target 换目标，等页面 ack；600ms 没 ack 兜底重开一次。 */
+  /* v2.3.7：窗口已挂载 → 不重开 iframe；广播 target 换目标，等页面 ack；600ms 没 ack 兜底重开一次。 */
   if (winOpen["hpEdit"]) {
     var expectVersion = hpEditTarget.version + 1;
     var ackP = waitHpEditAck(hpEditSession, expectVersion, itemId, 600);
@@ -1147,12 +1148,12 @@ function onHpEditSaved(ev) {
   stepOk("血条编辑窗已保存：" + itemId);
 }
 
-/* v2.3.6：编辑窗「钉住」偏好（默认关）——钉住后选中变化 / 取消选中不自动关窗。 */
+/* v2.3.7：编辑窗「钉住」偏好（默认关）——钉住后选中变化 / 取消选中不自动关窗。 */
 function hpEditPinned() {
   try { return localStorage.getItem("4enext/hp-edit/pinned") === "1"; } catch (e) { return false; }
 }
 
-/* v2.3.6：编辑窗「重绘」→ 丢掉这张 token 的血条缓存，下一次 scheduleBars 强制重建（环 / 盾 / 徽记）。 */
+/* v2.3.7：编辑窗「重绘」→ 丢掉这张 token 的血条缓存，下一次 scheduleBars 强制重建（环 / 盾 / 徽记）。 */
 function onHpRepaint(ev) {
   var data = ev && ev.data !== undefined ? ev.data : ev;
   var itemId = data && typeof data.itemId === "string" ? data.itemId : "";
@@ -1540,7 +1541,7 @@ async function closeButton() {
   buttonOpen = false;
 }
 
-/* v2.3.6：移植 Full Suite viewportAnchor —— OBR SDK **没有 viewport.onChange**，
+/* v2.3.7：移植 Full Suite viewportAnchor —— OBR SDK **没有 viewport.onChange**，
  * 所以用后台 500ms 轮询 getWidth/getHeight；变化时回调（按钮重锚 + 窗口 reclamp）。
  * 只在有监听者时跑；读失败退避 2s；首读只记 baseline 不触发。 */
 var vpAnchorTimer = null;
@@ -1692,7 +1693,7 @@ async function registerTools() {
       return false;
     }
   });
-  /* v2.3.6：传送门工具（GM 拖动画圆；玩家点工具给提示，不进入绘制模式）。 */
+  /* v2.3.7：传送门工具（GM 拖动画圆；玩家点工具给提示，不进入绘制模式）。 */
   await registerPortalTool();
 }
 
@@ -1950,7 +1951,7 @@ async function registerContextMenu() {
     onClick: function (context) { return onHpBarEdit(context); }
   });
 
-  /* v2.3.6：速览右键入口（GM / 玩家都可；单枚 IMAGE）。 */
+  /* v2.3.7：速览右键入口（GM / 玩家都可；单枚 IMAGE）。 */
   await createContextMenu({
     id: NS + "/glance-menu",
     icons: [{
@@ -1961,7 +1962,7 @@ async function registerContextMenu() {
     onClick: function () { void openGlance("右键「速览」"); }
   });
 
-  /* v2.3.6：GM 右键 → 编辑传送门。filter 不能按 metadata 值相等（值对象，永远不匹配），
+  /* v2.3.7：GM 右键 → 编辑传送门。filter 不能按 metadata 值相等（值对象，永远不匹配），
    * 只在 onClick 里检查 metadata[KEY_PORTAL]；正常路径还有「GM 选中单枚门自动弹编辑窗」。 */
   await createContextMenu({
     id: NS + "/portal-edit",
@@ -2157,7 +2158,7 @@ async function anchorOf(itemId) {
   }
 }
 
-/* v2.3.6：最近一次成功读到的视口尺寸（轮询 / infoViewport 都更新），供拖动 start / clamp 参考。 */
+/* v2.3.7：最近一次成功读到的视口尺寸（轮询 / infoViewport 都更新），供拖动 start / clamp 参考。 */
 var lastVp = { width: 0, height: 0 };
 async function infoViewport() {
   var vp = { width: 0, height: 0 };
@@ -2547,7 +2548,7 @@ async function refreshInfo() {
     pageLog("info", "选中变化 → " + (selId || "无") + "（自动弹窗记录已重置）");
   }
   if (!item) {
-    /* v2.3.6：未钉住时取消选中 → 自动关掉血条编辑窗（钉住则保留）。 */
+    /* v2.3.7：未钉住时取消选中 → 自动关掉血条编辑窗（钉住则保留）。 */
     if (winOpen["hpEdit"] && !hpEditPinned()) await closeWin("hpEdit");
     return closeInfo();
   }
@@ -2557,7 +2558,7 @@ async function refreshInfo() {
 
   var cardId = await boundCardId(item);
   if (cardId) {
-    /* v2.3.6：选了绑定卡的 token → 速览接管；未钉住时关掉血条编辑窗（钉住则保持当前 token）。 */
+    /* v2.3.7：选了绑定卡的 token → 速览接管；未钉住时关掉血条编辑窗（钉住则保持当前 token）。 */
     if (winOpen["hpEdit"] && !hpEditPinned() && hpEditTarget.itemId !== item.id) {
       await closeWin("hpEdit");
     }
@@ -2581,7 +2582,7 @@ async function refreshInfo() {
   /* v1.8.1 说明：这里不写「窗口开着就 return」，否则「取消选中 → 再选回来」这类正常重弹会被误杀。
    * 防止「保存后关掉又自己弹」的护栏在 openHpEdit()：同一枚 token 的窗口已经开着时直接复用、不重开。 */
   await closeInfo();
-  /* v2.3.6：钉住时保持当前编辑的 token，不换 target。 */
+  /* v2.3.7：钉住时保持当前编辑的 token，不换 target。 */
   if (hpEditPinned() && winOpen["hpEdit"]) return;
   if (!hasHpBarData(item)) {
     if (winOpen["hpEdit"] && hpEditTarget.itemId !== item.id) await closeWin("hpEdit");
@@ -2715,7 +2716,7 @@ async function sceneDpi() {
   return cachedDpi;
 }
 
-/* v2.3.6：用户样板布局 —— 底部比例横条 + 左侧三圆（强/反/意）+ 右下 AC 盾，不再用环形。
+/* v2.3.7：用户样板布局 —— 底部比例横条 + 左侧三圆（强/反/意）+ 右下 AC 盾，不再用环形。
  * 坐标全部相对 token 包围盒（宽 64%、高 10% 短边），s = min(w,h)/dpi 沿用旧缩放。 */
 
 /** 圆角矩形多边形（以中心为原点，24 段近似；血条 / 填充都用它）。 */
@@ -2990,7 +2991,7 @@ function buildBarItems(tokenId, L) {
   var bar = L.bar;
   var i;
 
-  /* v2.3.6 底部圆角横条：深红轨道 + 按 cur/max 比例的左→右填充。 */
+  /* v2.3.7 底部圆角横条：深红轨道 + 按 cur/max 比例的左→右填充。 */
   items.push(barCurveItem(tokenId, "bar-bg",
     roundedRectPoints(bar.width, bar.height, bar.radius, 24), bar.cx, bar.cy,
     { fill: bar.track, fillOpacity: bar.trackOpacity }));
@@ -3895,7 +3896,7 @@ async function onRollClear() {
 }
 
 /* =====================================================================
- * v2.3.6：传送门（核心）
+ * v2.3.7：传送门（核心）
  *   GM 拖动画圆建门 → 同 tag 互联；玩家拖动自己 token 进门 → 目的地选择 →
  *   六边形螺旋落点 + 原生 WALL 避让；传送后 700ms 抑制重复触发。
  * 数据：metadata com.4enext-owlbear/portal = { name, tag, radius, showName, visible, locked }
@@ -4047,7 +4048,7 @@ var portalRadiusInflight = {};
 var portalTeleportLanded = {};
 var portalWritingIds = {};
 var portalSkipLogAt = 0;
-/** v2.3.6：GM 拖缩放手柄 → 把 item.scale 反算回 metadata.radius（只 GM 写，inflight 防自触发循环）。 */
+/** v2.3.7：GM 拖缩放手柄 → 把 item.scale 反算回 metadata.radius（只 GM 写，inflight 防自触发循环）。 */
 async function portalScaleRadiusSync(all) {
   var role = "";
   try { role = await OBR.player.getRole(); } catch (e) { role = ""; }
@@ -4085,7 +4086,7 @@ async function portalScaleRadiusSync(all) {
   return wrote;
 }
 
-/** v2.3.6 诊断：对比已知传送门 id 集合，打印 added / removed / hidden，区分「被删」还是「没画出来」。 */
+/** v2.3.7 诊断：对比已知传送门 id 集合，打印 added / removed / hidden，区分「被删」还是「没画出来」。 */
 function portalLifecycleSync(all) {
   var current = {};
   var count = 0;
@@ -4383,7 +4384,7 @@ async function registerPortalTool() {
     catch (e3) { pageLog("err", "传送门 mode 创建失败（重试后）：" + errText(e3)); return; }
   }
 
-  /* v2.3.6：成对创建 mode（tool 下第二个 mode）。 */
+  /* v2.3.7：成对创建 mode（tool 下第二个 mode）。 */
   try {
     await OBR.tool.createMode({
       id: TOOL_PORTAL_PAIR_MODE_ID,
@@ -4437,7 +4438,7 @@ async function syncPortalEditFromSelection() {
   var sel = [];
   try { sel = (await OBR.player.getSelection()) || []; } catch (e2) { sel = []; }
 
-  /* v2.3.6 修复：打开 popover 后选区会变成「无」（焦点变化），不能当成取消选中去关窗，
+  /* v2.3.7 修复：打开 popover 后选区会变成「无」（焦点变化），不能当成取消选中去关窗，
    * 否则用户看到一闪。空选中 / 多选 / 选中非门 → 都保持现有编辑窗。 */
   if (sel.length === 0) {
     if (portalEditItemId) pageLog("info", "传送门 编辑窗保持（选中 0 项）");
@@ -4481,7 +4482,7 @@ async function onPortalEditClosed(ev) {
 async function openPortalEdit(itemId) {
   if (!itemId) return false;
   try {
-    /* v2.3.6：编辑窗接进通用窗口框架（可拖动 / 位置记忆 / 视口 reclamp）。
+    /* v2.3.7：编辑窗接进通用窗口框架（可拖动 / 位置记忆 / 视口 reclamp）。
      * URL 带 ?item=<id>；同一 popover id 重复打开会原地更新，不会重开。 */
     await openWin("portalEdit", URL_PORTAL_EDIT + "?item=" + encodeURIComponent(itemId));
     return true;
@@ -4504,7 +4505,7 @@ async function onPortalSave(ev) {
       for (var i = 0; i < drafts.length; i++) {
         if (!drafts[i].metadata || typeof drafts[i].metadata !== "object") drafts[i].metadata = {};
         var oldMeta = drafts[i].metadata[KEY_PORTAL] ? portalMeta(drafts[i].metadata[KEY_PORTAL]) : null;
-        /* v2.3.6：半径不再由表单决定 —— 以当前 item.scale 反算（scale 缺失才退回旧 metadata.radius）。 */
+        /* v2.3.7：半径不再由表单决定 —— 以当前 item.scale 反算（scale 缺失才退回旧 metadata.radius）。 */
         var r = drafts[i].scale
           ? portalRadiusFromScale(drafts[i].scale, saveDpi)
           : (oldMeta ? oldMeta.radius : meta.radius);
@@ -4573,8 +4574,8 @@ async function onPortalItemsChange() {
     void portalDetectDragEnd();
   }, 200);
 }
-/** v2.3.6：目的地选择窗接进通用窗口框架（可拖动 / 位置记忆 / reclamp）。 */
-/* ---------- v2.3.6：隐形门 GM ghost ---------- */
+/** v2.3.7：目的地选择窗接进通用窗口框架（可拖动 / 位置记忆 / reclamp）。 */
+/* ---------- v2.3.7：隐形门 GM ghost ---------- */
 var portalGhostSig = "";
 async function portalGhostSync(all) {
   var role = "";
@@ -4631,7 +4632,7 @@ async function portalGhostSync(all) {
   return ghosts.length;
 }
 
-/* ---------- v2.3.6：成对创建（第二个 mode） ---------- */
+/* ---------- v2.3.7：成对创建（第二个 mode） ---------- */
 var portalPairFirst = null;
 var portalPairPreviewId = null;
 var portalPairLineId = null;
@@ -4951,7 +4952,7 @@ async function boot() {
   await attempt("订阅 " + CH_INFO_ACK + "（速览页刷新 ack）", function () {
     OBR.broadcast.onMessage(CH_INFO_ACK, onInfoAck);
   });
-  /* v2.3.6：OBR SDK 没有 viewport.onChange → 安装 500ms 轮询重锚。
+  /* v2.3.7：OBR SDK 没有 viewport.onChange → 安装 500ms 轮询重锚。
    * 视口变化时：按钮重新 open 到右下角（同 id+url），各窗口 / 先攻条用新 vp reclamp。 */
   await attempt("重建传送门 ghost（启动）", async function () {
     try {
@@ -4980,7 +4981,7 @@ async function boot() {
     return true;
   });
 
-  /* v2.3.6：传送门频道 + 拖动进门侦测。 */
+  /* v2.3.7：传送门频道 + 拖动进门侦测。 */
   await attempt("订阅 " + CH_OPEN_SETTINGS + "（浮动按钮 → 设置）", function () {
     OBR.broadcast.onMessage(CH_OPEN_SETTINGS, function () { void openWinOrNotify("settings", "右下角设置按钮"); });
   });

@@ -2,6 +2,10 @@
 
 > 这份文件是历史更新记录。安装与使用请看 [README](README.md)。
 
+**v2.3.7：血条编辑窗移除底部诊断注脚**（2026-11-17）——
+删除 `#hpe-diag` 元素与 `paintDiag` 渲染，界面不再显示 `role=GM editable=1 dis=0 inputs=7 v…`；
+保存状态提示保留（「保存中…」「已保存 20/20」）。`[4enext][hpEdit]` 控制台/转发诊断日志全部保留。
+
 **v2.3.6：修血条编辑窗输入被回填覆盖**（2026-11-17）——
 `fillForm` 跳过当前 `document.activeElement` 的输入框，不再覆盖正在编辑的格子；新增 `state.dirty`：
 输入后置 true、commit/失焦清空，`load()` 期间 dirty 则跳过 fillForm（防止异步 load 把刚输入的值覆盖）。

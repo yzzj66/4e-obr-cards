@@ -51,7 +51,7 @@ export const ID_SETTINGS_WIN = NS + "/settings-window";
  * id 与其它窗口都不同 → 可以和速览 / 先攻条同时开着；位置按窗口名 "hpEdit" 单独记。 */
 export const ID_HP_EDIT = NS + "/hp-edit";
 
-export const PLUGIN_VERSION = "2.3.6";
+export const PLUGIN_VERSION = "2.3.7";
 
 /**
  * 站点根地址。
@@ -196,12 +196,12 @@ export const CH_DICE_HIST_STATE = NS + "/dice-hist-state";
 export const CH_HP_EDIT_TARGET = NS + "/hp-edit-target";
 export const CH_HP_EDIT_READY = NS + "/hp-edit-ready";
 export const CH_HP_EDIT_SAVED = NS + "/hp-edit-saved";
-/** v2.3.6：页面切换/载入完成回 ack，后台据此判断「单窗换目标」是否成功（600ms 无 ack 兜底重开一次）。 */
+/** v2.3.7：页面切换/载入完成回 ack，后台据此判断「单窗换目标」是否成功（600ms 无 ack 兜底重开一次）。 */
 export const CH_HP_EDIT_ACK = NS + "/hp-edit-ack";
-/** v2.3.6：编辑窗「重绘血条」按钮 → 后台强制重算这张 token 的血条环 / 四防盾 / 资源徽记。 */
+/** v2.3.7：编辑窗「重绘血条」按钮 → 后台强制重算这张 token 的血条环 / 四防盾 / 资源徽记。 */
 export const CH_HP_REPAINT = NS + "/hp-repaint";
 export const CH_HPEDIT_LOG = NS + "/hpedit-log";
-/* v2.3.6：传送门（与 background.core.js 逐字一致）。 */
+/* v2.3.7：传送门（与 background.core.js 逐字一致）。 */
 export const KEY_PORTAL = NS + "/portal";
 export const CH_OPEN_SETTINGS = NS + "/open-settings";
 export const CH_PORTAL_SAVE = NS + "/portal-save";
@@ -871,11 +871,11 @@ export async function propagateCardStats(cards, updatedIds) {
 }
 
 /**
- * v2.3.6：把「卡片基础四防 + 速览临时四防」合并成 token 该有的 defenses。
+ * v2.3.7：把「卡片基础四防 + 速览临时四防」合并成 token 该有的 defenses。
  * base 用 token 侧键名（ac/fort/reflex/will）；defTemp 用 track state 键名（ac/fort/ref/reflex/will）。
  * 只覆盖 base 里存在的项（卡片没有的项 = 不返回 → 调用方保留 token 原值）；round + clamp 到 ≥0。
  * syncDefTempToTokens（写 token）与 track.syncTokenStats（比较是否回写）**必须共用这一套**，
- * 否则会出现「临时值写进去 → 速览刷新又按基础值写回」的抖动（v2.3.6 bug）。
+ * 否则会出现「临时值写进去 → 速览刷新又按基础值写回」的抖动（v2.3.7 bug）。
  */
 export function combineDefenses(base, defTemp) {
   /* 只用 track state 的键名（ac / fort / ref / will）逐项取临时值；base 侧键名是 ac/fort/reflex/will。
@@ -900,7 +900,7 @@ export function combineDefenses(base, defTemp) {
 }
 
 /**
- * v2.3.6：速览「四防临时加值」→ 绑定该卡 token 的 hp.defenses（单向联动，地图血条只显示）。
+ * v2.3.7：速览「四防临时加值」→ 绑定该卡 token 的 hp.defenses（单向联动，地图血条只显示）。
  * 目标值 = 卡片基础四防 + defTemp（只覆盖卡片有值的项；卡片没有的项保持 token 原值）。
  * 保留 cur / max / temp / locked / surges；值没变不写；无权限（非 GM 且非创建者）的 token 跳过；
  * 写失败静默（血条下次重算）。
@@ -991,4 +991,39 @@ export function fmtTime(ts) {
   } catch (e) {
     return "";
   }
+}
+/* v2.3.7：血条状态/配色唯一来源（地图血条与血条编辑窗预览共用）。
+ * 阈值沿用 4E bloodied（≤50% 进入血怒）：>50% 健康绿、25%~50% 受伤黄、≤25% 濒死红。 */
+export const HP_STATE_HEALTHY_COLOR = "#56d364";
+export const HP_STATE_WOUNDED_COLOR = "#e3b341";
+export const HP_STATE_CRITICAL_COLOR = "#f85149";
+export function hpBarVisual(view) {
+  var v = view && typeof view === "object" ? view : {};
+  var cur = typeof v.cur === "number" && isFinite(v.cur) ? v.cur : null;
+  var max = typeof v.max === "number" && isFinite(v.max) && v.max > 0 ? v.max : null;
+  var temp = typeof v.temp === "number" && isFinite(v.temp) ? v.temp : 0;
+  if (cur === null && max !== null) cur = max; /* 与地图一致：cur 缺失按满血画 */
+  var st = hpStatusOf(cur, max);
+  return {
+    cur: cur,
+    max: max,
+    temp: temp,
+    ratio: st.ratio,
+    percent: Math.round(st.ratio * 100),
+    status: st,
+    color: st.color,
+    label: st.label,
+    display: (cur === null ? "?" : String(cur)) + "/" + (max === null ? "?" : String(max)),
+    tempText: temp > 0 ? "+" + temp : ""
+  };
+}
+export function hpStatusOf(cur, max) {
+  var m = typeof max === "number" && isFinite(max) && max > 0 ? max : 0;
+  var c = typeof cur === "number" && isFinite(cur) ? cur : 0;
+  var ratio = m > 0 ? Math.max(0, Math.min(1, c / m)) : 0;
+  /* 与速览卡一致：>50% 健康绿；≤50% 且仍 >0 为重伤黄；0 为濒死红。 */
+  var key = c <= 0 ? "critical" : (ratio > 0.5 ? "healthy" : "wounded");
+  var label = key === "healthy" ? "健康" : (key === "wounded" ? "重伤" : "濒死");
+  var color = key === "healthy" ? HP_STATE_HEALTHY_COLOR : (key === "wounded" ? HP_STATE_WOUNDED_COLOR : HP_STATE_CRITICAL_COLOR);
+  return { key: key, label: label, color: color, ratio: ratio, bloodied: m > 0 && c <= m / 2 };
 }

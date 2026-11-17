@@ -1,4 +1,4 @@
-// v2.3.6：传送门核心离线自测（node dev/test-portal.mjs）
+// v2.3.7：传送门核心离线自测（node dev/test-portal.mjs）
 // ---------------------------------------------------------------------------
 // 直接加载 **assets/background.core.js 的真实源码**（vm + 浏览器外壳桩，不启动 boot），
 // 从 window.__4ePortal 拿纯函数，断言：
@@ -148,7 +148,7 @@ ok("从真实源码拿到 window.__4ePortal（portalMeta / 螺旋 / 墙避让 / 
   else bad("① portal.svg 仍是黑盘 / 有矩形底");
 }
 
-/* ---- ①b 工具对齐 Full Suite：GM-only / tool→mode / activateMode / 双路径（v2.3.6 真机 bug 回归） ---- */
+/* ---- ①b 工具对齐 Full Suite：GM-only / tool→mode / activateMode / 双路径（v2.3.7 真机 bug 回归） ---- */
 {
   const order = [];
   let toolDef = null, modeDef = null, pairModeDef = null, role = "GM", notified = 0;
@@ -351,7 +351,7 @@ ok("从真实源码拿到 window.__4ePortal（portalMeta / 螺旋 / 墙避让 / 
   else bad("①d 预览/手势诊断日志缺失");
 }
 
-/* ---- ①e 创建验证 / 传送门生命周期诊断（v2.3.6 真机排障） ---- */
+/* ---- ①e 创建验证 / 传送门生命周期诊断（v2.3.7 真机排障） ---- */
 {
   if (coreSrc.indexOf("portal verify id=") >= 0 && coreSrc.indexOf("getItems([item.id])") >= 0 &&
     coreSrc.indexOf("portalLifecycleSync") >= 0 && coreSrc.indexOf("portal added id=") >= 0 &&
@@ -475,16 +475,16 @@ ok("从真实源码拿到 window.__4ePortal（portalMeta / 螺旋 / 墙避让 / 
     pageSrc.indexOf("pe-radius") < 0)
     ok("①i 编辑窗已去掉半径输入（HTML 无 pe-radius、页面无 els.radius）");
   else bad("①i 编辑窗仍有半径输入");
-  if (coreSrc.indexOf("var PORTAL_EDIT_H = 390;") >= 0 &&
+  if (coreSrc.indexOf("var PORTAL_EDIT_H = 430;") >= 0 &&
     coreSrc.indexOf("portalEdit: { id: ID_PORTAL_EDIT, url: URL_PORTAL_EDIT, width: PORTAL_EDIT_W, height: PORTAL_EDIT_H }") >= 0)
-    ok("①i 去掉半径后窗口高度缩为 390（WINS.portalEdit 同步）");
-  else bad("①i 窗口高度没有缩为 390");
+    ok("①i 去掉半径后窗口高度 430（WINS.portalEdit 同步）");
+  else bad("①i 窗口高度不是 430");
   if (/return \{[\s\S]{0,420}?name:/.test(pageSrc) && pageSrc.indexOf("radius: Math.max") < 0)
     ok("①i readForm 不再返回 radius（半径只来自 item.scale）");
   else bad("①i readForm 仍包含 radius");
 }
 
-/* ---- ①j 传送落点不重复触发 / 手动再次拖入正常触发（v2.3.6 收窄版） ---- */
+/* ---- ①j 传送落点不重复触发 / 手动再次拖入正常触发（v2.3.7 收窄版） ---- */
 {
   let portalOpen = 0;
   const portal = { id: "p-door", type: "IMAGE", position: { x: 500, y: 500 }, width: 40, height: 40, scale: { x: 0.9333, y: 0.9333 }, visible: true, metadata: { [P.CONSTANTS.KEY_PORTAL]: { name: "门", tag: "城", radius: 70 } } };
@@ -572,16 +572,21 @@ ok("从真实源码拿到 window.__4ePortal（portalMeta / 螺旋 / 墙避让 / 
 /* ---- ①m 目的地窗布局不裁切 ---- */
 {
   const destHtml = fs.readFileSync(path.join(ROOT, "portal-dest.html"), "utf8");
-  if (coreSrc.indexOf("var PORTAL_DEST_H = 420;") >= 0 &&
+  if (coreSrc.indexOf("var PORTAL_DEST_H = 380;") >= 0 &&
     coreSrc.indexOf("height: PORTAL_DEST_H") >= 0)
-    ok("①m WINS.portalDest 高度 420（宽 360 不变）");
-  else bad("①m PORTAL_DEST_H 不是 420");
+    ok("①m WINS.portalDest 高度 380（宽 360 不变）");
+  else bad("①m PORTAL_DEST_H 不是 380");
   if (destHtml.indexOf('class="dest-list"') >= 0 && destHtml.indexOf('class="dest-foot"') >= 0 &&
     /\.dest-list \{[^}]*overflow-y: auto/.test(destHtml) &&
     /\.dest-foot \{[^}]*flex: 0 0 auto/.test(destHtml) &&
     !/\.dest-foot \{[^}]*position: absolute/.test(destHtml))
     ok("①m 目的地窗布局：dest-list flex+overflow-y:auto，dest-foot 固定不绝对定位");
   else bad("①m 目的地窗布局仍有裁切风险");
+  if (destHtml.indexOf("border: 0; background: transparent; border-radius: 0; box-shadow: none") >= 0 &&
+    destHtml.indexOf("border-bottom: 1px solid var(--line)") >= 0 &&
+    destHtml.indexOf("min-height: 72px") >= 0)
+    ok("①m 目的地窗无内层框（透明列表/行分隔线），空列表最小高度 72px");
+  else bad("①m 目的地窗仍有内层框 / 行样式不对");
   if (destHtml.indexOf('id="pd-close"') >= 0 && destHtml.indexOf("dest-empty") >= 0 &&
     destHtml.indexOf("同一标签的其它传送门会出现在这里") < 0)
     ok("①m 空状态 / 取消按钮齐全；底部提示整句已删除");
@@ -614,7 +619,7 @@ ok("从真实源码拿到 window.__4ePortal（portalMeta / 螺旋 / 墙避让 / 
 
 const NS_PREVIEW_GHOST = P.CONSTANTS.KEY_PORTAL + "-ghost";
 
-/* ---- ①o v2.3.6 隐形门：入口跳过 / 目的地保留 / GM ghost ---- */
+/* ---- ①o v2.3.7 隐形门：入口跳过 / 目的地保留 / GM ghost ---- */
 {
   const portals = [
     { itemId: "v1", name: "显形门", tag: "T", visible: true },
@@ -679,7 +684,7 @@ const NS_PREVIEW_GHOST = P.CONSTANTS.KEY_PORTAL + "-ghost";
   else bad("①p portalMeta 仍输出 effect");
 }
 
-/* ---- ①q v2.3.6 成对创建（两个同 tag 门） ---- */
+/* ---- ①q v2.3.7 成对创建（两个同 tag 门） ---- */
 {
   let added = [];
   const builder = {
@@ -715,7 +720,7 @@ const NS_PREVIEW_GHOST = P.CONSTANTS.KEY_PORTAL + "-ghost";
   else bad("①r 仍有 fx 播放入口");
 }
 
-/* ---- ①s v2.3.6 图标换成用户 PNG（150×150、尺寸仍=2r） ---- */
+/* ---- ①s v2.3.7 图标换成用户 PNG（150×150、尺寸仍=2r） ---- */
 {
   const png = path.join(ROOT, "assets", "portal.png");
   if (!fs.existsSync(png)) bad("①s 缺少 assets/portal.png");
@@ -740,6 +745,34 @@ const NS_PREVIEW_GHOST = P.CONSTANTS.KEY_PORTAL + "-ghost";
   if (coreSrc.indexOf("portal.svg") >= 0 && fs.existsSync(path.join(ROOT, "assets", "portal.svg")))
     ok("①s portal.svg 保留（工具图标仍用 SVG）");
   else console.log("  ok   ①s portal.svg 已不存在（可接受，工具图标另有来源）");
+}
+
+/* ---- ①t 传送门编辑窗控件与目的地窗统一 ---- */
+{
+  const uiShared = fs.readFileSync(path.join(ROOT, "assets", "ui.css"), "utf8");
+  const editHtml = fs.readFileSync(path.join(ROOT, "portal-edit.html"), "utf8");
+  const destHtml = fs.readFileSync(path.join(ROOT, "portal-dest.html"), "utf8");
+  if (uiShared.indexOf(".win-input") >= 0 && uiShared.indexOf(".win-check") >= 0 &&
+    uiShared.indexOf(".win-btn") >= 0 && uiShared.indexOf(".win-label") >= 0 &&
+    uiShared.indexOf(".win-note") >= 0)
+    ok("①t ui.css 抽公共控件类 .win-input / .win-check / .win-btn / .win-label / .win-note");
+  else bad("①t 公共控件样式缺失");
+  if (editHtml.indexOf('class="win-input" id="pe-name"') >= 0 &&
+    editHtml.indexOf('class="win-input" id="pe-tag"') >= 0 &&
+    (editHtml.match(/class="win-check-row"/g) || []).length === 3 &&
+    (editHtml.match(/class="win-check"/g) || []).length === 3 &&
+    editHtml.indexOf('class="win-note"') >= 0 &&
+    editHtml.indexOf('class="win-btn" id="pe-close"') >= 0 &&
+    editHtml.indexOf('class="win-btn primary" id="pe-save"') >= 0 &&
+    destHtml.indexOf('class="win-btn" id="pd-close"') >= 0)
+    ok("①t 编辑窗名称/标签/三开关/说明/取消·保存 与目的地窗共用控件样式，保存为主按钮");
+  else bad("①t 编辑窗控件未统一 / 字段缺失");
+  if (coreSrc.indexOf("var PORTAL_EDIT_W = 360;") >= 0 && coreSrc.indexOf("var PORTAL_EDIT_H = 430;") >= 0)
+    ok("①t 编辑窗 360×430（统一控件后加高）");
+  else bad("①t 编辑窗尺寸常量不对");
+  if (editHtml.indexOf("flex: 1 1 auto; min-height: 0; overflow-y: auto") >= 0 && editHtml.indexOf(".pe-body .foot { flex: 0 0 auto") >= 0)
+    ok("①t 编辑窗 flex：内容可滚、按钮行固定、底部 12px 内边距，不裁切");
+  else bad("①t 编辑窗 flex/内边距结构不对");
 }
 
 /* ---- ② 同 tag 目的地 ---- */

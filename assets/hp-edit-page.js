@@ -1,4 +1,4 @@
-// v2.3.6：血条编辑窗的页面脚本（hp-edit.html）—— 照 Full Suite 的 hp-bar 重做第一批（布局 + 字段）。
+// v2.3.7：血条编辑窗的页面脚本（hp-edit.html）—— 照 Full Suite 的 hp-bar 重做第一批（布局 + 字段）。
 // ---------------------------------------------------------------------------
 // 窗口 344×106：行1 名称 + 钉住 / 锁定 / 重绘 + ✕；行2 生命药丸（按 cur/max 比例填充）+ 临时生命；
 // 行3 四防；行4 状态行。**去掉回复力字段**（surges 数据保留在 token 上，只读不写）。
@@ -11,7 +11,7 @@
 import OBR from "../vendor/obr-sdk.js";
 import {
   CH_HPEDIT_LOG, CH_HP_EDIT_ACK, CH_HP_EDIT_READY, CH_HP_EDIT_SAVED, CH_HP_EDIT_TARGET, CH_HP_REPAINT, ID_HP_EDIT, KEY_BIND,
-  PLUGIN_VERSION, findCard, getCards, onReady
+  PLUGIN_VERSION, findCard, getCards, hpBarVisual, onReady
 } from "./common.js";
 import { closeSelf, createWindow, feedback } from "./window.js";
 import {
@@ -43,6 +43,8 @@ var lease = createHpEditLease(session);
 var els = {
   name: document.getElementById("hpe-name"),
   hpPill: document.getElementById("hpe-hp-pill"),
+  hpTempNote: document.getElementById("hpe-hp-temp-note"),
+  hpFill: document.getElementById("hpe-hp-fill"),
   cur: document.getElementById("hpe-cur"),
   max: document.getElementById("hpe-max"),
   temp: document.getElementById("hpe-temp"),
@@ -51,10 +53,9 @@ var els = {
   lockOn: document.getElementById("hpe-lock-on"),
   lockOff: document.getElementById("hpe-lock-off"),
   repaint: document.getElementById("hpe-repaint"),
-  note: document.getElementById("hpe-note"),
+  flash: document.getElementById("win-flash"),
   close: document.getElementById("close"),
-  off: document.getElementById("hpe-off"),
-  diag: document.getElementById("hpe-diag")
+  off: document.getElementById("hpe-off")
 };
 for (var di = 0; di < HPE_DEF_KEYS.length; di++) {
   els["def_" + HPE_DEF_KEYS[di]] = document.getElementById("hpe-def-" + HPE_DEF_KEYS[di]);
@@ -81,19 +82,21 @@ win.onStatus(function (st) {
 /* ---------------------------------------------------------------------------
  * 小工具
  * ------------------------------------------------------------------------- */
+var flashTimer = 0;
+/** v2.3.7：底部提示行已移除；保存/校验反馈统一走标题栏 #win-flash，1.5s 后消失。 */
 function note(text, tone) {
-  if (!els.note) return;
-  els.note.textContent = text || "";
-  els.note.className = "hpe-note" + (text && tone ? " " + String(tone) : "");
-}
-
-function paintDiag() {
-  if (!els.diag) return;
-  var editable = state.editable ? 1 : 0;
-  var dis = (!state.editable || state.busy) ? 1 : 0;
-  var n = document.querySelectorAll ? document.querySelectorAll(".hpe-num").length : 0;
-  els.diag.textContent = "role=" + (state.role || "?") + " editable=" + editable +
-    " dis=" + dis + " inputs=" + n + " v" + PLUGIN_VERSION;
+  if (!els.flash) return;
+  els.flash.textContent = text || "";
+  els.flash.className = "win-flash" + (text ? " on" + (tone ? " " + String(tone) : "") : "");
+  if (flashTimer) { clearTimeout(flashTimer); flashTimer = 0; }
+  if (text) {
+    flashTimer = setTimeout(function () {
+      flashTimer = 0;
+      if (!els.flash) return;
+      els.flash.textContent = "";
+      els.flash.className = "win-flash";
+    }, 1500);
+  }
 }
 
 function defsInput() {
@@ -109,7 +112,7 @@ function defsInput() {
 function formValues() {
   var cur = els.cur ? els.cur.value : "";
   var max = els.max ? els.max.value : "";
-  /* v2.3.6：只填了当前或上限任一方时自动补齐另一方（4E：先填一个就能画出第一根血条）。 */
+  /* v2.3.7：只填了当前或上限任一方时自动补齐另一方（4E：先填一个就能画出第一根血条）。 */
   if (max === "" && cur !== "") max = cur;
   if (cur === "" && max !== "") cur = max;
   return {
@@ -122,12 +125,14 @@ function formValues() {
 
 function paintRatio(view) {
   if (!els.hpPill) return;
-  var v = view || {};
-  var max = typeof v.max === "number" && v.max > 0 ? v.max : 0;
-  var cur = typeof v.cur === "number" ? v.cur : 0;
-  var ratio = max ? Math.max(0, Math.min(1, cur / max)) : 0;
-  els.hpPill.style.setProperty("--hp-ratio", String(ratio));
-  els.hpPill.classList.toggle("low", ratio <= 0.5);
+  var vis = hpBarVisual(view || {});
+  els.hpPill.style.setProperty("--hp-ratio", String(vis.ratio));
+  els.hpPill.style.setProperty("--hp-color", vis.color);
+  if (els.hpFill) els.hpFill.style.width = (vis.ratio * 100).toFixed(2) + "%";
+  els.hpPill.classList.toggle("hp-healthy", vis.status.key === "healthy");
+  els.hpPill.classList.toggle("hp-wounded", vis.status.key === "wounded");
+  els.hpPill.classList.toggle("hp-critical", vis.status.key === "critical");
+  els.hpPill.classList.toggle("low", vis.status.bloodied);
 }
 
 function fillForm(view) {
@@ -160,7 +165,7 @@ function paintTools() {
   if (els.lock) {
     var locked = !!(state.view && state.view.locked);
     els.lock.classList.toggle("on", locked);
-    /* v2.3.6：锁定状态切换 lock / unlock 两个内联 SVG（不用 innerHTML 重绘按钮）。 */
+    /* v2.3.7：锁定状态切换 lock / unlock 两个内联 SVG（不用 innerHTML 重绘按钮）。 */
     if (els.lockOn) els.lockOn.hidden = !locked;
     if (els.lockOff) els.lockOff.hidden = locked;
     els.lock.title = locked ? "已锁定：玩家看不到精确数字（点击解锁）" : "锁定：玩家看不到精确数字（点击锁定）";
@@ -172,7 +177,6 @@ function paintTools() {
 function applyDisabled() {
   var dis = !state.editable || state.busy;
   try { console.log("[4enext][hpEdit] applyDisabled dis=" + dis + " editable=" + state.editable + " busy=" + state.busy); } catch (e) { /* 忽略 */ }
-  paintDiag();
   var list = [els.cur, els.max, els.temp];
   for (var i = 0; i < HPE_DEF_KEYS.length; i++) list.push(els["def_" + HPE_DEF_KEYS[i]]);
   for (var k = 0; k < list.length; k++) {
@@ -215,7 +219,7 @@ async function playerIdOf() {
   try { return await OBR.player.getId(); } catch (e) { return ""; }
 }
 
-/** 绑定角色卡的默认值：只取「算得出」的几项（上限 / 四防，v2.3.6 不再带回复力）。 */
+/** 绑定角色卡的默认值：只取「算得出」的几项（上限 / 四防，v2.3.7 不再带回复力）。 */
 async function cardDefaults(item) {
   var cardId = item && item.metadata ? item.metadata[KEY_BIND] : null;
   if (typeof cardId !== "string" || !cardId) return null;
@@ -264,7 +268,7 @@ async function load() {
   var lockedForPlayer = hpEditReadOnly(hpMetaOf(item), state.role);
   state.locked = lockedForPlayer;
   var may = mayEditToken(item, state.role, pid);
-  if (state.role === "GM") may = true; /* v2.3.6：GM 判定优先，绝不因 createdUserId 只读 */
+  if (state.role === "GM") may = true; /* v2.3.7：GM 判定优先，绝不因 createdUserId 只读 */
   state.editable = may && !lockedForPlayer;
   try {
     console.log("[4enext][hpEdit] role=" + state.role + " pid=" + pid +
@@ -282,28 +286,18 @@ async function load() {
     fillForm(view);
   }
   setEditable(state.editable);
-  paintDiag();
   paintTools();
+  /* v2.3.7：固定底部提示已删；这些状态用标题栏 flash 短暂提示一次。 */
+  if (state.locked) note("已锁定：这枚 token 的血量对玩家隐藏（城主解锁后才能改）", "warn");
+  else if (!state.editable) note("只读：只有城主或这枚 token 的创建者能改生命 / 临时生命 / 四防", "warn");
+  else if (view.max === null) note("填生命上限（比如 20）就能画出第一根血条", "warn");
   refreshNote();
 }
 
-/** 窗口内状态行（不是通知中心）。 */
+/** v2.3.7：不再有固定底部提示行；状态只用标题栏 flash 做短暂反馈。 */
 function refreshNote() {
-  var view = state.view || {};
-  if (state.busy) {
-    note("保存中…（输入暂时禁用）", "warn");
-  } else if (state.locked) {
-    note("已锁定：这枚 token 的血量对玩家隐藏（城主解锁后才能改）", "warn");
-  } else if (!state.editable) {
-    note("只读：只有城主或这枚 token 的创建者能改生命 / 临时生命 / 四防", "warn");
-  } else if (view.fromCard) {
-    note("已按绑定角色卡带入默认值；改动会自动保存", "ok");
-  } else if (view.max === null) {
-    note("填生命上限（比如 20）就能画出第一根血条", "warn");
-  } else {
-    note("生命 " + (view.cur === null ? "?" : view.cur) + "/" + view.max +
-      (view.temp ? "（临时 +" + view.temp + "）" : "") + "；留空的四防 = 不画那枚盾", "");
-  }
+  /* 保留结构供旧检查；不写任何固定文案。 */
+  if (state.locked) { return; }
 }
 
 function broadcast(channel, payload) {
@@ -346,12 +340,8 @@ function showSaved(view) {
   var txt = (view && view.max !== null && view.max !== undefined)
     ? (view.cur === null || view.cur === undefined ? "?" : view.cur) + "/" + view.max
     : "";
-  if (noteTimer) clearTimeout(noteTimer);
+  if (noteTimer) { clearTimeout(noteTimer); noteTimer = 0; }
   note("已保存" + (txt ? "：" + txt : "") + (view && view.temp ? " · 临时 " + view.temp : ""), "ok");
-  noteTimer = setTimeout(function () {
-    noteTimer = 0;
-    refreshNote();
-  }, 1600);
 }
 
 /** 回填单个输入框（失焦 / Enter 后恢复规范值；不碰其它正在编辑的格子）。 */
@@ -381,14 +371,14 @@ async function commit(trigger, sourceEl) {
   hlog("commit result trigger=" + trigger + " ok=" + built.ok + " message=" + JSON.stringify(built.message || "") +
     " patch=" + JSON.stringify(built.patch || null));
   if (!built.ok) {
-    /* v2.3.6：非法/半截输入保留用户原值，不清空、不回填（等用户继续输入或修正）。 */
+    /* v2.3.7：非法/半截输入保留用户原值，不清空、不回填（等用户继续输入或修正）。 */
     note(built.message, "warn");
     return;
   }
   state.dirty = false;
   if (hpPatchEqualsView(built.patch, state.view)) { paintRatio(state.view); return; }
   setBusy(true);
-  refreshNote();
+  note("保存中…", "warn");
   var res = await writeHpEdit({
     getItems: function (ids) { return OBR.scene.items.getItems(ids); },
     updateItems: function (ids, fn) { return OBR.scene.items.updateItems(ids, fn); },
@@ -454,8 +444,6 @@ function repaintBars() {
   if (state.busy) return;
   broadcast(CH_HP_REPAINT, { itemId: itemId, at: Date.now() });
   note("已请求重绘这张 token 的血条（血条环 / 四防盾 / 资源徽记）", "ok");
-  if (noteTimer) clearTimeout(noteTimer);
-  noteTimer = setTimeout(function () { noteTimer = 0; refreshNote(); }, 1600);
 }
 
 function closeWindow() {
@@ -481,7 +469,7 @@ if (els.repaint) els.repaint.addEventListener("click", repaintBars);
 
 var inputs = [els.cur, els.max, els.temp];
 for (var k = 0; k < HPE_DEF_KEYS.length; k++) inputs.push(els["def_" + HPE_DEF_KEYS[k]]);
-/* v2.3.6 bugfix：这里必须用 forEach 的形参 el 捕获每个输入框。
+/* v2.3.7 bugfix：这里必须用 forEach 的形参 el 捕获每个输入框。
  * 之前用 `for (var el = inputs[i])` + 内部函数：var 是函数作用域共享，循环结束后 el 永远指向
  * 最后一个输入框（hpe-def-will）——任何框 focus 时 select() 都抢到「意志」，用户输入全写进意志。
  * 注意：isFieldEl 的 for (var i) 直接同步返回，不捕获闭包，保留没问题。 */
@@ -512,7 +500,7 @@ document.addEventListener("keydown", function (ev) {
   if (ev.key === "Escape") closeWindow();
 }, true);
 
-/* v2.3.6：单窗常驻 —— 后台换 target 时页面自己 commit 未保存输入再 load（不重建 iframe）。 */
+/* v2.3.7：单窗常驻 —— 后台换 target 时页面自己 commit 未保存输入再 load（不重建 iframe）。 */
 function isFieldEl(el) {
   if (!el) return false;
   for (var i = 0; i < inputs.length; i++) if (inputs[i] === el) return true;
@@ -546,7 +534,6 @@ async function handleHpTarget(data) {
 try { console.log("[4enext][hpEdit] loaded v=" + PLUGIN_VERSION + " url=" + location.href); } catch (e0) { /* 忽略 */ }
 onReady(function () {
   hlog("page ready, inputs=" + inputs.filter(Boolean).length);
-  paintDiag();
   try {
     OBR.broadcast.onMessage(CH_HP_EDIT_TARGET, function (ev) {
       var data = ev && ev.data !== undefined ? ev.data : ev;

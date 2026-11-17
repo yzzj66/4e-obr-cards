@@ -4,22 +4,20 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>4eNEXT to owlbear · 传送门编辑</title>
-<link rel="stylesheet" href="assets/ui.css?v=2.3.6">
+<link rel="stylesheet" href="assets/ui.css?v=2.3.7">
 <style>
-  body.pe-page .win { height: 100vh; max-height: 100vh; }
-  .pe-body { padding: 8px 10px 10px; display: flex; flex-direction: column; gap: 8px; overflow: auto; }
-  .pe-body h3 { margin: 0; font-size: 12.5px; color: #e6edf3; }
-  .pe-body label { display: flex; flex-direction: column; gap: 3px; font-size: 11px; color: #93a1b0; }
-  .pe-body input[type=text], .pe-body input[type=number], .pe-body select {
-    height: 26px; padding: 0 7px; border: 1px solid var(--line); border-radius: 7px;
-    background: #0e141b; color: var(--text); font: 600 12px/1 ui-monospace, Consolas, monospace;
+  html, body { height: 100%; }
+  body.pe-page { padding: 0; overflow: hidden; height: 100vh; }
+  body.pe-page .win { height: 100vh; max-height: 100vh; display: flex; flex-direction: column; }
+  .pe-body {
+    flex: 1 1 auto; min-height: 0; overflow-y: auto; box-sizing: border-box;
+    padding: 8px 12px 12px; display: flex; flex-direction: column; gap: 8px;
   }
+  .pe-body h3 { margin: 0; font-size: 12.5px; color: #e6edf3; }
   .pe-body .row { display: flex; gap: 8px; }
-  .pe-body .row label { flex: 1 1 0; }
-  .pe-body .checks { display: flex; gap: 14px; font-size: 12px; color: #cfd9e3; flex-wrap: wrap; }
-  .pe-body .checks label { flex-direction: row; align-items: center; gap: 5px; }
-  .pe-body .foot { margin-top: auto; display: flex; gap: 8px; justify-content: flex-end; }
-  .pe-body .hint { font-size: 10.5px; color: #93a1b0; line-height: 1.5; }
+  .pe-body .row .win-label { flex: 1 1 0; }
+  .pe-body .checks { display: flex; gap: 14px; flex-wrap: wrap; padding: 2px 0; }
+  .pe-body .foot { flex: 0 0 auto; margin-top: auto; padding-top: 4px; display: flex; gap: 8px; justify-content: flex-end; }
   .pe-close { font-size: 14px; line-height: 1; }
 </style>
 </head>
@@ -32,20 +30,26 @@
   </div>
   <div class="win-body pe-body">
     <h3>传送门</h3>
-    <label>名称 <input id="pe-name" type="text" maxlength="40" autocomplete="off"></label>
-    <label>标签（同 tag 互联） <input id="pe-tag" type="text" maxlength="40" autocomplete="off"></label>
-    <div class="checks">
-      <label><input id="pe-show-name" type="checkbox"> 显示名字</label>
-      <label><input id="pe-visible" type="checkbox"> 玩家可见</label>
-      <label><input id="pe-locked" type="checkbox"> 锁定</label>
+    <label class="win-label">名称
+      <input class="win-input" id="pe-name" type="text" maxlength="40" autocomplete="off">
+    </label>
+    <div class="row">
+      <label class="win-label">标签（同 tag 互联）
+        <input class="win-input" id="pe-tag" type="text" maxlength="40" autocomplete="off">
+      </label>
     </div>
-    <p class="hint">同标签的传送门互为目的地。隐形门（玩家不可见）本版仅保存字段，未实现单向传送。</p>
+    <div class="checks">
+      <label class="win-check-row"><input class="win-check" id="pe-show-name" type="checkbox"> 显示名字</label>
+      <label class="win-check-row"><input class="win-check" id="pe-visible" type="checkbox"> 玩家可见</label>
+      <label class="win-check-row"><input class="win-check" id="pe-locked" type="checkbox"> 锁定</label>
+    </div>
+    <p class="win-note">同标签的传送门互为目的地。隐形门（玩家不可见）本版仅保存字段，未实现单向传送。</p>
     <div class="foot">
-      <button class="btn" id="pe-close" type="button" data-bg-soft>取消</button>
-      <button class="btn" id="pe-save" type="button" data-bg-soft>保存</button>
+      <button class="win-btn" id="pe-close" type="button" data-bg-soft>取消</button>
+      <button class="win-btn primary" id="pe-save" type="button" data-bg-soft>保存</button>
     </div>
   </div>
 </div>
-<script type="module" src="assets/portal-page.js?v=2.3.6"></script>
+<script type="module" src="assets/portal-page.js?v=2.3.7"></script>
 </body>
 </html>
