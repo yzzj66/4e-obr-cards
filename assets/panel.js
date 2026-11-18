@@ -486,6 +486,7 @@ onReady(function () {
   try {
     OBR.player.onChange(function () { void refreshSelection(); });
     OBR.room.onMetadataChange(function () { void refresh(); });
+    if (OBR.scene && typeof OBR.scene.onMetadataChange === "function") OBR.scene.onMetadataChange(function () { void refresh(); });
   } catch (e) {
     console.error(e);
   }

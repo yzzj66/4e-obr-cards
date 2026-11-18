@@ -306,6 +306,8 @@ function formatWrapper(w, innerText) {
     return w.kind + "(" + innerText + (w.param != null ? "," + w.param : "") + ")";
   }
   const p = w.param != null ? w.param : 0;
+  /* v2.4.5：repeat 的参数在前（repeat(N,inner)），其它 wrapper 保持 (inner,param)。 */
+  if (w.kind === "repeat") return "repeat(" + p + "," + innerText + ")";
   return w.kind + "(" + innerText + "," + p + ")";
 }
 
@@ -983,4 +985,64 @@ export function fxQuery(row, origin) {
     put("wy", Math.round(origin.y * 100) / 100);
   }
   return parts.join("&");
+}
+
+/** v2.4.5：把表达式包成 repeat(N, expr) 或替换已有 N（clamp 1..20；空表达式返回错误）。 */
+export function repeatExpr(expr, n) {
+  const raw = String(expr == null ? "" : expr).trim();
+  if (!raw) return { ok: false, error: "empty", expr: raw, n: 0 };
+  const count = Math.max(1, Math.min(20, Math.round(Number(n) || 1)));
+  const m = /^repeat\s*\(\s*(\d+)\s*,\s*([\s\S]*)\)\s*$/i.exec(raw);
+  const out = m ? "repeat(" + count + ", " + m[2].trim() + ")" : "repeat(" + count + ", " + raw + ")";
+  return { ok: true, expr: out, n: count };
+}
+
+/** v2.4.5：repeat 每行展示文本：r<inner> = 骰面 + 修正 = 行总和；无 repeat 返回 []。 */
+export function repeatRowLines(row) {
+  if (!row) return [];
+  const expr = String(row.expression || "");
+  const m = /^repeat\s*\(\s*\d+\s*,\s*([\s\S]*)\)\s*$/i.exec(expr.trim());
+  if (!m) return [];
+  let inner = "";
+  try { inner = formatExpr(parseExpr(m[1])) || m[1].trim(); } catch (e) { inner = m[1].trim(); }
+  /* 单颗骰的内层表达式：左侧只写骰子（r1d20），修正放右侧；多颗保留完整内层。 */
+  const diceTerms = (inner.match(/d\d+/gi) || []).length;
+  const left = inner;
+  const starts = Array.isArray(row.rowStarts) ? row.rowStarts : [];
+  if (starts.length < 2) return [];
+  const totals = rowTotals(row.dice || [], starts, row.modifier);
+  const mod = Math.round(Number(row.modifier) || 0);
+  const out = [];
+  for (let i = 0; i < starts.length; i++) {
+    const from = starts[i];
+    const to = i + 1 < starts.length ? starts[i + 1] : (row.dice || []).length;
+    const faces = (row.dice || []).slice(from, to).map(function (d) {
+      const v = Math.round(Number(d.value) || 0);
+      return (d.subtract ? "-" : "") + v;
+    });
+    let body = faces.join(" + ").replace(/\+ -/g, "- ");
+    if (mod) body += (mod > 0 ? " + " : " - ") + Math.abs(mod);
+    out.push("r" + left + " = " + body + " = " + totals[i]);
+  }
+  return out;
+}
+
+/** v2.4.5：普通投掷的可读等式：<表达式> = 骰面 + 修正 = 总和（repeat 用 repeatRowLines）。 */
+export function rollLine(row) {
+  if (!row) return "";
+  const expr = String(row.expression || "");
+  if (/^repeat\s*\(/i.test(expr.trim())) return "";
+  let left = expr;
+  try { left = formatExpr(parseExpr(expr)) || expr; } catch (e) { left = expr; }
+  const dice = row.dice || [];
+  if (!left || !dice.length) return "";
+  const faces = dice.map(function (d) {
+    const v = Math.round(Number(d.value) || 0);
+    return (d.subtract ? "-" : "") + v;
+  });
+  const mod = Math.round(Number(row.modifier) || 0);
+  let body = faces.join(" + ").replace(/\+ -/g, "- ");
+  if (mod) body += (mod > 0 ? " + " : " - ") + Math.abs(mod);
+  const total = Math.round(Number(row.total) || 0);
+  return left + " = " + body + " = " + total;
 }

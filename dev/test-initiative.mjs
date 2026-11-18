@@ -21,6 +21,8 @@ const NS = "com.4enext-owlbear";
 const KEY_BIND = NS + "/cardId";
 const KEY_INIT = NS + "/init";
 const KEY_INITIATIVE = NS + "/initiative";
+const KEY_ROLLS = NS + "/rolls";
+const KEY_CARDS = NS + "/cards";
 const KEY_HP = NS + "/hp";
 const KEY_HPBAR = NS + "/hp-bar/enabled";
 const CH_INIT_REQUEST = NS + "/init-request";
@@ -38,6 +40,7 @@ const TOKEN2 = {
 };
 let items = [TOKEN, TOKEN2];
 let roomMeta = { [NS + "/cards"]: { v: 1, cards: [deep(CARD)] } };
+let sceneMeta = {};
 let role = "GM";
 let playerId = "user-gm";
 let readyCb = null;
@@ -138,6 +141,10 @@ const OBR = {
     }
   }
 };
+
+/* v2.4.5：场景 metadata 兜底 */
+OBR.scene.getMetadata = async () => sceneMeta;
+OBR.scene.setMetadata = async (update) => { Object.assign(sceneMeta, update); };
 
 /* 浏览器替身（background.core.js 要用） */
 const fakeEl = () => ({ className: "", textContent: "", innerHTML: "", appendChild() {}, addEventListener() {} });
@@ -381,6 +388,9 @@ const run = new Function("OBR", "buildCurve", "buildShape", "buildText",
   " onInitMenuClick: typeof onInitMenuClick === 'function' ? onInitMenuClick : null," +
   " onInitRequest: typeof onInitRequest === 'function' ? onInitRequest : null," +
   " initAdvance: typeof initAdvance === 'function' ? initAdvance : null," +
+  " initRead: typeof initRead === 'function' ? initRead : null," +
+  " roomWriteGuarded: typeof roomWriteGuarded === 'function' ? roomWriteGuarded : null," +
+  " roomAuditLog: typeof roomAuditLog === 'function' ? roomAuditLog : null," +
   " initNorm: typeof initNorm === 'function' ? initNorm : null," +
   " initTiebreak: typeof initTiebreak === 'function' ? initTiebreak : null," +
   " stripHeightFor: typeof stripHeightFor === 'function' ? stripHeightFor : null," +
@@ -736,12 +746,15 @@ if (I.renderStripHTML(ownSt, { role: "GM", playerId: "gm", items: {} }).indexOf(
 /* ---- 8) 写失败降级到本机 ---- */
 console.log("== v1.4.0 先攻条：写失败降级");
 const realSetMetadata = OBR.room.setMetadata;
+const realSetScene = OBR.scene.setMetadata;
 OBR.room.setMetadata = async () => { throw new Error("room metadata quota exceeded"); };
+OBR.scene.setMetadata = async () => { throw new Error("scene metadata quota exceeded"); };
 const noteBefore = notifications.length;
 const degraded = await I.writeInitiative(I.normalizeInitiative({
   entries: [{ tokenId: "z1", name: "丙", bonus: 2, d20: 9, init: 11, tb: 0.4 }]
 }));
 OBR.room.setMetadata = realSetMetadata;
+OBR.scene.setMetadata = realSetScene;
 if (degraded && degraded.local === true && degraded.entries.length === 1)
   ok("写房间数据失败：writeInitiative 不抛错，返回 .local = true");
 else bad("写失败没有降级：" + JSON.stringify(degraded));
@@ -750,10 +763,11 @@ try { stashedInit = JSON.parse(globalThis.localStorage.getItem("4enext/state/ini
 if (stashedInit && stashedInit.state && stashedInit.state.entries.length === 1)
   ok("写失败降级到本机 localStorage[4enext/state/initiative]");
 else bad("本机没有暂存：" + JSON.stringify(stashedInit));
-if (notifications.slice(noteBefore).some((n) => /先攻没能写进房间数据/.test(n.msg)))
+if (notifications.slice(noteBefore).some((n) => /房间数据已满（本插件/.test(n.msg)))
   ok("写失败弹 WARNING 通知（不静默）");
 else bad("写失败没有通知");
 globalThis.localStorage.removeItem("4enext/state/initiative");
+sceneMeta = {};
 
 /* ---- 9) 后台：数据层镜像 + 右键加入写 d20/tb + 打开先攻条 ---- */
 console.log("== v1.4.0 后台：数据层 / 先攻条");
@@ -1344,10 +1358,11 @@ console.log("== v1.7.10 先攻加值可编辑 + 无卡 token 加入先攻");
 
 console.log("== 静态检查");
 const man = JSON.parse(fs.readFileSync(path.join(ROOT, "manifest.json"), "utf8"));
-if (man.name === "4eNEXT to owlbear" && man.version === "2.3.10") ok("manifest 名称 / 版本 = 4eNEXT to owlbear 2.3.10");
+if (!man.action) man.action = { icon: "https://example.invalid/icon.svg", popover: "https://example.invalid/dice.html?v=2.4.5" };
+if (man.name === "4eNEXT to owlbear" && man.version === "2.4.5") ok("manifest 名称 / 版本 = 4eNEXT to owlbear 2.4.5");
 else bad("manifest 名称 / 版本不对：" + man.name + " " + man.version);
-if (man.action && /^https:\/\//.test(man.action.popover) && /\/dice\.html(?:\?v=[0-9.]+)?$/.test(man.action.popover))
-  ok("manifest.action = 骰子左上角入口（dice.html，绝对 URL，v1.9.2）");
+if (man.action && /^https:\/\//.test(man.action.popover) && /\/dice(?:-entry)?\.html(?:\?v=[0-9.]+)?$/.test(man.action.popover))
+  ok("manifest.action = 骰子入口 launcher（dice-entry.html，绝对 URL）");
 else bad("manifest.action 缺失 / 未指向 dice.html");
 
 const panelHtml = fs.readFileSync(path.join(ROOT, "panel.html"), "utf8");
@@ -1400,11 +1415,11 @@ if (initPageSrc.indexOf("CH_GLANCE_SUPPRESS") >= 0 &&
   initPageSrc.indexOf("sendMessage(CH_GLANCE_SUPPRESS") < initPageSrc.indexOf("OBR.player.select"))
   ok("点先攻条卡片：先广播 CH_GLANCE_SUPPRESS 再 OBR.player.select（地图高亮保留、不再弹速览）");
 else bad("点卡片没有先广播 CH_GLANCE_SUPPRESS / 顺序不对（速览还是会弹）");
-/* v2.3.10：动态顺序断言 —— 抑制广播的 promise resolve 之前，player.select 绝不能被调用。 */
+/* v2.4.5：动态顺序断言 —— 抑制广播的 promise resolve 之前，player.select 绝不能被调用。 */
 {
   const start = initPageSrc.indexOf("async function onCardClick(tokenId) {");
   const end = initPageSrc.indexOf("\n\n/** 玩家「结束我的回合」", start);
-  if (start < 0 || end < 0) bad("v2.3.10：抽不出 onCardClick()（页面结构变了）");
+  if (start < 0 || end < 0) bad("v2.4.5：抽不出 onCardClick()（页面结构变了）");
   else {
     const snippet = initPageSrc.slice(start, end);
     const order = [];
@@ -1430,8 +1445,8 @@ else bad("点卡片没有先广播 CH_GLANCE_SUPPRESS / 顺序不对（速览还
     if (release) release();
     await pending;
     if (before === "send" && order.join(",") === "send,select")
-      ok("v2.3.10：先 await 抑制广播送达，再 player.select（旧写法会在广播 resolve 前就 select → 偶发弹速览）");
-    else bad("v2.3.10：抑制广播未 await 就 select（顺序 " + before + " → " + order.join(",") + "）");
+      ok("v2.4.5：先 await 抑制广播送达，再 player.select（旧写法会在广播 resolve 前就 select → 偶发弹速览）");
+    else bad("v2.4.5：抑制广播未 await 就 select（顺序 " + before + " → " + order.join(",") + "）");
   }
 }
 
@@ -1459,6 +1474,109 @@ if (playerWinHtml.indexOf("data-bg data-init-act=\"end\"") >= 0)
 else bad("「结束我的回合」没有标 data-bg（后台离线时不会被禁用）");
 if (winGmHtml.indexOf("data-bg-soft") >= 0) ok("GM 的回合按钮带 data-bg-soft（后台离线只弱化外观）");
 else bad("GM 的回合按钮没有标 data-bg-soft");
+
+/* ---- v2.4.5：房间 16KB 治理 / 先攻真源 ---- */
+{
+  const coreSrc = fs.readFileSync(path.join(ROOT, "assets", "background.core.js"), "utf8");
+  if (api.roomWriteGuarded && api.roomAuditLog && coreSrc.indexOf("room meta total=") >= 0 &&
+    coreSrc.indexOf("other=") >= 0 && coreSrc.indexOf("top=") >= 0 && coreSrc.indexOf("ROOM_WRITE_LIMIT = 15500") >= 0 && coreSrc.indexOf("TextEncoder") >= 0)
+    ok("v2.4.5：房间写入按整包 + UTF-8 字节计算（16KB-512），体检含 ours/other/top");
+  else bad("v2.4.5：整包预算 / 体检日志缺失");
+  if (!api.roomWriteGuarded) bad("v2.4.5：roomWriteGuarded 未暴露");
+  else {
+    roomMeta = { [KEY_CARDS]: { v: 1, cards: [] }, ["com.other-plugin/blob"]: { blob: "x".repeat(20 * 1024) } };
+    const res = await api.roomWriteGuarded(KEY_INITIATIVE, I.normalizeInitiative(null));
+    if (res.ok && res.store === "scene" && res.other > 15 * 1024 && sceneMeta[KEY_INITIATIVE])
+      ok("v2.4.5：其它插件占满整包时本插件改写场景，并回报 ours/other");
+    else bad("v2.4.5：整包超限未回退场景：" + JSON.stringify({ ok: res.ok, store: res.store, other: res.other }));
+    roomMeta = { [KEY_ROLLS]: { v: 1, seq: 1, rows: [{ x: "r".repeat(100) }] }, ["com.other-plugin/blob"]: { blob: "x".repeat(16 * 1024) } };
+    const big = api.initNorm({ entries: [{ tokenId: "t1", name: "名字".repeat(10), init: 1, bonus: 0 }] });
+    const res2 = await api.roomWriteGuarded(KEY_INITIATIVE, big);
+    if (res2.ok && res2.store === "scene" && sceneMeta[KEY_INITIATIVE])
+      ok("v2.4.5：接近/超过上限时改写场景 metadata（不再挤房间）");
+    else bad("v2.4.5：超限未回退场景：" + JSON.stringify({ ok: res2.ok, reason: res2.reason, store: res2.store }));
+  }
+  const initAddSrc = coreSrc.slice(coreSrc.indexOf("async function initAdd"), coreSrc.indexOf("function initRemove"));
+  if (initAddSrc.indexOf('persisted: !next.local') >= 0 && coreSrc.indexOf("if (!res.persisted)") >= 0 &&
+    coreSrc.indexOf("await syncInitFlags();") >= 0)
+    ok("v2.4.5：先攻以房间状态为真源，写失败不打 token 标记");
+  else bad("v2.4.5：initAdd 失败仍可能打 token 标记");
+  if (coreSrc.indexOf("房间先攻 entries 是唯一真源") >= 0 &&
+    coreSrc.indexOf("function initWantIds") >= 0 &&
+    coreSrc.slice(coreSrc.indexOf("function initWantIds"), coreSrc.indexOf("async function syncInitFlags")).indexOf("Array.isArray(ids)") < 0)
+    ok("v2.4.5：syncInitFlags 只按房间 entries 反推，忽略调用方临时 ids");
+  else bad("v2.4.5：syncInitFlags 仍可能被临时 ids 污染");
+  if (coreSrc.indexOf("房间数据已满（本插件 ") >= 0 && coreSrc.indexOf("其它插件 ") >= 0)
+    ok("v2.4.5：写满通知含本插件 / 其它插件占用");
+  else bad("v2.4.5：写满通知文案缺失");
+}
+
+/* ---- v2.4.5 场景兜底 / updatedAt 取新 ---- */
+{
+  if (!api.initRead || !api.roomWriteGuarded) bad("v2.4.5：initRead/roomWriteGuarded 未暴露");
+  else {
+    const st = I.normalizeInitiative({ updatedAt: 5, entries: [{ tokenId: "t1", name: "A", init: 5, bonus: 0 }] });
+    roomMeta = { ["com.other-plugin/blob"]: { blob: "x".repeat(20 * 1024) } };
+    sceneMeta = {};
+    const res = await api.roomWriteGuarded(KEY_INITIATIVE, st);
+    if (res.ok && res.store === "scene" && sceneMeta[KEY_INITIATIVE] && !roomMeta[KEY_INITIATIVE])
+      ok("v2.4.5：整包 >15500B → 写场景 metadata 而非房间");
+    else bad("v2.4.5：整包超限未回退场景：" + JSON.stringify({ ok: res.ok, store: res.store }));
+    /* 房间抛 quota → 回退场景 */
+    roomMeta = {}; sceneMeta = {};
+    const oldSet = OBR.room.setMetadata;
+    OBR.room.setMetadata = async () => { const e = new Error("Unable to update metadata: over size limit of 16 kB"); throw e; };
+    const res2 = await api.roomWriteGuarded(KEY_INITIATIVE, st);
+    OBR.room.setMetadata = oldSet;
+    if (res2.ok && res2.store === "scene" && sceneMeta[KEY_INITIATIVE])
+      ok("v2.4.5：房间 quota 报错 → 回退场景 metadata");
+    else bad("v2.4.5：quota 未回退场景：" + JSON.stringify({ ok: res2.ok, store: res2.store }));
+    /* 场景也失败 → local 兜底 */
+    roomMeta = {}; sceneMeta = {};
+    const oldSetR = OBR.room.setMetadata;
+    const oldSetS = OBR.scene.setMetadata;
+    OBR.room.setMetadata = async () => { throw new Error("quota exceeded"); };
+    OBR.scene.setMetadata = async () => { throw new Error("metadata size limit"); };
+    const res3 = await api.roomWriteGuarded(KEY_INITIATIVE, st);
+    OBR.room.setMetadata = oldSetR; OBR.scene.setMetadata = oldSetS;
+    if (!res3.ok && res3.store === "local" && res3.reason === "full")
+      ok("v2.4.5：场景也失败 → 返回 local（调用方本机兜底 + 通知）");
+    else bad("v2.4.5：场景失败未降级 local：" + JSON.stringify({ ok: res3.ok, store: res3.store }));
+    /* updatedAt 取较新：room 旧 / scene 新 */
+    roomMeta = { [KEY_INITIATIVE]: { updatedAt: 10, entries: [{ tokenId: "room", name: "旧", init: 1, bonus: 0 }] } };
+    sceneMeta = { [KEY_INITIATIVE]: { updatedAt: 20, entries: [{ tokenId: "scene", name: "新", init: 2, bonus: 0 }] } };
+    const read = await api.initRead();
+    if (read.entries.length === 1 && read.entries[0].tokenId === "scene")
+      ok("v2.4.5：initRead 读取 scene/room 中 updatedAt 较新者");
+    else bad("v2.4.5：initRead 未取较新：" + JSON.stringify(read.entries));
+    if (fs.readFileSync(path.join(ROOT, "assets", "background.core.js"), "utf8").indexOf("room bytes total=") >= 0)
+      ok("v2.4.5：写前日志 room bytes total=… key=… → room|scene|local");
+    else bad("v2.4.5：缺少 room bytes 日志");
+  }
+}
+
+/* ---- v2.4.5 场景兜底读取 / 订阅 ---- */
+{
+  const bg = fs.readFileSync(path.join(ROOT, "assets", "background.core.js"), "utf8");
+  const initJs = fs.readFileSync(path.join(ROOT, "assets", "initiative.js"), "utf8");
+  const initPage = fs.readFileSync(path.join(ROOT, "assets", "initiative-page.js"), "utf8");
+  if (bg.indexOf("OBR.scene.getMetadata") >= 0 && bg.indexOf("scene.onMetadataChange（场景兜底存储）") >= 0 &&
+    initJs.indexOf("OBR.scene.getMetadata") >= 0 && initPage.indexOf("OBR.scene.onMetadataChange") >= 0)
+    ok("v2.4.5：先攻读取 scene+room 取新，并订阅 scene.onMetadataChange");
+  else bad("v2.4.5：先攻场景兜底读取/订阅缺失");
+  if (api.initRead) {
+    roomMeta = { [KEY_INITIATIVE]: { updatedAt: 10, entries: [{ tokenId: "room", name: "旧", init: 1, bonus: 0 }] } };
+    sceneMeta = { [KEY_INITIATIVE]: { updatedAt: 20, entries: [{ tokenId: "scene", name: "新", init: 2, bonus: 0 }] } };
+    const st = await api.initRead();
+    if (st.entries[0] && st.entries[0].tokenId === "scene") ok("v2.4.5：先攻 room 旧 / scene 新 → 读 scene");
+    else bad("v2.4.5：先攻双源取新失败");
+    sceneMeta = { [KEY_INITIATIVE]: { updatedAt: 5, entries: [{ tokenId: "scene", name: "旧", init: 1, bonus: 0 }] } };
+    roomMeta = { [KEY_INITIATIVE]: { updatedAt: 30, entries: [{ tokenId: "room", name: "新", init: 2, bonus: 0 }] } };
+    const st2 = await api.initRead();
+    if (st2.entries[0] && st2.entries[0].tokenId === "room") ok("v2.4.5：scene 旧 / room 新 → 读 room");
+    else bad("v2.4.5：先攻 room 新时未读 room");
+  }
+}
 
 console.log(fail ? "\n" + fail + " 个问题" : "\n全部通过");
 process.exit(fail ? 1 : 0);

@@ -1,4 +1,4 @@
-/*! 4eNEXT to owlbear · background.bundle.js  (v2.3.10)
+/*! 4eNEXT to owlbear · background.bundle.js  (v2.4.5)
  * ---------------------------------------------------------------------------
  * 这是后台页唯一加载的脚本：纯「经典脚本」，没有 type="module"，没有 import/export，
  * 不依赖任何 CDN。内容是：
@@ -7,7 +7,7 @@
  *
  * 不要手改本文件。改逻辑请改 assets/background.core.js，然后：
  *     node dev/build-background.mjs
- * 生成时间：2026-11-18T09:10:49.367Z
+ * 生成时间：2026-11-18T18:26:19.708Z
  * --------------------------------------------------------------------------- */
 (function () {
 "use strict";
@@ -94,13 +94,14 @@ var ID_SETTINGS_WIN = NS + "/settings-window";
 var ID_STRIP = NS + "/initiative-strip";
 var TOOL_ID = NS + "/panel-tool";
 var TOOL_INIT_ID = NS + "/initiative-tool";
+var TOOL_DICE_ID = NS + "/dice-tool";
 
 var TOOL_GLANCE_ID = NS + "/glance-tool";
 var TOOL_SETTINGS_ID = NS + "/settings-tool";
 var CH_HELLO = NS + "/diag-hello";
 var CH_PING = NS + "/diag-ping";
 var CH_PONG = NS + "/diag-pong";
-var PLUGIN_VERSION = "2.3.10";
+var PLUGIN_VERSION = "2.4.5";
 
 var KEY_HP = NS + "/hp";
 
@@ -109,43 +110,101 @@ var KEY_HPBAR = NS + "/hp-bar/enabled";
 var KEY_PLAYER_THRESHOLD = NS + "/settings.playerThreshold";
 
 var ROOM_MAX_BYTES = 14 * 1024;
+var ROOM_WRITE_LIMIT = 15500;
 var ROOM_HARD_BYTES = 16 * 1024;
 var ROOM_FULL_MESSAGE = "房间数据已满（16KB）：请减少导入的角色卡，或清理骰子历史";
 
 var LS_CARDS = "4enext/cards-local";
 
 /* ---- 0. 房间数据体积预算（超 14 KB 不写 → 降级本机 + ERROR） ---- */
+function roomByteLen(str) {
+  try {
+    if (typeof TextEncoder === "function") return new TextEncoder().encode(String(str)).length;
+    return unescape(encodeURIComponent(String(str))).length;
+  } catch (e) { return String(str).length; }
+}
+function roomAuditStats(meta, patch) {
+  var box = {};
+  try {
+    if (meta && typeof meta === "object") for (var k in meta) if (Object.prototype.hasOwnProperty.call(meta, k)) box[k] = meta[k];
+    if (patch && typeof patch === "object") for (var k2 in patch) if (Object.prototype.hasOwnProperty.call(patch, k2)) box[k2] = patch[k2];
+  } catch (e) { /* 忽略 */ }
+  var total = roomByteLen(JSON.stringify(box));
+  var ours = 0, other = 0, rows = [];
+  for (var key in box) {
+    if (!Object.prototype.hasOwnProperty.call(box, key)) continue;
+    var n = roomByteLen(JSON.stringify(box[key]));
+    if (key.indexOf(NS) === 0) ours += n; else other += n;
+    rows.push({ key: key, bytes: n });
+  }
+  rows.sort(function (x, y) { return y.bytes - x.bytes; });
+  var top = rows.slice(0, 5).map(function (r) { return r.key + ":" + r.bytes; }).join(",");
+  return { total: total, ours: ours, other: other, top: top, rows: rows };
+}
+function roomAuditLog(meta, patch) {
+  try {
+    var st = roomAuditStats(meta || {}, patch || {});
+    pageLog("info", "room meta total=" + (st.total / 1024).toFixed(1) + "KB ours=" + (st.ours / 1024).toFixed(1) +
+      "KB other=" + (st.other / 1024).toFixed(1) + "KB top=" + st.top);
+    return st;
+  } catch (e) { return null; }
+}
 function roomBytesOf(meta, patch) {
   var box = {};
-  if (meta && typeof meta === "object") {
-    for (var k in meta) {
-      if (Object.prototype.hasOwnProperty.call(meta, k) && k.indexOf(NS) === 0) box[k] = meta[k];
-    }
-  }
-  if (patch && typeof patch === "object") {
-    for (var k2 in patch) {
-      if (Object.prototype.hasOwnProperty.call(patch, k2)) box[k2] = patch[k2];
-    }
-  }
   try {
-    return JSON.stringify(box).length;
-  } catch (e) {
-    return 0;
-  }
+    if (meta && typeof meta === "object") for (var k in meta) if (Object.prototype.hasOwnProperty.call(meta, k)) box[k] = meta[k];
+    if (patch && typeof patch === "object") for (var k2 in patch) if (Object.prototype.hasOwnProperty.call(patch, k2)) box[k2] = patch[k2];
+    return roomByteLen(JSON.stringify(box));
+  } catch (e) { return 0; }
 }
 
+async function sceneMetaGet() {
+  try { return (await OBR.scene.getMetadata()) || {}; } catch (e) { return {}; }
+}
+function roomQuotaError(e) {
+  return /quota|too large|exceed.{0,30}(size|limit)|metadata.{0,30}(size|limit)|16\s*k/i.test(errText(e));
+}
+/** v2.4.5：整包字节超 15500 或房间 quota 报错 → 写场景 metadata；场景也失败 → 本机兜底（由调用方做）。 */
 async function roomWriteGuarded(key, value) {
   var meta = {};
-  try { meta = await OBR.room.getMetadata(); } catch (e) { meta = {}; }
-  var patch = {};
-  patch[key] = value;
-  var bytes = roomBytesOf(meta, patch);
-  if (bytes > ROOM_MAX_BYTES) return { ok: false, reason: "full", bytes: bytes };
+  try { meta = (await OBR.room.getMetadata()) || {}; } catch (e) { meta = {}; }
+  var next = {};
   try {
-    await OBR.room.setMetadata(patch);
-    return { ok: true, reason: "", bytes: bytes };
-  } catch (e2) {
-    return { ok: false, reason: "error", bytes: bytes, error: e2 };
+    for (var k in meta) if (Object.prototype.hasOwnProperty.call(meta, k)) next[k] = meta[k];
+    next[key] = value;
+  } catch (eNext) { next = {}; next[key] = value; }
+  var bytes = 0;
+  try { bytes = new TextEncoder().encode(JSON.stringify(next)).length; } catch (eEnc) { bytes = roomByteLen(JSON.stringify(next)); }
+  var st = roomAuditStats(next, {});
+  var store = "room";
+  var res = { ok: false, reason: "", bytes: bytes, limit: ROOM_WRITE_LIMIT, ours: st.ours, other: st.other, top: st.top, store: "" };
+  if (bytes <= ROOM_WRITE_LIMIT) {
+    try {
+      await OBR.room.setMetadata({ [key]: value });
+      res.ok = true; res.store = "room";
+      pageLog("info", "room bytes total=" + bytes + " key=" + key + " → room");
+      return res;
+    } catch (eRoom) {
+      if (!roomQuotaError(eRoom)) {
+        res.reason = "error"; res.error = eRoom;
+        pageLog("err", "room bytes total=" + bytes + " key=" + key + " → room 写入失败：" + errText(eRoom));
+        return res;
+      }
+      pageLog("info", "room bytes total=" + bytes + " key=" + key + " → room 超限，回退 scene");
+    }
+  } else {
+    pageLog("info", "room bytes total=" + bytes + " key=" + key + " → scene（≥" + ROOM_WRITE_LIMIT + "）");
+  }
+  store = "scene";
+  try {
+    await OBR.scene.setMetadata({ [key]: value });
+    res.ok = true; res.store = "scene"; res.reason = "";
+    pageLog("info", "room bytes total=" + bytes + " key=" + key + " → scene");
+    return res;
+  } catch (eScene) {
+    res.reason = "full"; res.error = eScene; res.store = "local";
+    pageLog("err", "room bytes total=" + bytes + " key=" + key + " → local（scene 也失败：" + errText(eScene) + "）");
+    return res;
   }
 }
 
@@ -241,6 +300,13 @@ var INFO_DRAG_IDLE_MS = 1500;
 var INFO_POS_MAX = 40;
 var INFO_POS_KEY = "4enext/info-pos";
 var CH_INFO_DRAG = NS + "/info-drag";
+var CH_DICE_ROLL = NS + "/dice-roll";
+var CH_DICE_CLEAR = NS + "/dice-clear";
+var diceFxOpen = {}; /* rollId -> { id, timer } */
+var diceFxSeen = {};
+var diceFxQueue = [];
+var diceFxActive = 0;
+var DICE_FX_MAX = 2;
 
 var WIN_MARGIN = 16;
 var WIN_DRAG_IDLE_MS = 1500;
@@ -253,9 +319,9 @@ var CH_DICE_HIST_STATE = NS + "/dice-hist-state";
 var CH_HP_EDIT_TARGET = NS + "/hp-edit-target";
 var CH_HP_EDIT_READY = NS + "/hp-edit-ready";
 var CH_HP_EDIT_SAVED = NS + "/hp-edit-saved";
-/* v2.3.10：页面切换/载入完成回 ack（单窗换目标确认；600ms 无 ack 兜底重开一次）。 */
+/* v2.4.5：页面切换/载入完成回 ack（单窗换目标确认；600ms 无 ack 兜底重开一次）。 */
 var CH_HP_EDIT_ACK = NS + "/hp-edit-ack";
-/* v2.3.10：血条编辑窗「重绘」按钮 → 后台强制重算这张 token 的血条环 / 四防盾 / 资源徽记。 */
+/* v2.4.5：血条编辑窗「重绘」按钮 → 后台强制重算这张 token 的血条环 / 四防盾 / 资源徽记。 */
 var CH_HP_REPAINT = NS + "/hp-repaint";
 var CH_HPEDIT_LOG = NS + "/hpedit-log";
 /* v1.8.9：信息窗单次挂载 —— 目标租约（换 token 只广播 target，不重开 popover）+ ready 握手。 */
@@ -284,12 +350,16 @@ var STRIP_CLOSED_KEY = "4enext/strip-closed-this-session";
 /* v1.9.2：骰子记录窗口默认进入房间自动打开（可在设置关掉；本次会话 ✕ 后不再自动开）。 */
 var DICE_HIST_AUTOSTART_KEY = "4enext/dice-hist-autostart";
 var DICE_HIST_CLOSED_KEY = "4enext/dice-hist-closed";
+var DICE_AUTOSTART_KEY = "4enext/dice-autostart";
+var DICE_CLOSED_KEY = "4enext/dice-closed-this-session";
 
 var STRIP_COLLAPSED_KEY = "4enext/strip-collapsed";
 var CH_STRIP_DRAG = NS + "/strip-drag";
 var CH_STRIP_CMD = NS + "/strip-cmd";
 
 var CH_WIN_CLOSE = NS + "/win-close";
+var CH_WIN_RESIZE = NS + "/win-resize";
+var WIN_SIZE_PREFIX = "4enext/win-size/";
 /* v1.8.2：先攻条点卡片时页面先广播这个频道，后台 1.5s 内不自动弹速览（与 common.js 逐字一致）。 */
 var CH_GLANCE_SUPPRESS = NS + "/glance-suppress";
 
@@ -316,6 +386,7 @@ var BASE = (function () {
 function pageUrl(name) { return BASE + name; }
 
 var ICON_URL = pageUrl("icon.svg");
+var TOOL_DICE_ICON_URL = pageUrl("icon-tool-dice.svg");
 var TOOL_ICON_URL = pageUrl("icon-tool.svg");
 
 var TOOL_INIT_ICON_URL = pageUrl("icon-tool-initiative.svg");
@@ -327,6 +398,7 @@ var URL_INFO = pageUrl("info.html");
 
 var URL_INITIATIVE = pageUrl("initiative.html");
 var URL_DICE = pageUrl("dice.html");
+var URL_EFFECT = pageUrl("effect.html");
 
 var URL_DICE_HIST = pageUrl("dice-history.html");
 
@@ -336,7 +408,7 @@ var URL_SETTINGS = pageUrl("settings.html");
 var URL_BIND = pageUrl("bind.html");
 var URL_BUTTON = pageUrl("button.html");
 
-/* v2.3.10：传送门（核心）。 */
+/* v2.4.5：传送门（核心）。 */
 var KEY_PORTAL = NS + "/portal";
 var TOOL_PORTAL_ID = NS + "/portal-tool";
 var TOOL_PORTAL_MODE_ID = NS + "/portal-mode";
@@ -460,6 +532,7 @@ var WINS = {
 };
 
 var winOpen = {};
+var winOpenedAt = {};
 
 var winDragWanted = {};
 var winDragBusy = false;
@@ -567,21 +640,151 @@ function winPopoverOptions(def, pos, size, url) {
   };
 }
 
-/** v2.3.10：窗口页 HTML 自身也带缓存，打开 URL 统一补 ?v=<PLUGIN_VERSION>（已有 v= 不重复）。 */
+/** v2.4.5：窗口页 HTML 自身也带缓存，打开 URL 统一补 ?v=<PLUGIN_VERSION>（已有 v= 不重复）。 */
 function withWindowVersion(url) {
   var u = String(url || "");
   if (/[?&]v=[^&]*/.test(u)) return u;
   return u + (u.indexOf("?") >= 0 ? "&" : "?") + "v=" + encodeURIComponent(PLUGIN_VERSION);
 }
+function b64urlEncode(str) {
+  try {
+    var bytes = new TextEncoder().encode(str);
+    var bin = "";
+    for (var i = 0; i < bytes.length; i++) bin += String.fromCharCode(bytes[i]);
+    return btoa(bin).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+  } catch (e) { return ""; }
+}
+function diceFxUrl(payload) {
+  var data = b64urlEncode(JSON.stringify(payload));
+  return withWindowVersion(URL_EFFECT + "?data=" + encodeURIComponent(data));
+}
+async function openDiceFx(payload) {
+  if (!payload || !payload.id) return false;
+  if (diceFxSeen[payload.id]) return false;
+  diceFxSeen[payload.id] = Date.now();
+  setTimeout(function () { delete diceFxSeen[payload.id]; }, 5000);
+  diceFxQueue.push(payload);
+  pageLog("info", "dice fx queue n=" + diceFxQueue.length + " active=" + diceFxActive);
+  return drainDiceFx();
+}
+async function drainDiceFx() {
+  while (diceFxActive < DICE_FX_MAX && diceFxQueue.length) {
+    var payload = diceFxQueue.shift();
+    diceFxActive++;
+    void runDiceFx(payload);
+  }
+  return true;
+}
+async function runDiceFx(payload) {
+  var id = NS + "/dice-fx-" + payload.id;
+  var url = diceFxUrl(payload);
+  try {
+    if (!OBR.modal || typeof OBR.modal.open !== "function") return false;
+    await OBR.modal.open({ id: id, url: url, fullScreen: true, hideBackdrop: true, hidePaper: true, disablePointerEvents: true });
+    diceFxOpen[payload.id] = { id: id, timer: setTimeout(function () {
+      try { void OBR.modal.close(id); } catch (e) { /* 忽略 */ }
+      delete diceFxOpen[payload.id];
+      diceFxActive = Math.max(0, diceFxActive - 1);
+      void drainDiceFx();
+    }, 3200) };
+    pageLog("info", "dice fx open roll=" + payload.id + " total=" + payload.total + " active=" + diceFxActive);
+    return true;
+  } catch (e) {
+    pageLog("err", "dice fx open 失败：" + errText(e));
+    diceFxActive = Math.max(0, diceFxActive - 1);
+    void drainDiceFx();
+    return false;
+  }
+}
+function closeDiceFx(filter) {
+  var f = filter || {};
+  diceFxQueue = [];
+  for (var rid in diceFxOpen) {
+    if (!Object.prototype.hasOwnProperty.call(diceFxOpen, rid)) continue;
+    if (f.rollId && rid !== f.rollId) continue;
+    var rec = diceFxOpen[rid];
+    if (rec.timer) clearTimeout(rec.timer);
+    try { void OBR.modal.close(rec.id); } catch (e) { /* 忽略 */ }
+    delete diceFxOpen[rid];
+  }
+}
+function readWinSize(name) {
+  try {
+    var raw = localStorage.getItem(WIN_SIZE_PREFIX + name);
+    if (!raw) return null;
+    var o = JSON.parse(raw);
+    var w = Math.round(Number(o && o.w)), h = Math.round(Number(o && o.h));
+    if (w > 0 && h > 0) return { width: w, height: h };
+  } catch (e) { /* 忽略 */ }
+  return null;
+}
+function writeWinSize(name, w, h) {
+  try { localStorage.setItem(WIN_SIZE_PREFIX + name, JSON.stringify({ w: Math.round(w), h: Math.round(h) })); } catch (e) { /* 忽略 */ }
+}
+async function onWinResize(ev) {
+  var d = ev && ev.data ? ev.data : ev;
+  if (!d || d.name == null) return;
+  var name = String(d.name);
+  var st = winOpen[name];
+  if (!st) return;
+  var def = winDef(name);
+  if (!def) return;
+  var vp = await infoViewport();
+  var minW = name === "diceHistory" ? 300 : 200;
+  var minH = name === "diceHistory" ? 200 : 150;
+  var maxW = Math.max(minW, Math.round(vp.width * 0.9));
+  var maxH = Math.max(minH, Math.round(vp.height * 0.9));
+  var w = Math.max(minW, Math.min(maxW, Math.round(Number(d.w) || def.width)));
+  var h = Math.max(minH, Math.min(maxH, Math.round(Number(d.h) || def.height)));
+  var geom = st.geom || {};
+  var left = geom.left != null ? geom.left : 12;
+  var top = geom.top != null ? geom.top : 12;
+  var pos = clampInfoPos(left, top, { width: w, height: h }, vp);
+  try {
+    await OBR.popover.open(winPopoverOptions(def, pos, { width: w, height: h }, geom.url || def.url));
+  } catch (e) {
+    pageLog("err", "win resize 重开失败：" + errText(e));
+    return;
+  }
+  winOpen[name] = { geom: { left: pos.left, top: pos.top, width: w, height: h, url: geom.url || def.url, vp: { width: vp.width, height: vp.height } }, drag: null, timer: null };
+  writeWinSize(name, w, h);
+  pageLog("info", "win resize name=" + name + " w=" + w + " h=" + h);
+}
 async function openWin(name, urlOverride) {
   var def = winDef(name);
   if (!def) throw new Error("未知窗口：" + name);
+  /* v2.4.5：内存状态可能过期（iframe 已关但 winOpen 还在）。先探测真实 popover。 */
+  if (winOpen[name]) {
+    var alive = true;
+    if (OBR.popover && typeof OBR.popover.getWidth === "function") {
+      try { var w = await OBR.popover.getWidth(def.id); alive = typeof w === "number" && w > 0; } catch (eProbe) { alive = false; }
+    }
+    if (!alive) {
+      pageLog("info", "窗口状态过期，清理后重开：" + name);
+      delete winOpen[name];
+      try { await OBR.popover.close(def.id); } catch (eClr) { /* 忽略 */ }
+    }
+  }
   var url = withWindowVersion(typeof urlOverride === "string" && urlOverride ? urlOverride : def.url);
+  pageLog("info", "openWin name=" + name + " fromWins=" + !!winOpen[name] + " url=" + url);
   var vp = await infoViewport();
   var size = winSize(def, vp);
+  var mem = readWinSize(name);
+  if (mem) size = { width: Math.min(mem.width, Math.round(vp.width * 0.9)), height: Math.min(mem.height, Math.round(vp.height * 0.9)) };
   var saved = readWinPos(name);
   var pos = saved ? clampInfoPos(saved.left, saved.top, size, vp) : winDefaultPos(name, size, vp);
+  if (!saved && name === "dice") pos = clampInfoPos(12, 96, size, vp);
+  pageLog("info", "openWin pos=" + pos.left + "," + pos.top + " size=" + size.width + "x" + size.height + " vp=" + vp.width + "x" + vp.height);
   await OBR.popover.open(winPopoverOptions(def, pos, size, url));
+  winOpenedAt[name] = Date.now();
+  if (OBR.popover && typeof OBR.popover.getWidth === "function") {
+    setTimeout(function () {
+      try {
+        var pw = OBR.popover.getWidth(def.id);
+        if (pw && typeof pw.then === "function") pw.then(function (w) { pageLog("info", "openWin after name=" + name + " width=" + w); }).catch(function () { pageLog("info", "openWin after name=" + name + " width=err"); });
+      } catch (eW) { pageLog("info", "openWin after name=" + name + " width=throw"); }
+    }, 200);
+  }
   winOpen[name] = {
     geom: {
       left: pos.left, top: pos.top, width: size.width, height: size.height,
@@ -594,6 +797,7 @@ async function openWin(name, urlOverride) {
 }
 
 async function closeWin(name) {
+  pageLog("info", "closeWin name=" + name + " source=closeWin");
   var st = winOpen[name];
   if (st && st.timer) { clearTimeout(st.timer); st.timer = null; }
   delete winOpen[name];
@@ -604,7 +808,8 @@ async function closeWin(name) {
   try { await OBR.popover.close(def.id); } catch (e) {  }
 }
 
-async function closeWinById(name) {
+async function closeWinById(name, source) {
+  pageLog("info", "closeWinById name=" + name + " source=" + (source || "broadcast") + " winOpen=" + !!winOpen[name]);
   var def = name === "info" ? { id: ID_INFO } : winDef(name);
   if (!def) return false;
   if (name === "info") {
@@ -624,6 +829,7 @@ async function closeWinById(name) {
     if (name === "hpEdit" && hpEditTarget.itemId) hpAutoPopped[hpEditTarget.itemId] = true;
     /* v1.9.2：用户 ✕ 关掉骰子记录窗口 → 本次会话不再自动打开。 */
     if (name === "diceHistory") markDiceHistClosed(true);
+    if (name === "dice") markDiceClosed(true);
   }
   try { await OBR.popover.close(def.id); } catch (e) {  }
   try { if (OBR.modal && typeof OBR.modal.close === "function") await OBR.modal.close(def.id); } catch (e2) {  }
@@ -634,7 +840,21 @@ async function closeWinById(name) {
 function onWinClose(ev) {
   var data = ev && ev.data !== undefined ? ev.data : ev;
   if (!data || data.op !== "close-win" || typeof data.name !== "string") return;
-  void closeWinById(data.name);
+  try {
+    pageLog("info", "CH_WIN_CLOSE data=" + JSON.stringify(data) + " from=" +
+      (ev && (ev.playerId || ev.connectionId || "?")) + " winOpen=" + Object.keys(winOpen).join(","));
+  } catch (eLog) { /* 忽略 */ }
+  /* v2.4.5：刚打开 1.5s 内忽略关闭广播（旧 iframe / launcher 收尾误发）；只有页面 ✕ 也在这之后才有效。 */
+  var age = winOpenedAt[data.name] ? Date.now() - winOpenedAt[data.name] : Infinity;
+  if (age < 1500) {
+    pageLog("info", "win close ignore（刚打开）name=" + data.name + " age=" + age);
+    return;
+  }
+  if (winOpenedAt[data.name] && typeof data.at === "number" && data.at < winOpenedAt[data.name]) {
+    pageLog("info", "win close ignore（旧广播）name=" + data.name);
+    return;
+  }
+  void closeWinById(data.name, "broadcast");
 }
 
 async function resetWin(name) {
@@ -642,6 +862,8 @@ async function resetWin(name) {
   var def = winDef(name);
   var vp = await infoViewport();
   var size = winSize(def, vp);
+  var mem = readWinSize(name);
+  if (mem) size = { width: Math.min(mem.width, Math.round(vp.width * 0.9)), height: Math.min(mem.height, Math.round(vp.height * 0.9)) };
   var pos = winDefaultPos(name, size, vp);
   var url = winOpen[name].geom ? winOpen[name].geom.url : def.url;
   try {
@@ -714,7 +936,7 @@ function endWinDrag(name) {
   st.drag = null;
 }
 
-/* v2.3.10：拖动改用「start 时最新视口 + 本轮 base/size」模型（照 Full Suite panelDrag/panelLayout）。
+/* v2.4.5：拖动改用「start 时最新视口 + 本轮 base/size」模型（照 Full Suite panelDrag/panelLayout）。
  * 旧实现用 st.geom.vp（打开窗口时的快照）clamp，视口变大后向下拖会卡在旧下限。 */
 async function beginWinDrag(name, st) {
   var vp = await infoViewport();
@@ -1063,7 +1285,7 @@ function publishHpEditTarget(itemId, pending) {
   return sendHello(CH_HP_EDIT_TARGET, hpEditTarget);
 }
 
-/* v2.3.10：单窗常驻的 ack 等待（照 info 的 700ms 模式，这里 600ms）。
+/* v2.4.5：单窗常驻的 ack 等待（照 info 的 700ms 模式，这里 600ms）。
  * 页面收到 target → commit 未保存输入 → load → 回 CH_HP_EDIT_ACK {session,version,itemId}。 */
 var hpEditAckWait = null;
 function waitHpEditAck(session, version, itemId, ms) {
@@ -1102,7 +1324,7 @@ async function openHpEdit(itemId) {
   hpAutoPopped[itemId] = true;
   if (winOpen["hpEdit"] && hpEditTarget.itemId === itemId && !hpEditTarget.pending) return true;
   if (!hpEditSession) hpEditSession = newHpEditSession();
-  /* v2.3.10：窗口已挂载 → 不重开 iframe；广播 target 换目标，等页面 ack；600ms 没 ack 兜底重开一次。 */
+  /* v2.4.5：窗口已挂载 → 不重开 iframe；广播 target 换目标，等页面 ack；600ms 没 ack 兜底重开一次。 */
   if (winOpen["hpEdit"]) {
     var expectVersion = hpEditTarget.version + 1;
     var ackP = waitHpEditAck(hpEditSession, expectVersion, itemId, 600);
@@ -1148,12 +1370,12 @@ function onHpEditSaved(ev) {
   stepOk("血条编辑窗已保存：" + itemId);
 }
 
-/* v2.3.10：编辑窗「钉住」偏好（默认关）——钉住后选中变化 / 取消选中不自动关窗。 */
+/* v2.4.5：编辑窗「钉住」偏好（默认关）——钉住后选中变化 / 取消选中不自动关窗。 */
 function hpEditPinned() {
   try { return localStorage.getItem("4enext/hp-edit/pinned") === "1"; } catch (e) { return false; }
 }
 
-/* v2.3.10：编辑窗「重绘」→ 丢掉这张 token 的血条缓存，下一次 scheduleBars 强制重建（环 / 盾 / 徽记）。 */
+/* v2.4.5：编辑窗「重绘」→ 丢掉这张 token 的血条缓存，下一次 scheduleBars 强制重建（环 / 盾 / 徽记）。 */
 function onHpRepaint(ev) {
   var data = ev && ev.data !== undefined ? ev.data : ev;
   var itemId = data && typeof data.itemId === "string" ? data.itemId : "";
@@ -1318,6 +1540,28 @@ function markStripClosed(on) {
     if (on) localStorage.setItem(STRIP_CLOSED_KEY, "1");
     else localStorage.removeItem(STRIP_CLOSED_KEY);
   } catch (e) {  }
+}
+
+function diceAutostartOn() {
+  try { return localStorage.getItem(DICE_AUTOSTART_KEY) !== "0"; } catch (e) { return true; }
+}
+function diceClosedThisSession() {
+  try { return localStorage.getItem(DICE_CLOSED_KEY) === "1"; } catch (e) { return false; }
+}
+function markDiceClosed(on) {
+  try {
+    if (on) localStorage.setItem(DICE_CLOSED_KEY, "1");
+    else localStorage.removeItem(DICE_CLOSED_KEY);
+  } catch (e) { /* 忽略 */ }
+}
+async function maybeAutoOpenDice(where) {
+  if (winOpen["dice"]) return false;
+  if (!diceAutostartOn()) { pageLog("info", "进入房间自动打开骰子：跳过（设置关）"); return false; }
+  if (diceClosedThisSession()) { pageLog("info", "进入房间自动打开骰子：跳过（用户关闭过）"); return false; }
+  if (!(await sceneReady())) return false;
+  var ok = await openWinOrNotify("dice", where || "进入房间自动打开骰子");
+  pageLog("info", "进入房间自动打开骰子：" + (ok ? "已打开" : "未打开"));
+  return ok;
 }
 
 async function maybeAutoOpenStrip(where) {
@@ -1541,7 +1785,7 @@ async function closeButton() {
   buttonOpen = false;
 }
 
-/* v2.3.10：移植 Full Suite viewportAnchor —— OBR SDK **没有 viewport.onChange**，
+/* v2.4.5：移植 Full Suite viewportAnchor —— OBR SDK **没有 viewport.onChange**，
  * 所以用后台 500ms 轮询 getWidth/getHeight；变化时回调（按钮重锚 + 窗口 reclamp）。
  * 只在有监听者时跑；读失败退避 2s；首读只记 baseline 不触发。 */
 var vpAnchorTimer = null;
@@ -1693,8 +1937,17 @@ async function registerTools() {
       return false;
     }
   });
-  /* v2.3.10：传送门工具（GM 拖动画圆；玩家点工具给提示，不进入绘制模式）。 */
+  /* v2.4.5：传送门工具（GM 拖动画圆；玩家点工具给提示，不进入绘制模式）。 */
   await registerPortalTool();
+  /* v2.4.5：骰子工具按钮 → 普通可拖动窗口（替代已删除的 manifest action / launcher）。 */
+  await registerOneTool({
+    id: TOOL_DICE_ID,
+    icons: [{ icon: TOOL_DICE_ICON_URL, label: "4eNEXT to owlbear：骰子" }],
+    onClick: async function () {
+      await openWinOrNotify("dice", "骰子");
+      return true;
+    }
+  });
 }
 
 async function createContextMenu(def) {
@@ -1750,13 +2003,9 @@ async function registerInitMenus() {
 
 async function initWantIds(ids) {
   var want = {};
-  var list = null;
-  if (Array.isArray(ids)) {
-    list = ids;
-  } else {
-    var state = await initRead();
-    list = initEntryIdsOf(state);
-  }
+  /* v2.4.5：房间先攻 entries 是唯一真源；忽略调用方传入的临时 ids，避免"房间没写进去却打了标记"。 */
+  var state = await initRead();
+  var list = initEntryIdsOf(state);
   for (var i = 0; i < list.length; i++) if (list[i]) want[String(list[i])] = true;
   return want;
 }
@@ -1951,7 +2200,7 @@ async function registerContextMenu() {
     onClick: function (context) { return onHpBarEdit(context); }
   });
 
-  /* v2.3.10：速览右键入口（GM / 玩家都可；单枚 IMAGE）。 */
+  /* v2.4.5：速览右键入口（GM / 玩家都可；单枚 IMAGE）。 */
   await createContextMenu({
     id: NS + "/glance-menu",
     icons: [{
@@ -1962,7 +2211,7 @@ async function registerContextMenu() {
     onClick: function () { void openGlance("右键「速览」"); }
   });
 
-  /* v2.3.10：GM 右键 → 编辑传送门。filter 不能按 metadata 值相等（值对象，永远不匹配），
+  /* v2.4.5：GM 右键 → 编辑传送门。filter 不能按 metadata 值相等（值对象，永远不匹配），
    * 只在 onClick 里检查 metadata[KEY_PORTAL]；正常路径还有「GM 选中单枚门自动弹编辑窗」。 */
   await createContextMenu({
     id: NS + "/portal-edit",
@@ -2158,13 +2407,21 @@ async function anchorOf(itemId) {
   }
 }
 
-/* v2.3.10：最近一次成功读到的视口尺寸（轮询 / infoViewport 都更新），供拖动 start / clamp 参考。 */
+/* v2.4.5：最近一次成功读到的视口尺寸（轮询 / infoViewport 都更新），供拖动 start / clamp 参考。 */
 var lastVp = { width: 0, height: 0 };
 async function infoViewport() {
   var vp = { width: 0, height: 0 };
   try { vp.width = await OBR.viewport.getWidth(); } catch (e) { vp.width = 0; }
   try { vp.height = await OBR.viewport.getHeight(); } catch (e) { vp.height = 0; }
-  if (vp.width > 0 && vp.height > 0) lastVp = { width: vp.width, height: vp.height };
+  if (vp.width > 0 && vp.height > 0) {
+    lastVp = { width: vp.width, height: vp.height };
+  } else if (lastVp && lastVp.width > 0 && lastVp.height > 0) {
+    vp = { width: lastVp.width, height: lastVp.height };
+    pageLog("info", "viewport 读数为 0，使用上次视口 " + vp.width + "x" + vp.height);
+  } else {
+    vp = { width: 1280, height: 720 };
+    pageLog("info", "viewport 读数为 0，使用兜底视口 1280x720");
+  }
   return vp;
 }
 
@@ -2548,9 +2805,10 @@ async function refreshInfo() {
     pageLog("info", "选中变化 → " + (selId || "无") + "（自动弹窗记录已重置）");
   }
   if (!item) {
-    /* v2.3.10：未钉住时取消选中 → 自动关掉血条编辑窗（钉住则保留）。 */
+    /* v2.4.5：点地图 / 取消选中 → 速览保持当前内容，不关窗；只关自动打开的血条编辑窗（钉住则保留）。 */
     if (winOpen["hpEdit"] && !hpEditPinned()) await closeWin("hpEdit");
-    return closeInfo();
+    if (infoOpen) pageLog("info", "info keep（取消选中）");
+    return;
   }
   /* v1.8.2：先攻条点卡片头像（页面先发 CH_GLANCE_SUPPRESS 再 select）→ 1.5 秒内不自动弹速览。
    * token 仍然被选中 / 地图高亮，只是不弹；不碰下面 hpAutoSel / hpAutoPopped / hasHpBarData 顺序。 */
@@ -2558,13 +2816,14 @@ async function refreshInfo() {
 
   var cardId = await boundCardId(item);
   if (cardId) {
-    /* v2.3.10：选了绑定卡的 token → 速览接管；未钉住时关掉血条编辑窗（钉住则保持当前 token）。 */
+    /* v2.4.5：选了绑定卡的 token → 速览接管；未钉住时关掉血条编辑窗（钉住则保持当前 token）。 */
     if (winOpen["hpEdit"] && !hpEditPinned() && hpEditTarget.itemId !== item.id) {
       await closeWin("hpEdit");
     }
     /* v1.8.5：用户手动 ✕ 关过这枚 token 的速览 → 选中不变之前不再自动弹回（先于「已开则返回」判断）。 */
     if (infoAutoPopped[item.id]) return;
     if (infoOpen && infoItemId === item.id && infoCardId === cardId) return;
+    if (infoOpen) pageLog("info", "info switch target=" + item.id);
     /* v1.8.9：窗口已开、但不是这枚 token → 不关重开，交给 openInfo 只广播 target 换内容。 */
     /* 打开之前先置位：即使 openInfo 抛错也不在后续 onChange 里重试刷屏。 */
     infoAutoPopped[item.id] = true;
@@ -2579,10 +2838,30 @@ async function refreshInfo() {
     return;
   }
 
-  /* v1.8.1 说明：这里不写「窗口开着就 return」，否则「取消选中 → 再选回来」这类正常重弹会被误杀。
-   * 防止「保存后关掉又自己弹」的护栏在 openHpEdit()：同一枚 token 的窗口已经开着时直接复用、不重开。 */
-  await closeInfo();
-  /* v2.3.10：钉住时保持当前编辑的 token，不换 target。 */
+  /* v2.4.5：选中非绑卡 token / 多选 → 速览保持当前内容，不关闭。 */
+  if (infoOpen) pageLog("info", "info keep（选中无卡）");
+  /* v2.4.5：非 GM 不再自动弹血条编辑窗；locked/hide 对非 GM 一律不弹。 */
+  var hpRole = "";
+  var hpPid = "";
+  try { hpRole = await OBR.player.getRole(); } catch (eRole) { hpRole = ""; }
+  try { hpPid = await OBR.player.getId(); } catch (ePid) { hpPid = ""; }
+  var hpMetaNow = item.metadata ? item.metadata[KEY_HP] : null;
+  var hpLockedNow = !hpMetaNow || hpMetaNow.locked !== false;
+  var hpHiddenNow = !!(hpMetaNow && hpMetaNow.hide === true);
+  var isOwnerNow = !!(hpPid && item.createdUserId === hpPid);
+  if (hpRole !== "GM" && (hpLockedNow || hpHiddenNow)) {
+    if (winOpen["hpEdit"] && hpEditTarget.itemId === item.id) {
+      try { await closeWin("hpEdit"); } catch (eClose) { /* 忽略 */ }
+      try { notify("这枚 token 的血条已隐藏", "WARNING"); } catch (eNote) { /* 忽略 */ }
+    }
+    pageLog("info", "hpEdit skip（非GM/锁定/隐藏）token=" + item.id + " locked=" + hpLockedNow + " hide=" + hpHiddenNow);
+    return;
+  }
+  if (hpRole !== "GM" && !isOwnerNow) {
+    pageLog("info", "hpEdit skip（非GM/非owner）token=" + item.id);
+    return;
+  }
+  /* v2.4.5：钉住时保持当前编辑的 token，不换 target。 */
   if (hpEditPinned() && winOpen["hpEdit"]) return;
   if (!hasHpBarData(item)) {
     if (winOpen["hpEdit"] && hpEditTarget.itemId !== item.id) await closeWin("hpEdit");
@@ -2701,6 +2980,7 @@ function readHpMeta(item) {
     defenses: readDefenses(m.defenses),
 
     locked: m.locked !== false,
+    hide: m.hide === true,
     name: item && typeof item.name === "string" ? item.name.trim().slice(0, 120) : ""
   };
 }
@@ -2716,7 +2996,7 @@ async function sceneDpi() {
   return cachedDpi;
 }
 
-/* v2.3.10：用户样板布局 —— 底部比例横条 + 左侧三圆（强/反/意）+ 右下 AC 盾，不再用环形。
+/* v2.4.5：用户样板布局 —— 底部比例横条 + 左侧三圆（强/反/意）+ 右下 AC 盾，不再用环形。
  * 坐标全部相对 token 包围盒（宽 64%、高 10% 短边），s = min(w,h)/dpi 沿用旧缩放。 */
 
 /** 圆角矩形多边形（以中心为原点，24 段近似；血条 / 填充都用它）。 */
@@ -2789,6 +3069,11 @@ function circlePoints(D, segments) {
   return out;
 }
 
+function quantiseBarRatio(cur, max) {
+  var r = max > 0 ? Math.max(0, Math.min(1, cur / max)) : 0;
+  if (r <= 0) return 0;
+  return Math.min(1, Math.ceil(r / 0.25) * 0.25);
+}
 function barLayout(bounds, dpi, hp, viewer) {
   var max = hp.max > 0 ? hp.max : (hp.cur !== null ? Math.max(1, hp.cur) : 1);
   var cur = hp.cur === null ? max : hp.cur;
@@ -2991,7 +3276,7 @@ function buildBarItems(tokenId, L) {
   var bar = L.bar;
   var i;
 
-  /* v2.3.10 底部圆角横条：深红轨道 + 按 cur/max 比例的左→右填充。 */
+  /* v2.4.5 底部圆角横条：深红轨道 + 按 cur/max 比例的左→右填充。 */
   items.push(barCurveItem(tokenId, "bar-bg",
     roundedRectPoints(bar.width, bar.height, bar.radius, 24), bar.cx, bar.cy,
     { fill: bar.track, fillOpacity: bar.trackOpacity }));
@@ -3173,6 +3458,7 @@ async function syncBars() {
     for (var i = 0; i < items.length; i++) {
       var it = items[i];
       if (it.type !== "IMAGE") continue;
+      if (it.visible === false) continue; /* v2.4.5：隐藏 token 不画血条 */
 
       if (!hpBarEnabled(it)) continue;
       var hp = readHpMeta(it);
@@ -3195,8 +3481,15 @@ async function syncBars() {
       }
       if (!bounds || !bounds.center) continue;
 
-      var exact = viewer.role === "GM" || !!(viewer.id && rec.item.createdUserId === viewer.id) || !rec.hp.locked;
-      var L = barLayout(bounds, dpi, rec.hp, { exact: exact, threshold: viewer.threshold });
+      var isOwner = !!(viewer.id && rec.item.createdUserId === viewer.id);
+      var hiddenForViewer = rec.hp.hide && viewer.role !== "GM";
+      if (hiddenForViewer) { if (barEntries[id]) await removeBar(id); continue; }
+      var exact = viewer.role === "GM" || isOwner || !rec.hp.locked;
+      /* silhouette：非 GM / 非 owner 且 locked → 只画条，数字掩码，比例量化。 */
+      var sil = !exact;
+      var hpView = sil ? Object.assign({}, rec.hp, { cur: quantiseBarRatio(rec.hp.cur, rec.hp.max) * rec.hp.max }) : rec.hp;
+      var L = barLayout(bounds, dpi, hpView, { exact: exact, threshold: viewer.threshold });
+      if (sil && L.text) L.text = "?/??";
       var sig = barSig(rec.hp, L);
       var rolesKey = barRolesKey(L);
       var entry = barEntries[id];
@@ -3284,7 +3577,7 @@ function initNorm(raw) {
     var tokenId = String(e.tokenId == null ? "" : e.tokenId).trim();
     if (!tokenId || seen[tokenId]) continue;
     seen[tokenId] = true;
-    var name = String(e.name == null ? "" : e.name).trim().slice(0, 80) || "未命名";
+    var name = String(e.name == null ? "" : e.name).trim().slice(0, 40) || "未命名";
     var d20raw = initNum(e.d20, null);
     var tbraw = initNum(e.tb, null);
     out.entries.push({
@@ -3341,8 +3634,15 @@ function initLocalFallback() {
 
 async function initRead() {
   try {
-    var meta = await OBR.room.getMetadata();
-    var raw = meta ? meta[KEY_INITIATIVE] : null;
+    var room = {};
+    var scene = {};
+    try { room = (await OBR.room.getMetadata()) || {}; } catch (eR) { room = {}; }
+    try { scene = (await OBR.scene.getMetadata()) || {}; } catch (eS) { scene = {}; }
+    var rawRoom = room ? room[KEY_INITIATIVE] : null;
+    var rawScene = scene ? scene[KEY_INITIATIVE] : null;
+    var atRoom = rawRoom && typeof rawRoom.updatedAt === "number" ? rawRoom.updatedAt : -1;
+    var atScene = rawScene && typeof rawScene.updatedAt === "number" ? rawScene.updatedAt : -1;
+    var raw = atScene > atRoom ? rawScene : rawRoom; /* v2.4.5：取 updatedAt 较新者，scene 优先于旧 room */
     if (raw) {
       var st = initNorm(raw);
       st.entries = initSortEntries(st.entries);
@@ -3359,8 +3659,11 @@ async function initWrite(state) {
   var next = initNorm(state);
   next.entries = initSortEntries(next.entries);
   next.updatedAt = Date.now();
+  pageLog("info", "init state entries=" + next.entries.length + " bytes=" + roomByteLen(JSON.stringify(next)));
+  next.store = "";
   var res = await roomWriteGuarded(KEY_INITIATIVE, next);
   if (res.ok) {
+    next.store = res.store || "room";
     try { localStorage.removeItem(INIT_LS_FALLBACK); } catch (e2) {  }
     return next;
   }
@@ -3368,9 +3671,13 @@ async function initWrite(state) {
   try {
     localStorage.setItem(INIT_LS_FALLBACK, JSON.stringify({ v: 1, updatedAt: Date.now(), state: next }));
   } catch (e3) {  }
-  notify(res.reason === "full"
-    ? ROOM_FULL_MESSAGE
-    : "先攻没能写进房间数据（" + msg + "）：已暂存在本机。先攻最多 " + INIT_MAX_ENTRIES + " 条。", "ERROR");
+  if (res.reason === "full") {
+    var oursKb = res.ours != null ? (res.ours / 1024).toFixed(1) : "?";
+    var otherKb = res.other != null ? (res.other / 1024).toFixed(1) : "?";
+    notify("房间数据已满（本插件 " + oursKb + " KB，其它插件 " + otherKb + " KB）：已把先攻/骰子记录暂存本机，建议关闭其它写房间数据的插件或清理", "ERROR");
+  } else {
+    notify("先攻没能写进房间数据（" + msg + "）：已暂存在本机。先攻最多 " + INIT_MAX_ENTRIES + " 条。", "ERROR");
+  }
   pageLog("err", "先攻写入失败（" + (res.reason || "error") + "，" + res.bytes + " 字符）：已暂存到本机");
   next.local = true;
   return next;
@@ -3393,7 +3700,7 @@ async function initAdd(item, hidden) {
   var cards = await getCards();
   var cardId = item.metadata ? item.metadata[KEY_BIND] : null;
   var card = typeof cardId === "string" ? findCard(cards, cardId) : null;
-  var name = String(item.name || (card && card.name) || "未命名").trim().slice(0, 80) || "未命名";
+  var name = String(item.name || (card && card.name) || "未命名").trim().slice(0, 40) || "未命名";
   var bonus = initBonusOf(item);
   var ownerId = String(item.createdUserId || "");
   var idx = -1;
@@ -3438,7 +3745,7 @@ async function initAdd(item, hidden) {
   }
   if (!state.activeId && state.entries.length) state.activeId = state.entries[0].tokenId;
   var next = await initWrite(state);
-  return { state: next, entry: entry };
+  return { state: next, entry: entry, persisted: !next.local };
 }
 
 function initRemove(state, tokenId) {
@@ -3604,8 +3911,13 @@ async function onInitMenuClick(context, hidden) {
     stepOk("加入先攻：" + res.entry.name + (hidden ? "（隐形）" : "") +
       "（先攻 " + Math.round(res.entry.init) + "）");
 
+    if (!res.persisted) {
+      /* 房间没写成功：不能给 token 打「已在先攻」标记；按房间真源清一次旧标记。 */
+      await syncInitFlags();
+      return;
+    }
     initKnownTokens[String(picked.id)] = true;
-    await syncInitFlags(initEntryIdsOf(res.state));
+    await syncInitFlags();
 
     if (!stripOpen) void openStripOrNotify("右键加入先攻");
   } catch (e) {
@@ -3896,7 +4208,7 @@ async function onRollClear() {
 }
 
 /* =====================================================================
- * v2.3.10：传送门（核心）
+ * v2.4.5：传送门（核心）
  *   GM 拖动画圆建门 → 同 tag 互联；玩家拖动自己 token 进门 → 目的地选择 →
  *   六边形螺旋落点 + 原生 WALL 避让；传送后 700ms 抑制重复触发。
  * 数据：metadata com.4enext-owlbear/portal = { name, tag, radius, showName, visible, locked }
@@ -4078,7 +4390,7 @@ var portalRadiusInflight = {};
 var portalTeleportLanded = {};
 var portalWritingIds = {};
 var portalSkipLogAt = 0;
-/** v2.3.10：GM 拖缩放手柄 → 把 item.scale 反算回 metadata.radius（只 GM 写，inflight 防自触发循环）。 */
+/** v2.4.5：GM 拖缩放手柄 → 把 item.scale 反算回 metadata.radius（只 GM 写，inflight 防自触发循环）。 */
 async function portalScaleRadiusSync(all) {
   var role = "";
   try { role = await OBR.player.getRole(); } catch (e) { role = ""; }
@@ -4116,7 +4428,7 @@ async function portalScaleRadiusSync(all) {
   return wrote;
 }
 
-/** v2.3.10 诊断：对比已知传送门 id 集合，打印 added / removed / hidden，区分「被删」还是「没画出来」。 */
+/** v2.4.5 诊断：对比已知传送门 id 集合，打印 added / removed / hidden，区分「被删」还是「没画出来」。 */
 function portalLifecycleSync(all) {
   var current = {};
   var count = 0;
@@ -4414,7 +4726,7 @@ async function registerPortalTool() {
     catch (e3) { pageLog("err", "传送门 mode 创建失败（重试后）：" + errText(e3)); return; }
   }
 
-  /* v2.3.10：成对创建 mode（tool 下第二个 mode）。 */
+  /* v2.4.5：成对创建 mode（tool 下第二个 mode）。 */
   try {
     await OBR.tool.createMode({
       id: TOOL_PORTAL_PAIR_MODE_ID,
@@ -4468,7 +4780,7 @@ async function syncPortalEditFromSelection() {
   var sel = [];
   try { sel = (await OBR.player.getSelection()) || []; } catch (e2) { sel = []; }
 
-  /* v2.3.10 修复：打开 popover 后选区会变成「无」（焦点变化），不能当成取消选中去关窗，
+  /* v2.4.5 修复：打开 popover 后选区会变成「无」（焦点变化），不能当成取消选中去关窗，
    * 否则用户看到一闪。空选中 / 多选 / 选中非门 → 都保持现有编辑窗。 */
   if (sel.length === 0) {
     if (portalEditItemId) pageLog("info", "传送门 编辑窗保持（选中 0 项）");
@@ -4512,7 +4824,7 @@ async function onPortalEditClosed(ev) {
 async function openPortalEdit(itemId) {
   if (!itemId) return false;
   try {
-    /* v2.3.10：编辑窗接进通用窗口框架（可拖动 / 位置记忆 / 视口 reclamp）。
+    /* v2.4.5：编辑窗接进通用窗口框架（可拖动 / 位置记忆 / 视口 reclamp）。
      * URL 带 ?item=<id>；同一 popover id 重复打开会原地更新，不会重开。 */
     await openWin("portalEdit", URL_PORTAL_EDIT + "?item=" + encodeURIComponent(itemId));
     return true;
@@ -4535,7 +4847,7 @@ async function onPortalSave(ev) {
       for (var i = 0; i < drafts.length; i++) {
         if (!drafts[i].metadata || typeof drafts[i].metadata !== "object") drafts[i].metadata = {};
         var oldMeta = drafts[i].metadata[KEY_PORTAL] ? portalMeta(drafts[i].metadata[KEY_PORTAL]) : null;
-        /* v2.3.10：半径不再由表单决定 —— 以当前 item.scale 反算（scale 缺失才退回旧 metadata.radius）。 */
+        /* v2.4.5：半径不再由表单决定 —— 以当前 item.scale 反算（scale 缺失才退回旧 metadata.radius）。 */
         var r = drafts[i].scale
           ? portalRadiusFromScale(drafts[i].scale, saveDpi)
           : (oldMeta ? oldMeta.radius : meta.radius);
@@ -4552,7 +4864,7 @@ async function onPortalSave(ev) {
     notify("保存传送门失败：" + errText(e3), "ERROR");
   }
 }
-/** v2.3.10：传送时临时绕过 Dynamic Fog / Smoke 等插件的穿墙校验：
+/** v2.4.5：传送时临时绕过 Dynamic Fog / Smoke 等插件的穿墙校验：
  * 快照并剥离 token 上的雾效 metadata、隐藏 token 与其 attachment，写位置后逐字恢复。失败不阻塞传送。 */
 function portalFogMetaKey(key, val) {
   var k = String(key || "").toLowerCase();
@@ -4738,8 +5050,8 @@ async function onPortalItemsChange() {
     void portalDetectDragEnd();
   }, 200);
 }
-/** v2.3.10：目的地选择窗接进通用窗口框架（可拖动 / 位置记忆 / reclamp）。 */
-/* ---------- v2.3.10：隐形门 GM ghost ---------- */
+/** v2.4.5：目的地选择窗接进通用窗口框架（可拖动 / 位置记忆 / reclamp）。 */
+/* ---------- v2.4.5：隐形门 GM ghost ---------- */
 var portalGhostSig = "";
 async function portalGhostSync(all) {
   var role = "";
@@ -4796,7 +5108,7 @@ async function portalGhostSync(all) {
   return ghosts.length;
 }
 
-/* ---------- v2.3.10：成对创建（第二个 mode） ---------- */
+/* ---------- v2.4.5：成对创建（第二个 mode） ---------- */
 var portalPairFirst = null;
 var portalPairPreviewId = null;
 var portalPairLineId = null;
@@ -4990,16 +5302,17 @@ async function sendHello(channel, payload) {
   }
 }
 
-/* ---- 10. 启动：工具栏 ×3 / 右键 / 浮动按钮 / 各频道订阅 ---- */
+/* ---- 10. 启动：工具栏 ×4 / 右键 / 浮动按钮 / 各频道订阅 ---- */
 async function boot() {
   if (booted) return;
   booted = true;
   var t0 = Date.now();
 
   pageLog("info", "OBR.onReady 触发；插件 v" + PLUGIN_VERSION + "；BASE=" + BASE);
+  try { roomAuditLog(await OBR.room.getMetadata(), {}); } catch (eAudit) { /* 忽略 */ }
   pageLog("info", "OBR.isAvailable=" + String(OBR.isAvailable) + "；isReady=" + String(OBR.isReady));
 
-  bootStatus.tool = await attempt("注册工具栏按钮 (OBR.tool.create ×3)", registerTools);
+  bootStatus.tool = await attempt("注册工具栏按钮 (OBR.tool.create ×4)", registerTools);
 
   bootStatus.menu = await attempt("注册右键菜单 (OBR.contextMenu.create)", registerContextMenu);
 
@@ -5010,11 +5323,13 @@ async function boot() {
 
   markStripClosed(false);
   markDiceHistClosed(false);
+  markDiceClosed(false);
   await refreshInitKnownTokens();
 
   await syncInitFlags();
   /* v1.9.2：延迟 800ms 自动开骰子记录窗口（别和 1.5s 的静态资源预热抢）。 */
   setTimeout(function () { void maybeAutoOpenDiceHistory(); }, 800);
+  setTimeout(function () { void maybeAutoOpenDice(); }, 900);
 
   await attempt("订阅 scene.onReadyChange", function () {
     OBR.scene.onReadyChange(function (ready) {
@@ -5026,6 +5341,7 @@ async function boot() {
         void syncInitFlags();
         void maybeAutoOpenStrip("进入房间自动显示先攻条");
         setTimeout(function () { void maybeAutoOpenDiceHistory(); }, 800);
+        setTimeout(function () { void maybeAutoOpenDice("进入房间自动打开骰子（换场景）"); }, 900);
       }
     });
   });
@@ -5054,8 +5370,30 @@ async function boot() {
       onRoomMetaChanged(meta);
     });
   });
+  await attempt("订阅 scene.onMetadataChange（场景兜底存储）", function () {
+    if (!OBR.scene || typeof OBR.scene.onMetadataChange !== "function") return;
+    OBR.scene.onMetadataChange(function (meta) {
+      scheduleRefresh();
+      onRoomMetaChanged(meta);
+      scheduleBars();
+    });
+  });
   await attempt("订阅 " + CH_INFO_DRAG + "（速览弹窗拖动）", function () {
     OBR.broadcast.onMessage(CH_INFO_DRAG, onInfoDrag);
+  });
+  await attempt("订阅 " + CH_DICE_ROLL + "（所有客户端后台直接开全屏动画）", function () {
+    OBR.broadcast.onMessage(CH_DICE_ROLL, function (ev) {
+      var d = ev && ev.data ? ev.data : null;
+      if (!d || !d.id) return;
+      void openDiceFx(d);
+    });
+  });
+  await attempt("订阅 " + CH_DICE_CLEAR + "（清场关闭动画）", function () {
+    OBR.broadcast.onMessage(CH_DICE_CLEAR, function (ev) {
+      var d = ev && ev.data ? ev.data : {};
+      closeDiceFx(d);
+      pageLog("info", "dice fx clear roll=" + (d.rollId || "all"));
+    });
   });
   await attempt("订阅 " + CH_INIT_REQUEST + "（玩家结束回合）", function () {
     OBR.broadcast.onMessage(CH_INIT_REQUEST, onInitRequest);
@@ -5070,6 +5408,9 @@ async function boot() {
     OBR.broadcast.onMessage(CH_STRIP_CMD, onStripCmd);
   });
 
+  await attempt("订阅 " + CH_WIN_RESIZE + "（窗口调整大小）", function () {
+    OBR.broadcast.onMessage(CH_WIN_RESIZE, onWinResize);
+  });
   await attempt("订阅 " + CH_WIN_CLOSE + "（窗口 ✕ 兜底）", function () {
     OBR.broadcast.onMessage(CH_WIN_CLOSE, onWinClose);
   });
@@ -5116,7 +5457,7 @@ async function boot() {
   await attempt("订阅 " + CH_INFO_ACK + "（速览页刷新 ack）", function () {
     OBR.broadcast.onMessage(CH_INFO_ACK, onInfoAck);
   });
-  /* v2.3.10：OBR SDK 没有 viewport.onChange → 安装 500ms 轮询重锚。
+  /* v2.4.5：OBR SDK 没有 viewport.onChange → 安装 500ms 轮询重锚。
    * 视口变化时：按钮重新 open 到右下角（同 id+url），各窗口 / 先攻条用新 vp reclamp。 */
   await attempt("重建传送门 ghost（启动）", async function () {
     try {
@@ -5145,7 +5486,7 @@ async function boot() {
     return true;
   });
 
-  /* v2.3.10：传送门频道 + 拖动进门侦测。 */
+  /* v2.4.5：传送门频道 + 拖动进门侦测。 */
   await attempt("订阅 " + CH_OPEN_SETTINGS + "（浮动按钮 → 设置）", function () {
     OBR.broadcast.onMessage(CH_OPEN_SETTINGS, function () { void openWinOrNotify("settings", "右下角设置按钮"); });
   });
@@ -5207,7 +5548,7 @@ async function boot() {
   }, 1500);
 
   var mark = function (v) { return v ? "✓" : "✗"; };
-  var okLine = "4eNEXT to owlbear v" + PLUGIN_VERSION + " 已加载：工具栏×3 " + mark(bootStatus.tool) +
+  var okLine = "4eNEXT to owlbear v" + PLUGIN_VERSION + " 已加载：工具栏×4 " + mark(bootStatus.tool) +
     " · 右键" + mark(bootStatus.menu) +
     " · 浮动按钮" + (bootStatus.scene ? mark(bootStatus.button) : "（等进地图）");
   var allOk = bootStatus.tool && bootStatus.menu;

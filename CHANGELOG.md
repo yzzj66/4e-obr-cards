@@ -2,6 +2,62 @@
 
 > 这份文件是历史更新记录。安装与使用请看 [README](README.md)。
 
+**v2.4.5：2.4.4 修复的缓存版本（本轮验收版）**（2026-11-19）——
+完整版本链 2.4.4 → 2.4.5，强制拉取新 JS/CSS/HTML。含 2.4.4 全部内容：repeat 表达式顺序、普通/repeat 可读等式、
+去掉裸公式行并压紧行距、窗口 resizable（骰子面板 / 记录窗等通用手柄 + 尺寸记忆）、工具栏骰子、自动打开骰子面板等。
+
+**v2.4.4：表达式区「重复」按钮**（2026-11-19）——
+骰子面板表达式行下新增「次数 [2] + 重复 + ×2/×3/×5」：空表达式 flash 提示；已有 `repeat(N,…)` 只替换 N，
+否则包一层 `repeat(N, expr)`；N clamp 1–20；光标移到末尾并写日志 `[4enext][dice] repeat apply n=… expr=…`。
+结果沿用 `rowStarts` 每次一行：面板本次结果与全屏动画均按行展示各自总和。
+
+**v2.4.3：进入房间自动打开骰子面板**（2026-11-19）——
+场景就绪后自动 `openWin("dice")`（与先攻条同源时机，延迟 900ms 与记录窗错开）；本次会话用户手动 ✕ 后
+不再自动重开（换场景/重进房间会再开）；设置页「骰子动画」分组新增「进入房间自动打开骰子」开关（默认开，每客户端）。
+日志：`进入房间自动打开骰子：已打开 / 跳过（用户关闭过/设置关）`。
+
+**v2.4.2：2.4.1 修复的缓存版本**（2026-11-19）——
+完整版本链 2.4.1 → 2.4.2，强制拉取新 `settings-page.js` / 骰子工具 / effect 页面。
+含 2.4.1 阶段一：骰子改工具栏按钮（无 manifest action/launcher）、d6 点数面、自适应布局、
+节奏 900+180n、后台 fx 队列（最多 2）、鼠标落点兜底、设置页动画速度；并修设置页 `diceSpeedBtn` 未声明导致窗口关不掉。
+
+**v2.4.1：破骰子 launcher/effect 缓存（本地测试版）**（2026-11-19）——
+完整版本链 2.4.0 → 2.4.1（manifest×2、action.popover、所有 HTML ?v=、PLUGIN_VERSION、bundle、README）。
+骰子入口改由后台驱动：订阅 `CH_DICE_ROLL` 直接开全屏透明 effect modal，rollId 5s 去重、3200ms 兜底关闭、
+`CH_DICE_CLEAR` 清场；骰子页不再本地开 effect。launcher 增加全阶段日志；`infoViewport` 读数为 0 时用上次视口/1280×720 兜底。
+
+**v2.4.0：骰子动画接近 Full Suite（第一批：A 视觉 + B 多端同步）**（2026-11-19）——
+新增 `assets/dice-fx.js` 自绘 SVG 骰子（d4/d6/d8/d10/d12/d20/d100，深色面 + 描边，尺寸按类型）；
+`effect.html` 每颗骰子独立飞入/旋转/老虎机滚数、落点按世界坐标换算、crit/大失败闪光；
+投掷端广播 `CH_DICE_ROLL`（payload 含 rollId/rollerId/anchor/dice/total/modifier/crit/botch/skin/ts），
+其它客户端按 rollId 去重后各自打开动画；`CH_DICE_CLEAR` 清场只关对应动画。
+C 皮肤/音效、D 记录重播为第二批。
+
+**v2.3.14：骰子 launcher 缓存修复 / 一键打开**（2026-11-19）——
+`dice-entry.html` 的 `?v=` 随版本升到 2.3.14，破掉旧 launcher 缓存；launcher onReady 后延时 120ms
+自动广播 `CH_OPEN_DICE`，再调 `OBR.action.close()` 关闭 action 弹层，300/800ms 兜底重试；
+若 `action.close` 不可用/抛错则显示「打开骰子」按钮兜底（默认隐藏）。后台仍 `openWin("dice")` 开独立可拖动窗口。
+
+**v2.3.13：补种族/职业固定防御加值（人类三防 +1、混职游荡者反射 +1 等）**（2026-11-19）——
+`dev/gen-rules.mjs` 从数据原文解析「防御奖励 / 防御加值：+N 强韧/反射/意志」：人类三防各 +1；
+混职游荡者反射 +1；混职督军「+1强韧或意志」属选择型，角色 JSON 无明确选择时默认不加。
+`data/rules.js` 同步人类 1/1/1、混职游荡者 0/1/0、混职督军 0/0/0。
+两份脱敏 fixture 回归：不死人 AC16/强韧19/反射13/意志12；费兹 AC21/强韧18/反射22/意志15。
+**同版本 UI**：速览窗点地图 / 取消选中 / 选中非绑卡或多数时**保持不关闭**，切绑卡 token 只切 target；
+血条编辑窗新增「隐藏」勾选（GM-only，立即写 `hp.hide`，玩家端不画该 token 血条）。
+
+**v2.3.12：补野蛮人蛮族机敏（AC/反射 +1/+2/+3）**（2026-11-19）——
+`glance.js` 增加职业防御特性表：野蛮人（非狂战士）未穿重甲时 AC/反射 +1（11 级 +2、21 级 +3）；
+狂战士不享有；混职野蛮人只有 `classFeatureChoices` 明确选了「载甲机敏 / Barbarian Agility」才给，
+取不到天赋选择就不加。重甲按护甲槽 `重甲` 判断。用用户 3 级野蛮人卡回归：AC 16 / 反射 13 / 强韧 19 / 意志 12。
+
+**v2.3.11：房间数据 16KB 治理 + 血条锁/隐藏策略**（2026-11-19）——
+房间写入按**整包** `TextEncoder` 字节计算（阈值 15500）：能写房间就写房间，否则/遇 quota 错误改写**场景 metadata**，
+场景也失败才落本机 + 通知；先攻/角色卡/骰子记录读取按 `updatedAt` 取 scene/room 较新者。先攻以房间 entries 为唯一真源，
+写失败不再给 token 打标记；`syncInitFlags` 按房间 entries 反查清理旧标记。体检日志 `room meta total=… ours=… other=… top=…`，
+设置页显示总量/其它插件占用/前 5 排行。血条锁：非 GM 非创建者 `locked` 时数字掩码、比例 25% 量化（silhouette），
+空闲不显示；新增 `hide`；token 不可见时不再绘制血条。
+
 **v2.3.10：传送绕过 Dynamic Fog / Smoke 的穿墙校验**（2026-11-18）——
 Dynamic Fog 等插件会在 token 位置更新时把「穿墙」的位置挡回；它们的墙不在原生 WALL 里，所以读不到。
 传送写位置改为 `moveTokensWithFogBypass`：快照并临时剥离 token 上雾效类 metadata（key 含 smoke/spectre/

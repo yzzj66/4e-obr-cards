@@ -51,7 +51,7 @@ export const ID_SETTINGS_WIN = NS + "/settings-window";
  * id 与其它窗口都不同 → 可以和速览 / 先攻条同时开着；位置按窗口名 "hpEdit" 单独记。 */
 export const ID_HP_EDIT = NS + "/hp-edit";
 
-export const PLUGIN_VERSION = "2.3.10";
+export const PLUGIN_VERSION = "2.4.5";
 
 /**
  * 站点根地址。
@@ -196,13 +196,14 @@ export const CH_DICE_HIST_STATE = NS + "/dice-hist-state";
 export const CH_HP_EDIT_TARGET = NS + "/hp-edit-target";
 export const CH_HP_EDIT_READY = NS + "/hp-edit-ready";
 export const CH_HP_EDIT_SAVED = NS + "/hp-edit-saved";
-/** v2.3.10：页面切换/载入完成回 ack，后台据此判断「单窗换目标」是否成功（600ms 无 ack 兜底重开一次）。 */
+/** v2.4.5：页面切换/载入完成回 ack，后台据此判断「单窗换目标」是否成功（600ms 无 ack 兜底重开一次）。 */
 export const CH_HP_EDIT_ACK = NS + "/hp-edit-ack";
-/** v2.3.10：编辑窗「重绘血条」按钮 → 后台强制重算这张 token 的血条环 / 四防盾 / 资源徽记。 */
+/** v2.4.5：编辑窗「重绘血条」按钮 → 后台强制重算这张 token 的血条环 / 四防盾 / 资源徽记。 */
 export const CH_HP_REPAINT = NS + "/hp-repaint";
 export const CH_HPEDIT_LOG = NS + "/hpedit-log";
-/* v2.3.10：传送门（与 background.core.js 逐字一致）。 */
+/* v2.4.5：传送门（与 background.core.js 逐字一致）。 */
 export const KEY_PORTAL = NS + "/portal";
+export const CH_WIN_RESIZE = NS + "/win-resize";
 export const CH_OPEN_SETTINGS = NS + "/open-settings";
 export const CH_PORTAL_SAVE = NS + "/portal-save";
 export const CH_PORTAL_EDIT_CLOSE = NS + "/portal-edit-close";
@@ -275,6 +276,8 @@ export const CH_PONG = NS + "/diag-pong";   // 后台 → 页面：在，状态�
 export const INFO_POS_KEY = "4enext/info-pos";
 /** 弹窗拖动的 broadcast 频道（与 assets/background.core.js 的 CH_INFO_DRAG 必须一致）。 */
 export const CH_INFO_DRAG = NS + "/info-drag";
+export const CH_DICE_ROLL = NS + "/dice-roll";
+export const CH_DICE_CLEAR = NS + "/dice-clear";
 /** 拖动区 pointermove 的节流间隔（毫秒）：越小越跟手，越大越省。 */
 export const INFO_DRAG_THROTTLE_MS = 33;
 
@@ -397,13 +400,24 @@ function msgOf(e) {
 }
 
 async function readRoomMeta() {
-  try {
-    const meta = await OBR.room.getMetadata();
-    return meta && typeof meta === "object" ? meta : {};
-  } catch (e) {
-    console.error("[4enext] 读取房间数据失败", e);
-    return {};
+  let room = {}, scene = {};
+  try { room = (await OBR.room.getMetadata()) || {}; } catch (e) { console.error("[4enext] 读取房间数据失败", e); }
+  try { scene = (await OBR.scene.getMetadata()) || {}; } catch (e2) { scene = {}; }
+  /* v2.4.5：scene 兜底键与房间键按 updatedAt 取较新者。 */
+  const out = Object.assign({}, scene, room);
+  for (const k of Object.keys(scene)) {
+    const a = scene[k] && typeof scene[k].updatedAt === "number" ? scene[k].updatedAt : -1;
+    const b = room[k] && typeof room[k].updatedAt === "number" ? room[k].updatedAt : -1;
+    out[k] = a > b ? scene[k] : (room[k] !== undefined ? room[k] : scene[k]);
   }
+  return out;
+}
+const ROOM_WRITE_LIMIT = 15500;
+function roomQuotaError(e) {
+  return /quota|too large|exceed.{0,30}(size|limit)|metadata.{0,30}(size|limit)|16\s*k/i.test(e && e.message ? e.message : String(e || ""));
+}
+function jsonBytes(v) {
+  try { return new TextEncoder().encode(JSON.stringify(v)).length; } catch (e) { return JSON.stringify(v || {}).length; }
 }
 
 /**
@@ -412,16 +426,35 @@ async function readRoomMeta() {
  * 调用方拿到 !ok 必须做降级 + 通知，不允许静默。
  */
 export async function writeRoomKey(key, value) {
-  const meta = await readRoomMeta();
   const patch = {};
   patch[key] = value;
-  const budget = roomBudget(meta, patch);
-  if (!budget.ok) return { ok: false, reason: "full", bytes: budget.bytes, max: budget.max };
+  let meta = {};
+  try { meta = (await OBR.room.getMetadata()) || {}; } catch (eM) { meta = {}; }
+  const next = Object.assign({}, meta, patch);
+  const bytes = jsonBytes(next);
+  let ours = 0, other = 0;
   try {
-    await OBR.room.setMetadata(patch);
-    return { ok: true, reason: "", bytes: budget.bytes, max: budget.max };
-  } catch (e) {
-    return { ok: false, reason: "error", bytes: budget.bytes, max: budget.max, error: e };
+    for (const k of Object.keys(next)) {
+      const n = jsonBytes(next[k]);
+      if (k.indexOf(NS) === 0) ours += n; else other += n;
+    }
+  } catch (eUse) { /* 忽略 */ }
+  if (bytes <= ROOM_WRITE_LIMIT) {
+    try {
+      await OBR.room.setMetadata(patch);
+      console.log("[4enext] room bytes total=" + bytes + " key=" + key + " → room");
+      return { ok: true, reason: "", bytes: bytes, max: ROOM_WRITE_LIMIT, store: "room", ours: ours, other: other };
+    } catch (e) {
+      if (!roomQuotaError(e)) return { ok: false, reason: "error", bytes: bytes, max: ROOM_WRITE_LIMIT, error: e };
+    }
+  }
+  try {
+    await OBR.scene.setMetadata(patch);
+    console.log("[4enext] room bytes total=" + bytes + " key=" + key + " → scene");
+    return { ok: true, reason: "", bytes: bytes, max: ROOM_WRITE_LIMIT, store: "scene", ours: ours, other: other };
+  } catch (eScene) {
+    console.log("[4enext] room bytes total=" + bytes + " key=" + key + " → local");
+    return { ok: false, reason: "full", bytes: bytes, max: ROOM_WRITE_LIMIT, error: eScene, store: "local", ours: ours, other: other };
   }
 }
 
@@ -541,6 +574,10 @@ export async function writeCards(cards) {
   const saved = saveLocalCards(wire);
   if (room.reason === "full") {
     notify(ROOM_FULL_MESSAGE, "ERROR");
+    const oursKb = typeof room.ours === "number" ? (room.ours / 1024).toFixed(1) : "?";
+    const otherKb = typeof room.other === "number" ? (room.other / 1024).toFixed(1) : "?";
+    notify("角色卡没能写进房间数据（房间已满：本插件 " + oursKb + " KB，其它插件 " + otherKb + " KB）：" +
+      (saved ? "已改为只记在这台机器上" : "本机也存不下，这次导入没有保存"), "ERROR");
   } else {
     notify("角色卡没能写进房间数据（" + msgOf(room.error) + "）：" +
       (saved ? "已改为只记在这台机器上（房间数据通常只有城主能写）" : "本机也存不下，这次导入没有保存"), "ERROR");
@@ -551,6 +588,23 @@ export async function writeCards(cards) {
 /** 设置窗口用：看一眼房间数据现在多满 / 有几张卡 / 几条骰子记录 / 几条先攻。 */
 export async function getRoomUsage() {
   const meta = await readRoomMeta();
+  let roomRaw = {}, sceneRaw = {};
+  try { roomRaw = (await OBR.room.getMetadata()) || {}; } catch (eR0) { roomRaw = {}; }
+  try { sceneRaw = (await OBR.scene.getMetadata()) || {}; } catch (eS0) { sceneRaw = {}; }
+  const srcOf = (key) => {
+    const a = roomRaw[key], b = sceneRaw[key];
+    const atA = a && typeof a.updatedAt === "number" ? a.updatedAt : -1;
+    const atB = b && typeof b.updatedAt === "number" ? b.updatedAt : -1;
+    if (atB >= 0 && atB > atA) return "scene";
+    if (atA >= 0) return "room";
+    return b ? "scene" : "none";
+  };
+  const sources = { cards: srcOf(KEY_CARDS), initiative: srcOf(KEY_INITIATIVE), rolls: srcOf(KEY_ROLLS), state: "room" };
+  try {
+    for (const k of Object.keys(roomRaw).concat(Object.keys(sceneRaw))) {
+      if (k.indexOf(NS + "/state/") === 0) { sources.state = srcOf(k); break; }
+    }
+  } catch (eSrc) { /* 忽略 */ }
   const cardsBox = meta[KEY_CARDS];
   const initBox = meta[KEY_INITIATIVE];
   const local = readLocalCards();
@@ -566,10 +620,27 @@ export async function getRoomUsage() {
   if (roomCards && roomCards.length) cardScope = "room";
   else if (sceneCards.length) cardScope = "scene";
   else if (local && local.cards.length) cardScope = "local";
+  /* v2.4.5：16KB 是**整个房间 metadata** 共享上限，其它插件也占；统计总量 / 本插件 / 其它。 */
+  let totalBytes = 0, oursBytes = 0, top = [];
+  try {
+    totalBytes = JSON.stringify(meta || {}).length;
+    const rows = [];
+    for (const k of Object.keys(meta || {})) {
+      const n = JSON.stringify(meta[k]).length;
+      if (k.indexOf(NS) === 0) oursBytes += n;
+      rows.push({ key: k, bytes: n });
+    }
+    rows.sort((a, b) => b.bytes - a.bytes);
+    top = rows.slice(0, 5);
+  } catch (e) { /* 忽略 */ }
   return {
-    bytes: roomBytes(meta),
-    max: ROOM_MAX_BYTES,
+    bytes: totalBytes,
+    max: ROOM_HARD_BYTES,
     hard: ROOM_HARD_BYTES,
+    oursBytes: oursBytes,
+    otherBytes: Math.max(0, totalBytes - oursBytes),
+    top: top,
+    sources: sources,
     cards: ids.size,
     roomCards: roomCards ? roomCards.length : 0,
     sceneCards: sceneCards.length,
@@ -871,11 +942,11 @@ export async function propagateCardStats(cards, updatedIds) {
 }
 
 /**
- * v2.3.10：把「卡片基础四防 + 速览临时四防」合并成 token 该有的 defenses。
+ * v2.4.5：把「卡片基础四防 + 速览临时四防」合并成 token 该有的 defenses。
  * base 用 token 侧键名（ac/fort/reflex/will）；defTemp 用 track state 键名（ac/fort/ref/reflex/will）。
  * 只覆盖 base 里存在的项（卡片没有的项 = 不返回 → 调用方保留 token 原值）；round + clamp 到 ≥0。
  * syncDefTempToTokens（写 token）与 track.syncTokenStats（比较是否回写）**必须共用这一套**，
- * 否则会出现「临时值写进去 → 速览刷新又按基础值写回」的抖动（v2.3.10 bug）。
+ * 否则会出现「临时值写进去 → 速览刷新又按基础值写回」的抖动（v2.4.5 bug）。
  */
 export function combineDefenses(base, defTemp) {
   /* 只用 track state 的键名（ac / fort / ref / will）逐项取临时值；base 侧键名是 ac/fort/reflex/will。
@@ -900,7 +971,7 @@ export function combineDefenses(base, defTemp) {
 }
 
 /**
- * v2.3.10：速览「四防临时加值」→ 绑定该卡 token 的 hp.defenses（单向联动，地图血条只显示）。
+ * v2.4.5：速览「四防临时加值」→ 绑定该卡 token 的 hp.defenses（单向联动，地图血条只显示）。
  * 目标值 = 卡片基础四防 + defTemp（只覆盖卡片有值的项；卡片没有的项保持 token 原值）。
  * 保留 cur / max / temp / locked / surges；值没变不写；无权限（非 GM 且非创建者）的 token 跳过；
  * 写失败静默（血条下次重算）。
@@ -992,7 +1063,7 @@ export function fmtTime(ts) {
     return "";
   }
 }
-/* v2.3.10：血条状态/配色唯一来源（地图血条与血条编辑窗预览共用）。
+/* v2.4.5：血条状态/配色唯一来源（地图血条与血条编辑窗预览共用）。
  * 阈值沿用 4E bloodied（≤50% 进入血怒）：>50% 健康绿、25%~50% 受伤黄、≤25% 濒死红。 */
 export const HP_STATE_HEALTHY_COLOR = "#56d364";
 export const HP_STATE_WOUNDED_COLOR = "#e3b341";
@@ -1026,4 +1097,30 @@ export function hpStatusOf(cur, max) {
   var label = key === "healthy" ? "健康" : (key === "wounded" ? "重伤" : "濒死");
   var color = key === "healthy" ? HP_STATE_HEALTHY_COLOR : (key === "wounded" ? HP_STATE_WOUNDED_COLOR : HP_STATE_CRITICAL_COLOR);
   return { key: key, label: label, color: color, ratio: ratio, bloodied: m > 0 && c <= m / 2 };
+}
+
+/* v2.4.5：骰子动画速度偏好（设置页 / effect 共用；settings 页不直接碰 localStorage）。 */
+export const LS_DICE_SPEED = "4enext/dice-speed";
+export function readDiceSpeedPref() {
+  try {
+    const v = localStorage.getItem(LS_DICE_SPEED);
+    return v === "fast" || v === "off" ? v : "standard";
+  } catch (e) { return "standard"; }
+}
+export function cycleDiceSpeedPref() {
+  const cur = readDiceSpeedPref();
+  const next = cur === "standard" ? "fast" : cur === "fast" ? "off" : "standard";
+  try { localStorage.setItem(LS_DICE_SPEED, next); } catch (e) { /* 忽略 */ }
+  return next;
+}
+
+/* v2.4.5：骰子面板进入房间自动打开（每客户端；本次会话手动关闭后不再自动开）。 */
+export const DICE_AUTOSTART_KEY = "4enext/dice-autostart";
+export const DICE_CLOSED_KEY = "4enext/dice-closed-this-session";
+export function readDiceAutoOpenPref() {
+  try { return localStorage.getItem(DICE_AUTOSTART_KEY) !== "0"; } catch (e) { return true; }
+}
+export function setDiceAutoOpenPref(on) {
+  try { localStorage.setItem(DICE_AUTOSTART_KEY, on ? "1" : "0"); } catch (e) { /* 忽略 */ }
+  return !!on;
 }

@@ -21,7 +21,7 @@
 import {
   ID_SETTINGS_WIN, PLUGIN_VERSION, onReady, readDiceAnim, readDiceHistAutostart, readStripAutostart,
   writeDiceAnim, writeDiceHistAutostart, writeStripAutostart,
-  getRoomUsage, clearRoomRolls, clearRoomCards
+  getRoomUsage, clearRoomRolls, clearRoomCards, readDiceSpeedPref, cycleDiceSpeedPref, readDiceAutoOpenPref, setDiceAutoOpenPref
 } from "./common.js";
 import { createWindow, feedback, closeSelf } from "./window.js";
 
@@ -31,10 +31,14 @@ const BUILD_DATE = "2026-11-15";
 /* 重置范围：白名单。除了这里列出来的，别的键一律不动（尤其不碰房间数据 / token 元数据）。 */
 const RESET_KEYS = ["4enext/win-pos", "4enext/info-pos"];
 const RESET_PREFIX = "4enext/state/";
+const RESET_PREFIXES = [RESET_PREFIX, "4enext/win-size/"];
 /** 二次确认的有效期：第一次点击后这么久内没有再点，就自动回到普通状态。 */
 const CONFIRM_MS = 5000;
 
-const win = createWindow({ name: "settings" });
+const win = createWindow({ name: "settings" }); /* v2.4.5：窗口壳最先初始化，后续 init 抛错也能关窗 */
+function safeInit(name, fn) {
+  try { fn(); } catch (e) { console.error("[4enext][settings] init " + name + " 失败", e); }
+}
 
 function msgOf(e) {
   return e && e.message ? e.message : String(e);
@@ -184,6 +188,9 @@ const roomUsageEl = document.getElementById("room-usage");
 const roomCardsEl = document.getElementById("room-cards");
 const roomRollsEl = document.getElementById("room-rolls");
 const roomInitEl = document.getElementById("room-init");
+const roomOtherEl = document.getElementById("room-other");
+const roomTopEl = document.getElementById("room-top");
+const roomSourcesEl = document.getElementById("room-sources");
 const roomRefreshBtn = document.getElementById("room-refresh");
 const roomCleanRollsBtn = document.getElementById("room-clean-rolls");
 const roomCleanCardsBtn = document.getElementById("room-clean-cards");
@@ -204,7 +211,21 @@ async function renderRoom() {
   }
   const pct = info.max > 0 ? Math.round((info.bytes / info.max) * 100) : 0;
   roomUsageEl.textContent = kb(info.bytes) + " / " + kb(info.max) + "（" + pct + "%）" +
-    (info.bytes > info.max ? " · 已超预算，先攻 / 骰子会被拒绝写入" : "");
+    (info.bytes > info.max ? " · 已超预算，先攻 / 骰子会被拒绝写入"
+      : info.bytes > 14 * 1024 ? " · 接近上限（其它插件也占房间数据）" : "");
+  if (roomOtherEl) roomOtherEl.textContent = kb(info.otherBytes || 0);
+  if (roomSourcesEl) {
+    const src = info.sources || {};
+    const label = (v) => v === "scene" ? "场景" : v === "local" ? "本机" : v === "room" ? "房间" : "—";
+    roomSourcesEl.textContent = "卡 " + label(src.cards) + " · 先攻 " + label(src.initiative) +
+      " · 骰子 " + label(src.rolls) + " · 状态 " + label(src.state);
+  }
+  if (roomTopEl) {
+    const top = Array.isArray(info.top) ? info.top : [];
+    roomTopEl.textContent = top.length
+      ? top.map((r, i) => (i + 1) + ". " + r.key + " " + kb(r.bytes)).join("\n")
+      : "—";
+  }
   if (roomCardsEl) {
     /* v1.8.0 三态：room = 房间数据（全桌共享）；scene = 房间装不下后改存当前场景的隐藏 item
      * （同样全桌可见、切场景不跟随）；local = 场景也写不进时的本机兜底。 */
@@ -215,6 +236,31 @@ async function renderRoom() {
   if (roomRollsEl) roomRollsEl.textContent = info.rows + " 条";
   if (roomInitEl) roomInitEl.textContent = info.entries + " 条";
 }
+
+/* v2.4.5：骰子动画速度（标准/快速/关闭），effect-page 读取同一个 localStorage。 */
+const diceSpeedBtn = document.getElementById("set-dice-speed");
+const diceAutoBtn = document.getElementById("set-dice-auto");
+safeInit("diceSpeed", function initDiceSpeed() {
+  if (!diceSpeedBtn) return;
+  const read = readDiceSpeedPref;
+  const paint = () => { const v = read(); diceSpeedBtn.textContent = "动画速度：" + (v === "fast" ? "快速" : v === "off" ? "关闭" : "标准"); };
+  paint();
+  diceSpeedBtn.addEventListener("click", function () {
+    const next = cycleDiceSpeedPref();
+    paint();
+  });
+});
+
+/* v2.4.5：进入房间自动打开骰子（每客户端）。 */
+safeInit("diceAuto", function () {
+  if (!diceAutoBtn) return;
+  const paint = () => { diceAutoBtn.textContent = "进入房间自动打开骰子：" + (readDiceAutoOpenPref() ? "开" : "关"); };
+  paint();
+  diceAutoBtn.addEventListener("click", function () {
+    setDiceAutoOpenPref(!readDiceAutoOpenPref());
+    paint();
+  });
+});
 
 /* 两个清理按钮各自独立二次确认（与「重置本机设置」同一套：第一次只预备，5 秒后自动取消）。 */
 function makeCleaner(btn, label, run) {
@@ -281,7 +327,7 @@ function scanLocal() {
     }
     for (let i = 0; i < localStorage.length; i++) {
       const key = localStorage.key(i);
-      if (key && key.indexOf(RESET_PREFIX) === 0) { found.push(key); stateCount++; }
+      if (key && RESET_PREFIXES.some(function (pre) { return key.indexOf(pre) === 0; })) { found.push(key); stateCount++; }
     }
   } catch (e) {
     return { keys: found, state: stateCount, err: e };
@@ -321,7 +367,7 @@ function clearLocal() {
     const stateKeys = [];
     for (let i = 0; i < localStorage.length; i++) {
       const key = localStorage.key(i);
-      if (key && key.indexOf(RESET_PREFIX) === 0) stateKeys.push(key);
+      if (key && RESET_PREFIXES.some(function (pre) { return key.indexOf(pre) === 0; })) stateKeys.push(key);
     }
     for (const key of stateKeys) {
       localStorage.removeItem(key);

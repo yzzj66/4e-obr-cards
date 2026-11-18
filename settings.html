@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>4eNEXT to owlbear · 设置 / 关于</title>
-<link rel="stylesheet" href="assets/ui.css?v=2.3.10">
+<link rel="stylesheet" href="assets/ui.css?v=2.4.5">
 </head>
 <body class="win-page">
 <!-- v1.3.2：设置 / 关于窗口（独立 popover，入口 = 左侧工具栏「设置」）。
@@ -172,6 +172,12 @@
         <p class="set-lead">没有自己的服务器：角色卡与战斗状态存在 <b>Owlbear 的房间数据</b>里（全桌共享），
           单枚 token 的血量存在 <b>token 元数据</b>上，窗口位置这类「只跟我这台机器有关」的东西存在 <b>本机 localStorage</b>。</p>
         <div class="set-sec">
+          <h4>骰子动画</h4>
+          <p class="set-muted">动画速度（每个客户端独立）。关闭 = 只显示结果，约 0.5 秒。</p>
+          <p><button class="btn" id="set-dice-speed" type="button" data-bg-soft>动画速度：标准</button>
+             <button class="btn" id="set-dice-auto" type="button" data-bg-soft>进入房间自动打开骰子：开</button></p>
+        </div>
+        <div class="set-sec">
           <h4>房间数据（同房间所有人可见，通常只有 GM 能写）</h4>
           <div class="set-table">
             <span class="h">键</span><span class="h">内容</span>
@@ -192,6 +198,9 @@
             <span class="k">角色卡</span><span id="room-cards">—</span>
             <span class="k">骰子历史</span><span id="room-rolls">—</span>
             <span class="k">先攻条目</span><span id="room-init">—</span>
+            <span class="k">其它插件占用</span><span><b id="room-other">—</b></span>
+            <span class="k">占用排行</span><span id="room-top" class="set-break">—</span>
+            <span class="k">实际来源</span><span id="room-sources">—</span>
           </div>
           <p class="set-muted">
             <button class="btn" id="room-refresh" type="button" data-bg-soft>刷新用量</button>
@@ -294,6 +303,6 @@
     <span class="win-flash" id="win-flash"></span>
   </div>
 </div>
-<script type="module" src="assets/settings-page.js?v=2.3.10"></script>
+<script type="module" src="assets/settings-page.js?v=2.4.5"></script>
 </body>
 </html>

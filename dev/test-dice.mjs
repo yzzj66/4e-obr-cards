@@ -47,7 +47,7 @@ fs.mkdirSync(path.join(tmp, "data"), { recursive: true });
 fs.writeFileSync(path.join(tmp, "package.json"), JSON.stringify({ type: "module" }), "utf8");
 fs.copyFileSync(path.join(ROOT, "data", "rules.js"), path.join(tmp, "data", "rules.js"));
 /* v1.7.15：页面模块都 import common.js，而 common.js 现在还要 cards-core.js（房间数据预算）。 */
-for (const f of ["cards-core.js", "dice-core.js", "dice-4e.js", "glance.js"]) {
+for (const f of ["cards-core.js", "dice-core.js", "dice-4e.js", "glance.js", "dice-fx.js"]) {
   fs.copyFileSync(path.join(ROOT, "assets", f), path.join(tmp, "assets", f));
 }
 
@@ -303,7 +303,7 @@ const dmgItem = presets.groups[1].items[0];
 if (dmgItem && dmgItem.expr === P.withModifier(g.damages[0].dice || "1d8", g.damages[0].total))
   ok("伤害预设 = 武器骰 + glance.damages[0].total（" + g.damages[0].total + "）");
 else bad("伤害预设不对：" + JSON.stringify(dmgItem));
-/* v2.3.10：loadState 返回 {state, scope} —— tempsFromLoaded 必须剥一层，否则联动恒为 0 */
+/* v2.4.5：loadState 返回 {state, scope} —— tempsFromLoaded 必须剥一层，否则联动恒为 0 */
 {
   const loaded = { state: { atkTemp: 2, dmgTemp: 3 }, scope: "room" };
   const temps = P.tempsFromLoaded(loaded);
@@ -313,12 +313,12 @@ else bad("伤害预设不对：" + JSON.stringify(dmgItem));
   if (temps.atkTemp === 2 && temps.dmgTemp === 3 &&
     a.label.indexOf("（临时 +2）") >= 0 && a.expr === P.withModifier("1d20", g.attacks[0].total + 2) &&
     dd.label.indexOf("（临时 +3）") >= 0) {
-    ok("v2.3.10：tempsFromLoaded({state:{atkTemp:2,dmgTemp:3}}) → 攻击「临时 +2」、伤害「临时 +3」，数值同步 +2/+3");
-  } else bad("v2.3.10：tempsFromLoaded 没有正确剥离 state：" + JSON.stringify({ temps, a, dd }));
+    ok("v2.4.5：tempsFromLoaded({state:{atkTemp:2,dmgTemp:3}}) → 攻击「临时 +2」、伤害「临时 +3」，数值同步 +2/+3");
+  } else bad("v2.4.5：tempsFromLoaded 没有正确剥离 state：" + JSON.stringify({ temps, a, dd }));
   const wrongShape = P.tempsFromLoaded({ atkTemp: 2, dmgTemp: 3 });
   if (wrongShape.atkTemp === 0 && wrongShape.dmgTemp === 0)
-    ok("v2.3.10：未包 state 的旧错误形状 = 0（防止再直接读 loadState 返回值）");
-  else bad("v2.3.10：tempsFromLoaded 把未包 state 的对象也当状态了：" + JSON.stringify(wrongShape));
+    ok("v2.4.5：未包 state 的旧错误形状 = 0（防止再直接读 loadState 返回值）");
+  else bad("v2.4.5：tempsFromLoaded 把未包 state 的对象也当状态了：" + JSON.stringify(wrongShape));
 }
 
 
@@ -330,21 +330,21 @@ else bad("伤害预设不对：" + JSON.stringify(dmgItem));
   const wantAtk = P.withModifier("1d20", g2.attacks[0].total + 2);
   const wantDmg = P.withModifier(g2.damages[0].dice || "1d8", g2.damages[0].total + 3);
   if (pAtk.expr === wantAtk && pAtk.label.indexOf("（临时 +2）") >= 0)
-    ok("v2.3.10：atkTemp +2 → 攻击 expr " + pAtk.expr + "，标签「" + pAtk.label + "」");
-  else bad("v2.3.10：atkTemp 没有进攻击预设：" + JSON.stringify(pAtk));
+    ok("v2.4.5：atkTemp +2 → 攻击 expr " + pAtk.expr + "，标签「" + pAtk.label + "」");
+  else bad("v2.4.5：atkTemp 没有进攻击预设：" + JSON.stringify(pAtk));
   if (pDmg.expr === wantDmg && pDmg.label.indexOf("（临时 +3）") >= 0)
-    ok("v2.3.10：dmgTemp +3 → 伤害 expr " + pDmg.expr + "，标签带「（临时 +3）」");
-  else bad("v2.3.10：dmgTemp 没有进伤害预设：" + JSON.stringify(pDmg));
+    ok("v2.4.5：dmgTemp +3 → 伤害 expr " + pDmg.expr + "，标签带「（临时 +3）」");
+  else bad("v2.4.5：dmgTemp 没有进伤害预设：" + JSON.stringify(pDmg));
   const zero = P.presetsFor(CHAR, undefined, { atkTemp: 0, dmgTemp: 0 });
   if (JSON.stringify(zero) === JSON.stringify(P.presetsFor(CHAR)))
-    ok("v2.3.10：临时值为 0 时输出与旧调用完全一致（兼容）");
-  else bad("v2.3.10：临时值 0 时输出变了");
+    ok("v2.4.5：临时值为 0 时输出与旧调用完全一致（兼容）");
+  else bad("v2.4.5：临时值 0 时输出变了");
   const neg = P.presetsFor(CHAR, undefined, { atkTemp: -3, dmgTemp: -2 });
   if (neg.groups[0].items[0].expr === P.withModifier("1d20", g2.attacks[0].total - 3) &&
     neg.groups[0].items[0].label.indexOf("（临时 -3）") >= 0 &&
     neg.groups[1].items[0].label.indexOf("（临时 -2）") >= 0)
-    ok("v2.3.10：负临时值（-3 / -2）同样先加 total、标签写「临时 -3」");
-  else bad("v2.3.10：负临时值处理不对：" + JSON.stringify(neg.groups[0].items[0]));
+    ok("v2.4.5：负临时值（-3 / -2）同样先加 total、标签写「临时 -3」");
+  else bad("v2.4.5：负临时值处理不对：" + JSON.stringify(neg.groups[0].items[0]));
 }
 const skillItems = presets.groups[2].items;
 const skillHit = skillItems.filter((s) => s.name === "侦查")[0];
@@ -524,6 +524,7 @@ domMap.diceRow.querySelectorAll = (sel) => (sel === "[data-die]" ? diceButtons :
 
 const sentRolls = [];
 const sentClears = [];
+const sentFx = [];
 const sentCmds = [];
 /* v1.7.10：窗口 ✕ 的后台兜底频道（closeSelf 发 {op:"close-win", name}）。 */
 const sentCloseWins = [];
@@ -572,7 +573,8 @@ const fakeOBR = {
   broadcast: {
     sendMessage(channel, data) {
       const ch = String(channel);
-      if (ch.slice(-5) === "/roll") sentRolls.push(data);
+      if (ch.slice(-10) === "/dice-roll") sentFx.push(data);
+      else if (ch.slice(-5) === "/roll") sentRolls.push(data);
       else if (ch.slice(-11) === "/roll-clear") sentClears.push(data);
       else if (ch.slice(-14) === "/dice-hist-cmd") sentCmds.push(data);
     else if (ch.slice(-10) === "/win-close") sentCloseWins.push(data);
@@ -670,14 +672,13 @@ else {
       } else bad("投掷广播不对：" + JSON.stringify(sent));
       if (domMap.result.innerHTML.indexOf("res-total") >= 0) ok("结果面板画出了总点数");
       else bad("结果面板没有渲染");
-      /* 投骰动画（v1.7.0）：默认开 → 打开 effect.html，参数照抄规格 §4.1 */
-      const first = modalOpens[0] || null;
-      const firstUrl = first ? decodeURIComponent(String(first.url)) : "";
-      if (first && firstUrl.indexOf("effect.html?") >= 0 && firstUrl.indexOf("dtypes=d6,d6") >= 0 &&
-        firstUrl.indexOf("total=") >= 0 && first.fullScreen === true && first.hideBackdrop === true &&
-        first.hidePaper === true && first.disablePointerEvents === true)
-        ok("默认开动画：OBR.modal.open(effect.html, fullScreen + hideBackdrop + hidePaper + disablePointerEvents)");
-      else bad("动画 modal 参数不对：" + JSON.stringify(first));
+      /* v2.4.5：动画改由各客户端后台收到 CH_DICE_ROLL 打开；页面只负责广播。 */
+      const fx = sentFx[0] || null;
+      if (fx && fx.v === 1 && fx.id === fx.rollId && fx.anchor !== undefined &&
+        Array.isArray(fx.dice) && fx.dice.length === 2 && fx.dice.every((d) => d.type === "d6") &&
+        typeof fx.total === "number" && fx.rollerId)
+        ok("默认开动画：页面广播 CH_DICE_ROLL（payload 含 id/anchor/dice/total），由后台开全屏 modal");
+      else bad("CH_DICE_ROLL 广播不对：" + JSON.stringify(fx));
 
       /* 记录窗口按钮（v1.7.6 重写）：**点一下就该真的开出一个窗口** —— 不再先发命令等后台回执，
        * 而是本页直接 OBR.popover.open（openHistoryDirect），打开后 getWidth 确认存活，
@@ -769,7 +770,7 @@ else {
       await sleep(320); /* 等第一投的 busy 解锁（260 ms） */
       clicks[0]({ preventDefault() {} });
       await sleep(80);
-      if (modalOpens.length === opensBefore) ok("动画关掉时投掷**不调用** OBR.modal.open（result 面板照常）");
+      if (modalOpens.length === opensBefore) ok("页面不再直接调用 OBR.modal.open（后台统一开动画）");
       else bad("动画关掉后仍然打开了 modal");
       if (sentRolls.length > rollsBefore) ok("关掉动画不影响投掷本身（CH_ROLL 仍然发出）");
       else bad("关掉动画后投掷没有广播");
@@ -1047,6 +1048,125 @@ globalThis.cancelAnimationFrame = savedTimers.caf;
 
 // 顺带确认「不启动浏览器」：本测试只用纯函数 + 假 OBR + 假 DOM，没有任何 GUI
 console.log("\n  info 未启动浏览器（沙箱环境禁止），以上全部为纯函数 / 假 OBR / 假 DOM 断言");
+
+/* ---- v2.4.5 骰子动画 SVG / 多端同步 ---- */
+{
+  const fx = fs.readFileSync(path.join(ROOT, "assets", "dice-fx.js"), "utf8");
+  const eff = fs.readFileSync(path.join(ROOT, "assets", "effect-page.js"), "utf8");
+  const page = fs.readFileSync(path.join(ROOT, "assets", "dice-page.js"), "utf8");
+  const common = fs.readFileSync(path.join(ROOT, "assets", "common.js"), "utf8");
+  if (fx.indexOf("export function diceSvg") >= 0 && ["d4","d6","d8","d10","d12","d20","d100"].every(t => fx.indexOf(t + ":") >= 0) &&
+    eff.indexOf("diceSvg(d.type, d.value)") >= 0 && eff.indexOf("fx-shape") >= 0)
+    ok("v2.4.5：自绘 SVG 骰子 d4/d6/d8/d10/d12/d20/d100，动画页按类型渲染");
+  else bad("v2.4.5：SVG 骰子缺失/映射不对");
+  if (common.indexOf("CH_DICE_ROLL") >= 0 && common.indexOf("CH_DICE_CLEAR") >= 0 &&
+    page.indexOf("broadcast(CH_DICE_ROLL, fxMsg)") >= 0 && page.indexOf("seenFxRolls[d.id]") >= 0 &&
+    page.indexOf("CH_DICE_CLEAR") >= 0)
+    ok("v2.4.5：投掷广播 CH_DICE_ROLL（含 anchor/rollId），按 rollId 去重；清场广播 CH_DICE_CLEAR");
+  else bad("v2.4.5：多端同步/去重缺失");
+}
+
+/* ---- v2.4.5 阶段一：布局 / 节奏 / 队列 ---- */
+{
+  const FX = await import(pathToFileURL(path.join(tmp, "assets", "dice-fx.js")).href);
+  const makes = (n) => Array.from({ length: n }, (_, i) => ({ type: i % 2 ? "d6" : "d20" }));
+  const l1 = FX.diceLayout(makes(1), 1280, 720);
+  const l5 = FX.diceLayout(makes(5), 1280, 720);
+  const l10 = FX.diceLayout(makes(10), 1280, 720);
+  const l20 = FX.diceLayout(makes(20), 1280, 720);
+  const maxRight = (L) => Math.max(...L.slots.map((s) => Math.abs(s.ox) + s.size / 2));
+  const maxBottom = (L) => Math.max(...L.slots.map((s) => Math.abs(s.oy) + s.size / 2));
+  if (l1.slots.length === 1 && l5.slots.length === 5 && l10.slots.length === 10 && l20.slots.length === 20 &&
+    maxRight(l10) <= 1280 * 0.5 && maxRight(l20) <= 1280 * 0.5 && l20.baseSize < l5.baseSize)
+    ok("v2.4.5：自适应布局 1/5/10/20 颗数量正确，尺寸随数量缩小且不超界");
+  else bad("v2.4.5：自适应布局不对");
+  const d1 = FX.diceFxDuration(1, "standard");
+  const d10 = FX.diceFxDuration(10, "standard");
+  const fast = FX.diceFxDuration(10, "fast");
+  const off = FX.diceFxDuration(10, "off");
+  if (d1 >= 1200 && d10 === 2700 && fast === 1620 && off === 500)
+    ok("v2.4.5：节奏 900+180n（1→1200 / 10→2700）；快速×0.6；关闭=500ms");
+  else bad("v2.4.5：节奏计算不对：" + JSON.stringify({ d1, d10, fast, off }));
+  const bg = fs.readFileSync(path.join(ROOT, "assets", "background.core.js"), "utf8");
+  if (bg.indexOf("dice fx queue n=") >= 0 && bg.indexOf("DICE_FX_MAX = 2") >= 0 &&
+    bg.indexOf("diceFxQueue = []") >= 0)
+    ok("v2.4.5：后台 fx 队列最多 2 个并排队播放，清场清空队列");
+  else bad("v2.4.5：后台队列缺失");
+}
+
+/* ---- v2.4.5：重复按钮 ---- */
+{
+  if (D.repeatExpr) {
+    const w = D.repeatExpr("1d20 + 5", 2);
+    const r = D.repeatExpr("repeat(3, 1d6+2)", 5);
+    const same = D.repeatExpr("repeat(3, 1d6+2)", 3);
+    const lo = D.repeatExpr("1d20", 0);
+    const hi = D.repeatExpr("1d20", 99);
+    const empty = D.repeatExpr("   ", 2);
+    if (w.ok && w.expr === "repeat(2, 1d20 + 5)" && r.ok && r.expr === "repeat(5, 1d6+2)" &&
+      same.expr === "repeat(3, 1d6+2)" && lo.n === 1 && hi.n === 20 && !empty.ok)
+      ok("v2.4.5：repeat 包一层/替换 N/幂等/clamp 1–20/空表达式报错");
+    else bad("v2.4.5：repeatExpr 行为不对：" + JSON.stringify({ w, r, same, lo, hi, empty }));
+  } else bad("v2.4.5：repeatExpr 未导出");
+  const html = fs.readFileSync(path.join(ROOT, "dice.html"), "utf8");
+  const page = fs.readFileSync(path.join(ROOT, "assets", "dice-page.js"), "utf8");
+  if (html.indexOf('id="repeat-n"') >= 0 && html.indexOf('id="repeat-apply"') >= 0 &&
+    html.indexOf('data-repeat="2"') >= 0 && page.indexOf("repeat apply n=") >= 0)
+    ok("v2.4.5：面板有 #repeat-n / #repeat-apply / ×2×3×5，apply 有日志");
+  else bad("v2.4.5：repeat UI 缺失");
+  const parsed = D.rollParsed(D.parseExpr("repeat(3, 1d6+2)"), {});
+  if (parsed && Array.isArray(parsed.rowStarts) && parsed.rowStarts.length === 3)
+    ok("v2.4.5：repeat(3,1d6+2) 产生 3 行 rowStarts");
+  else bad("v2.4.5：repeat rowStarts 不对：" + JSON.stringify(parsed && parsed.rowStarts));
+}
+
+/* ---- v2.4.5 修正：repeat 顺序 / 历史换行分行 ---- */
+{
+  const parsed = D.parseExpr("repeat(2, 1d20+5)");
+  const text = D.formatExpr(parsed);
+  const again = D.parseExpr(text);
+  if (/^repeat\(2,/.test(text) && text.indexOf("1d20") > 0 && D.formatExpr(again) === text)
+    ok("v2.4.5：repeat 规范表达式顺序为 repeat(2, inner)，format→parse 往返一致");
+  else bad("v2.4.5：repeat 表达式顺序/往返不对：" + text);
+  const css = fs.readFileSync(path.join(ROOT, "assets", "ui.css"), "utf8");
+  const page = fs.readFileSync(path.join(ROOT, "assets", "dice-page.js"), "utf8");
+  if (page.indexOf("res-formula") < 0 && /res-rows \{[^}]*gap: 0/.test(css))
+    ok("v2.4.5：本次结果删除裸公式行，等式行紧凑（gap 0）");
+  else bad("v2.4.5：结果裸公式行/行距未清理");
+  const hist = fs.readFileSync(path.join(ROOT, "assets", "dice-history-page.js"), "utf8");
+  if (css.indexOf("body.dh-page .hist-expr") < 0 && /body\.dh-page \.hist-line[^}]*line-height: 1\.25/.test(css) &&
+    hist.indexOf("hist-chips") >= 0 && hist.indexOf("hist-rows") >= 0 && hist.indexOf("repeatRowLines(r)") >= 0)
+    ok("v2.4.5：历史不再有裸公式行；chip 行 + 逐行等式，允许换行");
+  else bad("v2.4.5：历史换行/分行渲染缺失");
+}
+
+/* ---- v2.4.5 逐行格式 ---- */
+{
+  const mk = (expr, vals, mod) => ({ expression: expr, modifier: mod, rowStarts: vals.map((_, i) => i), dice: vals.map(v => ({ type: "d20", value: v })) });
+  const lines = D.repeatRowLines ? D.repeatRowLines(mk("repeat(5, 1d20+5)", [3, 2, 12, 18, 10], 5)) : [];
+  if (lines.length === 5 && lines[0] === "r1d20 + 5 = 3 + 5 = 8" && lines[1] === "r1d20 + 5 = 2 + 5 = 7" && lines[4] === "r1d20 + 5 = 10 + 5 = 15")
+    ok("v2.4.5：逐行格式 r1d20 = 骰面 + 修正 = 行总和（示例 3/2/12/18/10）");
+  else bad("v2.4.5：逐行格式不对：" + JSON.stringify(lines));
+  const multi = D.repeatRowLines({ expression: "repeat(2, 2d6+1d20+5)", modifier: 5, rowStarts: [0, 3],
+    dice: [{ type: "d6", value: 3 }, { type: "d6", value: 4 }, { type: "d20", value: 12 }, { type: "d6", value: 1 }, { type: "d6", value: 2 }, { type: "d20", value: 10 }] });
+  if (multi.length === 2 && multi[0].indexOf("r2d6 + 1d20 + 5 = 3 + 4 + 12 + 5 = 24") >= 0)
+    ok("v2.4.5：多骰多修正行格式正确（2d6+1d20+5 = 3 + 4 + 12 + 5 = 24）");
+  else bad("v2.4.5：多骰行格式不对：" + JSON.stringify(multi));
+  if (D.repeatRowLines({ expression: "1d20 + 5", rowStarts: [], dice: [{ type: "d20", value: 3 }] }).length === 0)
+    ok("v2.4.5：无 repeat 不产生 r 前缀行");
+  else bad("v2.4.5：无 repeat 仍生成 r 行");
+  const one = D.rollLine ? D.rollLine({ expression: "1d20+5", modifier: 5, total: 8, dice: [{ type: "d20", value: 3 }] }) : "";
+  const many = D.rollLine ? D.rollLine({ expression: "2d6+1d20+5", modifier: 5, total: 24,
+    dice: [{ type: "d6", value: 3 }, { type: "d6", value: 4 }, { type: "d20", value: 12 }] }) : "";
+  if (one === "1d20 + 5 = 3 + 5 = 8" && many === "2d6 + 1d20 + 5 = 3 + 4 + 12 + 5 = 24" &&
+    D.rollLine({ expression: "repeat(2,1d20)", dice: [{ type: "d20", value: 1 }], total: 1 }) === "")
+    ok("v2.4.5：普通单骰/多骰等式正确，repeat 不产生普通行");
+  else bad("v2.4.5：普通等式格式不对：" + JSON.stringify({ one, many }));
+  const hist = fs.readFileSync(path.join(ROOT, "assets", "dice-history-page.js"), "utf8");
+  if (hist.indexOf("repeatRowLines(r)") >= 0 && hist.indexOf("rollLine(r)") >= 0 && hist.indexOf("hist-line") >= 0)
+    ok("v2.4.5：历史记录按逐行文本渲染");
+  else bad("v2.4.5：历史逐行渲染缺失");
+}
 
 console.log(fail ? "\n" + fail + " 个问题" : "\n全部通过");
 process.exit(fail ? 1 : 0);

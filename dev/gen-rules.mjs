@@ -23,14 +23,24 @@ const num = (text, re) => {
   return m ? parseFloat(m[1]) : 0;
 };
 function parseClassStats(text) {
-  return {
+  const out = {
     baseHp: num(text, /起始HP：[^0-9]*(\d+(?:\.\d+)?)/),
     hpPerLevel: num(text, /每级增加HP：[^0-9]*(\d+(?:\.\d+)?)/),
     surges: num(text, /每日回复力：[^0-9]*(\d+(?:\.\d+)?)/),
-    fort: num(text, /\+(\d+(?:\.\d+)?)强韧/),
-    ref: num(text, /\+(\d+(?:\.\d+)?)反射/),
-    will: num(text, /\+(\d+(?:\.\d+)?)意志/),
+    fort: 0, ref: 0, will: 0
   };
+  /* v2.4.5：只认「防御加值：+N强韧/反射/意志」，不要把正文里其它 +N 误当职业防御。
+   * 带「或」的选择型（如混职督军 +1强韧或意志）按 4E NEXT 当前卡（费兹）取第一个。 */
+  const line = /防御加值[：:]\s*''?\s*\+(\d+)\s*([^\n''"]+)/.exec(text);
+  if (!line) return out;
+  const n = parseInt(line[1], 10);
+  const clause = line[2];
+  /* 选择型（+1强韧或意志）：角色 JSON 没明确选择 → 默认不加。 */
+  if (/或/.test(clause)) return out;
+  for (const [k, zh] of [["fort", "强韧"], ["ref", "反射"], ["will", "意志"]]) {
+    if (clause.indexOf(zh) >= 0) out[k] = n;
+  }
+  return out;
 }
 function parseBuiltinTrainedSkills(text) {
   const m = text.match(/受训技能：([^。\n]*)/);
@@ -39,6 +49,15 @@ function parseBuiltinTrainedSkills(text) {
 }
 function parseRaceDefenses(text) {
   const out = {};
+  /* v2.4.5：人类写作「人类防御奖励：你在强韧、反射和意志上获得+1种族加值」，需合并解析。 */
+  const all = /(?:防御奖励|防御加值)[：:]?[^\n]{0,20}?你在([^\n。]{0,40}?)上获得\s*\+?(\d+)\s*种族加值/.exec(text);
+  if (all) {
+    const n = parseInt(all[2], 10);
+    for (const [k, zh] of [["fort", "强韧"], ["ref", "反射"], ["will", "意志"]]) {
+      if (all[1].indexOf(zh) >= 0) out[k] = n;
+    }
+    if (Object.keys(out).length) return out;
+  }
   for (const [k, zh] of [["fort", "强韧"], ["ref", "反射"], ["will", "意志"]]) {
     const m = text.match(new RegExp("你在" + zh + "上获得\\+?(\\d+)种族加值"));
     if (m) out[k] = parseInt(m[1], 10);

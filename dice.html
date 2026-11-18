@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>4eNEXT to owlbear · 骰子</title>
-<link rel="stylesheet" href="assets/ui.css?v=2.3.10">
+<link rel="stylesheet" href="assets/ui.css?v=2.4.5">
 </head>
 <body class="win-page dice-page">
 <!-- v1.7.0：骰子（独立窗口，**单列**）。v1.5.0 的两栏右栏（本次结果 + 团队记录）已经拆开：
@@ -84,6 +84,15 @@
             <input class="expr-input" id="exprInput" autocomplete="off" spellcheck="false" placeholder="1d20 + 5">
             <button class="btn step" type="button" id="btnModPlus" title="加值 +1">＋</button>
           </div>
+          <!-- v2.4.5：重复（repeat）快捷区 -->
+          <div class="repeat-row">
+            <span class="sec-hint">次数</span>
+            <input class="repeat-n" id="repeat-n" type="number" min="1" max="20" step="1" value="2" aria-label="重复次数">
+            <button class="btn" id="repeat-apply" type="button" data-bg-soft>重复</button>
+            <button class="btn ghost" type="button" data-repeat="2">×2</button>
+            <button class="btn ghost" type="button" data-repeat="3">×3</button>
+            <button class="btn ghost" type="button" data-repeat="5">×5</button>
+          </div>
           <!-- v1.7.4：320 宽放不下一排 4 个 → 2×2 换行 -->
           <div class="dice-acts">
             <button class="btn primary" type="button" id="btnRoll" data-bg-soft title="投掷（Enter 也可以）">投掷</button>
@@ -136,6 +145,6 @@
     <span class="win-hint">拖动标题栏 · 动画在「设置」</span>
   </div>
 </div>
-<script type="module" src="assets/dice-page.js?v=2.3.10"></script>
+<script type="module" src="assets/dice-page.js?v=2.4.5"></script>
 </body>
 </html>

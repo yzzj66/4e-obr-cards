@@ -32,7 +32,7 @@
 
 import { RULES } from "../data/rules.js";
 
-/* v2.3.10：用户提供的矢量图标（钉住 / 锁定 / 解锁），内联 SVG 用 currentColor 跟随主题。 */
+/* v2.4.5：用户提供的矢量图标（钉住 / 锁定 / 解锁），内联 SVG 用 currentColor 跟随主题。 */
 const SHARE_ICON_LOCK = '<svg viewBox="0 0 613 772" width="12" height="12" fill="currentColor" aria-hidden="true"><g transform="translate(0,771) scale(1,-1)"><path fill="currentColor" fill-rule="nonzero" d="M205.414 462.384 L102.297 462.384 L102.297 582.689 C102.297 608.876 107.48 633.29 117.848 655.931 C128.215 678.576 142.535 698.49 160.812 715.673 C179.09 732.861 200.641 746.365 225.465 756.185 C250.289 766.005 277.43 770.915 306.895 770.915 C333.082 770.915 358.316 766.005 382.594 756.185 C406.871 746.365 428.422 732.861 447.246 715.673 C466.066 698.49 481.07 678.576 492.258 655.931 C503.441 633.29 509.035 608.876 509.035 582.689 L509.035 462.384 L410.008 462.384 L410.008 559.775 C410.008 594.146 400.461 620.744 381.367 639.564 C362.27 658.388 336.355 667.798 303.621 667.798 C274.156 667.798 250.426 658.388 232.422 639.564 C214.414 620.744 205.414 594.146 205.414 559.775 Z M558.137 413.283 C572.867 413.283 585.551 407.962 596.191 397.326 C606.828 386.685 612.148 374.001 612.148 359.271 L612.148 105.572 C612.148 90.841 609.559 77.064 604.375 64.244 C599.191 51.423 592.098 40.236 583.098 30.689 C574.094 21.142 563.457 13.638 551.18 8.185 C538.902 2.728 525.402 0.001 510.672 0.001 L97.387 0.001 C82.656 0.001 69.289 2.728 57.285 8.185 C45.285 13.638 35.055 20.869 26.598 29.872 C18.141 38.872 11.594 49.376 6.957 61.38 C2.32 73.38 0 86.205 0 99.841 L0 359.271 C0 374.001 5.184 386.685 15.551 397.326 C25.914 407.962 38.465 413.283 53.195 413.283 Z M558.137 413.283"/></g></svg>';
 const SHARE_ICON_UNLOCK = '<svg viewBox="0 0 814 769" width="12" height="12" fill="currentColor" aria-hidden="true"><g transform="translate(0,768) scale(1,-1)"><path fill="currentColor" fill-rule="nonzero" d="M611.758 767.949 C637.789 767.949 662.871 763.066 687.004 753.305 C711.141 743.543 732.562 730.121 751.273 713.039 C769.984 695.953 785.031 676.023 796.422 653.246 C807.812 630.465 813.504 606.062 813.504 580.031 L813.504 459.629 L715.07 459.629 L715.07 557.25 C715.07 591.418 705.445 617.992 686.191 636.977 C666.938 655.957 641.043 665.449 608.504 665.449 C579.215 665.449 555.625 655.957 537.727 636.977 C519.828 617.992 510.883 591.418 510.883 557.25 L510.883 458.004 L408.379 458.004 L408.379 580.031 C408.379 606.062 413.531 630.465 423.836 653.246 C434.141 676.023 448.379 695.953 466.547 713.039 C484.715 730.121 506.137 743.543 530.812 753.305 C555.488 763.066 582.469 767.949 611.758 767.949 Z M610.129 213.137 L610.129 104.941 C610.129 90.301 607.555 76.469 602.402 63.453 C597.25 50.437 590.199 39.32 581.25 30.102 C572.301 20.879 561.727 13.559 549.523 8.137 C537.32 2.711 523.898 0 509.254 0 L97.621 0 C82.977 0 69.691 2.574 57.758 7.727 C45.828 12.879 35.523 19.93 26.844 28.879 C18.168 37.828 11.523 48.269 6.914 60.199 C2.305 72.133 0 84.875 0 98.434 L0 357.129 C0 372.312 5.289 385.059 15.863 395.363 C26.438 405.668 38.777 410.82 52.879 410.82 L556.438 410.82 C571.625 410.82 584.367 405.668 594.672 395.363 C604.977 385.059 610.129 372.312 610.129 357.129 Z M610.129 213.137"/></g></svg>';
 
@@ -120,7 +120,7 @@ export function esc(s) {
 }
 const n0 = (v) => (typeof v === "number" && isFinite(v) ? v : 0);
 
-/* v2.3.10：4E NEXT 新版导出 combatMods.damages[].dieUp —— 提高武器伤害骰。
+/* v2.4.5：4E NEXT 新版导出 combatMods.damages[].dieUp —— 提高武器伤害骰。
  * 提升表（用户原话，单骰阶梯）：1d4 → 1d6 → 1d8 → 1d10 → 1d12 → 2d6 → 2d8 → 2d10 → 2d12。
  * 武器原始骰本身就在阶梯里（含 2d6/2d8）→ 按阶梯继续升；不在阶梯里（非常规骰）→ 原样返回。
  * dieUp 为提升级数（缺省 / 0 = 不变；负值反向降级；超出范围取端点）。 */
@@ -317,6 +317,31 @@ export function initiativeBonus(char, rules) {
  * live（可选）：{ hp:{cur,max,temp,surges}, state:{powerUsed,featUsed,equipmentUsed,itemDailyUsed,actionPoints,milestones} }
  *   带 live 时用实时值覆盖导出快照里的对应字段；不带就是纯粹的只读推导（老行为）。
  */
+/** v2.4.5：职业防御特性（目前只有野蛮人「蛮族机敏」；狂战士与未选天赋的混职野蛮人不享有）。 */
+function classDefenseFeature(char, rules, level, heavy) {
+  const out = { ac: 0, ref: 0, label: "" };
+  if (heavy) return out; /* 蛮族机敏：未穿重甲才生效 */
+  const ids = [char.classId];
+  if (char.hybrid && char.classId2) ids.push(char.classId2);
+  for (const raw of ids) {
+    const id = String(raw || "");
+    if (!/野蛮人|Barbarian/.test(id)) continue;
+    if (/狂战士|Berserker/.test(id)) continue;
+    const hybrid = char.hybrid || /混职|Hybrid/.test(id);
+    if (hybrid) {
+      /* 混职只有选了「野蛮人载甲机敏」类天赋才给；取不到选择就不给。 */
+      const choices = JSON.stringify(char.classFeatureChoices || "");
+      if (!/载甲机敏|Armored Agility|蛮族机敏|Barbarian Agility/.test(choices)) continue;
+    }
+    const bonus = level >= 21 ? 3 : level >= 11 ? 2 : 1;
+    out.ac += bonus;
+    out.ref += bonus;
+    out.label = "蛮族机敏 +" + bonus;
+    break;
+  }
+  return out;
+}
+
 export function deriveGlance(char, rules, live) {
   rules = rules || RULES;
   char = char || {};
@@ -330,6 +355,7 @@ export function deriveGlance(char, rules, live) {
   const armor = baseItem(rules, (char.baseItems || {})[5]);
   const shield = findShield(rules, char);
   const heavy = !!(armor && armor.kind === "armor" && armor.ref.c === "重甲");
+  const classDef = classDefenseFeature(char, rules, level, heavy);
 
   const bonus = racialBonus(race, char.raceAbility2Choice);
   const abilities = {};
@@ -382,8 +408,8 @@ export function deriveGlance(char, rules, live) {
   }
   const defenses = [
     {
-      key: "ac", label: "AC", value: 10 + half + acAbilityMod + dsum("ac"),
-      parts: parts(10, [["半等级", half], [heavy ? "重甲" : "敏捷/智力", acAbilityMod]], dmods("ac"))
+      key: "ac", label: "AC", value: 10 + half + acAbilityMod + dsum("ac") + classDef.ac,
+      parts: parts(10, [["半等级", half], [heavy ? "重甲" : "敏捷/智力", acAbilityMod]].concat(classDef.ac ? [["职业特性", classDef.ac]] : []), dmods("ac"))
     },
     {
       key: "fort", label: "强韧",
@@ -392,8 +418,8 @@ export function deriveGlance(char, rules, live) {
     },
     {
       key: "ref", label: "反射",
-      value: 10 + half + Math.max(mods.dex, mods.int) + cls.ref + dsum("ref") + raceDef("ref"),
-      parts: parts(10, [["半等级", half], ["敏捷/智力", Math.max(mods.dex, mods.int)], ["职业", cls.ref], ["种族", raceDef("ref")]], dmods("ref"))
+      value: 10 + half + Math.max(mods.dex, mods.int) + cls.ref + dsum("ref") + raceDef("ref") + classDef.ref,
+      parts: parts(10, [["半等级", half], ["敏捷/智力", Math.max(mods.dex, mods.int)], ["职业", cls.ref], ["种族", raceDef("ref")]].concat(classDef.ref ? [["职业特性", classDef.ref]] : []), dmods("ref"))
     },
     {
       key: "will", label: "意志",
@@ -607,11 +633,14 @@ function counter(label, value, act, title) {
 
 function renderHpBlock(d, ed, temps) {
   temps = temps || stateTemps(null);
+  const masked = !!d.hpMasked; /* v2.4.5：非 GM 且 locked → 数字掩码，条仍按比例 */
   const dying = d.hpCur <= 0;
   const bloodied = !dying && d.hpCur <= d.bloodied;
   const state = dying ? "濒死" : bloodied ? "重伤" : "健康";
   const cls = dying ? "dying" : bloodied ? "bloodied" : "ok";
   const pct = d.hpMax > 0 ? Math.max(0, Math.min(100, (d.hpCur / d.hpMax) * 100)) : 0;
+  const shownCur = masked ? "?" : d.hpCur;
+  const shownMax = masked ? "??" : d.hpMax;
   const bloodPct = d.hpMax > 0 ? Math.max(0, Math.min(100, (d.bloodied / d.hpMax) * 100)) : 50;
   const tempPct = d.hpMax > 0 ? Math.max(0, Math.min(100 - pct, (d.hpTemp / d.hpMax) * 100)) : 0;
 
@@ -673,8 +702,8 @@ function renderHpBlock(d, ed, temps) {
     "</span>";
 
   return '<section class="gl4-card gl4-vitals">' +
-    '<div class="gl4-hp-line"><span class="gl4-hp-cur">' + esc(d.hpCur) + "</span>" +
-    '<span class="gl4-hp-max">/ ' + esc(d.hpMax) + "</span>" +
+    '<div class="gl4-hp-line"><span class="gl4-hp-cur">' + esc(shownCur) + "</span>" +
+    '<span class="gl4-hp-max">/ ' + esc(shownMax) + "</span>" +
     '<span class="gl4-state ' + cls + '">' + state + "</span>" +
     (d.hpTemp > 0 ? '<span class="gl4-temp">临时 +' + esc(d.hpTemp) + "</span>" : "") +
     "</div>" +
@@ -728,6 +757,13 @@ export function renderGlanceHTML(char, opts) {
   opts = opts || {};
   const live = opts.live || null;
   const d = deriveGlance(char, opts.rules, live);
+  d.hpMasked = !!opts.maskHp;
+  if (d.hpMasked) {
+    /* v2.4.5：非 GM + locked/hide → HP 与四防（含 AC）全部掩码，仅保留条形比例。 */
+    d.defenses = (d.defenses || []).map(function (x) {
+      return Object.assign({}, x, { value: "?", parts: [], masked: true });
+    });
+  }
   /* v1.8.1：临时加值存在 track.js 的 state 里（缺字段 = 0），渲染层只读、不写卡。 */
   const st = live && live.state ? live.state : null;
   const temps = stateTemps(st);
@@ -751,15 +787,15 @@ export function renderGlanceHTML(char, opts) {
 
   const defGrid = '<section class="gl4-card gl4-defs">' + d.defenses.map(function (x) {
     const t = temps.def[x.key] || 0;
-    const val = x.value + t;
+    const val = x.masked ? "?" : x.value + t;
     /* v1.8.1：四防临时加值 ±（只写 live 状态；没权限时只展示、不给控件）。 */
-    const delta = ed.hp
+    const delta = x.masked ? "" : ed.hp
       ? '<span class="gl4-def-temp"><button type="button" class="gl4-step" data-act="def-temp" data-k="' + esc(x.key) +
         '" data-d="-1" aria-label="' + esc(x.label) + ' 临时 −1">−</button><em>' + signed(t) +
         '</em><button type="button" class="gl4-step" data-act="def-temp" data-k="' + esc(x.key) +
         '" data-d="1" aria-label="' + esc(x.label) + ' 临时 ＋1">＋</button></span>'
       : (t ? '<em class="gl4-def-delta">' + signed(t) + "</em>" : "");
-    const tip = partsText(x.parts) + (t ? "  临时 " + signed(t) : "");
+    const tip = x.masked ? "已隐藏" : partsText(x.parts) + (t ? "  临时 " + signed(t) : "");
     return '<div class="gl4-def" title="' + esc(tip) + '"><span class="gl4-def-name">' +
       esc(x.label) + '</span><span class="gl4-def-val">' + val + "</span>" + delta + "</div>";
   }).join("") + "</section>";

@@ -122,10 +122,15 @@ function writeLocal(cardId, state) {
 
 async function readRoomState(cardId) {
   try {
-    const meta = await OBR.room.getMetadata();
-    const raw = meta[KEY_STATE_PREFIX + cardId];
-    if (!raw || typeof raw !== "object") return null;
-    return normalizeState(raw);
+    let room = {}, scene = {};
+    try { room = (await OBR.room.getMetadata()) || {}; } catch (e) { room = {}; }
+    try { scene = (await OBR.scene.getMetadata()) || {}; } catch (e2) { scene = {}; }
+    const rawRoom = room[KEY_STATE_PREFIX + cardId];
+    const rawScene = scene[KEY_STATE_PREFIX + cardId];
+    const a = rawRoom && typeof rawRoom === "object" ? normalizeState(rawRoom) : null;
+    const b = rawScene && typeof rawScene === "object" ? normalizeState(rawScene) : null;
+    if (a && b) return b.updatedAt > a.updatedAt ? b : a; /* v2.4.5：scene/room 取新 */
+    return a || b;
   } catch (e) {
     return null;
   }
@@ -183,6 +188,19 @@ function watchRoomMeta() {
         if (!cur || st.updatedAt > cur.state.updatedAt) stateCache[cardId] = { state: st, scope: "room" };
       }
     });
+    if (OBR.scene && typeof OBR.scene.onMetadataChange === "function") {
+      OBR.scene.onMetadataChange(function (meta) {
+        if (!meta || typeof meta !== "object") return;
+        for (const k of Object.keys(meta)) {
+          if (k.indexOf(KEY_STATE_PREFIX) !== 0) continue;
+          const cardId = k.slice(KEY_STATE_PREFIX.length);
+          if (!cardId) continue;
+          const st = normalizeState(meta[k]);
+          const cur = stateCache[cardId];
+          if (!cur || st.updatedAt > cur.state.updatedAt) stateCache[cardId] = { state: st, scope: "scene" };
+        }
+      });
+    }
     metaWatcherRegistered = true;
   } catch (e) {
     /* OBR 未就绪 / 老 SDK 没有 onMetadataChange：下次再试，不影响读写 */
@@ -193,22 +211,13 @@ function watchRoomMeta() {
 export async function loadState(cardId) {
   watchRoomMeta();
   const local = readLocal(cardId);
-  const room = await readRoomState(cardId);
-  const scope = scopeOverride[cardId] || "";
-  let picked = null;
-  let pickedScope = "room";
-  if (scope === "local") {
-    picked = local || defaultState();
-    pickedScope = "local";
-  } else if (room && (!local || room.updatedAt >= local.updatedAt)) {
-    picked = room;
-    pickedScope = "room";
-  } else if (local) {
+  const stored = await readRoomState(cardId);
+  let picked = stored || defaultState();
+  let pickedScope = stored ? (scopeOverride[cardId] === "scene" ? "scene" : "room") : "room";
+  /* v2.4.5：本机兜底若更新更晚则恢复本机（下次打开不回到旧状态）。 */
+  if (local && (!stored || local.updatedAt > stored.updatedAt)) {
     picked = local;
     pickedScope = "local";
-  } else {
-    picked = defaultState();
-    pickedScope = "room";
   }
   /* 缓存可能比房间读数新（刚写完、回声还没回来）→ 用缓存；否则把房间 / 本机结果同步进缓存。
    * 注意严格大于：updatedAt 相等时以房间 / 本机读数为准（外部写入可能和本页写在同一毫秒）。 */
@@ -242,9 +251,10 @@ export async function commitState(cardId, mutate) {
   next.updatedAt = Math.max(Date.now(), (base && base.updatedAt ? base.updatedAt : 0) + 1);
   const res = await writeRoomKey(key, next);
   if (res.ok) {
-    scopeOverride[cardId] = "room";
-    cachePut(cardId, next, "room");
-    return { state: clone(next), scope: "room" };
+    const store = res.store === "scene" ? "scene" : "room";
+    scopeOverride[cardId] = store;
+    cachePut(cardId, next, store);
+    return { state: clone(next), scope: store };
   }
   if (res.reason === "full") {
     notify(ROOM_FULL_MESSAGE, "ERROR");
@@ -408,7 +418,7 @@ export async function syncTokenStats(itemId, hp, ctx) {
   if (barOff) return false;
   const needHp = !!wantMax && !barOff && !(typeof rawHp.max === "number" && rawHp.max > 0);
   const wantSurge = ctx.surgesMax > 0 ? Math.round(ctx.surgesMax) : null;
-  /* v2.3.10：wantDef 必须包含速览临时四防，否则 base+temp 会被误判成「与卡片基础不一致」
+  /* v2.4.5：wantDef 必须包含速览临时四防，否则 base+temp 会被误判成「与卡片基础不一致」
    * 又写回基础值，真机表现为「地图数字变一下又变回去」。合并规则与 syncDefTempToTokens 共用 combineDefenses。 */
   const wantDef = combineDefenses(defensesFromDerived(ctx.defenses), ctx.defTemp);
   const curDef = hp.defenses || null;
@@ -651,4 +661,20 @@ export async function applyAction(act, el, ctx) {
 /** 存的是「全桌」还是「本机」，给 UI 用。 */
 export function scopeText(scope) {
   return scope === "local" ? "本机记录（未同步到房间）" : "全桌同步";
+}
+
+/* v2.4.5：血条/HP 显示策略（地图条、速览、先攻共用同一语义；background 有同实现副本）。 */
+export function computeViewMode(opts) {
+  const o = opts || {};
+  const role = o.role || "";
+  const isOwner = !!(o.isOwner || (o.playerId && o.createdUserId && o.playerId === o.createdUserId));
+  if (o.hide) return role === "GM" ? "full" : "hidden";
+  if (role === "GM" || isOwner) return "full";
+  if (!o.locked) return "full";
+  return o.phase && o.phase !== "idle" ? "silhouette" : "hidden";
+}
+export function quantiseRatio(ratio) {
+  const r = typeof ratio === "number" && isFinite(ratio) ? Math.max(0, Math.min(1, ratio)) : 0;
+  if (r <= 0) return 0;
+  return Math.min(1, Math.ceil(r / 0.25) * 0.25);
 }

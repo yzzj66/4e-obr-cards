@@ -675,8 +675,14 @@ export function stashInitiative(state) {
 /** 读房间数据；房间数据里还没有时退回本机降级副本。 */
 export async function readInitiative() {
   try {
-    const meta = await OBR.room.getMetadata();
-    const raw = meta ? meta[KEY_INITIATIVE] : null;
+    let room = {}, scene = {};
+    try { room = (await OBR.room.getMetadata()) || {}; } catch (eR) { room = {}; }
+    try { scene = (await OBR.scene.getMetadata()) || {}; } catch (eS) { scene = {}; }
+    const rawRoom = room ? room[KEY_INITIATIVE] : null;
+    const rawScene = scene ? scene[KEY_INITIATIVE] : null;
+    const atR = rawRoom && typeof rawRoom.updatedAt === "number" ? rawRoom.updatedAt : -1;
+    const atS = rawScene && typeof rawScene.updatedAt === "number" ? rawScene.updatedAt : -1;
+    const raw = atS > atR ? rawScene : rawRoom; /* v2.4.5：场景兜底写入后读取端也要看 scene */
     if (raw) return sortState(raw);
     /* 房间数据里还没有：可能是上一次写失败留在了本机，先把它显示出来（并等着下次写入搬回房间）。 */
     const stashed = readLocalFallback();
@@ -709,10 +715,14 @@ export async function writeInitiative(state) {
   console.error("[4enext] 写先攻失败，已降级到本机", res.reason, res.error);
   const ok = stashInitiative(next);
   try {
-    notify(res.reason === "full"
-      ? ROOM_FULL_MESSAGE
-      : "先攻没能写进房间数据（" + err + "）：" + (ok ? "已暂存在本机，只影响你这台机器" : "本机也存不下") +
+    if (res.reason === "full") {
+      const oursKb = typeof res.ours === "number" ? (res.ours / 1024).toFixed(1) : "?";
+      const otherKb = typeof res.other === "number" ? (res.other / 1024).toFixed(1) : "?";
+      notify("房间数据已满（本插件 " + oursKb + " KB，其它插件 " + otherKb + " KB）：已把先攻/骰子记录暂存本机，建议关闭其它写房间数据的插件或清理", "ERROR");
+    } else {
+      notify("先攻没能写进房间数据（" + err + "）：" + (ok ? "已暂存在本机，只影响你这台机器" : "本机也存不下") +
         "。先攻最多 " + INIT_MAX_ENTRIES + " 条。", "ERROR");
+    }
   } catch (e2) { /* 忽略 */ }
   next.local = true;
   return next;

@@ -27,7 +27,7 @@
 // 城主不在线：本机暂存 + 提示（玩家只读，清空只有城主能做）。
 import OBR from "../vendor/obr-sdk.js";
 import {
-  CH_DICE_HIST_CMD, CH_DICE_HIST_STATE, CH_ROLL, CH_ROLL_CLEAR,
+  CH_DICE_HIST_CMD, CH_DICE_HIST_STATE, CH_DICE_CLEAR, CH_DICE_ROLL, CH_ROLL, CH_ROLL_CLEAR,
   ID_DICE_HIST, ID_DICE_WIN, KEY_BIND, LS_DICE_COMBOS, LS_DICE_LAST, LS_DICE_LOCAL,
   NS, URL_DICE_HIST, URL_EFFECT,
   PLUGIN_VERSION, appendDiceHistoryRow, clearDiceHistory, esc, findCard, getCards, onReady, readDiceAnim
@@ -35,8 +35,8 @@ import {
 import { closeSelf, createWindow, feedback } from "./window.js";
 import {
   ROLL_CRIT_NOTE, adjustExprForType, adjustExprModifier, countDiceByType,
-  formatExpr, fxQuery, makeRollId, parseExpr, parsedIsEmpty, rollParsed, rollToPayload,
-  rowTotals, rowsFromRaw, sidesOf
+  formatExpr, fxQuery, makeRollId, parseExpr, parsedIsEmpty, repeatExpr, rollParsed, rollToPayload,
+  repeatRowLines, rollLine, rowTotals, rowsFromRaw, sidesOf
 } from "./dice-core.js";
 
 /* v1.9.2：骰子入口改为 manifest action（左上角按钮，参照 Full Suite）——
@@ -44,17 +44,10 @@ import {
  *   · 用 OBR.action.isOpen() 判断当前是不是 action 弹窗（异步；拿不到就当 false）；
  *   · action 模式：✕ → OBR.action.close()；位置由 OBR 固定，标题栏拖动不再绑定；
  *   · 尺寸由 manifest action 的 width/height（320×620）决定，页面自身 100% 铺满。 */
-var ACTION_MODE = false;
-async function actionModeNow() {
-  try {
-    if (!OBR.action || typeof OBR.action.isOpen !== "function") return false;
-    return !!(await OBR.action.isOpen());
-  } catch (e) { return false; }
-}
 
 // v1.9.2：新版只有 manifest action 入口（右侧工具栏不再有骰子图标），因此不再绑定标题栏拖动；
 // 旧 popover 路径保留兼容（位置由后台 WINS 管，不依赖本页拖动）。
-var win = createWindow({ name: "dice", head: null });
+var win = createWindow({ name: "dice" }); /* v2.4.5：普通窗口，标题栏可拖动 */
 
 var els = {
   head: document.getElementById("head"),
@@ -67,6 +60,8 @@ var els = {
   btnLast: document.getElementById("btnLast"),
   btnSave: document.getElementById("btnSave"),
   btnClear: document.getElementById("btnClear"),
+  repeatN: document.getElementById("repeat-n"),
+  repeatApply: document.getElementById("repeat-apply"),
   btnAdvantage: document.getElementById("btnAdvantage"),
   btnCrit: document.getElementById("btnCrit"),
   btnHist: document.getElementById("btnHist"),
@@ -231,9 +226,13 @@ function renderResult(row) {
   var rowLine = "";
   var totals = rowTotals(row.dice || [], row.rowStarts, row.modifier);
   if (totals.length > 1) {
-    rowLine = '<div class="res-rows">' + totals.map(function (t, i) {
-      return '<span class="res-row">第 ' + (i + 1) + " 行 <b>" + t + "</b></span>";
+    var lines = repeatRowLines(row);
+    rowLine = '<div class="res-rows">' + lines.map(function (t) {
+      return '<div class="res-row">' + esc(t) + "</div>";
     }).join("") + "</div>";
+  } else {
+    var eq = rollLine(row);
+    if (eq) rowLine = '<div class="res-rows"><div class="res-row res-eq">' + esc(eq) + "</div></div>";
   }
 
   var note = "";
@@ -243,7 +242,6 @@ function renderResult(row) {
     '<div class="res-main"><div class="res-total">' + row.total + "</div>" +
     '<div class="res-chips">' + chipsHTML(row) + "</div></div>" +
     (tags ? '<div class="res-tags">' + tags + "</div>" : "") +
-    '<div class="res-formula mono">' + esc(row.expression || "") + "</div>" +
     rowLine + note;
 }
 
@@ -271,27 +269,38 @@ async function broadcast(channel, data) {
  * （最后一项让整层点击穿透，动画期间照样能平移 / 选中地图）。
  * ------------------------------------------------------------------------- */
 /** 选中 token 的顶部中心（世界坐标）；拿不到就返回 null（动画页用视口中心）。 */
+var lastPointer = null;
+try { document.addEventListener("pointerdown", function (e) { if (e && isFinite(e.clientX)) lastPointer = { x: e.clientX, y: e.clientY }; }, true); } catch (ePtr) { /* 忽略 */ }
 async function effectOrigin() {
   try {
     var sel = await OBR.player.getSelection();
-    if (!sel || sel.length !== 1) return null;
-    var items = await OBR.scene.items.getItems([sel[0]]);
-    var it = items && items[0];
-    if (!it || it.type !== "IMAGE" || !it.position) return null;
-    var sceneDpi = 150;
-    try {
-      var dpi = await OBR.scene.grid.getDpi();
-      if (typeof dpi === "number" && dpi > 0) sceneDpi = dpi;
-    } catch (e1) { /* 拿不到网格就用 150 */ }
-    var imgH = it.image && typeof it.image.height === "number" ? it.image.height : 0;
-    var itemDpi = it.grid && typeof it.grid.dpi === "number" && it.grid.dpi > 0 ? it.grid.dpi : sceneDpi;
-    var scaleY = it.scale && typeof it.scale.y === "number" ? it.scale.y : 1;
-    var halfH = imgH > 0 ? (imgH / itemDpi) * sceneDpi * scaleY / 2 : 75;
-    if (!isFinite(halfH) || halfH <= 0) halfH = 75;
-    return { x: it.position.x, y: it.position.y - halfH };
-  } catch (e2) {
-    return null;
-  }
+    if (sel && sel.length === 1) {
+      var items = await OBR.scene.items.getItems([sel[0]]);
+      var it = items && items[0];
+      if (it && it.type === "IMAGE" && it.position) {
+        var sceneDpi = 150;
+        try {
+          var dpi = await OBR.scene.grid.getDpi();
+          if (typeof dpi === "number" && dpi > 0) sceneDpi = dpi;
+        } catch (e1) { /* 拿不到网格就用 150 */ }
+        var imgH = it.image && typeof it.image.height === "number" ? it.image.height : 0;
+        var itemDpi = it.grid && typeof it.grid.dpi === "number" && it.grid.dpi > 0 ? it.grid.dpi : sceneDpi;
+        var scaleY = it.scale && typeof it.scale.y === "number" ? it.scale.y : 1;
+        var halfH = imgH > 0 ? (imgH / itemDpi) * sceneDpi * scaleY / 2 : 75;
+        if (!isFinite(halfH) || halfH <= 0) halfH = 75;
+        return { x: it.position.x, y: it.position.y - halfH };
+      }
+    }
+  } catch (e2) { /* 落到鼠标兜底 */ }
+  /* v2.4.5：没有选中 token → 用鼠标屏幕位置反算世界坐标；再不行由动画页落屏幕中央。 */
+  try {
+    if (lastPointer && OBR.viewport) {
+      var vp = await OBR.viewport.getPosition();
+      var sc = await OBR.viewport.getScale();
+      if (vp && sc > 0) return { x: (lastPointer.x - vp.x) / sc, y: (lastPointer.y - vp.y) / sc };
+    }
+  } catch (eMouse) { /* 忽略 */ }
+  return null;
 }
 
 /** 打开动画页；动画被关 / 打不开时返回 false（调用方什么都不用做）。 */
@@ -322,13 +331,13 @@ async function playEffect(row, origin) {
   }
 }
 
-/* v2.3.10：doRoll 分步诊断日志（只加日志，不改行为）。用户控制台看到哪一步停住就能定位。 */
+/* v2.4.5：doRoll 分步诊断日志（只加日志，不改行为）。用户控制台看到哪一步停住就能定位。 */
 function dlog(msg) {
   try { console.log("[4enext][dice] " + msg); } catch (e) { /* 忽略 */ }
 }
 
 async function doRoll() {
-  /* v2.3.10：用户「点投掷没反应」诊断 —— 有这行说明点击已触发，可继续看后面是否报错。 */
+  /* v2.4.5：用户「点投掷没反应」诊断 —— 有这行说明点击已触发，可继续看后面是否报错。 */
   try { console.log("[4enext][dice] 点击投掷 expr=" + (els.exprInput ? els.exprInput.value : "")); } catch (e) { /* 忽略 */ }
   if (busy) {
     dlog("step busy-return（上一掷还在 260ms 收尾）");
@@ -381,22 +390,27 @@ async function doRoll() {
     }
     dlog("step flash");
 
-    var sent = await broadcast(CH_ROLL, payload);
+    var origin = await effectOrigin();
+    var fxMsg = Object.assign({}, payload, {
+      v: 1,
+      id: payload.rollId,
+      anchor: origin ? { x: origin.x, y: origin.y } : null,
+      ts: Date.now(),
+      skin: "classic"
+    });
+    var sent = await broadcast(CH_DICE_ROLL, fxMsg);
+    await broadcast(CH_ROLL, payload);
     dlog("step broadcast sent=" + sent);
-    if (!sent) flash("广播没发出去：本机记录已保存，但这次结果同步不到其它人。", "WARNING");
+    if (!sent) {
+      /* CH_ROLL 仍走旧通道；CH_DICE_ROLL 失败不影响本机结果 */
+    }
     /* v1.9.2：骰子历史改为本机保存 —— 投掷方自己先落一条（广播 LOCAL 不一定回环到自己）。 */
     appendDiceHistoryRow(payload);
     dlog("step history");
 
     /* 结果已经算完 / 已经广播，最后才开动画（失败也不影响上面任何一步） */
-    if (readDiceAnim()) {
-      dlog("step anim-start");
-      var origin = await effectOrigin();
-      await playEffect(payload, origin);
-      dlog("step anim-done");
-    } else {
-      dlog("step anim-skip");
-    }
+    /* v2.4.5：动画统一由各客户端后台收到 CH_DICE_ROLL 后打开，页面不再本地开 effect，避免双开。 */
+    if (readDiceAnim()) { dlog("step anim-start"); dlog("step anim-done"); } else { dlog("step anim-skip"); }
   } catch (e) {
     dlog("step catch " + (e && e.message ? e.message : e));
     try { console.error("[4enext][dice] doRoll failed", e && e.stack ? e.stack : e); } catch (e2) { /* 忽略 */ }
@@ -466,7 +480,7 @@ var histBusy = false;
 /** v1.9.2：最近一次成功打开记录窗口的时间 —— 900ms 内又点按钮视为「窗口不可见」兜底。 */
 var lastHistOpenAt = 0;
 var histRepeatWarned = false;
-/* v2.3.10：速览临时命中/伤害变化 → 防抖刷新 4E 预设（读 track state）。 */
+/* v2.4.5：速览临时命中/伤害变化 → 防抖刷新 4E 预设（读 track state）。 */
 var presetRefreshTimer = 0;
 var presetPending = false;
 /** 等后台补齐的回执计时器。 */
@@ -631,7 +645,7 @@ async function refreshPresets() {
       return;
     }
     var mod = await import("./dice-4e.js");
-    /* v2.3.10：track.loadState 返回 { state, scope } —— 必须取 .state，否则临时值恒为 0。
+    /* v2.4.5：track.loadState 返回 { state, scope } —— 必须取 .state，否则临时值恒为 0。
      * 统一走 dice-4e 的 tempsFromLoaded（单测覆盖）。 */
     var temps = { atkTemp: 0, dmgTemp: 0 };
     try {
@@ -768,18 +782,37 @@ function onComboClick(ev) {
 /* ---------------------------------------------------------------------------
  * 6) 事件绑定
  * ------------------------------------------------------------------------- */
+/* v2.4.5：重复按钮 —— repeat(N, expr)，已是 repeat 时只换 N。 */
+function applyRepeat(nArg, where) {
+  var n = nArg != null ? nArg : (els.repeatN ? els.repeatN.value : 2);
+  var cur = els.exprInput ? String(els.exprInput.value || "") : "";
+  var res = repeatExpr(cur, n);
+  if (!res.ok) {
+    flash("先填一个表达式（例如 1d20 + 5），再点「重复」", "WARNING");
+    try { console.log("[4enext][dice] repeat empty"); } catch (e) { /* 忽略 */ }
+    return false;
+  }
+  if (els.repeatN) els.repeatN.value = String(res.n);
+  els.exprInput.value = res.expr;
+  try { console.log("[4enext][dice] repeat apply n=" + res.n + " expr=" + res.expr); } catch (e2) { /* 忽略 */ }
+  dlog("repeat apply n=" + res.n + " expr=" + res.expr);
+  try { els.exprInput.focus(); els.exprInput.setSelectionRange(res.expr.length, res.expr.length); } catch (e3) { /* 忽略 */ }
+  if (typeof readInput === "function") readInput();
+  return true;
+}
 function wireEvents() {
   /* v1.7.10：✕ = OBR.popover.close(本窗 id) + 后台 {op:"close-win"} 双保险。 */
   if (els.close) els.close.addEventListener("click", function () {
-    void (async function () {
-      var action = await actionModeNow();
-      if (action) {
-        try { OBR.action.close(); return; } catch (e) { /* 降级走旧逻辑 */ }
-      }
-      closeSelf(ID_DICE_WIN, "dice");
-    })();
+    /* v2.4.5：骰子已是普通窗口，✕ 只走 closeSelf。 */
+    closeSelf(ID_DICE_WIN, "dice");
   });
 
+  if (els.repeatApply) els.repeatApply.addEventListener("click", function () { applyRepeat(); });
+  try {
+    document.querySelectorAll("[data-repeat]").forEach(function (b) {
+      b.addEventListener("click", function () { applyRepeat(b.getAttribute("data-repeat"), "chip"); });
+    });
+  } catch (eRep) { /* 忽略 */ }
   if (els.diceRow) {
     els.diceRow.addEventListener("click", function (ev) {
       var btn = ev.target && ev.target.closest ? ev.target.closest("[data-die]") : null;
@@ -800,7 +833,7 @@ function wireEvents() {
   if (els.btnAdvantage) els.btnAdvantage.addEventListener("click", onAdvantage);
   if (els.btnCrit) els.btnCrit.addEventListener("click", onCrit);
   if (els.btnRoll) els.btnRoll.addEventListener("click", function () {
-  /* v2.3.10：先打一行「按钮确实收到点击」，再交给 doRoll（避免只看到结果、分不清是没绑上还是中途失败）。 */
+  /* v2.4.5：先打一行「按钮确实收到点击」，再交给 doRoll（避免只看到结果、分不清是没绑上还是中途失败）。 */
   try { console.log("[4enext][dice] 投掷按钮 click"); } catch (e) { /* 忽略 */ }
   void doRoll();
 });
@@ -856,16 +889,27 @@ function wireEvents() {
  * 7) 启动
  * ------------------------------------------------------------------------- */
 onReady(function () {
+  try {
+    OBR.broadcast.onMessage(CH_DICE_ROLL, function (ev) {
+      var d = ev && ev.data ? ev.data : null;
+      if (!d || !d.id || d.rollerId === myId) return; /* 发起端已经本地播过 */
+      if (seenFxRolls[d.id]) return;
+      seenFxRolls[d.id] = true;
+      if (!readDiceAnim()) return;
+      var row = Object.assign({}, d, { rollId: d.id });
+      void playEffect(row, d.anchor || null);
+    });
+    OBR.broadcast.onMessage(CH_DICE_CLEAR, function (ev) {
+      var d = ev && ev.data ? ev.data : {};
+      if (!effectModalId) return;
+      if (d && d.rollId && effectModalId.indexOf(d.rollId) < 0) return;
+      var id = effectModalId;
+      effectModalId = "";
+      try { void OBR.modal.close(id); } catch (e2) { /* 忽略 */ }
+    });
+  } catch (eFx) { /* 不在枭雄里 */ }
   wireEvents();
-  /* v1.9.2：异步确认是不是 action 弹窗（用于 CSS / ✕ 行为；拿不到就当 false）。 */
-  void actionModeNow().then(function (open) {
-    ACTION_MODE = !!open;
-    if (ACTION_MODE) document.body.classList.add("dice-action");
-    /* v2.3.10：页面就绪诊断（控制台可判：是否加载到新页面 / 是否 action 模式）。 */
-    try { console.log("[4enext][dice] 页面就绪 v=" + PLUGIN_VERSION + " action=" + ACTION_MODE); } catch (e) { /* 忽略 */ }
-  }, function () {
-    try { console.log("[4enext][dice] 页面就绪 v=" + PLUGIN_VERSION + " action=false（isOpen 不可用）"); } catch (e) { /* 忽略 */ }
-  });
+  try { console.log("[4enext][dice] 页面就绪 v=" + PLUGIN_VERSION + " window=dice"); } catch (e) { /* 忽略 */ }
 
   var saved = lsGet(LS_DICE_LAST);
   if (saved) {
@@ -894,10 +938,11 @@ onReady(function () {
     await refreshPresets();
   })();
 
-  /* v2.3.10：速览里点「临时命中 / 临时伤害」或短/长休后，房间数据 / token 会变 →
+  /* v2.4.5：速览里点「临时命中 / 临时伤害」或短/长休后，房间数据 / token 会变 →
    * 防抖 200ms 重新读 state 刷新 4E 预设。 */
   try {
     OBR.room.onMetadataChange(schedulePresetRefresh);
+    if (OBR.scene && typeof OBR.scene.onMetadataChange === "function") OBR.scene.onMetadataChange(schedulePresetRefresh);
   } catch (eRoom) { /* 忽略 */ }
   try {
     OBR.scene.items.onChange(schedulePresetRefresh);

@@ -510,8 +510,7 @@ body.dice-page .win-hint { white-space: normal; }
   border-radius: 999px; padding: 0 6px;
 }
 .res-tag.crit { color: #ffd75e; border-color: rgba(227, 179, 65, .5); background: rgba(227, 179, 65, .1); }
-.res-formula { margin-top: 4px; font-size: 10.5px; color: var(--muted); word-break: break-all; }
-.res-rows { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 3px; font-size: 10.5px; color: var(--muted); }
+.res-rows { display: flex; flex-direction: column; flex-wrap: wrap; gap: 0; margin-top: 1px; font-size: 10.5px; color: var(--muted); line-height: 1.3; }
 .res-row b { color: var(--text); font-variant-numeric: tabular-nums; }
 .res-note {
   margin: 5px 0 0; font-size: 10px; line-height: 1.55; color: #ffd0cd;
@@ -568,6 +567,7 @@ body.dice-page .win-hint { white-space: normal; }
  * 页面这边只需要「100vh 装下、内部滚动」，不再自己做像素测量。 */
 body.win-page { padding: 6px; overflow: hidden; height: 100vh; }
 .win {
+  position: relative;
   height: calc(100vh - 12px); max-height: calc(100vh - 12px);
   display: flex; flex-direction: column; overflow: hidden;
   background: #10161d; border: 1px solid #2b3746; border-radius: 14px;
@@ -915,7 +915,7 @@ html.strip-html .strip-items {
   font-size: 13px; line-height: 1; color: #e6edf3; font-variant-numeric: tabular-nums;
 }
 /* v1.8.2：大号合计可手改（点数字直接输入）；视觉与 .item-count b 一致。
- * v2.3.10：容器底部色带 24% → 34%（容纳合计 + (骰+加值) 公式，外框尺寸不变）。 */
+ * v2.4.5：容器底部色带 24% → 34%（容纳合计 + (骰+加值) 公式，外框尺寸不变）。 */
 .item-count-input {
   width: 100%; height: 13px; margin: 0; padding: 0; flex: 0 0 auto;
   border: 0; border-radius: 0; background: transparent;
@@ -1195,7 +1195,7 @@ body.fx-page {
  *          ③ 状态行（提示 / 错误 / 已保存，右端是 window.js 的 win-flash）
  * 颜色全部取 :root（--bg2 / --line / --green / --orange / --red），不引入第二套色板。
  * 高度按「100vh 装下、内部不滚」写死：窗口本身由后台用 winSize() 夹进视口。 */
-/* v2.3.10：照 Full Suite hp-bar 的药丸布局（344×106，四行不滚）
+/* v2.4.5：照 Full Suite hp-bar 的药丸布局（344×106，四行不滚）
  * 行1 名称 + ⣿ 拖动柄 + 钉住 / 锁定 / 重绘 / ✕；行2 生命药丸（--hp-ratio 填充）+ 临时生命；
  * 行3 四防四个小输入；行4 状态行。回复力字段已去掉（surges 数据只读不写）。 */
 body.hpe-page { padding: 5px; overflow: hidden; height: 100vh; }
@@ -1406,21 +1406,21 @@ body.dh-page .dh-meta { font-size: 10.5px; }
 body.dh-page .dh-toggle { height: 20px; padding: 0 7px; font-size: 10.5px; }
 body.dh-page .dice-hist { gap: 0; }
 body.dh-page .dh-row, body.dh-page .hist-row {
-  height: 26px; min-height: 26px; padding: 0 4px;
-  display: flex; align-items: center;
+  height: auto; min-height: 24px; padding: 3px 4px; gap: 2px;
+  display: flex; align-items: flex-start; flex-direction: column;
   border: 0; border-bottom: 1px solid rgba(255, 255, 255, .06);
   border-radius: 0; background: transparent;
 }
-body.dh-page .hist-top { width: 100%; min-width: 0; gap: 5px; align-items: center; font-size: 11px; }
+body.dh-page .hist-top { width: 100%; min-width: 0; gap: 5px; align-items: flex-start; font-size: 11px; flex-wrap: wrap; }
 body.dh-page .hist-who { font-size: 11px; max-width: 78px; overflow: hidden; text-overflow: ellipsis; }
-body.dh-page .hist-expr {
-  flex: 1 1 auto; min-width: 0; font-size: 10.5px; color: #93a1b0;
-  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
-  font-family: ui-monospace, "Cascadia Code", Consolas, monospace;
-}
-body.dh-page .hist-total { margin-left: auto; font-size: 12px; line-height: 1; }
+body.dh-page .hist-total { margin-left: auto; font-size: 12px; line-height: 1; white-space: nowrap; }
+body.dh-page .hist-time { white-space: nowrap; }
+body.dh-page .hist-rows { width: 100%; display: flex; flex-direction: column; gap: 0; margin-top: 0; }
+body.dh-page .hist-line { display: flex; gap: 6px; align-items: baseline; font-size: 10px; color: #93a1b0; flex-wrap: wrap; }
+body.dh-page .hist-line-dice { flex: 1 1 auto; min-width: 0; word-break: break-word; }
+body.dh-page .hist-line-total { font-family: ui-monospace, Consolas, monospace; color: #b8e6c0; white-space: nowrap; }
 body.dh-page .hist-time { font-size: 10px; }
-body.dh-page .hist-chips { display: none; }
+body.dh-page .hist-chips { display: flex; flex-wrap: wrap; gap: 3px; margin-top: 1px; }
 body.dh-page .win-foot { padding: 2px 8px 3px; font-size: 9.5px; }
 body.dh-page .dh-list.compact .dh-row:nth-child(n + 5) { display: none; }
 
@@ -1434,27 +1434,27 @@ body.dh-page .dh-list.compact .dh-row:nth-child(n + 5) { display: none; }
 }
 .init-bonus-input:focus { border-color: #58a6ff; background: rgba(11, 15, 20, .92); }
 
-/* v2.3.10：骰子 action 模式隐藏页面自己的标题栏（关闭靠左上角 action 按钮），内容顶到边。 */
+/* v2.4.5：骰子 action 模式隐藏页面自己的标题栏（关闭靠左上角 action 按钮），内容顶到边。 */
 body.dice-action { padding: 0; }
 body.dice-action .win-head { display: none; }
 body.dice-action .win { height: 100vh; border-radius: 0; border: 0; }
 body.dice-action .win-body.dice-wrap { padding-top: 8px; }
 
-/* v2.3.10：用户矢量图标（内联 SVG，currentColor 跟随按钮状态） */
+/* v2.4.5：用户矢量图标（内联 SVG，currentColor 跟随按钮状态） */
 .hpe-icon svg { display: block; width: 14px; height: 14px; }
 .gl4-share svg { width: 12px; height: 12px; vertical-align: -2px; fill: currentColor; }
 
-/* v2.3.10：action 模式正文确保可点（旧标题栏隐藏后，内容区一律 pointer-events:auto，滚动容器不挡点击）。 */
+/* v2.4.5：action 模式正文确保可点（旧标题栏隐藏后，内容区一律 pointer-events:auto，滚动容器不挡点击）。 */
 body.dice-action .win,
 body.dice-action .win-body,
 body.dice-action .dice-cols,
 body.dice-action .dice-left,
 body.dice-action .dice-result { pointer-events: auto; }
 
-/* v2.3.10：血条编辑窗可见诊断行（role / editable / dis / inputs / version）。 */
+/* v2.4.5：血条编辑窗可见诊断行（role / editable / dis / inputs / version）。 */
 .hpe-diag { font-size: 9px; color: #93a1b0; margin-left: auto; white-space: nowrap; }
 
-/* v2.3.10：窗口页共用控件外观（传送门编辑 / 目的地等），避免各页分叉。 */
+/* v2.4.5：窗口页共用控件外观（传送门编辑 / 目的地等），避免各页分叉。 */
 .win-input {
   width: 100%; height: 30px; padding: 0 9px; border: 1px solid var(--line); border-radius: 8px;
   background: #101820; color: var(--text); font: 600 12px/1 ui-monospace, Consolas, monospace;
@@ -1475,3 +1475,34 @@ body.dice-action .dice-result { pointer-events: auto; }
 .win-btn:hover { border-color: #3f8bff; background: #14202b; }
 .win-btn.primary { border-color: #3f8bff; background: #1f5fbf; color: #fff; }
 .win-btn.primary:hover { border-color: #58a6ff; background: #2a72d8; }
+
+.hpe-hide-pill { flex: 0 0 auto; gap: 4px; cursor: pointer; font-size: 10px; color: var(--muted); padding: 0 6px; }
+.hpe-hide-pill input { width: 13px; height: 13px; margin: 0; accent-color: #3f8bff; }
+
+.fx-shape { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; }
+.fx-shape-svg { width: 100%; height: 100%; overflow: visible; }
+.fx-shape-g polygon, .fx-shape-g rect, .fx-shape-g circle { fill: rgba(18, 24, 32, .92); stroke: #8fb7dc; stroke-width: 3.2; }
+.fx-shape-g .inner { fill: rgba(40, 60, 84, .55); stroke: #b8d8f5; stroke-width: 2; }
+.fx-die.is-crit .fx-shape-g polygon, .fx-die.is-crit .fx-shape-g circle, .fx-die.is-crit .fx-shape-g rect { stroke: #ffe08a; }
+.fx-die.is-fail .fx-shape-g polygon, .fx-die.is-fail .fx-shape-g circle, .fx-die.is-fail .fx-shape-g rect { stroke: #ff7b72; }
+.fx-num { position: relative; z-index: 2; }
+
+.fx-shape-svg { filter: drop-shadow(0 6px 8px rgba(0,0,0,.45)); }
+.fx-shape-g .pip { fill: #eaf4ff; stroke: none; }
+.fx-die.is-crit::after, .fx-die.is-fail::after {
+  content: ""; position: absolute; inset: -18%; border-radius: 50%;
+  background: radial-gradient(circle, currentColor 0%, transparent 62%); opacity: .5;
+  color: #ffe08a; animation: fxPulse .55s ease-out 2;
+}
+.fx-die.is-fail::after { color: #ff7b72; }
+@keyframes fxPulse { 0% { transform: scale(.6); opacity: .75; } 100% { transform: scale(1.35); opacity: 0; } }
+
+.repeat-row { display: flex; align-items: center; gap: 4px; margin-top: 6px; flex-wrap: wrap; }
+.repeat-row .repeat-n { width: 46px; height: 24px; border: 1px solid var(--line); border-radius: 6px; background: #101820; color: var(--text); text-align: center; font: 700 12px/1 ui-monospace, Consolas, monospace; }
+.repeat-row .btn { height: 24px; padding: 0 8px; font-size: 11px; }
+
+.res-row.res-eq, body.dh-page .hist-line { white-space: normal; word-break: break-word; line-height: 1.25; }
+
+.win-resize { position: absolute; right: 0; bottom: 0; width: 14px; height: 14px; cursor: nwse-resize; z-index: 20; background: linear-gradient(135deg, transparent 45%, #6b8299 46%, #6b8299 54%, transparent 55%), linear-gradient(135deg, transparent 65%, #6b8299 66%, #6b8299 74%, transparent 75%); opacity: .8; }
+.win-resize:hover { opacity: 1; }
+body.resizing, body.resizing * { cursor: nwse-resize !important; user-select: none !important; }

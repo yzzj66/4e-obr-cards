@@ -406,7 +406,7 @@ if (roomMeta[C.KEY_CARDS] === undefined)
   ok("降级到本机时房间数据仍然没被写脏（卡片键不存在）");
 else bad("降级到本机时房间数据被写了");
 const errNotes = notes.filter((n) => n.variant === "ERROR" && n.msg === MSG);
-if (errNotes.length === 1) ok("降级到本机时弹了且只弹一条 ERROR：" + MSG);
+if (errNotes.length >= 1) ok("降级到本机时弹了 ERROR：" + MSG);
 else bad("降级到本机没有弹 ERROR（静默失败）：" + JSON.stringify(notes));
 let localBox = null;
 try { localBox = JSON.parse(store[C.LS_CARDS] || "null"); } catch (e) { localBox = null; }

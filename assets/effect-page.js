@@ -19,6 +19,7 @@
 import OBR from "../vendor/obr-sdk.js";
 import { NS, onReady } from "./common.js";
 import { FX_MAX_DICE, fxBeat, fxLayout, sidesOf } from "./dice-core.js";
+import { diceSvg, diceLayout, diceFxDuration, diceSpeed } from "./dice-fx.js?v=2.4.5";
 
 /** v1.7.1：兜底关闭时长（ms）。动画总时长是 2600 ms（fxBeat().total），这里再留 400 ms 余量：
  *  到点不管动画播到哪一步都强制 OBR.modal.close —— 页面被挂起 / rAF 挂掉 / 动画被打断时，
@@ -27,6 +28,16 @@ import { FX_MAX_DICE, fxBeat, fxLayout, sidesOf } from "./dice-core.js";
 var FX_CLOSE_FALLBACK_MS = 3000;
 
 /** 参数解析：全部走 URLSearchParams，坏值一律当空。 */
+function b64urlDecode(str) {
+  try {
+    var b = String(str || "").replace(/-/g, "+").replace(/_/g, "/");
+    while (b.length % 4) b += "=";
+    var bin = atob(b);
+    var bytes = new Uint8Array(bin.length);
+    for (var i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+    return JSON.parse(new TextDecoder().decode(bytes));
+  } catch (e) { return null; }
+}
 function readParams() {
   var sp;
   try {
@@ -68,6 +79,25 @@ function readParams() {
   }
   var wx = Number(get("wx"));
   var wy = Number(get("wy"));
+  var dataPayload = b64urlDecode(get("data"));
+  if (dataPayload && Array.isArray(dataPayload.dice)) {
+    var payoutDice = [];
+    for (var pi = 0; pi < dataPayload.dice.length; pi++) {
+      var pd = dataPayload.dice[pi] || {};
+      payoutDice.push({ type: String(pd.type || "d20"), value: Math.max(1, Math.round(Number(pd.value) || 1)), loser: !!pd.loser, subtract: !!pd.subtract });
+    }
+    return {
+      dice: payoutDice,
+      total: Math.round(Number(dataPayload.total) || 0),
+      modifier: Math.round(Number(dataPayload.modifier) || 0),
+      label: String(dataPayload.label || "").slice(0, 40),
+      rollId: String(dataPayload.id || dataPayload.rollId || ""),
+      color: String(dataPayload.color || ""),
+      rowStarts: [],
+      world: dataPayload.anchor && isFinite(dataPayload.anchor.x) && isFinite(dataPayload.anchor.y)
+        ? { x: Number(dataPayload.anchor.x), y: Number(dataPayload.anchor.y) } : null
+    };
+  }
   return {
     dice: dice,
     total: Math.round(Number(get("total")) || 0),
@@ -211,16 +241,17 @@ function buildDice() {
 
     var box = document.createElement("div");
     box.className = "fx-box";
-    var face = document.createElement("span");
-    face.className = "fx-face";
-    face.textContent = d.type;
+    /* v2.4.5：自绘骰子轮廓（d4/d6/d8/d10/d12/d20/d100），号码仍由 .fx-num 滚动/定格。 */
+    var shape = document.createElement("span");
+    shape.className = "fx-shape";
+    shape.innerHTML = diceSvg(d.type, d.value);
+    box.appendChild(shape);
     var num = document.createElement("span");
     num.className = "fx-num rolling";
     num.textContent = "?";
     var orig = document.createElement("span");
     orig.className = "fx-orig";
     if (typeof d.originalValue === "number") orig.textContent = "(" + d.originalValue + ")";
-    box.appendChild(face);
     box.appendChild(num);
     if (typeof d.originalValue === "number") box.appendChild(orig);
     el.appendChild(box);
@@ -304,7 +335,7 @@ function play() {
   state.rollId = data.rollId;
   state.world = data.world;
   state.beat = fxBeat();
-  state.layout = fxLayout(data.dice, { rowStarts: data.rowStarts });
+  state.layout = diceLayout(data.dice, (window.innerWidth || 1280), (window.innerHeight || 720), { rowStarts: data.rowStarts });
 
   layoutStage();
   buildDice();
@@ -315,13 +346,13 @@ function play() {
   startSlot();
 
   var b = state.beat;
-  later(settleNumbers, b.flight);
-  later(showTotal, b.flight + Math.round(b.hold / 2));
   later(punch, b.flight + b.hold);
   later(exitStage, b.flight + b.hold + b.punch + b.hold2);
-  later(function () { void finish(); }, b.total);
-  /* v1.7.1：兜底关闭 —— 正常 2600 ms 就关了；万一动画被打断 / 定时器没跑到，3000 ms 一定收场 */
-  later(function () { void finish(); }, FX_CLOSE_FALLBACK_MS);
+  var fxDur = diceFxDuration(state.dice.length, diceSpeed());
+  later(settleNumbers, b.flight);
+  later(showTotal, b.flight + Math.round(b.hold / 2));
+  later(function () { void finish(); }, Math.max(b.total, fxDur));
+  later(function () { void finish(); }, Math.max(FX_CLOSE_FALLBACK_MS, fxDur + 400));
 }
 
 /** v1.7.1：ESC 立即关（不用等动画播完）。 */

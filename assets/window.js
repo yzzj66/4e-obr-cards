@@ -74,6 +74,53 @@ function draggableTarget(target) {
  *   retry  重试按钮（默认 #bg-retry）
  *   onStatus(state, detail) 状态变化回调（页面可以据此重画）
  */
+import { CH_WIN_RESIZE } from "./common.js";
+/* v2.4.5：通用窗口 resize 手柄（右下角）。 */
+function installWinResize(name) {
+  try {
+    const winEl = document.querySelector(".win");
+    if (!winEl || winEl.querySelector(".win-resize")) return;
+    const h = document.createElement("div");
+    h.className = "win-resize";
+    h.title = "拖动调整窗口大小";
+    winEl.appendChild(h);
+    let drag = null, timer = 0;
+    const send = (w, hgt) => {
+      try {
+        OBR.broadcast.sendMessage(CH_WIN_RESIZE, { op: "resize-win", name: name, w: Math.round(w), h: Math.round(hgt), at: Date.now() }, { destination: "LOCAL" });
+      } catch (e) { /* 忽略 */ }
+    };
+    h.addEventListener("pointerdown", function (ev) {
+      if (ev.pointerType === "mouse" && ev.button !== 0) return;
+      ev.preventDefault(); ev.stopPropagation();
+      drag = { id: ev.pointerId, x: ev.clientX, y: ev.clientY, w: winEl.getBoundingClientRect().width, h: winEl.getBoundingClientRect().height, last: 0 };
+      try { h.setPointerCapture(ev.pointerId); } catch (e) { /* 忽略 */ }
+      document.body.classList.add("resizing");
+    });
+    window.addEventListener("pointermove", function (ev) {
+      if (!drag || ev.pointerId !== drag.id) return;
+      ev.preventDefault(); ev.stopPropagation();
+      const w = drag.w + (ev.clientX - drag.x);
+      const hgt = drag.h + (ev.clientY - drag.y);
+      const now = Date.now();
+      if (now - drag.last < 60) return;
+      drag.last = now;
+      send(w, hgt);
+    }, true);
+    const end = function (ev) {
+      if (!drag || (ev && ev.pointerId !== drag.id)) return;
+      const w = drag.w + ((ev && ev.clientX) || 0) - drag.x;
+      const hgt = drag.h + ((ev && ev.clientY) || 0) - drag.y;
+      drag = null;
+      document.body.classList.remove("resizing");
+      send(w, hgt);
+    };
+    window.addEventListener("pointerup", end, true);
+    window.addEventListener("pointercancel", end, true);
+    h.addEventListener("click", function (ev) { ev.preventDefault(); ev.stopPropagation(); });
+  } catch (e) { /* 忽略 */ }
+}
+
 export function createWindow(opts) {
   opts = opts || {};
   const name = String(opts.name || "");
@@ -262,6 +309,7 @@ export function createWindow(opts) {
     void check(false);
   });
 
+  try { installWinResize(name); } catch (eR) { /* 忽略 */ }
   return {
     name: name,
     /** 当前状态：checking / ok / bad */

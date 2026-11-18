@@ -22,6 +22,7 @@ import {
   CH_DICE_HIST_CMD, CH_ROLL, CH_ROLL_CLEAR, HIST_VISIBLE_ROWS, ID_DICE_HIST, LS_DICE_LOCAL, ROLL_MAX_ROWS,
   appendDiceHistoryRow, clearDiceHistory, esc, onReady, readDiceHistoryRows, writeDiceHistoryRows
 } from "./common.js";
+import { repeatRowLines, rollLine } from "./dice-core.js?v=2.4.5";
 import { closeSelf, createWindow, feedback } from "./window.js";
 import { mergeRollRows, rowsFromRaw, sidesOf } from "./dice-core.js";
 
@@ -109,13 +110,24 @@ function renderRows() {
     var mode = r.mode && r.mode !== "free" ? MODE_LABEL[r.mode] || "" : "";
     var lab = [mode, r.label].filter(Boolean).join(" · ");
     /* v1.7.10：紧凑行 —— 「名字 · 公式 + 点数 + 时间」，行高 26 / 字号 11（骰子明细收进 title）。 */
+    var rowsHtml = "";
+    var lines = repeatRowLines(r);
+    if (!lines.length) {
+      var eq = rollLine(r);
+      if (eq) lines = [eq];
+    }
+    if (lines.length) {
+      rowsHtml = '<div class="hist-rows">' + lines.map(function (t) {
+        return '<div class="hist-line">' + esc(t) + "</div>";
+      }).join("") + "</div>";
+    }
     html += '<div class="hist-row dh-row" title="' + esc([lab, r.expression, chipsHTML(r).replace(/<[^>]+>/g, " ")].filter(Boolean).join(" · ")) + '">' +
       '<div class="hist-top">' +
       '<span class="hist-who" style="color:' + esc(r.rollerColor || "#5dade2") + '">' + esc(r.rollerName || "某人") + "</span>" +
-      '<span class="hist-expr">' + esc(r.expression || lab || "投掷") + "</span>" +
       '<span class="hist-total">' + esc(String(r.total)) + "</span>" +
       '<span class="hist-time">' + esc(clockOf(r.ts)) + "</span>" +
       "</div>" +
+      (chipsHTML(r) ? '<div class="hist-chips">' + chipsHTML(r) + "</div>" : "") + rowsHtml +
       "</div>";
   }
   els.list.innerHTML = html;
