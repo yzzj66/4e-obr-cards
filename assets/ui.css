@@ -915,7 +915,7 @@ html.strip-html .strip-items {
   font-size: 13px; line-height: 1; color: #e6edf3; font-variant-numeric: tabular-nums;
 }
 /* v1.8.2：大号合计可手改（点数字直接输入）；视觉与 .item-count b 一致。
- * v2.3.7：容器底部色带 24% → 34%（容纳合计 + (骰+加值) 公式，外框尺寸不变）。 */
+ * v2.3.10：容器底部色带 24% → 34%（容纳合计 + (骰+加值) 公式，外框尺寸不变）。 */
 .item-count-input {
   width: 100%; height: 13px; margin: 0; padding: 0; flex: 0 0 auto;
   border: 0; border-radius: 0; background: transparent;
@@ -1195,7 +1195,7 @@ body.fx-page {
  *          ③ 状态行（提示 / 错误 / 已保存，右端是 window.js 的 win-flash）
  * 颜色全部取 :root（--bg2 / --line / --green / --orange / --red），不引入第二套色板。
  * 高度按「100vh 装下、内部不滚」写死：窗口本身由后台用 winSize() 夹进视口。 */
-/* v2.3.7：照 Full Suite hp-bar 的药丸布局（344×106，四行不滚）
+/* v2.3.10：照 Full Suite hp-bar 的药丸布局（344×106，四行不滚）
  * 行1 名称 + ⣿ 拖动柄 + 钉住 / 锁定 / 重绘 / ✕；行2 生命药丸（--hp-ratio 填充）+ 临时生命；
  * 行3 四防四个小输入；行4 状态行。回复力字段已去掉（surges 数据只读不写）。 */
 body.hpe-page { padding: 5px; overflow: hidden; height: 100vh; }
@@ -1434,27 +1434,27 @@ body.dh-page .dh-list.compact .dh-row:nth-child(n + 5) { display: none; }
 }
 .init-bonus-input:focus { border-color: #58a6ff; background: rgba(11, 15, 20, .92); }
 
-/* v2.3.7：骰子 action 模式隐藏页面自己的标题栏（关闭靠左上角 action 按钮），内容顶到边。 */
+/* v2.3.10：骰子 action 模式隐藏页面自己的标题栏（关闭靠左上角 action 按钮），内容顶到边。 */
 body.dice-action { padding: 0; }
 body.dice-action .win-head { display: none; }
 body.dice-action .win { height: 100vh; border-radius: 0; border: 0; }
 body.dice-action .win-body.dice-wrap { padding-top: 8px; }
 
-/* v2.3.7：用户矢量图标（内联 SVG，currentColor 跟随按钮状态） */
+/* v2.3.10：用户矢量图标（内联 SVG，currentColor 跟随按钮状态） */
 .hpe-icon svg { display: block; width: 14px; height: 14px; }
 .gl4-share svg { width: 12px; height: 12px; vertical-align: -2px; fill: currentColor; }
 
-/* v2.3.7：action 模式正文确保可点（旧标题栏隐藏后，内容区一律 pointer-events:auto，滚动容器不挡点击）。 */
+/* v2.3.10：action 模式正文确保可点（旧标题栏隐藏后，内容区一律 pointer-events:auto，滚动容器不挡点击）。 */
 body.dice-action .win,
 body.dice-action .win-body,
 body.dice-action .dice-cols,
 body.dice-action .dice-left,
 body.dice-action .dice-result { pointer-events: auto; }
 
-/* v2.3.7：血条编辑窗可见诊断行（role / editable / dis / inputs / version）。 */
+/* v2.3.10：血条编辑窗可见诊断行（role / editable / dis / inputs / version）。 */
 .hpe-diag { font-size: 9px; color: #93a1b0; margin-left: auto; white-space: nowrap; }
 
-/* v2.3.7：窗口页共用控件外观（传送门编辑 / 目的地等），避免各页分叉。 */
+/* v2.3.10：窗口页共用控件外观（传送门编辑 / 目的地等），避免各页分叉。 */
 .win-input {
   width: 100%; height: 30px; padding: 0 9px; border: 1px solid var(--line); border-radius: 8px;
   background: #101820; color: var(--text); font: 600 12px/1 ui-monospace, Consolas, monospace;

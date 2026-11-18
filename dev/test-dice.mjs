@@ -303,7 +303,7 @@ const dmgItem = presets.groups[1].items[0];
 if (dmgItem && dmgItem.expr === P.withModifier(g.damages[0].dice || "1d8", g.damages[0].total))
   ok("伤害预设 = 武器骰 + glance.damages[0].total（" + g.damages[0].total + "）");
 else bad("伤害预设不对：" + JSON.stringify(dmgItem));
-/* v2.3.7：loadState 返回 {state, scope} —— tempsFromLoaded 必须剥一层，否则联动恒为 0 */
+/* v2.3.10：loadState 返回 {state, scope} —— tempsFromLoaded 必须剥一层，否则联动恒为 0 */
 {
   const loaded = { state: { atkTemp: 2, dmgTemp: 3 }, scope: "room" };
   const temps = P.tempsFromLoaded(loaded);
@@ -313,12 +313,12 @@ else bad("伤害预设不对：" + JSON.stringify(dmgItem));
   if (temps.atkTemp === 2 && temps.dmgTemp === 3 &&
     a.label.indexOf("（临时 +2）") >= 0 && a.expr === P.withModifier("1d20", g.attacks[0].total + 2) &&
     dd.label.indexOf("（临时 +3）") >= 0) {
-    ok("v2.3.7：tempsFromLoaded({state:{atkTemp:2,dmgTemp:3}}) → 攻击「临时 +2」、伤害「临时 +3」，数值同步 +2/+3");
-  } else bad("v2.3.7：tempsFromLoaded 没有正确剥离 state：" + JSON.stringify({ temps, a, dd }));
+    ok("v2.3.10：tempsFromLoaded({state:{atkTemp:2,dmgTemp:3}}) → 攻击「临时 +2」、伤害「临时 +3」，数值同步 +2/+3");
+  } else bad("v2.3.10：tempsFromLoaded 没有正确剥离 state：" + JSON.stringify({ temps, a, dd }));
   const wrongShape = P.tempsFromLoaded({ atkTemp: 2, dmgTemp: 3 });
   if (wrongShape.atkTemp === 0 && wrongShape.dmgTemp === 0)
-    ok("v2.3.7：未包 state 的旧错误形状 = 0（防止再直接读 loadState 返回值）");
-  else bad("v2.3.7：tempsFromLoaded 把未包 state 的对象也当状态了：" + JSON.stringify(wrongShape));
+    ok("v2.3.10：未包 state 的旧错误形状 = 0（防止再直接读 loadState 返回值）");
+  else bad("v2.3.10：tempsFromLoaded 把未包 state 的对象也当状态了：" + JSON.stringify(wrongShape));
 }
 
 
@@ -330,21 +330,21 @@ else bad("伤害预设不对：" + JSON.stringify(dmgItem));
   const wantAtk = P.withModifier("1d20", g2.attacks[0].total + 2);
   const wantDmg = P.withModifier(g2.damages[0].dice || "1d8", g2.damages[0].total + 3);
   if (pAtk.expr === wantAtk && pAtk.label.indexOf("（临时 +2）") >= 0)
-    ok("v2.3.7：atkTemp +2 → 攻击 expr " + pAtk.expr + "，标签「" + pAtk.label + "」");
-  else bad("v2.3.7：atkTemp 没有进攻击预设：" + JSON.stringify(pAtk));
+    ok("v2.3.10：atkTemp +2 → 攻击 expr " + pAtk.expr + "，标签「" + pAtk.label + "」");
+  else bad("v2.3.10：atkTemp 没有进攻击预设：" + JSON.stringify(pAtk));
   if (pDmg.expr === wantDmg && pDmg.label.indexOf("（临时 +3）") >= 0)
-    ok("v2.3.7：dmgTemp +3 → 伤害 expr " + pDmg.expr + "，标签带「（临时 +3）」");
-  else bad("v2.3.7：dmgTemp 没有进伤害预设：" + JSON.stringify(pDmg));
+    ok("v2.3.10：dmgTemp +3 → 伤害 expr " + pDmg.expr + "，标签带「（临时 +3）」");
+  else bad("v2.3.10：dmgTemp 没有进伤害预设：" + JSON.stringify(pDmg));
   const zero = P.presetsFor(CHAR, undefined, { atkTemp: 0, dmgTemp: 0 });
   if (JSON.stringify(zero) === JSON.stringify(P.presetsFor(CHAR)))
-    ok("v2.3.7：临时值为 0 时输出与旧调用完全一致（兼容）");
-  else bad("v2.3.7：临时值 0 时输出变了");
+    ok("v2.3.10：临时值为 0 时输出与旧调用完全一致（兼容）");
+  else bad("v2.3.10：临时值 0 时输出变了");
   const neg = P.presetsFor(CHAR, undefined, { atkTemp: -3, dmgTemp: -2 });
   if (neg.groups[0].items[0].expr === P.withModifier("1d20", g2.attacks[0].total - 3) &&
     neg.groups[0].items[0].label.indexOf("（临时 -3）") >= 0 &&
     neg.groups[1].items[0].label.indexOf("（临时 -2）") >= 0)
-    ok("v2.3.7：负临时值（-3 / -2）同样先加 total、标签写「临时 -3」");
-  else bad("v2.3.7：负临时值处理不对：" + JSON.stringify(neg.groups[0].items[0]));
+    ok("v2.3.10：负临时值（-3 / -2）同样先加 total、标签写「临时 -3」");
+  else bad("v2.3.10：负临时值处理不对：" + JSON.stringify(neg.groups[0].items[0]));
 }
 const skillItems = presets.groups[2].items;
 const skillHit = skillItems.filter((s) => s.name === "侦查")[0];

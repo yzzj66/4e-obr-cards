@@ -1,4 +1,4 @@
-// v2.3.7：传送门核心离线自测（node dev/test-portal.mjs）
+// v2.3.10：传送门核心离线自测（node dev/test-portal.mjs）
 // ---------------------------------------------------------------------------
 // 直接加载 **assets/background.core.js 的真实源码**（vm + 浏览器外壳桩，不启动 boot），
 // 从 window.__4ePortal 拿纯函数，断言：
@@ -148,7 +148,7 @@ ok("从真实源码拿到 window.__4ePortal（portalMeta / 螺旋 / 墙避让 / 
   else bad("① portal.svg 仍是黑盘 / 有矩形底");
 }
 
-/* ---- ①b 工具对齐 Full Suite：GM-only / tool→mode / activateMode / 双路径（v2.3.7 真机 bug 回归） ---- */
+/* ---- ①b 工具对齐 Full Suite：GM-only / tool→mode / activateMode / 双路径（v2.3.10 真机 bug 回归） ---- */
 {
   const order = [];
   let toolDef = null, modeDef = null, pairModeDef = null, role = "GM", notified = 0;
@@ -351,7 +351,7 @@ ok("从真实源码拿到 window.__4ePortal（portalMeta / 螺旋 / 墙避让 / 
   else bad("①d 预览/手势诊断日志缺失");
 }
 
-/* ---- ①e 创建验证 / 传送门生命周期诊断（v2.3.7 真机排障） ---- */
+/* ---- ①e 创建验证 / 传送门生命周期诊断（v2.3.10 真机排障） ---- */
 {
   if (coreSrc.indexOf("portal verify id=") >= 0 && coreSrc.indexOf("getItems([item.id])") >= 0 &&
     coreSrc.indexOf("portalLifecycleSync") >= 0 && coreSrc.indexOf("portal added id=") >= 0 &&
@@ -484,7 +484,7 @@ ok("从真实源码拿到 window.__4ePortal（portalMeta / 螺旋 / 墙避让 / 
   else bad("①i readForm 仍包含 radius");
 }
 
-/* ---- ①j 传送落点不重复触发 / 手动再次拖入正常触发（v2.3.7 收窄版） ---- */
+/* ---- ①j 传送落点不重复触发 / 手动再次拖入正常触发（v2.3.10 收窄版） ---- */
 {
   let portalOpen = 0;
   const portal = { id: "p-door", type: "IMAGE", position: { x: 500, y: 500 }, width: 40, height: 40, scale: { x: 0.9333, y: 0.9333 }, visible: true, metadata: { [P.CONSTANTS.KEY_PORTAL]: { name: "门", tag: "城", radius: 70 } } };
@@ -619,7 +619,7 @@ ok("从真实源码拿到 window.__4ePortal（portalMeta / 螺旋 / 墙避让 / 
 
 const NS_PREVIEW_GHOST = P.CONSTANTS.KEY_PORTAL + "-ghost";
 
-/* ---- ①o v2.3.7 隐形门：入口跳过 / 目的地保留 / GM ghost ---- */
+/* ---- ①o v2.3.10 隐形门：入口跳过 / 目的地保留 / GM ghost ---- */
 {
   const portals = [
     { itemId: "v1", name: "显形门", tag: "T", visible: true },
@@ -684,7 +684,7 @@ const NS_PREVIEW_GHOST = P.CONSTANTS.KEY_PORTAL + "-ghost";
   else bad("①p portalMeta 仍输出 effect");
 }
 
-/* ---- ①q v2.3.7 成对创建（两个同 tag 门） ---- */
+/* ---- ①q v2.3.10 成对创建（两个同 tag 门） ---- */
 {
   let added = [];
   const builder = {
@@ -720,7 +720,7 @@ const NS_PREVIEW_GHOST = P.CONSTANTS.KEY_PORTAL + "-ghost";
   else bad("①r 仍有 fx 播放入口");
 }
 
-/* ---- ①s v2.3.7 图标换成用户 PNG（150×150、尺寸仍=2r） ---- */
+/* ---- ①s v2.3.10 图标换成用户 PNG（150×150、尺寸仍=2r） ---- */
 {
   const png = path.join(ROOT, "assets", "portal.png");
   if (!fs.existsSync(png)) bad("①s 缺少 assets/portal.png");
@@ -773,6 +773,102 @@ const NS_PREVIEW_GHOST = P.CONSTANTS.KEY_PORTAL + "-ghost";
   if (editHtml.indexOf("flex: 1 1 auto; min-height: 0; overflow-y: auto") >= 0 && editHtml.indexOf(".pe-body .foot { flex: 0 0 auto") >= 0)
     ok("①t 编辑窗 flex：内容可滚、按钮行固定、底部 12px 内边距，不裁切");
   else bad("①t 编辑窗 flex/内边距结构不对");
+}
+
+/* ---- ①v v2.3.10 传送落点禁跨墙 / 尺寸兜底 / 就近落点 ---- */
+{
+  const wallRight = { id: "w1", type: "WALL", position: { x: 50, y: 0 }, rotation: 0, scale: { x: 1, y: 1 }, points: [{ x: 0, y: -300 }, { x: 0, y: 300 }] };
+  const segs = P.portalWallSegments([wallRight]);
+  const pos = P.portalPlanTeleport({ x: 30, y: 0 }, [20], segs);
+  if (pos && pos.length === 1 && pos[0].x < 50 && P.portalPathSafe({ x: 30, y: 0 }, pos[0], segs))
+    ok("①v 墙在门右侧：落点不会跨到墙右边（x<50），路径不穿墙");
+  else bad("①v 落点跨墙 / 路径穿墙：" + JSON.stringify(pos));
+  if (P.portalTokenRadius({}, 150) === 75 && P.portalTokenRadius({ width: 40, height: 40, scale: { x: 1, y: 1 } }, 150) === 75 &&
+    P.portalTokenRadius({ width: 300, height: 300, scale: { x: 2, y: 2 } }, 150) === 300)
+    ok("①v portalTokenRadius：无尺寸按 DPI/2 兜底；小尺寸 clamp 到 0.5 格；按 width*scale 实际渲染尺寸");
+  else bad("①v token 半径兜底不对：" + JSON.stringify({ a: P.portalTokenRadius({}, 150), b: P.portalTokenRadius({ width: 40, height: 40, scale: { x: 1, y: 1 } }, 150), c: P.portalTokenRadius({ width: 300, height: 300, scale: { x: 2, y: 2 } }, 150) }));
+  const near = P.portalPlanTeleport({ x: 0, y: 0 }, [10], []);
+  if (near && near.length === 1 && near[0].x === 0 && near[0].y === 0)
+    ok("①v 单 token 无墙时落在门中心（由近到远先试内圈）");
+  else bad("①v 单 token 没有就近落点：" + JSON.stringify(near));
+  const multi = P.portalPlanTeleport({ x: 0, y: 0 }, [12, 8, 8], []);
+  if (multi && multi.length === 3) {
+    let min = Infinity, overlap = false;
+    for (let i = 0; i < multi.length; i++) for (let j = i + 1; j < multi.length; j++) {
+      const d = Math.hypot(multi[i].x - multi[j].x, multi[i].y - multi[j].y);
+      min = Math.min(min, d);
+      if (d < 2 * 12 + 8) overlap = true;
+    }
+    if (!overlap && min >= 32) ok("①v 多 token 不重叠（最小间距 " + min.toFixed(1) + "）");
+    else bad("①v 多 token 重叠：" + min);
+  } else bad("①v 多 token 落点数量不对：" + JSON.stringify(multi));
+  if (coreSrc.indexOf("portalPathSafe") >= 0 && coreSrc.indexOf("portal plan fail tokens=") >= 0 &&
+    coreSrc.indexOf("portalTokenRadius(it, dpiTele)") >= 0)
+    ok("①v 传送路径检测 / plan fail 日志 / 实际 DPI 半径接入");
+  else bad("①v 跨墙/日志/尺寸接入缺失");
+}
+
+/* ---- ①w v2.3.10 落点规划诊断 ---- */
+{
+  if (coreSrc.indexOf("portal plan n=") >= 0 && coreSrc.indexOf("portal plan warn：未检测到原生 WALL") >= 0 &&
+    coreSrc.indexOf("portal plan walls[0] a=") >= 0 && coreSrc.indexOf("portal cand i=") >= 0 &&
+    coreSrc.indexOf('reject=" + (reject') >= 0 && coreSrc.indexOf('"wall-cross"') >= 0 && coreSrc.indexOf('"wall-hit"') >= 0)
+    ok("①w 诊断：plan n/pos、walls[0] 坐标、候选前 12 个 reject 原因日志齐全");
+  else bad("①w 落点规划诊断缺失");
+}
+
+/* ---- ①y v2.3.10 传送绕过 Dynamic Fog / Smoke ---- */
+{
+  const att = { id: "att-1", visible: true };
+  const token = { id: "tok-fog", visible: true, metadata: { "com.example/vision": { visionRange: 12, attenuationRadius: 5 }, "4enext-owlbear/bind": { cardId: "c" }, plain: 1 } };
+  const originalVision = token.metadata["com.example/vision"];
+  let attHidden = false, tokenHidden = false, metaDeleted = false, attRestored = null, tokenRestored = null;
+  sandbox.OBR = {
+    scene: {
+      items: {
+        getItemAttachments: async () => [att],
+        updateItems: async (ids, fn) => {
+          const drafts = ids.indexOf("att-1") >= 0 ? [Object.assign({}, att)] : [JSON.parse(JSON.stringify(token))];
+          fn(drafts);
+          for (const d of drafts) {
+            if (d.id === "att-1") {
+              att.visible = d.visible;
+              if (d.visible === false) attHidden = true;
+              else attRestored = d.visible;
+            } else {
+              if (!("com.example/vision" in d.metadata)) metaDeleted = true;
+              if (d.visible === false) tokenHidden = true;
+              else tokenRestored = d.visible;
+              if (d.metadata) token.metadata = d.metadata;
+            }
+          }
+        }
+      },
+      local: { getItemAttachments: async () => [] }
+    }
+  };
+  const res = await P.moveTokensWithFogBypass([token], { "tok-fog": { x: 300, y: 400 } });
+  if (token.metadata["com.example/vision"] === originalVision && token.metadata["4enext-owlbear/bind"] &&
+    token.metadata.plain === 1 && att.visible === true && attHidden && tokenHidden && metaDeleted && tokenRestored === true)
+    ok("①y 雾效 metadata 被临时剥离并原样恢复（引用一致），attachment/token visible 隐藏后恢复");
+  else bad("①y fog bypass 恢复/隐藏不对：" + JSON.stringify({ meta: token.metadata, att: att.visible, attHidden, tokenHidden, metaDeleted, tokenRestored }));
+  if (res.ext === 1 && res.att === 1 && res.hidTokens === 1) ok("①y 返回 ext/att/hidTokens 计数正确");
+  else bad("①y bypass 计数不对：" + JSON.stringify(res));
+  /* 无 fog 插件：不应改 visible / metadata，只写位置 */
+  let updates = 0, visibleTouched = false;
+  const plainTok = { id: "tok-plain", visible: true, metadata: { plain: 1 } };
+  sandbox.OBR = {
+    scene: { items: { getItemAttachments: async () => [], updateItems: async (ids, fn) => {
+      updates++;
+      const d = JSON.parse(JSON.stringify(plainTok)); fn([d]);
+      if (d.visible === false) visibleTouched = true;
+      plainTok.position = d.position;
+    } }, local: { getItemAttachments: async () => [] } }
+  };
+  await P.moveTokensWithFogBypass([plainTok], { "tok-plain": { x: 10, y: 20 } });
+  if (updates === 1 && !visibleTouched && plainTok.position.x === 10)
+    ok("①y 无 fog metadata / attachment 时只写位置（0 次多余隐藏更新）");
+  else bad("①y 无 fog 时仍改了 visible / 多余 update：" + JSON.stringify({ updates, visibleTouched, pos: plainTok.position }));
 }
 
 /* ---- ② 同 tag 目的地 ---- */

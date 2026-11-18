@@ -408,7 +408,7 @@ export async function syncTokenStats(itemId, hp, ctx) {
   if (barOff) return false;
   const needHp = !!wantMax && !barOff && !(typeof rawHp.max === "number" && rawHp.max > 0);
   const wantSurge = ctx.surgesMax > 0 ? Math.round(ctx.surgesMax) : null;
-  /* v2.3.7：wantDef 必须包含速览临时四防，否则 base+temp 会被误判成「与卡片基础不一致」
+  /* v2.3.10：wantDef 必须包含速览临时四防，否则 base+temp 会被误判成「与卡片基础不一致」
    * 又写回基础值，真机表现为「地图数字变一下又变回去」。合并规则与 syncDefTempToTokens 共用 combineDefenses。 */
   const wantDef = combineDefenses(defensesFromDerived(ctx.defenses), ctx.defTemp);
   const curDef = hp.defenses || null;

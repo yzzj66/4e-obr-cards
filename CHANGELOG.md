@@ -2,6 +2,18 @@
 
 > 这份文件是历史更新记录。安装与使用请看 [README](README.md)。
 
+**v2.3.10：传送绕过 Dynamic Fog / Smoke 的穿墙校验**（2026-11-18）——
+Dynamic Fog 等插件会在 token 位置更新时把「穿墙」的位置挡回；它们的墙不在原生 WALL 里，所以读不到。
+传送写位置改为 `moveTokensWithFogBypass`：快照并临时剥离 token 上雾效类 metadata（key 含 smoke/spectre/
+battle-system/dynamic-fog，或值含 attenuationRadius/visionRange/lightRadius/wallBlocks 等），隐藏 token 与其
+attachment，写位置后按原值逐字恢复（token visible → attachment visible → metadata）；无雾效痕迹时只写位置，
+不改任何 visible。日志 `portal bypass ext=… att=… hidTokens=…`，失败只 warn、不丢传送。
+
+**v2.3.9：传送落点禁跨墙 + 尺寸兜底**（2026-11-18）——
+`portalPlanTeleport` 对候选点增加「门中心→落点线段不得穿墙」检测（`portalPathSafe`），token 不会再落到墙另一侧；
+候选按离门中心由近到远排序，单 token 优先落在门中心附近；`portalTokenRadius` 改为按 `width*scale` 实际渲染尺寸，
+缺尺寸时用场景 DPI/2（1 格半径）兜底，并 clamp 到 [0.5 格, 5 格]；找不到落点时日志 `portal plan fail tokens=… radius=… walls=…`。
+
 **v2.3.7：血条编辑窗移除底部诊断注脚**（2026-11-17）——
 删除 `#hpe-diag` 元素与 `paintDiag` 渲染，界面不再显示 `role=GM editable=1 dis=0 inputs=7 v…`；
 保存状态提示保留（「保存中…」「已保存 20/20」）。`[4enext][hpEdit]` 控制台/转发诊断日志全部保留。

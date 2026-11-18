@@ -434,11 +434,11 @@ if (exportPath && backupPath) {
   }
 }
 
-/* v2.3.7：真实新版导出（含 combatMods.damages[].dieUp）—— 能导入且第一项伤害骰 = 1d6 */
+/* v2.3.10：真实新版导出（含 combatMods.damages[].dieUp）—— 能导入且第一项伤害骰 = 1d6 */
 {
   const newFx = path.join(FIX, "申比软软-new.json");
   if (!fs.existsSync(newFx)) {
-    ok("v2.3.7：真实新版导出文件不存在 → 跳过（不依赖用户文件）");
+    ok("v2.3.10：真实新版导出文件不存在 → 跳过（不依赖用户文件）");
   } else {
     try {
       const r = I.parse4eFile(fs.readFileSync(newFx, "utf8"));
@@ -446,10 +446,10 @@ if (exportPath && backupPath) {
       const dNew = charNew ? G.deriveGlance(charNew) : null;
       const firstDie = dNew && dNew.damages[0] ? dNew.damages[0].dice : "";
       if (r.format === "single" && r.imports.length === 1 && firstDie === "1d6")
-        ok("v2.3.7：真实新版导出可导入，第一项伤害骰 = 1d6（dieUp=1）");
-      else bad("v2.3.7：真实新版导出导入 / 伤害骰不对：" + JSON.stringify({ format: r.format, n: r.imports.length, firstDie }));
+        ok("v2.3.10：真实新版导出可导入，第一项伤害骰 = 1d6（dieUp=1）");
+      else bad("v2.3.10：真实新版导出导入 / 伤害骰不对：" + JSON.stringify({ format: r.format, n: r.imports.length, firstDie }));
     } catch (e) {
-      bad("v2.3.7：真实新版导出解析抛错：" + (e && e.message ? e.message : e));
+      bad("v2.3.10：真实新版导出解析抛错：" + (e && e.message ? e.message : e));
     }
   }
 }

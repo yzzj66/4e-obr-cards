@@ -1,4 +1,4 @@
-// v2.3.7：血条编辑窗的页面脚本（hp-edit.html）—— 照 Full Suite 的 hp-bar 重做第一批（布局 + 字段）。
+// v2.3.10：血条编辑窗的页面脚本（hp-edit.html）—— 照 Full Suite 的 hp-bar 重做第一批（布局 + 字段）。
 // ---------------------------------------------------------------------------
 // 窗口 344×106：行1 名称 + 钉住 / 锁定 / 重绘 + ✕；行2 生命药丸（按 cur/max 比例填充）+ 临时生命；
 // 行3 四防；行4 状态行。**去掉回复力字段**（surges 数据保留在 token 上，只读不写）。
@@ -83,7 +83,7 @@ win.onStatus(function (st) {
  * 小工具
  * ------------------------------------------------------------------------- */
 var flashTimer = 0;
-/** v2.3.7：底部提示行已移除；保存/校验反馈统一走标题栏 #win-flash，1.5s 后消失。 */
+/** v2.3.10：底部提示行已移除；保存/校验反馈统一走标题栏 #win-flash，1.5s 后消失。 */
 function note(text, tone) {
   if (!els.flash) return;
   els.flash.textContent = text || "";
@@ -112,7 +112,7 @@ function defsInput() {
 function formValues() {
   var cur = els.cur ? els.cur.value : "";
   var max = els.max ? els.max.value : "";
-  /* v2.3.7：只填了当前或上限任一方时自动补齐另一方（4E：先填一个就能画出第一根血条）。 */
+  /* v2.3.10：只填了当前或上限任一方时自动补齐另一方（4E：先填一个就能画出第一根血条）。 */
   if (max === "" && cur !== "") max = cur;
   if (cur === "" && max !== "") cur = max;
   return {
@@ -165,7 +165,7 @@ function paintTools() {
   if (els.lock) {
     var locked = !!(state.view && state.view.locked);
     els.lock.classList.toggle("on", locked);
-    /* v2.3.7：锁定状态切换 lock / unlock 两个内联 SVG（不用 innerHTML 重绘按钮）。 */
+    /* v2.3.10：锁定状态切换 lock / unlock 两个内联 SVG（不用 innerHTML 重绘按钮）。 */
     if (els.lockOn) els.lockOn.hidden = !locked;
     if (els.lockOff) els.lockOff.hidden = locked;
     els.lock.title = locked ? "已锁定：玩家看不到精确数字（点击解锁）" : "锁定：玩家看不到精确数字（点击锁定）";
@@ -219,7 +219,7 @@ async function playerIdOf() {
   try { return await OBR.player.getId(); } catch (e) { return ""; }
 }
 
-/** 绑定角色卡的默认值：只取「算得出」的几项（上限 / 四防，v2.3.7 不再带回复力）。 */
+/** 绑定角色卡的默认值：只取「算得出」的几项（上限 / 四防，v2.3.10 不再带回复力）。 */
 async function cardDefaults(item) {
   var cardId = item && item.metadata ? item.metadata[KEY_BIND] : null;
   if (typeof cardId !== "string" || !cardId) return null;
@@ -268,7 +268,7 @@ async function load() {
   var lockedForPlayer = hpEditReadOnly(hpMetaOf(item), state.role);
   state.locked = lockedForPlayer;
   var may = mayEditToken(item, state.role, pid);
-  if (state.role === "GM") may = true; /* v2.3.7：GM 判定优先，绝不因 createdUserId 只读 */
+  if (state.role === "GM") may = true; /* v2.3.10：GM 判定优先，绝不因 createdUserId 只读 */
   state.editable = may && !lockedForPlayer;
   try {
     console.log("[4enext][hpEdit] role=" + state.role + " pid=" + pid +
@@ -287,14 +287,14 @@ async function load() {
   }
   setEditable(state.editable);
   paintTools();
-  /* v2.3.7：固定底部提示已删；这些状态用标题栏 flash 短暂提示一次。 */
+  /* v2.3.10：固定底部提示已删；这些状态用标题栏 flash 短暂提示一次。 */
   if (state.locked) note("已锁定：这枚 token 的血量对玩家隐藏（城主解锁后才能改）", "warn");
   else if (!state.editable) note("只读：只有城主或这枚 token 的创建者能改生命 / 临时生命 / 四防", "warn");
   else if (view.max === null) note("填生命上限（比如 20）就能画出第一根血条", "warn");
   refreshNote();
 }
 
-/** v2.3.7：不再有固定底部提示行；状态只用标题栏 flash 做短暂反馈。 */
+/** v2.3.10：不再有固定底部提示行；状态只用标题栏 flash 做短暂反馈。 */
 function refreshNote() {
   /* 保留结构供旧检查；不写任何固定文案。 */
   if (state.locked) { return; }
@@ -371,7 +371,7 @@ async function commit(trigger, sourceEl) {
   hlog("commit result trigger=" + trigger + " ok=" + built.ok + " message=" + JSON.stringify(built.message || "") +
     " patch=" + JSON.stringify(built.patch || null));
   if (!built.ok) {
-    /* v2.3.7：非法/半截输入保留用户原值，不清空、不回填（等用户继续输入或修正）。 */
+    /* v2.3.10：非法/半截输入保留用户原值，不清空、不回填（等用户继续输入或修正）。 */
     note(built.message, "warn");
     return;
   }
@@ -469,7 +469,7 @@ if (els.repaint) els.repaint.addEventListener("click", repaintBars);
 
 var inputs = [els.cur, els.max, els.temp];
 for (var k = 0; k < HPE_DEF_KEYS.length; k++) inputs.push(els["def_" + HPE_DEF_KEYS[k]]);
-/* v2.3.7 bugfix：这里必须用 forEach 的形参 el 捕获每个输入框。
+/* v2.3.10 bugfix：这里必须用 forEach 的形参 el 捕获每个输入框。
  * 之前用 `for (var el = inputs[i])` + 内部函数：var 是函数作用域共享，循环结束后 el 永远指向
  * 最后一个输入框（hpe-def-will）——任何框 focus 时 select() 都抢到「意志」，用户输入全写进意志。
  * 注意：isFieldEl 的 for (var i) 直接同步返回，不捕获闭包，保留没问题。 */
@@ -500,7 +500,7 @@ document.addEventListener("keydown", function (ev) {
   if (ev.key === "Escape") closeWindow();
 }, true);
 
-/* v2.3.7：单窗常驻 —— 后台换 target 时页面自己 commit 未保存输入再 load（不重建 iframe）。 */
+/* v2.3.10：单窗常驻 —— 后台换 target 时页面自己 commit 未保存输入再 load（不重建 iframe）。 */
 function isFieldEl(el) {
   if (!el) return false;
   for (var i = 0; i < inputs.length; i++) if (inputs[i] === el) return true;
