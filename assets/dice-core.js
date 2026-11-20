@@ -306,7 +306,7 @@ function formatWrapper(w, innerText) {
     return w.kind + "(" + innerText + (w.param != null ? "," + w.param : "") + ")";
   }
   const p = w.param != null ? w.param : 0;
-  /* v2.4.5：repeat 的参数在前（repeat(N,inner)），其它 wrapper 保持 (inner,param)。 */
+  /* v2.4.7：repeat 的参数在前（repeat(N,inner)），其它 wrapper 保持 (inner,param)。 */
   if (w.kind === "repeat") return "repeat(" + p + "," + innerText + ")";
   return w.kind + "(" + innerText + "," + p + ")";
 }
@@ -987,7 +987,7 @@ export function fxQuery(row, origin) {
   return parts.join("&");
 }
 
-/** v2.4.5：把表达式包成 repeat(N, expr) 或替换已有 N（clamp 1..20；空表达式返回错误）。 */
+/** v2.4.7：把表达式包成 repeat(N, expr) 或替换已有 N（clamp 1..20；空表达式返回错误）。 */
 export function repeatExpr(expr, n) {
   const raw = String(expr == null ? "" : expr).trim();
   if (!raw) return { ok: false, error: "empty", expr: raw, n: 0 };
@@ -997,7 +997,7 @@ export function repeatExpr(expr, n) {
   return { ok: true, expr: out, n: count };
 }
 
-/** v2.4.5：repeat 每行展示文本：r<inner> = 骰面 + 修正 = 行总和；无 repeat 返回 []。 */
+/** v2.4.7：repeat 每行展示文本：r<inner> = 骰面 + 修正 = 行总和；无 repeat 返回 []。 */
 export function repeatRowLines(row) {
   if (!row) return [];
   const expr = String(row.expression || "");
@@ -1027,7 +1027,7 @@ export function repeatRowLines(row) {
   return out;
 }
 
-/** v2.4.5：普通投掷的可读等式：<表达式> = 骰面 + 修正 = 总和（repeat 用 repeatRowLines）。 */
+/** v2.4.7：普通投掷的可读等式：<表达式> = 骰面 + 修正 = 总和（repeat 用 repeatRowLines）。 */
 export function rollLine(row) {
   if (!row) return "";
   const expr = String(row.expression || "");
@@ -1046,3 +1046,11 @@ export function rollLine(row) {
   const total = Math.round(Number(row.total) || 0);
   return left + " = " + body + " = " + total;
 }
+
+/* v2.4.7：投掷限制（面板先校验；后台兜底同一套文案）。 */
+export const DICE_ROLL_MAX_DICE = 40;
+export const DICE_ROLL_MAX_BYTES = 6144;
+export const DICE_ROLL_MIN_MS = 800;
+export const DICE_MSG_TOO_FAST = "投掷太快了，请稍等片刻（每 0.8 秒只能投一次）";
+export const DICE_MSG_TOO_MANY = "骰子太多：一次最多 40 颗，请减少后再投";
+export const DICE_MSG_TOO_BIG = "本次投掷内容太大（超过 6KB），请减少骰子或缩短备注";

@@ -155,8 +155,10 @@ function parseRawList(list) {
  * @param {string} text 文件全文
  * @returns {{imports: Array<{char: object, exportedAt: string, id?: string, name?: string}>, format: "single"|"backup"|"raw", homebrew?: object[]}}
  */
+export const MAX_IMPORT_BYTES = 8 * 1024 * 1024;
 export function parse4eFile(text) {
   if (typeof text !== "string") throw new Error("没有拿到文件内容（请重新选择文件）");
+  if (text.length > MAX_IMPORT_BYTES) throw new Error("导入文件太大（超过 8 MB），请拆分后再导入");
   const raw = text.replace(/^\uFEFF/, "").trim();
   if (!raw) throw new Error("文件是空的，没有可导入的内容");
 

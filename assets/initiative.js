@@ -682,7 +682,7 @@ export async function readInitiative() {
     const rawScene = scene ? scene[KEY_INITIATIVE] : null;
     const atR = rawRoom && typeof rawRoom.updatedAt === "number" ? rawRoom.updatedAt : -1;
     const atS = rawScene && typeof rawScene.updatedAt === "number" ? rawScene.updatedAt : -1;
-    const raw = atS > atR ? rawScene : rawRoom; /* v2.4.5：场景兜底写入后读取端也要看 scene */
+    const raw = atS > atR ? rawScene : rawRoom; /* v2.4.7：场景兜底写入后读取端也要看 scene */
     if (raw) return sortState(raw);
     /* 房间数据里还没有：可能是上一次写失败留在了本机，先把它显示出来（并等着下次写入搬回房间）。 */
     const stashed = readLocalFallback();

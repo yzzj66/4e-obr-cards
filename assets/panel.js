@@ -18,7 +18,7 @@ import {
 } from "./common.js";
 import { renderGlanceHTML, cardMeta, deriveGlance, magicItemDailyUses, loadCardIndex } from "./glance.js";
 import { applyAction, loadState, scopeText } from "./track.js";
-import { createWindow, feedback, closeSelf } from "./window.js";
+import { createWindow, feedback, closeSelf, safeInit } from "./window.js";
 
 const listEl = document.getElementById("list");
 const viewEl = document.getElementById("view");
@@ -496,7 +496,7 @@ onReady(function () {
     feedback("读取角色卡失败：" + (e && e.message ? e.message : e), "ERROR");
   });
   void loadCardIndex().then(function () {
-    void refresh();
+    safeInit("refresh", function () { void refresh(); });
   }, function () {
     /* 静默：首帧已经渲染，索引失败只是少动作标签 */
   });

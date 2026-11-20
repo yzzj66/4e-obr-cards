@@ -75,7 +75,7 @@ function draggableTarget(target) {
  *   onStatus(state, detail) 状态变化回调（页面可以据此重画）
  */
 import { CH_WIN_RESIZE } from "./common.js";
-/* v2.4.5：通用窗口 resize 手柄（右下角）。 */
+/* v2.4.7：通用窗口 resize 手柄（右下角）。 */
 function installWinResize(name) {
   try {
     const winEl = document.querySelector(".win");
@@ -365,4 +365,9 @@ export function closeSelf(popoverId, winName) {
       if (b && typeof b.catch === "function") b.catch(function () { /* 后台没起来就算了 */ });
     } catch (e3) { /* 忽略 */ }
   }
+}
+
+/** v2.4.7：初始化隔离 —— 某块 init 抛错只 console.error，不影响窗口关闭等其它绑定。 */
+export function safeInit(name, fn) {
+  try { return fn(); } catch (e) { try { console.error("[4enext] init " + name + " 失败", e); } catch (e2) { /* 忽略 */ } return undefined; }
 }

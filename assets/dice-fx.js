@@ -1,4 +1,4 @@
-// v2.4.5：自绘骰子 SVG（不依赖任何外部资源）。返回内联 SVG 字符串，号码由调用方叠加。
+// v2.4.7：自绘骰子 SVG（不依赖任何外部资源）。返回内联 SVG 字符串，号码由调用方叠加。
 const SHAPES = {
   d4: '<polygon points="50,6 94,88 6,88" />',
   d6: '<rect x="10" y="10" width="80" height="80" rx="10" />',
@@ -30,7 +30,7 @@ export function diceSvgSizes() {
 }
 export const DICE_TYPES = Object.keys(SHAPES);
 
-/** v2.4.5：多骰自适应布局（在 dice-core.fxLayout 的基础上按视口夹取，10+ 自动缩/换行）。 */
+/** v2.4.7：多骰自适应布局（在 dice-core.fxLayout 的基础上按视口夹取，10+ 自动缩/换行）。 */
 export function diceLayout(dice, vw, vh, opts) {
   const list = Array.isArray(dice) ? dice : [];
   const n = list.length;
@@ -63,7 +63,7 @@ export function diceLayout(dice, vw, vh, opts) {
   return { baseSize: base, gap, rowH, rowCount: rows, cols, slots, hidden: 0 };
 }
 
-/** v2.4.5：按骰子数/速度算动画总时长（900 + 180n，clamp 1200~3200；快速×0.6，关闭=500）。 */
+/** v2.4.7：按骰子数/速度算动画总时长（900 + 180n，clamp 1200~3200；快速×0.6，关闭=500）。 */
 export function diceFxDuration(n, speed) {
   const count = Math.max(1, Math.round(Number(n) || 1));
   const standard = Math.max(1200, Math.min(3200, 900 + 180 * count));
