@@ -48,7 +48,7 @@ import {
 
 // v1.9.2：新版只有 manifest action 入口（右侧工具栏不再有骰子图标），因此不再绑定标题栏拖动；
 // 旧 popover 路径保留兼容（位置由后台 WINS 管，不依赖本页拖动）。
-var win = createWindow({ name: "dice" }); /* v2.4.7：普通窗口，标题栏可拖动 */
+var win = createWindow({ name: "dice" }); /* v2.4.8：普通窗口，标题栏可拖动 */
 
 var els = {
   head: document.getElementById("head"),
@@ -271,8 +271,6 @@ async function broadcast(channel, data) {
  * （最后一项让整层点击穿透，动画期间照样能平移 / 选中地图）。
  * ------------------------------------------------------------------------- */
 /** 选中 token 的顶部中心（世界坐标）；拿不到就返回 null（动画页用视口中心）。 */
-var lastPointer = null;
-try { document.addEventListener("pointerdown", function (e) { if (e && isFinite(e.clientX)) lastPointer = { x: e.clientX, y: e.clientY }; }, true); } catch (ePtr) { /* 忽略 */ }
 async function effectOrigin() {
   try {
     var sel = await OBR.player.getSelection();
@@ -294,14 +292,8 @@ async function effectOrigin() {
       }
     }
   } catch (e2) { /* 落到鼠标兜底 */ }
-  /* v2.4.7：没有选中 token → 用鼠标屏幕位置反算世界坐标；再不行由动画页落屏幕中央。 */
-  try {
-    if (lastPointer && OBR.viewport) {
-      var vp = await OBR.viewport.getPosition();
-      var sc = await OBR.viewport.getScale();
-      if (vp && sc > 0) return { x: (lastPointer.x - vp.x) / sc, y: (lastPointer.y - vp.y) / sc };
-    }
-  } catch (eMouse) { /* 忽略 */ }
+  /* v2.4.8：没有选中 token 时**不再跟随鼠标**（鼠标常停在屏幕边缘，动画会被挤到边上），
+   * 返回 null，让动画页按视口**默认居中**。 */
   return null;
 }
 
@@ -333,13 +325,13 @@ async function playEffect(row, origin) {
   }
 }
 
-/* v2.4.7：doRoll 分步诊断日志（只加日志，不改行为）。用户控制台看到哪一步停住就能定位。 */
+/* v2.4.8：doRoll 分步诊断日志（只加日志，不改行为）。用户控制台看到哪一步停住就能定位。 */
 function dlog(msg) {
   try { console.log("[4enext][dice] " + msg); } catch (e) { /* 忽略 */ }
 }
 
 async function doRoll() {
-  /* v2.4.7：用户「点投掷没反应」诊断 —— 有这行说明点击已触发，可继续看后面是否报错。 */
+  /* v2.4.8：用户「点投掷没反应」诊断 —— 有这行说明点击已触发，可继续看后面是否报错。 */
   try { console.log("[4enext][dice] 点击投掷 expr=" + (els.exprInput ? els.exprInput.value : "")); } catch (e) { /* 忽略 */ }
   if (busy) {
     dlog("step busy-return（上一掷还在 260ms 收尾）");
@@ -392,7 +384,7 @@ async function doRoll() {
     }
     dlog("step flash");
 
-    /* v2.4.7：面板先校验，受限时不广播（中文 flash 提示）。 */
+    /* v2.4.8：面板先校验，受限时不广播（中文 flash 提示）。 */
     var nowRoll = Date.now();
     if (lastRollSentAt && nowRoll - lastRollSentAt < DICE_ROLL_MIN_MS) {
       flash(DICE_MSG_TOO_FAST, "WARNING");
@@ -431,7 +423,7 @@ async function doRoll() {
     dlog("step history");
 
     /* 结果已经算完 / 已经广播，最后才开动画（失败也不影响上面任何一步） */
-    /* v2.4.7：动画统一由各客户端后台收到 CH_DICE_ROLL 后打开，页面不再本地开 effect，避免双开。 */
+    /* v2.4.8：动画统一由各客户端后台收到 CH_DICE_ROLL 后打开，页面不再本地开 effect，避免双开。 */
     if (readDiceAnim()) { dlog("step anim-start"); dlog("step anim-done"); } else { dlog("step anim-skip"); }
   } catch (e) {
     dlog("step catch " + (e && e.message ? e.message : e));
@@ -502,7 +494,7 @@ var histBusy = false;
 /** v1.9.2：最近一次成功打开记录窗口的时间 —— 900ms 内又点按钮视为「窗口不可见」兜底。 */
 var lastHistOpenAt = 0;
 var histRepeatWarned = false;
-/* v2.4.7：速览临时命中/伤害变化 → 防抖刷新 4E 预设（读 track state）。 */
+/* v2.4.8：速览临时命中/伤害变化 → 防抖刷新 4E 预设（读 track state）。 */
 var presetRefreshTimer = 0;
 var presetPending = false;
 /** 等后台补齐的回执计时器。 */
@@ -667,7 +659,7 @@ async function refreshPresets() {
       return;
     }
     var mod = await import("./dice-4e.js");
-    /* v2.4.7：track.loadState 返回 { state, scope } —— 必须取 .state，否则临时值恒为 0。
+    /* v2.4.8：track.loadState 返回 { state, scope } —— 必须取 .state，否则临时值恒为 0。
      * 统一走 dice-4e 的 tempsFromLoaded（单测覆盖）。 */
     var temps = { atkTemp: 0, dmgTemp: 0 };
     try {
@@ -804,7 +796,7 @@ function onComboClick(ev) {
 /* ---------------------------------------------------------------------------
  * 6) 事件绑定
  * ------------------------------------------------------------------------- */
-/* v2.4.7：重复按钮 —— repeat(N, expr)，已是 repeat 时只换 N。 */
+/* v2.4.8：重复按钮 —— repeat(N, expr)，已是 repeat 时只换 N。 */
 function applyRepeat(nArg, where) {
   var n = nArg != null ? nArg : (els.repeatN ? els.repeatN.value : 2);
   var cur = els.exprInput ? String(els.exprInput.value || "") : "";
@@ -825,7 +817,7 @@ function applyRepeat(nArg, where) {
 function wireEvents() {
   /* v1.7.10：✕ = OBR.popover.close(本窗 id) + 后台 {op:"close-win"} 双保险。 */
   if (els.close) els.close.addEventListener("click", function () {
-    /* v2.4.7：骰子已是普通窗口，✕ 只走 closeSelf。 */
+    /* v2.4.8：骰子已是普通窗口，✕ 只走 closeSelf。 */
     closeSelf(ID_DICE_WIN, "dice");
   });
 
@@ -855,7 +847,7 @@ function wireEvents() {
   if (els.btnAdvantage) els.btnAdvantage.addEventListener("click", onAdvantage);
   if (els.btnCrit) els.btnCrit.addEventListener("click", onCrit);
   if (els.btnRoll) els.btnRoll.addEventListener("click", function () {
-  /* v2.4.7：先打一行「按钮确实收到点击」，再交给 doRoll（避免只看到结果、分不清是没绑上还是中途失败）。 */
+  /* v2.4.8：先打一行「按钮确实收到点击」，再交给 doRoll（避免只看到结果、分不清是没绑上还是中途失败）。 */
   try { console.log("[4enext][dice] 投掷按钮 click"); } catch (e) { /* 忽略 */ }
   void doRoll();
 });
@@ -960,7 +952,7 @@ onReady(function () {
     await refreshPresets();
   })();
 
-  /* v2.4.7：速览里点「临时命中 / 临时伤害」或短/长休后，房间数据 / token 会变 →
+  /* v2.4.8：速览里点「临时命中 / 临时伤害」或短/长休后，房间数据 / token 会变 →
    * 防抖 200ms 重新读 state 刷新 4E 预设。 */
   try {
     OBR.room.onMetadataChange(schedulePresetRefresh);

@@ -129,7 +129,7 @@ async function readRoomState(cardId) {
     const rawScene = scene[KEY_STATE_PREFIX + cardId];
     const a = rawRoom && typeof rawRoom === "object" ? normalizeState(rawRoom) : null;
     const b = rawScene && typeof rawScene === "object" ? normalizeState(rawScene) : null;
-    if (a && b) return b.updatedAt > a.updatedAt ? b : a; /* v2.4.7：scene/room 取新 */
+    if (a && b) return b.updatedAt > a.updatedAt ? b : a; /* v2.4.8：scene/room 取新 */
     return a || b;
   } catch (e) {
     return null;
@@ -214,7 +214,7 @@ export async function loadState(cardId) {
   const stored = await readRoomState(cardId);
   let picked = stored || defaultState();
   let pickedScope = stored ? (scopeOverride[cardId] === "scene" ? "scene" : "room") : "room";
-  /* v2.4.7：本机兜底若更新更晚则恢复本机（下次打开不回到旧状态）。 */
+  /* v2.4.8：本机兜底若更新更晚则恢复本机（下次打开不回到旧状态）。 */
   if (local && (!stored || local.updatedAt > stored.updatedAt)) {
     picked = local;
     pickedScope = "local";
@@ -418,7 +418,7 @@ export async function syncTokenStats(itemId, hp, ctx) {
   if (barOff) return false;
   const needHp = !!wantMax && !barOff && !(typeof rawHp.max === "number" && rawHp.max > 0);
   const wantSurge = ctx.surgesMax > 0 ? Math.round(ctx.surgesMax) : null;
-  /* v2.4.7：wantDef 必须包含速览临时四防，否则 base+temp 会被误判成「与卡片基础不一致」
+  /* v2.4.8：wantDef 必须包含速览临时四防，否则 base+temp 会被误判成「与卡片基础不一致」
    * 又写回基础值，真机表现为「地图数字变一下又变回去」。合并规则与 syncDefTempToTokens 共用 combineDefenses。 */
   const wantDef = combineDefenses(defensesFromDerived(ctx.defenses), ctx.defTemp);
   const curDef = hp.defenses || null;
@@ -663,7 +663,7 @@ export function scopeText(scope) {
   return scope === "local" ? "本机记录（未同步到房间）" : "全桌同步";
 }
 
-/* v2.4.7：血条/HP 显示策略（地图条、速览、先攻共用同一语义；background 有同实现副本）。 */
+/* v2.4.8：血条/HP 显示策略（地图条、速览、先攻共用同一语义；background 有同实现副本）。 */
 export function computeViewMode(opts) {
   const o = opts || {};
   const role = o.role || "";

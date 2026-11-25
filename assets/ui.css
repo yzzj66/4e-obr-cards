@@ -1019,11 +1019,19 @@ body.fx-page {
   position: absolute; inset: 0;
   display: flex; align-items: center; justify-content: center;
   border-radius: 18%;
-  background: radial-gradient(120% 120% at 30% 20%, #2b3644 0%, #161d26 62%, #0e141b 100%);
-  border: 2px solid rgba(230, 237, 243, .35);
-  box-shadow: inset 0 -6px 14px rgba(0, 0, 0, .55), inset 0 6px 12px rgba(255, 255, 255, .08);
+  background: transparent;
+  border: 0;
+  box-shadow: none;
   animation: fx-squash var(--fx-flight, 1200ms) linear both;
   transform-origin: 50% 100%;
+}
+/* v2.4.8：骰子外观改为 PNG 素材（透明底），号码 .fx-num 叠加在正中。 */
+.fx-shape-img {
+  width: 100%; height: 100%;
+  object-fit: contain;
+  display: block;
+  user-select: none;
+  -webkit-user-drag: none;
 }
 .fx-face {
   position: absolute; left: 8%; top: 5%;
@@ -1032,8 +1040,8 @@ body.fx-page {
 }
 .fx-num {
   font: 900 calc(var(--dice-size, 128px) * 0.44)/1 ui-monospace, "Cascadia Code", Consolas, monospace;
-  color: #f2f7fb; letter-spacing: -2px; font-variant-numeric: tabular-nums;
-  text-shadow: 0 2px 6px rgba(0, 0, 0, .85), 0 0 10px rgba(0, 0, 0, .5);
+  color: #ffffff; letter-spacing: -2px; font-variant-numeric: tabular-nums;
+  text-shadow: 0 2px 6px rgba(0, 0, 0, .75), 0 0 12px rgba(0, 0, 0, .45);
   transform-origin: 50% 50%;
 }
 .fx-num.rolling { filter: blur(2.5px); animation: fx-slot 55ms linear infinite; }
@@ -1048,19 +1056,19 @@ body.fx-page {
 
 /* 四种状态：被丢弃（半透明 + 删除线）/ 减骰（虚线 + 前缀 −）/ 暴击金 / 大失败红 */
 .fx-die.is-loser .fx-box { opacity: .32; }
+.fx-die.is-loser .fx-shape-img { opacity: .35; filter: grayscale(.5); }
 .fx-die.is-loser .fx-num { text-decoration: line-through; }
-.fx-die.is-subtract .fx-box { opacity: .62; border-style: dashed; }
+.fx-die.is-subtract .fx-box { opacity: .62; }
 .fx-die.is-subtract .fx-num::before { content: "−"; margin-right: .04em; opacity: .85; }
-.fx-die.is-crit .fx-box {
-  border-color: rgba(255, 215, 94, .95);
-  box-shadow: 0 0 22px rgba(255, 200, 60, .75), inset 0 -6px 14px rgba(0, 0, 0, .5);
-}
+.fx-die.is-crit .fx-shape-img { filter: drop-shadow(0 0 12px rgba(255, 215, 90, .95)); }
 .fx-die.is-crit .fx-num { color: #fff4c2; }
-.fx-die.is-fail .fx-box {
-  border-color: rgba(248, 81, 73, .95);
-  box-shadow: 0 0 22px rgba(248, 81, 73, .7), inset 0 -6px 14px rgba(0, 0, 0, .5);
-}
+.fx-die.is-fail .fx-shape-img { filter: drop-shadow(0 0 12px rgba(255, 90, 90, .85)); }
 .fx-die.is-fail .fx-num { color: #ffd9d7; }
+
+/* v2.4.8：用户要求去掉骰子上的「总和」大数字（保留 DOM 供测试/内部使用，不显示）。 */
+.fx-total { display: none !important; }
+/* v2.4.8：用户要求连底部的加值 / 备注小字一起隐藏（只显示骰子与出目）。 */
+.fx-mod { display: none !important; }
 
 /* 当前总和（骰子行上方）与加值 / 备注（最后一行下方）——位置由 fxLayout 的
  * totalTop = -BASE_SIZE/2 - 64、modTop = lastRowOy + BASE_SIZE/2 + 28 写到 inline top。 */

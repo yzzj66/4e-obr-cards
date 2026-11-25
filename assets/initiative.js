@@ -682,7 +682,7 @@ export async function readInitiative() {
     const rawScene = scene ? scene[KEY_INITIATIVE] : null;
     const atR = rawRoom && typeof rawRoom.updatedAt === "number" ? rawRoom.updatedAt : -1;
     const atS = rawScene && typeof rawScene.updatedAt === "number" ? rawScene.updatedAt : -1;
-    const raw = atS > atR ? rawScene : rawRoom; /* v2.4.7：场景兜底写入后读取端也要看 scene */
+    const raw = atS > atR ? rawScene : rawRoom; /* v2.4.8：场景兜底写入后读取端也要看 scene */
     if (raw) return sortState(raw);
     /* 房间数据里还没有：可能是上一次写失败留在了本机，先把它显示出来（并等着下次写入搬回房间）。 */
     const stashed = readLocalFallback();
@@ -832,20 +832,21 @@ function stripBonusField(e, opts) {
  *   · 权限复用 canEditBonus（GM 任意 / 玩家只自己 token）；别人的条目仍是只读 <b>；
  *   · 页面 commitD20 会解析输入并走 setEntryRoll（写 entries[].d20、重算 init、按合计重排）。
  */
-function stripRollField(e, st, opts, total, formula) {
+function stripRollField(e, st, opts, total) {
   const rolled = e.d20 !== null && e.d20 !== undefined;
   const editable = rolled &&
     (st.phase === PHASE_COMBAT || st.phase === PHASE_PREPARING) &&
     canEditBonus(e, opts);
+  /* v2.4.8：小字不再显示 (d20+加值) 公式，改为直接显示合计（解决「7+6」不好读）。 */
   if (!editable) {
-    return "<b>" + esc(total) + '</b><small class="count-formula">' + esc(formula) + "</small>";
+    return "<b>" + esc(total) + "</b>";
   }
   const rollText = String(Math.round(num(e.d20, 0)));
   return '<input class="item-count-input" data-init-d20="' + esc(e.tokenId) +
     '" value="' + esc(rollText) + '" inputmode="numeric" autocomplete="off" spellcheck="false"' +
     ' title="输入先攻点数（d20）：回车 / 点别处保存；合计 = 点数 + 加值（当前 ' + esc(rollText) +
     esc(signed(e.bonus)) + '）">' +
-    '<small class="count-formula">' + esc(formula) + "</small>";
+    '<small class="count-formula">' + esc(total) + "</small>";
 }
 
 function stripCard(e, st, opts) {
@@ -861,9 +862,6 @@ function stripCard(e, st, opts) {
 
   const preparing = st.phase === PHASE_PREPARING && (e.d20 === null || e.d20 === undefined);
   const total = preparing ? "—" : String(Math.round(num(e.init, 0)));
-  const formula = (e.d20 === null || e.d20 === undefined)
-    ? "(" + (preparing ? "?" : total) + ")"
-    : "(" + Math.round(e.d20) + signed(e.bonus) + ")";
 
   const img = info && info.img
     ? '<img src="' + esc(info.img) + '" alt="" loading="lazy" draggable="false">'
@@ -888,7 +886,7 @@ function stripCard(e, st, opts) {
     stripBonusField(e, opts) +
     '<div class="item-img">' + img + "</div>" +
     hpTrack +
-    '<div class="item-count">' + stripRollField(e, st, opts, total, formula) + "</div>" +
+    '<div class="item-count">' + stripRollField(e, st, opts, total) + "</div>" +
     stripRollButtons(e, isGM, st.phase) +
     /* v1.7.3：GM 的卡片上放一个 ✕ —— 不用开列表窗口，点一下就把这枚 token 移出先攻。
        玩家没有（房间数据只有城主能写）。 */
