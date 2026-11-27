@@ -523,3 +523,11 @@ body.info-body input {
 .gl4-compact .gl4-atks .gl4-atk-hit { margin-left: auto; }
 .gl4-compact .gl4-atks .gl4-atk-dmg { margin-left: 26px; }
 .gl4-compact .gl4-atks .gl4-atk-name { flex: 0 1 auto; }
+
+/* v2.4.20：血怒/回复值/行动点/里程碑 一整排，两端对齐撑满（与四防同宽）。 */
+.gl4-compact .gl4-tags {
+  display: flex; flex-wrap: nowrap; align-items: center;
+  justify-content: space-between; width: 100%; gap: 6px;
+}
+.gl4-compact .gl4-tags > span { flex: 0 0 auto; }
+.gl4-compact .gl4-tags .gl4-resline { display: inline-flex; flex: 0 0 auto; gap: 6px; }
