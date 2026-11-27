@@ -19,7 +19,7 @@ const NOTES_PATH = path.join(ROOT, "docs", "NOTES.md");
 const NOTES = exists(NOTES_PATH) ? fs.readFileSync(NOTES_PATH, "utf8") : "";
 const notesHas = (s) => NOTES.indexOf(s) >= 0;
 /* 当前版本号：所有「版本全链路」断言都读它，升版本只改这一处（+ 各文件里的真实版本号）。 */
-const VER = "2.4.25";
+const VER = "2.4.26";
 
 function walk(dir, out = []) {
   for (const name of fs.readdirSync(dir)) {
@@ -128,8 +128,8 @@ for (const [html, js] of PAGES) {
 
 console.log("== manifest（绝对地址 + action）");
 const man = JSON.parse(fs.readFileSync(path.join(ROOT, "manifest.json"), "utf8"));
-const manHadAction = !!man.action; /* v2.4.25：manifest 已删除 action，旧断言用兼容对象 */
-if (!man.action) man.action = { title: "骰子", icon: "https://example.invalid/icon.svg", popover: "https://example.invalid/dice.html?v=2.4.25", width: 320, height: 660 };
+const manHadAction = !!man.action; /* v2.4.26：manifest 已删除 action，旧断言用兼容对象 */
+if (!man.action) man.action = { title: "骰子", icon: "https://example.invalid/icon.svg", popover: "https://example.invalid/dice.html?v=2.4.26", width: 320, height: 660 };
 const isAbs = (u) => typeof u === "string" && /^https:\/\//.test(u);
 const manUrls = [
   ["icon", man.icon],
@@ -145,7 +145,7 @@ else bad("manifest.action.title 缺失或过长");
 if (man.action && isAbs(man.action.icon) && isAbs(man.action.popover)) ok("action.icon / action.popover 都是绝对地址");
 else bad("action.icon / action.popover 必须是绝对地址：" + JSON.stringify(man.action));
 if (!manHadAction)
-  ok("v2.4.25：manifest 已无 action（骰子改工具栏 tool，无 launcher）");
+  ok("v2.4.26：manifest 已无 action（骰子改工具栏 tool，无 launcher）");
 else bad("manifest 还有 action");
 if (man.manifest_version === 1) ok("manifest_version = 1"); else bad("manifest_version 不是 1");
 ok("version = " + man.version);
@@ -236,7 +236,7 @@ console.log("== v1.2.1 UI 微调");
 const coreSrc2 = fs.readFileSync(corePath, "utf8");
 const infoW = /var INFO_W = (\d+);/.exec(coreSrc2);
 const infoH = /var INFO_H = (\d+);/.exec(coreSrc2);
-if (infoW && +infoW[1] >= 400 && +infoW[1] <= 520) ok("速览弹窗宽度 INFO_W = " + infoW[1] + "（v2.4.25 收紧到 400~520）");
+if (infoW && +infoW[1] >= 400 && +infoW[1] <= 520) ok("速览弹窗宽度 INFO_W = " + infoW[1] + "（v2.4.26 收紧到 400~520）");
 else bad("INFO_W 不在 400~520：" + (infoW ? infoW[1] : "background.core.js 里找不到 INFO_W"));
 if (infoH && +infoH[1] >= 640 && +infoH[1] <= 760) ok("速览弹窗高度 INFO_H = " + infoH[1] + "（640~760）");
 else bad("INFO_H 不在 640~760：" + (infoH ? infoH[1] : "background.core.js 里找不到 INFO_H"));
@@ -386,7 +386,7 @@ for (const [constName, label] of [["TOOL_ID", "角色卡 / 导入面板"], ["TOO
     ok("工具栏入口：" + label);
   else bad("工具栏缺少入口：" + label + "（" + constName + "）");
 }
-if (/id: TOOL_DICE_ID\b/.test(coreSrcV131)) ok("v2.4.25：工具栏注册骰子 tool（TOOL_DICE_ID）");
+if (/id: TOOL_DICE_ID\b/.test(coreSrcV131)) ok("v2.4.26：工具栏注册骰子 tool（TOOL_DICE_ID）");
 else bad("右侧工具栏还注册着骰子入口（会与 manifest action 重复）");
 for (const [file, label] of [["icon-tool.svg", "角色卡"], ["icon-tool-initiative.svg", "先攻"], ["icon-tool-dice.svg", "骰子（action 图标）"]]) {
   if (exists(path.join(ROOT, file))) ok("工具栏图标存在：" + file + "（" + label + "）");
@@ -592,7 +592,7 @@ if (/settings: \{ id: ID_SETTINGS_WIN, url: URL_SETTINGS, width: \d+, height: \d
 else bad("background.core.js 的 WINS 没有注册 settings 窗口");
 if (!/registerOneTool\(\{[\s\S]{0,240}?id: TOOL_SETTINGS_ID/.test(coreSrcV131) &&
   !/registerOneTool\(\{[\s\S]{0,240}?id: TOOL_GLANCE_ID/.test(coreSrcV131))
-  ok("v2.4.25：速览 / 设置不再注册为工具栏工具");
+  ok("v2.4.26：速览 / 设置不再注册为工具栏工具");
 else bad("速览 / 设置仍然注册成工具");
 if (/function openGlance\(/.test(coreSrcV131) && /openInfo\(bind\.itemId, bind\.cardId, "full"\)/.test(coreSrcV131))
     ok("工具栏「速览」打开完整模式 /info（点 token 自动弹的是紧凑模式）");
@@ -794,9 +794,9 @@ cssOk("先攻条容器 .strip（overflow:hidden + flex 竖排）", /\.strip \{[^
 cssOk("折叠药丸 .strip.collapsed", /\.strip\.collapsed \{[^}]*flex-direction: row/s);
 cssOk("卡片 56×80", /\.initiative-item \{[^}]*width: 56px; height: 80px/s);
 cssOk("当前回合卡 100 高", /\.initiative-item\.active \{[^}]*height: 100px/s);
-cssOk("头像占 72%（v2.4.25：底部让出 34% 给合计+公式）", /\.item-img \{[^}]*height: 72%/s);
-cssOk("合计条 bottom:0 / height:34%（v2.4.25：装下合计+公式）", /\.item-count \{[^}]*bottom: 0; height: 34%/s);
-cssOk("HP 条 bottom:34% / height:4px（v2.4.25 贴在加高后的色带上沿）", /\.item-hp-track \{[^}]*bottom: 34%; height: 4px/s);
+cssOk("头像占 72%（v2.4.26：底部让出 34% 给合计+公式）", /\.item-img \{[^}]*height: 72%/s);
+cssOk("合计条 bottom:0 / height:34%（v2.4.26：装下合计+公式）", /\.item-count \{[^}]*bottom: 0; height: 34%/s);
+cssOk("HP 条 bottom:34% / height:4px（v2.4.26 贴在加高后的色带上沿）", /\.item-hp-track \{[^}]*bottom: 34%; height: 4px/s);
 cssOk("掷骰按钮在卡片正下方（margin-top: 1px，不再压卡片）", /\.roll-buttons \{[^}]*margin-top: 1px/s);
 cssOk("d20 按钮是整宽长方形（100% × 16 高 / 4px 圆角）", /\.roll-btn\.normal \{[^}]*width: 100%; height: 16px[^}]*border-radius: 4px/s);
 cssOk("卡片区 min-height 104（卡片 80 + 下方 d20 17）", /\.strip-items \{[^}]*min-height: 104px/s);
@@ -1066,7 +1066,7 @@ console.log("== v1.6.0 血条扩展（临时生命 / 四防 / 蓝条）+ Boss �
     /roundedRectPoints\(bar\.width, bar\.height, bar\.radius, 24\)/.test(coreSrc2) &&
     /shieldPoints\(sh\.w, sh\.h, 14\)/.test(coreSrc2) &&
     /circlePoints\(cd\.d, DEF_CIRCLE_SEGMENTS\)/.test(coreSrc2)) {
-    ok("v2.4.25：圆角条 / 盾形 / 圆形都用 buildCurve().points() 手绘（不再有环形扇区）");
+    ok("v2.4.26：圆角条 / 盾形 / 圆形都用 buildCurve().points() 手绘（不再有环形扇区）");
   } else bad("圆角条 / 盾形 / 圆形没有用 Curve 手绘");
   if (coreSrc2.indexOf("buildShape(") < 0) ok("没有用 buildShape（SDK 3.1.0 只有四种形状，做不出环 / 盾）");
   else bad("血条里调用了 buildShape（做不出环 / 盾，规格 §5.4）");
@@ -1079,13 +1079,13 @@ console.log("== v1.6.0 血条扩展（临时生命 / 四防 / 蓝条）+ Boss �
     /width: barW, height: barH, radius: Math\.min\(barH \/ 2, barW \/ 2\)/.test(coreSrc2) &&
     /if \(!hpTextFits\) \{ hpText = ""/.test(coreSrc2) &&
     /var hpText = exact \? \(String\(cur\) \+ "\/" \+ max/.test(coreSrc2)) {
-    ok("v2.4.25 样板底条几何：宽 64% token 宽 / 高 10% 短边 / 底边距 4% / 圆角 = 高/2；HP 数字按条宽高拟合，装不下隐藏");
+    ok("v2.4.26 样板底条几何：宽 64% token 宽 / 高 10% 短边 / 底边距 4% / 圆角 = 高/2；HP 数字按条宽高拟合，装不下隐藏");
   } else bad("底部血条的几何公式不对（宽 64% / 高 10% / 底边距 4% / 圆角）");
   if (/var BAR_DEF_ORDER = \["fort", "reflex", "will"\];/.test(coreSrc2) &&
     /var BAR_DEF_COLORS = \{ fort: "#f0a5ab", reflex: "#f5e884", will: "#8e9dd6" \};/.test(coreSrc2) &&
     /var dDef = short \* 0\.16;/.test(coreSrc2) && /var defGap = short \* 0\.04;/.test(coreSrc2) &&
     /var sw = short \* 0\.20;/.test(coreSrc2) && /acTxt/.test(coreSrc2)) {
-    ok("v2.4.25 四防：左侧竖排 强/反/意（16% 短边圆、4% 间距），右下 AC 盾（20% 短边、1.08 高）");
+    ok("v2.4.26 四防：左侧竖排 强/反/意（16% 短边圆、4% 间距），右下 AC 盾（20% 短边、1.08 高）");
   } else bad("四防三圆 + AC 盾的坐标 / 颜色不对");
   if (coreSrc2.indexOf("hpVisible") < 0 && coreSrc2.indexOf("showSurge") < 0 &&
     coreSrc2.indexOf("surgeTop") < 0 && coreSrc2.indexOf("ringRatio") < 0) {
@@ -1162,7 +1162,7 @@ console.log("== v1.6.0 血条扩展（临时生命 / 四防 / 蓝条）+ Boss �
   else bad("PLUGIN_VERSION 不是 1.7.8：" + verOf(commonSrc) + " / " + verOf(coreSrc2));
   if (bundleSrc2.indexOf("roundedRectPoints(") >= 0 && bundleSrc2.indexOf("shieldPoints(") >= 0 &&
     bundleSrc2.indexOf("KEY_HPBAR") >= 0) {
-    ok("bundle 里带 v2.4.25 的圆角条 / 盾 / 血条开关（已重新构建）");
+    ok("bundle 里带 v2.4.26 的圆角条 / 盾 / 血条开关（已重新构建）");
   } else bad("bundle 落后于 core（跑 node dev/build-background.mjs）");
 }
 
@@ -1577,8 +1577,8 @@ console.log("== v1.7.2 血条组件编辑小窗（HP / 四防 / 回复力）");
   if (has(editHtmlV172, "hpe-cur") && has(editHtmlV172, "hpe-max") && has(editHtmlV172, "hpe-temp") &&
     has(editHtmlV172, "hpe-hp-pill") && !has(editHtmlV172, "hpe-surge") &&
     !has(editHtmlV172, "hpe-save") && !has(editHtmlV172, "hpe-foot") && !has(editHtmlV172, "hpe-cancel"))
-    ok("v2.4.25：编辑窗用药丸布局（当前 / 上限 / 临时生命），没有回复力输入、没有保存按钮 / 底栏");
-  else bad("编辑窗字段不是 v2.4.25 的药丸布局 / 还留着回复力或底栏");
+    ok("v2.4.26：编辑窗用药丸布局（当前 / 上限 / 临时生命），没有回复力输入、没有保存按钮 / 底栏");
+  else bad("编辑窗字段不是 v2.4.26 的药丸布局 / 还留着回复力或底栏");
   /* v1.8.5：自动保存接线（input 防抖 + change/blur/Enter 立即提交 + 同值不写 + 广播） */
   if (has(editJsV172, 'el.addEventListener("input"') && has(editJsV172, 'el.addEventListener("change"') &&
     has(editJsV172, 'el.addEventListener("blur"') && has(editJsV172, 'commit("enter", el)') &&
@@ -1595,8 +1595,8 @@ console.log("== v1.7.2 血条组件编辑小窗（HP / 四防 / 回复力）");
   }
   if (has(editCoreV172, "parseMaxInput(") && has(editCoreV172, "parseCurInput(") &&
     has(editCoreV172, "HPE_TEMP_MAX = 999") && has(editCoreV172, "clampInt(p.temp, 0, HPE_TEMP_MAX)"))
-    ok("v2.4.25：上限 / 当前 / 临时生命三条 clamp（当前 0~上限、上限 ≥1、temp 0~999）");
-  else bad("v2.4.25 字段 clamp 不完整");
+    ok("v2.4.26：上限 / 当前 / 临时生命三条 clamp（当前 0~上限、上限 ≥1、temp 0~999）");
+  else bad("v2.4.26 字段 clamp 不完整");
   if (has(editCoreV172, "if (!raw) return { ok: true, value: null };"))
     ok("四防留空 = null = 不写这个字段（那枚盾不画）");
   else bad("四防留空没有被当成「不画」");
@@ -2029,7 +2029,7 @@ console.log("== v1.7.5 四防一排改样式（3 个圆 + 1 个 AC 盾；只改�
   /* ---- 2) 外形：圆用 circlePoints（24 段），AC 用 shieldPoints，构建与增量刷新共用 defShapePoints ---- */
   if (/function circlePoints\(D, segments\)/.test(coreV175) && numV175("DEF_CIRCLE_SEGMENTS") === 24 &&
     /function shieldPoints\(W, H, segments\)/.test(coreV175) && /function roundedRectPoints\(/.test(coreV175)) {
-    ok("v2.4.25 外形：三圆用 circlePoints（24 段折线）/ AC 用 shieldPoints / 底条用 roundedRectPoints");
+    ok("v2.4.26 外形：三圆用 circlePoints（24 段折线）/ AC 用 shieldPoints / 底条用 roundedRectPoints");
   } else bad("没有「圆 / 盾 / 圆角条」的外形函数");
   const shapeUses = (coreV175.match(/roundedRectPoints\(/g) || []).length;
   if (shapeUses >= 2) ok("buildBarItems 与 patchBar 都用 roundedRectPoints（换形状只改一处，用到 " + shapeUses + " 处）");
@@ -2044,7 +2044,7 @@ console.log("== v1.7.5 四防一排改样式（3 个圆 + 1 个 AC 盾；只改�
     /var defX = bounds\.min\.x \+ defMargin \+ dDef \/ 2;/.test(coreV175) &&
     /var sw = short \* 0\.20;/.test(coreV175) &&
     coreV175.indexOf("defRowGap") < 0 && coreV175.indexOf("var rowCY") < 0) {
-    ok("v2.4.25 四防：左侧竖排 强/反/意（直径 16% 短边、左边距 6%、间距 4%），右下 AC 盾（宽 20% 短边、高 1.08 倍）");
+    ok("v2.4.26 四防：左侧竖排 强/反/意（直径 16% 短边、左边距 6%、间距 4%），右下 AC 盾（宽 20% 短边、高 1.08 倍）");
   } else bad("四防三圆 / AC 盾的坐标公式不对");
 
   /* ---- 4) AC 仍是半透明白盾（fill 0.18 + 描边 0.85），三防仍是实色 0.9 ---- */
@@ -2222,7 +2222,7 @@ console.log("== v1.7.6 删提示小字 + 记录窗直开 + 先攻条真透明 + 
     /var dDef = short \* 0\.16;/.test(coreV176) &&
     /var defGap = short \* 0\.04;/.test(coreV176) &&
     coreV176.indexOf("defRowGap") < 0 && coreV176.indexOf("var rowLeft") < 0) {
-    ok("v2.4.25 四防：左侧竖排 强/反/意（16% 短边圆、4% 间距），右下 AC 盾；「一排均分」的 helper 已删");
+    ok("v2.4.26 四防：左侧竖排 强/反/意（16% 短边圆、4% 间距），右下 AC 盾；「一排均分」的 helper 已删");
   } else bad("四防三圆 + AC 盾的坐标 / 间距公式不对（defRowGap / rowLeft 必须已删）");
   if (/fontSize: Math\.max\(8 \* s, dDef \* \(txt\.length > 2 \? 0\.42 : 0\.5\)\)/.test(coreV176))
     ok("四防数字字号按圆直径自适应（两位 ×0.5、三位 ×0.42）");
@@ -2547,14 +2547,14 @@ console.log("== v1.7.9 血条改环形 + 去掉 Boss 模式 / 蓝条 + 四防回
     /var barH = Math\.max\(2 \* s, short \* 0\.10\);/.test(coreV179) &&
     /var dDef = short \* 0\.16;/.test(coreV179) && /var sw = short \* 0\.20;/.test(coreV179) &&
     coreV179.indexOf("var RING_THICK = HP_RING_THICK;") < 0) {
-    ok("v2.4.25：barLayout() 用样板几何常数（底条 64%×10% / 圆 16% / 盾 20%），旧的 RING_* 别名已删");
+    ok("v2.4.26：barLayout() 用样板几何常数（底条 64%×10% / 圆 16% / 盾 20%），旧的 RING_* 别名已删");
   } else bad("barLayout() 的样板几何常数不对");
 
   /* ---- 2) 环画在所有 token 上（构建 + 增量刷新都走 ringSectorPoints） ---- */
   if ((coreV179.match(/roundedRectPoints\(/g) || []).length >= 4 &&
     /roundedRectPoints\(bar\.width, bar\.height, bar\.radius, 24\)/.test(coreV179) &&
     /roundedRectPoints\(bar\.fillW, bar\.height/.test(coreV179)) {
-    ok("v2.4.25：底部圆角条在构建与增量刷新里都用 roundedRectPoints（轨道 ratio=1 + 填充 bar.fillW）");
+    ok("v2.4.26：底部圆角条在构建与增量刷新里都用 roundedRectPoints（轨道 ratio=1 + 填充 bar.fillW）");
   } else bad("底部圆角条没有同时接进 buildBarItems 与 patchBar");
   if (/x: barCx - hpTextW \/ 2, y: barCy - hpTextH \/ 2/.test(coreV179)) {
     ok("HP 数字在**底部血条内居中**（x=条中心−宽/2、y=条中心−高/2）");
@@ -2564,7 +2564,7 @@ console.log("== v1.7.9 血条改环形 + 去掉 Boss 模式 / 蓝条 + 四防回
   const goneRoles = ["surge-bg", "surge-fill", "surge-text",
     "plate", "plate-text", "plate-phase", "divider", "lock-body", "lock-shackle"];
   const roleLeft = goneRoles.filter((r) => coreV179.indexOf('"' + r + '"') >= 0);
-  if (!roleLeft.length) ok("蓝条 / 名牌 / 分段 / 锁的 role 全删（底部条 bar-bg/bar-fill 是 v2.4.25 新布局）");
+  if (!roleLeft.length) ok("蓝条 / 名牌 / 分段 / 锁的 role 全删（底部条 bar-bg/bar-fill 是 v2.4.26 新布局）");
   else bad("还留着这些 role：" + roleLeft.join(" / "));
   if (coreV179.indexOf("roundRectPoints") < 0 && coreV179.indexOf("arcPoints") < 0 &&
     coreV179.indexOf("BAR_HP_H") < 0 && coreV179.indexOf("BAR_SURGE_H") < 0 &&
@@ -2575,7 +2575,7 @@ console.log("== v1.7.9 血条改环形 + 去掉 Boss 模式 / 蓝条 + 四防回
   /* ---- 4) 四防回四角：左上强韧 / 右上反射 / 左下意志 / 右下 AC 盾，直径 22s、inset 8s（v1.8.0 真机微调） ---- */
   if (/var BAR_DEF_ORDER = \["fort", "reflex", "will"\];/.test(coreV179) &&
     /var BAR_DEF_COLORS = \{ fort: "#f0a5ab", reflex: "#f5e884", will: "#8e9dd6" \};/.test(coreV179)) {
-    ok("v2.4.25 顺序：左侧上→下 强韧 / 反射 / 意志（粉 / 黄 / 蓝），AC 单独在右下盾");
+    ok("v2.4.26 顺序：左侧上→下 强韧 / 反射 / 意志（粉 / 黄 / 蓝），AC 单独在右下盾");
   } else bad("三圆顺序 / 配色不对");
   if (/var dDef = short \* 0\.16;/.test(coreV179) && /var sw = short \* 0\.20;/.test(coreV179)) {
     ok("四防尺寸：圆直径 16% 短边、AC 盾宽 20% 短边");
@@ -2614,7 +2614,7 @@ console.log("== v1.7.9 血条改环形 + 去掉 Boss 模式 / 蓝条 + 四防回
   } else bad("CHANGELOG.md 没有补 v1.7.9");
   if (has(readmeV179, "v" + VER) && has(readmeV179, "样板布局") && has(readmeV179, "## ⭐ 安装地址")) {
     ok("README 顶部写了 v" + VER + "、功能表写了样板血条布局，「⭐ 安装地址」保留");
-  } else bad("README 没有 v2.4.25 的功能行 / 安装地址被动了");
+  } else bad("README 没有 v2.4.26 的功能行 / 安装地址被动了");
   if (notesHas("HP_RING_*") && notesHas("四角内缩")) ok("docs/NOTES.md 的常量表写了 HP_RING_* 与四角内缩");
   else bad("docs/NOTES.md 常量表没有更新（HP_RING_* / 四角内缩）");
   if (has(testBgV179, "底部圆角血条") && has(testBgV179, "左侧三圆") && has(testBgV179, "右下 AC 盾") &&
@@ -2688,7 +2688,7 @@ console.log("== v1.7.10 / v1.7.11 先攻条（popover 回退）+ Full Suite 卡�
     [/\.roll-btn\.normal \{[^}]*width: 100%; height: 16px[^}]*border-radius: 4px/s, "d20 整宽长方形 16 高"]
   ];
   const missFS = FS.filter(([re]) => !re.test(cssV1710)).map(([, why]) => why);
-  if (!missFS.length) ok("④ Full Suite 几何：56×80 / active 100 / img 72% / count 34% / hp 4px bottom 34%（v2.4.25 底部加高，偏离 Full Suite 原 24% 以容纳合计+公式）");
+  if (!missFS.length) ok("④ Full Suite 几何：56×80 / active 100 / img 72% / count 34% / hp 4px bottom 34%（v2.4.26 底部加高，偏离 Full Suite 原 24% 以容纳合计+公式）");
   else bad("④ 少了 Full Suite 的几何：" + missFS.join(" / "));
   if (has(initV1710, 'data-roll="normal"') && !has(initV1710, 'data-roll="adv"') &&
     !has(initV1710, 'data-roll="dis"') && (initV1710.match(/class="roll-btn /g) || []).length === 1) {
@@ -3419,12 +3419,12 @@ console.log("== v1.9.2 骰子 action 入口 / 记录窗口自动打开");
   const manV192 = JSON.parse(fs.readFileSync(path.join(ROOT, "manifest.json"), "utf8"));
   const manRelV192 = JSON.parse(fs.readFileSync(path.join(ROOT, "manifest.relative.json"), "utf8"));
   if (!manV192.action && !manRelV192.action)
-    ok("v2.4.25：manifest×2 已无 action（骰子走工具栏 tool）");
+    ok("v2.4.26：manifest×2 已无 action（骰子走工具栏 tool）");
   else bad("manifest 仍有 action");
   const uiCssV110 = fs.readFileSync(path.join(ROOT, "assets", "ui.css"), "utf8");
   if (fs.readFileSync(path.join(ROOT, "assets", "background.core.js"), "utf8").indexOf("TOOL_DICE_ID") >= 0)
-    ok("v2.4.25：骰子改工具栏 tool → openWin(dice)，无 action/launcher");
-  else bad("v2.4.25：骰子 tool 缺失");
+    ok("v2.4.26：骰子改工具栏 tool → openWin(dice)，无 action/launcher");
+  else bad("v2.4.26：骰子 tool 缺失");
   if (/OBR\.action\.isOpen/.test(dicePageV192) && /OBR\.action\.close\(\)/.test(dicePageV192) &&
     /createWindow\(\{ name: "dice" \}\)/.test(dicePageV192))
     ok("dice-page：action.isOpen 判断 + ✕ 用 action.close + action 模式不绑定标题栏拖动");
@@ -3442,7 +3442,7 @@ console.log("== v1.9.2 骰子 action 入口 / 记录窗口自动打开");
   else bad("设置页缺少骰子记录窗口自动打开开关");
 }
 
-console.log("== v2.4.25 血条编辑窗输入可发现性");
+console.log("== v2.4.26 血条编辑窗输入可发现性");
 {
   const cssV1101 = fs.readFileSync(path.join(ROOT, "assets", "ui.css"), "utf8");
   const htmlV1101 = fs.readFileSync(path.join(ROOT, "hp-edit.html"), "utf8");
@@ -3452,17 +3452,17 @@ console.log("== v2.4.25 血条编辑窗输入可发现性");
     /\.hpe-num \{[\s\S]{0,260}?border: 1px solid var\(--line\)/.test(cssV1101) &&
     /body:not\(\.hpe-readonly\) \.hpe-pill:hover/.test(cssV1101) &&
     /body\.hpe-readonly \.hpe-def/.test(cssV1101))
-    ok("v2.4.25：输入框有 1px 边框 + 浅底，cur/max 66/46、临时药丸 104，可编辑 hover 提亮、只读灰");
-  else bad("v2.4.25：输入可发现性样式不完整（边框/加宽/104px/hover/只读）");
+    ok("v2.4.26：输入框有 1px 边框 + 浅底，cur/max 66/46、临时药丸 104，可编辑 hover 提亮、只读灰");
+  else bad("v2.4.26：输入可发现性样式不完整（边框/加宽/104px/hover/只读）");
   if (/<label class="hpe-pill hpe-hp-pill[^"]*"[^>]*for="hpe-cur"/.test(htmlV1101) &&
     /<label class="hpe-pill hpe-temp-pill"[^>]*for="hpe-temp"/.test(htmlV1101) &&
     /id="hpe-temp"[^>]*placeholder="—"/.test(htmlV1101) &&
     pageV1101.indexOf('classList.toggle("hpe-readonly", dis)') >= 0)
-    ok("v2.4.25：生命 / 临时药丸点文字即可聚焦输入（label for），空临时生命显示「—」");
-  else bad("v2.4.25：label 聚焦 / 临时空占位 / 只读类没接上");
+    ok("v2.4.26：生命 / 临时药丸点文字即可聚焦输入（label for），空临时生命显示「—」");
+  else bad("v2.4.26：label 聚焦 / 临时空占位 / 只读类没接上");
 }
 
-console.log("== v2.4.25 血条编辑窗单窗常驻");
+console.log("== v2.4.26 血条编辑窗单窗常驻");
 {
   const coreV1102 = fs.readFileSync(path.join(ROOT, "assets", "background.core.js"), "utf8");
   const commonV1102 = fs.readFileSync(path.join(ROOT, "assets", "common.js"), "utf8");
@@ -3476,25 +3476,25 @@ console.log("== v2.4.25 血条编辑窗单窗常驻");
   const a = grab(coreV1102, 'var CH_HP_EDIT_ACK = NS + "');
   const b = grab(commonV1102, 'export const CH_HP_EDIT_ACK = NS + "');
   if (a && a === b && /CH_HP_EDIT_ACK = NS \+ "\/hp-edit-ack"/.test(coreV1102))
-    ok("v2.4.25：CH_HP_EDIT_ACK 频道两端一致（" + a + "）");
-  else bad("v2.4.25：CH_HP_EDIT_ACK 缺失 / 两端不一致 core=" + a + " common=" + b);
+    ok("v2.4.26：CH_HP_EDIT_ACK 频道两端一致（" + a + "）");
+  else bad("v2.4.26：CH_HP_EDIT_ACK 缺失 / 两端不一致 core=" + a + " common=" + b);
   if (/if \(winOpen\["hpEdit"\]\) \{[\s\S]{0,520}?waitHpEditAck\(hpEditSession/.test(coreV1102) &&
     /if \(acked\) \{[\s\S]{0,160}?publishHpEditTarget\(itemId, false\)/.test(coreV1102) &&
     /600ms 无 ack → 兜底关闭重开一次/.test(coreV1102) &&
     /hpEditPinned\(\) && winOpen\["hpEdit"\]/.test(coreV1102))
-    ok("v2.4.25：窗口已挂载 → 广播 target 换目标、等 ack；600ms 无 ack 兜底重开；钉住保持当前 token");
-  else bad("v2.4.25：后台复用 / ack / 兜底 / 钉住 逻辑不完整");
+    ok("v2.4.26：窗口已挂载 → 广播 target 换目标、等 ack；600ms 无 ack 兜底重开；钉住保持当前 token");
+  else bad("v2.4.26：后台复用 / ack / 兜底 / 钉住 逻辑不完整");
   if (/inputs\.forEach\(function \(el\) \{/.test(pageV1102) &&
     pageV1102.indexOf("for (var i = 0; i < inputs.length; i++) {") < 0 &&
     /function handleHpTarget\(/.test(pageV1102) &&
     /commit\("switch", document.activeElement\)/.test(pageV1102) &&
     pageV1102.indexOf("CH_HP_EDIT_ACK") >= 0 && /function ackTarget\(/.test(pageV1102) &&
     pageV1102.indexOf("lease.accept(data)") >= 0)
-    ok("v2.4.25：页面换 target 前先 commit 未保存输入，load 后回 ack（不重建 iframe）");
-  else bad("v2.4.25：页面 target 切换 / commit / ack 接线不完整");
+    ok("v2.4.26：页面换 target 前先 commit 未保存输入，load 后回 ack（不重建 iframe）");
+  else bad("v2.4.26：页面 target 切换 / commit / ack 接线不完整");
 }
 
-console.log("== v2.4.25 用户矢量图标（钉住 / 锁定 / 共享）");
+console.log("== v2.4.26 用户矢量图标（钉住 / 锁定 / 共享）");
 {
   const htmlV1103 = fs.readFileSync(path.join(ROOT, "hp-edit.html"), "utf8");
   const pageV1103 = fs.readFileSync(path.join(ROOT, "assets", "hp-edit-page.js"), "utf8");
@@ -3505,26 +3505,26 @@ console.log("== v2.4.25 用户矢量图标（钉住 / 锁定 / 共享）");
     /id="hpe-pin"[\s\S]{0,1400}?<svg /.test(htmlV1103) &&
     /id="hpe-lock-on" hidden/.test(htmlV1103) && /id="hpe-lock-off"/.test(htmlV1103) &&
     htmlV1103.indexOf("📌") < 0 && htmlV1103.indexOf("🔒") < 0)
-    ok("v2.4.25：血条编辑窗钉住 / 锁定按钮改为内联 SVG（lock/unlock 两个 span 用 hidden 切换，无 emoji）");
-  else bad("v2.4.25：hp-edit.html 内联 SVG / lock-on / lock-off 不完整或还有 emoji");
+    ok("v2.4.26：血条编辑窗钉住 / 锁定按钮改为内联 SVG（lock/unlock 两个 span 用 hidden 切换，无 emoji）");
+  else bad("v2.4.26：hp-edit.html 内联 SVG / lock-on / lock-off 不完整或还有 emoji");
   if (pageV1103.indexOf("els.lockOn.hidden = !locked") >= 0 &&
     pageV1103.indexOf("els.lockOff.hidden = locked") >= 0 &&
     pageV1103.indexOf("els.lock.textContent") < 0)
-    ok("v2.4.25：paintTools 按 hp.locked 切换 lock / unlock 图标（不重绘按钮）");
-  else bad("v2.4.25：页面没有按 locked 切换 lock / unlock 图标");
+    ok("v2.4.26：paintTools 按 hp.locked 切换 lock / unlock 图标（不重绘按钮）");
+  else bad("v2.4.26：页面没有按 locked 切换 lock / unlock 图标");
   if (glanceV1103.indexOf("SHARE_ICON_LOCK") >= 0 && glanceV1103.indexOf("SHARE_ICON_UNLOCK") >= 0 &&
     /d\.locked \? SHARE_ICON_LOCK : SHARE_ICON_UNLOCK/.test(glanceV1103) &&
     glanceV1103.indexOf("🔒") < 0 && glanceV1103.indexOf("🔓") < 0 &&
     glanceV1103.indexOf("共享数据") >= 0)
-    ok("v2.4.25：速览共享数据按钮用 SHARE_ICON_LOCK / UNLOCK 内联 SVG（文本保留、无 emoji）");
-  else bad("v2.4.25：glance.js 共享图标常量 / 无 emoji / 文本 不完整");
+    ok("v2.4.26：速览共享数据按钮用 SHARE_ICON_LOCK / UNLOCK 内联 SVG（文本保留、无 emoji）");
+  else bad("v2.4.26：glance.js 共享图标常量 / 无 emoji / 文本 不完整");
   if (/\.hpe-icon svg \{ display: block; width: 14px; height: 14px; \}/.test(cssV1103) &&
     /\.gl4-share svg \{ width: 12px; height: 12px; vertical-align: -2px;/.test(cssV1103))
-    ok("v2.4.25：ui.css 给内联 SVG 加了 14×14 / 12×12 对齐样式");
-  else bad("v2.4.25：ui.css 缺少内联 SVG 尺寸样式");
+    ok("v2.4.26：ui.css 给内联 SVG 加了 14×14 / 12×12 对齐样式");
+  else bad("v2.4.26：ui.css 缺少内联 SVG 尺寸样式");
 }
 
-console.log("== v2.4.25 先攻条点卡片：抑制广播 await 后再 select");
+console.log("== v2.4.26 先攻条点卡片：抑制广播 await 后再 select");
 {
   const initPageV1106 = fs.readFileSync(path.join(ROOT, "assets", "initiative-page.js"), "utf8");
   const coreV1106 = fs.readFileSync(path.join(ROOT, "assets", "background.core.js"), "utf8");
@@ -3532,16 +3532,16 @@ console.log("== v2.4.25 先攻条点卡片：抑制广播 await 后再 select");
     initPageV1106.indexOf("void OBR.broadcast.sendMessage(CH_GLANCE_SUPPRESS") < 0 &&
     initPageV1106.indexOf("await OBR.broadcast.sendMessage(CH_GLANCE_SUPPRESS") <
       initPageV1106.indexOf("await OBR.player.select([tokenId], true)"))
-    ok("v2.4.25：onCardClick 先 await 抑制广播送达，再 player.select（不再 void 直接选）");
-  else bad("v2.4.25：抑制广播没有 await / 顺序不对 / 还留着 void 写法");
+    ok("v2.4.26：onCardClick 先 await 抑制广播送达，再 player.select（不再 void 直接选）");
+  else bad("v2.4.26：抑制广播没有 await / 顺序不对 / 还留着 void 写法");
   if (coreV1106.indexOf("Date.now() < suppressGlanceUntil") >= 0 &&
     coreV1106.indexOf("Date.now() < suppressGlanceUntil") < coreV1106.indexOf("await openInfo(item.id, cardId)") &&
     coreV1106.indexOf("onMessage(CH_GLANCE_SUPPRESS") >= 0)
-    ok("v2.4.25：后台 suppressGlanceUntil 早退仍在 openInfo 之前（兜底不弹速览）");
-  else bad("v2.4.25：后台抑制兜底不在 openInfo 之前");
+    ok("v2.4.26：后台 suppressGlanceUntil 早退仍在 openInfo 之前（兜底不弹速览）");
+  else bad("v2.4.26：后台抑制兜底不在 openInfo 之前");
 }
 
-console.log("== v2.4.25 四防临时加值单向写回 token（地图血条联动）");
+console.log("== v2.4.26 四防临时加值单向写回 token（地图血条联动）");
 {
   const commonV1107 = fs.readFileSync(path.join(ROOT, "assets", "common.js"), "utf8");
   const infoV1107 = fs.readFileSync(path.join(ROOT, "assets", "info.js"), "utf8");
@@ -3552,20 +3552,20 @@ console.log("== v2.4.25 四防临时加值单向写回 token（地图血条联�
     fn.indexOf("sameDefenses(prevHp.defenses, out)") >= 0 &&
     fn.indexOf("createUserId") >= 0 || /role !== "GM"/.test(fn) &&
     fn.indexOf("notify(") < 0)
-    ok("v2.4.25：common.syncDefTempToTokens 存在：卡片基础+defTemp 写 hp.defenses、同值不写、无权限跳过、失败静默不弹通知");
-  else bad("v2.4.25：common.syncDefTempToTokens 缺失 / 行为不完整");
+    ok("v2.4.26：common.syncDefTempToTokens 存在：卡片基础+defTemp 写 hp.defenses、同值不写、无权限跳过、失败静默不弹通知");
+  else bad("v2.4.26：common.syncDefTempToTokens 缺失 / 行为不完整");
   if (infoV1107.indexOf("syncDefTempToTokens") >= 0 &&
     /act === "def-temp" \|\| act === "rest-short" \|\| act === "rest-long"/.test(infoV1107) &&
     infoV1107.indexOf("await syncDefTempToTokens(card.id, state && state.defTemp)") >= 0)
-    ok("v2.4.25：info.js 在 def-temp / rest-short / rest-long 成功后调 syncDefTempToTokens（短/长休自动还原）");
-  else bad("v2.4.25：info.js 没有在临时四防 / 短休 / 长休后同步 token");
+    ok("v2.4.26：info.js 在 def-temp / rest-short / rest-long 成功后调 syncDefTempToTokens（短/长休自动还原）");
+  else bad("v2.4.26：info.js 没有在临时四防 / 短休 / 长休后同步 token");
   if (coreV1107.indexOf("OBR.scene.items.onChange(") >= 0 &&
     coreV1107.indexOf("scheduleBars()") >= 0)
-    ok("v2.4.25：后台已订阅 scene.items.onChange → 写回 token 后地图血条自动重画");
-  else bad("v2.4.25：后台没有 items.onChange → 写回后血条可能不刷新");
+    ok("v2.4.26：后台已订阅 scene.items.onChange → 写回 token 后地图血条自动重画");
+  else bad("v2.4.26：后台没有 items.onChange → 写回后血条可能不刷新");
 }
 
-console.log("== v2.4.25 骰子 4E 预设联动速览临时命中/伤害");
+console.log("== v2.4.26 骰子 4E 预设联动速览临时命中/伤害");
 {
   const d4 = fs.readFileSync(path.join(ROOT, "assets", "dice-4e.js"), "utf8");
   const dp = fs.readFileSync(path.join(ROOT, "assets", "dice-page.js"), "utf8");
@@ -3573,18 +3573,18 @@ console.log("== v2.4.25 骰子 4E 预设联动速览临时命中/伤害");
     d4.indexOf("atkTemp") >= 0 && d4.indexOf("dmgTemp") >= 0 &&
     d4.indexOf("tempTag") >= 0 && d4.indexOf("const total = a.total + atkTemp;") >= 0 &&
     d4.indexOf("const total = d.total + dmgTemp;") >= 0)
-    ok("v2.4.25：dice-4e.js 接收 opts（atkTemp/dmgTemp），先加 total 再 withModifier，非 0 标签带「临时」后缀");
-  else bad("v2.4.25：dice-4e.js 没有接收临时命中/伤害");
+    ok("v2.4.26：dice-4e.js 接收 opts（atkTemp/dmgTemp），先加 total 再 withModifier，非 0 标签带「临时」后缀");
+  else bad("v2.4.26：dice-4e.js 没有接收临时命中/伤害");
   if (dp.indexOf("track.loadState(card.id)") >= 0 &&
     /presetsFor\(card\.char, undefined, temps\)/.test(dp) &&
     dp.indexOf("OBR.room.onMetadataChange(schedulePresetRefresh)") >= 0 &&
     dp.indexOf("OBR.scene.items.onChange(schedulePresetRefresh)") >= 0 &&
     dp.indexOf("}, 200);") >= 0)
-    ok("v2.4.25：dice-page 用 loadState 读 atkTemp/dmgTemp 传入预设；订阅 room metadata + scene items 变化，200ms 防抖刷新");
-  else bad("v2.4.25：dice-page 没有接临时值 / 变化订阅 / 防抖");
+    ok("v2.4.26：dice-page 用 loadState 读 atkTemp/dmgTemp 传入预设；订阅 room metadata + scene items 变化，200ms 防抖刷新");
+  else bad("v2.4.26：dice-page 没有接临时值 / 变化订阅 / 防抖");
 }
 
-console.log("== v2.4.25 四防临时值不被 syncTokenStats 回写");
+console.log("== v2.4.26 四防临时值不被 syncTokenStats 回写");
 {
   const commonV1109 = fs.readFileSync(path.join(ROOT, "assets", "common.js"), "utf8");
   const trackV1109 = fs.readFileSync(path.join(ROOT, "assets", "track.js"), "utf8");
@@ -3592,19 +3592,19 @@ console.log("== v2.4.25 四防临时值不被 syncTokenStats 回写");
   if (/export function combineDefenses\(base, defTemp\)/.test(commonV1109) &&
     commonV1109.indexOf("combineDefenses(base, defTemp)") >= 0 &&
     commonV1109.indexOf("ref: \"reflex\"") >= 0)
-    ok("v2.4.25：common.js 导出 combineDefenses(base, defTemp)（ref→reflex、round/clamp、卡片缺项不返回），syncDefTempToTokens 复用它");
-  else bad("v2.4.25：combineDefenses 缺失 / syncDefTempToTokens 没有复用");
+    ok("v2.4.26：common.js 导出 combineDefenses(base, defTemp)（ref→reflex、round/clamp、卡片缺项不返回），syncDefTempToTokens 复用它");
+  else bad("v2.4.26：combineDefenses 缺失 / syncDefTempToTokens 没有复用");
   if (trackV1109.indexOf("combineDefenses") >= 0 &&
     trackV1109.indexOf("defensesFromDerived(ctx.defenses), ctx.defTemp") >= 0)
-    ok("v2.4.25：track.syncTokenStats 的 wantDef = combineDefenses(卡片基础, ctx.defTemp) → 不再把 base+temp 误写回 base");
-  else bad("v2.4.25：syncTokenStats 没有感知 ctx.defTemp");
+    ok("v2.4.26：track.syncTokenStats 的 wantDef = combineDefenses(卡片基础, ctx.defTemp) → 不再把 base+temp 误写回 base");
+  else bad("v2.4.26：syncTokenStats 没有感知 ctx.defTemp");
   if (infoV1109.indexOf("defTemp: state && state.defTemp") >= 0 &&
     infoV1109.indexOf("const loaded = await loadState(card.id)") < infoV1109.indexOf("await syncTokenStats("))
-    ok("v2.4.25：info.js 先 loadState 再把 defTemp 传给 syncTokenStats");
-  else bad("v2.4.25：info.js 没有把 defTemp 传给 syncTokenStats / 顺序不对");
+    ok("v2.4.26：info.js 先 loadState 再把 defTemp 传给 syncTokenStats");
+  else bad("v2.4.26：info.js 没有把 defTemp 传给 syncTokenStats / 顺序不对");
 }
 
-console.log("== v2.4.25 骰子 action 页面带版本参数 + 点击诊断");
+console.log("== v2.4.26 骰子 action 页面带版本参数 + 点击诊断");
 {
   const manV11010 = JSON.parse(fs.readFileSync(path.join(ROOT, "manifest.json"), "utf8"));
   const manRelV11010 = JSON.parse(fs.readFileSync(path.join(ROOT, "manifest.relative.json"), "utf8"));
@@ -3612,18 +3612,18 @@ console.log("== v2.4.25 骰子 action 页面带版本参数 + 点击诊断");
   const cssV11010 = fs.readFileSync(path.join(ROOT, "assets", "ui.css"), "utf8");
   const wantQ = "?v=" + VER;
   if (!manV11010.action)
-    ok("v2.4.25：manifest×2 不再有 action（骰子走 tool）");
+    ok("v2.4.26：manifest×2 不再有 action（骰子走 tool）");
   else bad("manifest 仍有 action");
   if (dicePageV11010.indexOf("页面就绪 v=") >= 0 && dicePageV11010.indexOf("PLUGIN_VERSION") >= 0 &&
     dicePageV11010.indexOf("点击投掷 expr=") >= 0 && dicePageV11010.indexOf("投掷按钮 click") >= 0)
-    ok("v2.4.25：骰子页控制台诊断齐全（页面就绪 v/action + 按钮 click + doRoll expr）");
-  else bad("v2.4.25：骰子页缺少页面就绪 / 点击诊断日志");
+    ok("v2.4.26：骰子页控制台诊断齐全（页面就绪 v/action + 按钮 click + doRoll expr）");
+  else bad("v2.4.26：骰子页缺少页面就绪 / 点击诊断日志");
   if (/body\.dice-action \.win,[\s\S]{0,220}?pointer-events: auto;/.test(cssV11010))
-    ok("v2.4.25：action 模式正文 / 滚动容器补了 pointer-events:auto（旧标题栏隐藏后仍可点）");
-  else bad("v2.4.25：action 模式正文 pointer-events 加固缺失");
+    ok("v2.4.26：action 模式正文 / 滚动容器补了 pointer-events:auto（旧标题栏隐藏后仍可点）");
+  else bad("v2.4.26：action 模式正文 pointer-events 加固缺失");
 }
 
-console.log("== v2.4.25 骰子投掷分步诊断日志");
+console.log("== v2.4.26 骰子投掷分步诊断日志");
 {
   const dpV1111 = fs.readFileSync(path.join(ROOT, "assets", "dice-page.js"), "utf8");
   const steps = ["step parse ok", "step busy-return", "step busy-set", "step payload ", "step rendered",
@@ -3631,14 +3631,14 @@ console.log("== v2.4.25 骰子投掷分步诊断日志");
   const miss = steps.filter((x) => dpV1111.indexOf(x) < 0);
   if (!miss.length && dpV1111.indexOf('console.error("[4enext][dice] doRoll failed"') >= 0 &&
     dpV1111.indexOf("e && e.stack ? e.stack : e") >= 0)
-    ok("v2.4.25：doRoll 分步日志齐全（parse/busy/payload/rendered/flash/broadcast/history/anim/done），catch 打印 stack");
-  else bad("v2.4.25：doRoll 分步日志缺项：" + miss.join(" / "));
+    ok("v2.4.26：doRoll 分步日志齐全（parse/busy/payload/rendered/flash/broadcast/history/anim/done），catch 打印 stack");
+  else bad("v2.4.26：doRoll 分步日志缺项：" + miss.join(" / "));
   if (dpV1111.indexOf("resultHidden=") >= 0 && dpV1111.indexOf("resultChildren=") >= 0)
-    ok("v2.4.25：rendered 步骤记录结果区子节点数 / 隐藏状态（action 模式可见性排查）");
-  else bad("v2.4.25：rendered 步骤没有结果区可见性诊断");
+    ok("v2.4.26：rendered 步骤记录结果区子节点数 / 隐藏状态（action 模式可见性排查）");
+  else bad("v2.4.26：rendered 步骤没有结果区可见性诊断");
 }
 
-console.log("== v2.4.25 骰子预设正确剥 loadState 的 state 层");
+console.log("== v2.4.26 骰子预设正确剥 loadState 的 state 层");
 {
   const d4V1112 = fs.readFileSync(path.join(ROOT, "assets", "dice-4e.js"), "utf8");
   const dpV1112 = fs.readFileSync(path.join(ROOT, "assets", "dice-page.js"), "utf8");
@@ -3646,16 +3646,16 @@ console.log("== v2.4.25 骰子预设正确剥 loadState 的 state 层");
     d4V1112.indexOf("loaded.state") >= 0 &&
     d4V1112.indexOf("Number.isFinite(st.atkTemp)") >= 0 &&
     d4V1112.indexOf("Number.isFinite(st.dmgTemp)") >= 0)
-    ok("v2.4.25：dice-4e 导出 tempsFromLoaded（只从 loaded.state 取 atkTemp/dmgTemp，缺省 0）");
-  else bad("v2.4.25：tempsFromLoaded 缺失 / 没剥 state 层");
+    ok("v2.4.26：dice-4e 导出 tempsFromLoaded（只从 loaded.state 取 atkTemp/dmgTemp，缺省 0）");
+  else bad("v2.4.26：tempsFromLoaded 缺失 / 没剥 state 层");
   if (dpV1112.indexOf("track.loadState(card.id)") >= 0 &&
     dpV1112.indexOf("temps = mod.tempsFromLoaded(loaded)") >= 0 &&
     !/loadState\([^;]*\);[^;]{0,200}?\.atkTemp/.test(dpV1112))
-    ok("v2.4.25：dice-page 用 tempsFromLoaded(loaded)，不再直接读 loadState 返回值的 atkTemp/dmgTemp");
-  else bad("v2.4.25：dice-page 仍在直接读 loadState 返回值 / 没有用 tempsFromLoaded");
+    ok("v2.4.26：dice-page 用 tempsFromLoaded(loaded)，不再直接读 loadState 返回值的 atkTemp/dmgTemp");
+  else bad("v2.4.26：dice-page 仍在直接读 loadState 返回值 / 没有用 tempsFromLoaded");
 }
 
-console.log("== v2.4.25 combatMods.damages[].dieUp（武器伤害骰提升）");
+console.log("== v2.4.26 combatMods.damages[].dieUp（武器伤害骰提升）");
 {
   const glanceV201 = fs.readFileSync(path.join(ROOT, "assets", "glance.js"), "utf8");
   const diceV201 = fs.readFileSync(path.join(ROOT, "assets", "dice-4e.js"), "utf8");
@@ -3663,18 +3663,18 @@ console.log("== v2.4.25 combatMods.damages[].dieUp（武器伤害骰提升）");
     /function upgradeDamageDie\(dice, steps\)/.test(glanceV201) &&
     /upgradeDamageDie\(w\.ref\.d, n0\(r\.dieUp\)\)/.test(glanceV201) &&
     glanceV201.indexOf("DAMAGE_DIE_LADDER[0]") >= 0 || glanceV201.indexOf("Math.max(0, Math.min(DAMAGE_DIE_LADDER.length - 1, idx + up))") >= 0)
-    ok("v2.4.25：glance.js 有 dieUp 提升表 / upgradeDamageDie，damages 派生处已使用（clamp 到 1d4~2d12）");
-  else bad("v2.4.25：glance.js 没有接 dieUp / 提升表 / clamp");
+    ok("v2.4.26：glance.js 有 dieUp 提升表 / upgradeDamageDie，damages 派生处已使用（clamp 到 1d4~2d12）");
+  else bad("v2.4.26：glance.js 没有接 dieUp / 提升表 / clamp");
   const testGlanceV201 = fs.readFileSync(path.join(ROOT, "dev", "test-glance2.mjs"), "utf8");
   const testImportV201 = fs.readFileSync(path.join(ROOT, "dev", "test-import.mjs"), "utf8");
-  if (testGlanceV201.indexOf("v2.4.25") >= 0 && testGlanceV201.indexOf("dieUp 1/2/3/4/5/8/9/-1") >= 0 &&
+  if (testGlanceV201.indexOf("v2.4.26") >= 0 && testGlanceV201.indexOf("dieUp 1/2/3/4/5/8/9/-1") >= 0 &&
     testGlanceV201.indexOf("旧 fixture（无 dieUp）") >= 0 &&
-    testImportV201.indexOf("v2.4.25") >= 0 && testImportV201.indexOf("第一项伤害骰 = 1d6") >= 0)
-    ok("v2.4.25：test-glance2（合成 dieUp 序列 / 旧 fixture 零变化）+ test-import（真实新版导出 1d6）都有断言");
-  else bad("v2.4.25：dieUp 的自测断言不完整");
+    testImportV201.indexOf("v2.4.26") >= 0 && testImportV201.indexOf("第一项伤害骰 = 1d6") >= 0)
+    ok("v2.4.26：test-glance2（合成 dieUp 序列 / 旧 fixture 零变化）+ test-import（真实新版导出 1d6）都有断言");
+  else bad("v2.4.26：dieUp 的自测断言不完整");
 }
 
-console.log("== v2.4.25 视口轮询重锚 + 拖动最新视口 clamp");
+console.log("== v2.4.26 视口轮询重锚 + 拖动最新视口 clamp");
 {
   const coreV202 = fs.readFileSync(path.join(ROOT, "assets", "background.core.js"), "utf8");
   const testBgV202 = fs.readFileSync(path.join(ROOT, "dev", "test-background.mjs"), "utf8");
@@ -3683,25 +3683,25 @@ console.log("== v2.4.25 视口轮询重锚 + 拖动最新视口 clamp");
     /setInterval\(function \(\) \{ void pollViewportAnchor\(\); \}, 500\)/.test(coreV202) &&
     coreV202.indexOf("function addViewportAnchorListener(") >= 0 &&
     coreV202.indexOf("OBR.viewport.onChange") < 0)
-    ok("v2.4.25：background 安装 500ms 视口轮询（installViewportAnchor / pollViewportAnchor），不再依赖不存在的 viewport.onChange");
-  else bad("v2.4.25：视口轮询 / 去 viewport.onChange 依赖不完整");
+    ok("v2.4.26：background 安装 500ms 视口轮询（installViewportAnchor / pollViewportAnchor），不再依赖不存在的 viewport.onChange");
+  else bad("v2.4.26：视口轮询 / 去 viewport.onChange 依赖不完整");
   if (coreV202.indexOf("async function reanchorButton(") >= 0 &&
     coreV202.indexOf("anchorPosition: { left: w - RIGHT_OFFSET, top: h - BOTTOM_OFFSET }") >= 0 &&
     coreV202.indexOf("按钮重定位 ") >= 0)
-    ok("v2.4.25：reanchorButton 按新视口重 open 右下角按钮（同 id+url）并打 pageLog");
-  else bad("v2.4.25：按钮重锚函数缺失 / 没有新 anchor / 没有日志");
+    ok("v2.4.26：reanchorButton 按新视口重 open 右下角按钮（同 id+url）并打 pageLog");
+  else bad("v2.4.26：按钮重锚函数缺失 / 没有新 anchor / 没有日志");
   if (coreV202.indexOf("clampInfoPos(st.drag.base.left + dx, st.drag.base.top + dy, st.drag.size, st.drag.vp)") >= 0 &&
     coreV202.indexOf("async function beginWinDrag(") >= 0 &&
     /beginWinDrag[\s\S]{0,900}?var vp = await infoViewport\(\)/.test(coreV202))
-    ok("v2.4.25：拖动 start 重新取最新视口（beginWinDrag），move 用 st.drag.vp/size clamp，不再用 st.geom.vp");
-  else bad("v2.4.25：拖动仍是旧视口快照模型");
+    ok("v2.4.26：拖动 start 重新取最新视口（beginWinDrag），move 用 st.drag.vp/size clamp，不再用 st.geom.vp");
+  else bad("v2.4.26：拖动仍是旧视口快照模型");
   if (testBgV202.indexOf("视口变化 → 浮动按钮重新 open 到新右下角") >= 0 &&
     testBgV202.indexOf("拖动 start 取最新视口") >= 0)
-    ok("v2.4.25：test-background 有按钮重锚 + 新视口向下拖断言");
-  else bad("v2.4.25：test-background 缺少按钮重锚 / 拖动新视口断言");
+    ok("v2.4.26：test-background 有按钮重锚 + 新视口向下拖断言");
+  else bad("v2.4.26：test-background 缺少按钮重锚 / 拖动新视口断言");
 }
 
-console.log("== v2.4.25 传送门（核心）");
+console.log("== v2.4.26 传送门（核心）");
 {
   const coreV210 = fs.readFileSync(path.join(ROOT, "assets", "background.core.js"), "utf8");
   const commonV210 = fs.readFileSync(path.join(ROOT, "assets", "common.js"), "utf8");
@@ -3718,34 +3718,34 @@ console.log("== v2.4.25 传送门（核心）");
     coreV210.indexOf("async function portalCreate(") >= 0 &&
     coreV210.indexOf('.layer("PROP")') >= 0 && coreV210.indexOf('.name("传送门")') >= 0 &&
     coreV210.indexOf("portalScaleFor(radius, dpi)") >= 0 && coreV210.indexOf("portalSceneDpi()") >= 0)
-    ok("v2.4.25：传送门 metadata / 工具（tool+mode 拖拽）/ 预览 / 创建 item（PROP + name + locked + scale=2r/dpi）齐全");
-  else bad("v2.4.25：传送门工具 / 预览 / 创建接线不完整");
+    ok("v2.4.26：传送门 metadata / 工具（tool+mode 拖拽）/ 预览 / 创建 item（PROP + name + locked + scale=2r/dpi）齐全");
+  else bad("v2.4.26：传送门工具 / 预览 / 创建接线不完整");
   if (coreV210.indexOf("function portalHexSpiral(") >= 0 &&
     coreV210.indexOf("function portalPlanTeleport(") >= 0 &&
     coreV210.indexOf("function portalWallSegments(") >= 0 &&
     coreV210.indexOf("PORTAL_WALL_PADDING = 8") >= 0 &&
     coreV210.indexOf("PORTAL_SUPPRESS_MS = 700") >= 0 &&
     coreV210.indexOf("it.type !== \"WALL\"") >= 0)
-    ok("v2.4.25：六边形螺旋 / 多选落点 / 原生 WALL 避让（半径+8）/ 700ms 抑制");
-  else bad("v2.4.25：螺旋 / 墙避让 / 抑制逻辑缺失");
+    ok("v2.4.26：六边形螺旋 / 多选落点 / 原生 WALL 避让（半径+8）/ 700ms 抑制");
+  else bad("v2.4.26：螺旋 / 墙避让 / 抑制逻辑缺失");
   if (coreV210.indexOf('NS + "/portal-edit"') >= 0 && /label: "编辑传送门"/.test(coreV210) &&
     /roles: \["GM"\]/.test(coreV210) &&
     coreV210.indexOf("function openPortalEdit(") >= 0 &&
     coreV210.indexOf("CH_PORTAL_SAVE") >= 0 && coreV210.indexOf("CH_PORTAL_TELEPORT") >= 0 &&
     commonV210.indexOf("KEY_PORTAL") >= 0 && commonV210.indexOf("CH_PORTAL_SAVE") >= 0)
-    ok("v2.4.25：GM 右键编辑传送门 / 保存与传送频道（common 与 background 一致）");
-  else bad("v2.4.25：编辑窗入口 / 频道常量不完整");
+    ok("v2.4.26：GM 右键编辑传送门 / 保存与传送频道（common 与 background 一致）");
+  else bad("v2.4.26：编辑窗入口 / 频道常量不完整");
   if (svgV210.indexOf("<svg") >= 0 && svgV210.indexOf("radialGradient") >= 0 &&
     svgV210.indexOf('href="http') < 0 && svgV210.indexOf("image/") < 0)
-    ok("v2.4.25：assets/portal.svg 是自绘矢量（无外链图片 / 非 GPL 素材）");
-  else bad("v2.4.25：portal.svg 缺失或不像是自绘");
+    ok("v2.4.26：assets/portal.svg 是自绘矢量（无外链图片 / 非 GPL 素材）");
+  else bad("v2.4.26：portal.svg 缺失或不像是自绘");
   if (testPortalV210.indexOf("portalPlanTeleport") >= 0 && testPortalV210.indexOf("PORTAL_SUPPRESS_MS") >= 0 &&
     selfV210.indexOf("dev/test-portal.mjs") >= 0)
-    ok("v2.4.25：test-portal.mjs 存在且已加入 selftest");
-  else bad("v2.4.25：test-portal 未接入 selftest");
+    ok("v2.4.26：test-portal.mjs 存在且已加入 selftest");
+  else bad("v2.4.26：test-portal 未接入 selftest");
 }
 
-console.log("== v2.4.25 修传送门工具选不中（onClick 必须返回真值）");
+console.log("== v2.4.26 修传送门工具选不中（onClick 必须返回真值）");
 {
   const coreFix = fs.readFileSync(path.join(ROOT, "assets", "background.core.js"), "utf8");
   const testPortalFix = fs.readFileSync(path.join(ROOT, "dev", "test-portal.mjs"), "utf8");
@@ -3759,36 +3759,36 @@ console.log("== v2.4.25 修传送门工具选不中（onClick 必须返回真值
     /await OBR\.tool\.activateTool\(TOOL_PORTAL_ID\)/.test(fnFix) &&
     /return false;/.test(fnFix) && !/return true;/.test(fnFix) &&
     fnFix.indexOf("activateMode(TOOL_PORTAL_ID, TOOL_PORTAL_MODE_ID)") >= 0)
-    ok("v2.4.25：Full Suite 对齐 —— GM-only、tool→mode、无 preventDrag、onClick activateTool+return false、activateMode 兜底");
-  else bad("v2.4.25：传送门工具 Full Suite 对齐未完成");
+    ok("v2.4.26：Full Suite 对齐 —— GM-only、tool→mode、无 preventDrag、onClick activateTool+return false、activateMode 兜底");
+  else bad("v2.4.26：传送门工具 Full Suite 对齐未完成");
   if (coreFix.indexOf("传送门 dragStart p=") >= 0 && coreFix.indexOf("传送门 dragMove r=") >= 0 &&
     coreFix.indexOf("传送门 dragEnd r=") >= 0 && coreFix.indexOf("preview add ok") >= 0 &&
     coreFix.indexOf("preview update ok") >= 0 && coreFix.indexOf("preview remove ok") >= 0 &&
     coreFix.indexOf("getActiveTool=") >= 0 && fnFix.indexOf("onToolDown") >= 0)
-    ok("v2.4.25：dragStart/Move/End + preview + activeTool 诊断日志 / down·move·up 兜底齐全");
-  else bad("v2.4.25：drag/preview/active 诊断或 down/up 兜底缺失");
+    ok("v2.4.26：dragStart/Move/End + preview + activeTool 诊断日志 / down·move·up 兜底齐全");
+  else bad("v2.4.26：drag/preview/active 诊断或 down/up 兜底缺失");
   if (testPortalFix.indexOf("①b 注册顺序") >= 0 &&
     testPortalFix.indexOf("先 create tool 再 createMode") >= 0 &&
     testPortalFix.indexOf("Full Suite 同款 GM-only") >= 0 &&
     testPortalFix.indexOf("无 preventDrag") >= 0)
-    ok("v2.4.25：test-portal 有 GM-only / tool→mode / 无 preventDrag / 双路径断言");
-  else bad("v2.4.25：test-portal 缺少工具点击回归断言");
+    ok("v2.4.26：test-portal 有 GM-only / tool→mode / 无 preventDrag / 双路径断言");
+  else bad("v2.4.26：test-portal 缺少工具点击回归断言");
 }
 
-console.log("== v2.4.25 mode 失败日志 / 工具栏数量日志");
+console.log("== v2.4.26 mode 失败日志 / 工具栏数量日志");
 {
   const coreLog = fs.readFileSync(path.join(ROOT, "assets", "background.core.js"), "utf8");
   if (/function errText\(e\)[\s\S]{0,260}?JSON\.stringify\(e\)/.test(coreLog) &&
     coreLog.indexOf("传送门 mode 创建失败：\" + errText(e)") >= 0 &&
     coreLog.indexOf("传送门 mode 创建失败（重试后）：\" + errText(e3)") >= 0)
-    ok("v2.4.25：errText 对无 message 的对象会 JSON.stringify；mode 创建失败日志用 errText（不再 [object Object]）");
-  else bad("v2.4.25：mode 失败日志仍可能输出 [object Object]");
+    ok("v2.4.26：errText 对无 message 的对象会 JSON.stringify；mode 创建失败日志用 errText（不再 [object Object]）");
+  else bad("v2.4.26：mode 失败日志仍可能输出 [object Object]");
   if (coreLog.indexOf('"注册工具栏按钮 (OBR.tool.create ×4)"') >= 0)
-    ok("v2.4.25：启动日志工具数量 ×3（角色卡 / 先攻 / 传送门）");
-  else bad("v2.4.25：启动日志工具数量不是 ×3");
+    ok("v2.4.26：启动日志工具数量 ×3（角色卡 / 先攻 / 传送门）");
+  else bad("v2.4.26：启动日志工具数量不是 ×3");
 }
 
-console.log("== v2.4.25 传送门编辑入口（GM 选中自动打开 / 右键 filter 修复）");
+console.log("== v2.4.26 传送门编辑入口（GM 选中自动打开 / 右键 filter 修复）");
 {
   const coreEdit = fs.readFileSync(path.join(ROOT, "assets", "background.core.js"), "utf8");
   const testEdit = fs.readFileSync(path.join(ROOT, "dev", "test-portal.mjs"), "utf8");
@@ -3801,30 +3801,30 @@ console.log("== v2.4.25 传送门编辑入口（GM 选中自动打开 / 右键 f
     coreEdit.indexOf("传送门 编辑窗关闭（用户关闭）") >= 0 &&
     coreEdit.indexOf("CH_PORTAL_EDIT_CLOSE") >= 0 && coreEdit.indexOf("closedByUser") >= 0 &&
     coreEdit.indexOf("portalEditItemId === id") >= 0)
-    ok("v2.4.25：GM 选中单枚门自动开编辑窗（同 id 去重、空选中保持、切换、用户关闭后可重开、诊断日志）");
-  else bad("v2.4.25：GM 选中自动编辑逻辑不完整");
+    ok("v2.4.26：GM 选中单枚门自动开编辑窗（同 id 去重、空选中保持、切换、用户关闭后可重开、诊断日志）");
+  else bad("v2.4.26：GM 选中自动编辑逻辑不完整");
   const menuSrc = coreEdit.slice(coreEdit.indexOf('id: NS + "/portal-edit"'), coreEdit.indexOf("async function syncPortalEditFromSelection"));
   if (menuSrc.indexOf("some:") < 0 && menuSrc.indexOf('value: true') < 0 &&
     coreEdit.indexOf("右键编辑 role=GM 是否门=") >= 0 &&
     coreEdit.indexOf("这枚不是传送门") >= 0)
-    ok("v2.4.25：右键菜单 filter 不再按 metadata 值相等；onClick 守卫「是否门」并提示");
-  else bad("v2.4.25：右键菜单 filter / onClick 守卫没修");
+    ok("v2.4.26：右键菜单 filter 不再按 metadata 值相等；onClick 守卫「是否门」并提示");
+  else bad("v2.4.26：右键菜单 filter / onClick 守卫没修");
   if (coreEdit.indexOf("portalEdit: { id: ID_PORTAL_EDIT") >= 0 &&
     coreEdit.indexOf('await openWin("portalEdit"') >= 0 &&
     coreEdit.indexOf("WINS.portalEdit") < 0 &&
     fs.readFileSync(path.join(ROOT, "portal-edit.html"), "utf8").indexOf('class="win-head"') >= 0 &&
     fs.readFileSync(path.join(ROOT, "assets", "portal-page.js"), "utf8").indexOf('createWindow({ name: "portalEdit"') >= 0)
-    ok("v2.4.25：编辑窗注册进 WINS（portalEdit / 360×420）并走 openWin（可拖动 / 位置记忆 / reclamp）");
-  else bad("v2.4.25：编辑窗没有接进窗口框架");
+    ok("v2.4.26：编辑窗注册进 WINS（portalEdit / 360×420）并走 openWin（可拖动 / 位置记忆 / reclamp）");
+  else bad("v2.4.26：编辑窗没有接进窗口框架");
   if (testEdit.indexOf("①c GM 选中单枚传送门") >= 0 &&
     testEdit.indexOf("同一枚门重复触发 selection") >= 0 &&
     testEdit.indexOf("保持编辑窗") >= 0 &&
     testEdit.indexOf("用户关闭后再次选中同一门") >= 0)
-    ok("v2.4.25：test-portal 有自动编辑 / 去重 / 空选中保持 / 用户关闭后重开断言");
-  else bad("v2.4.25：test-portal 缺少自动编辑断言");
+    ok("v2.4.26：test-portal 有自动编辑 / 去重 / 空选中保持 / 用户关闭后重开断言");
+  else bad("v2.4.26：test-portal 缺少自动编辑断言");
 }
 
-console.log("== v2.4.25 传送门预览残留 / 手势去重");
+console.log("== v2.4.26 传送门预览残留 / 手势去重");
 {
   const corePrev = fs.readFileSync(path.join(ROOT, "assets", "background.core.js"), "utf8");
   const testPrev = fs.readFileSync(path.join(ROOT, "dev", "test-portal.mjs"), "utf8");
@@ -3835,22 +3835,22 @@ console.log("== v2.4.25 传送门预览残留 / 手势去重");
     corePrev.indexOf("portalClearPreviewResidue(\"boot\")") >= 0 &&
     corePrev.indexOf("portalClearPreviewResidue(\"start\")") >= 0 &&
     corePrev.indexOf("portalClearPreviewResidue(\"create\")") >= 0)
-    ok("v2.4.25：预览残留按 PORTAL_PREVIEW_TAG 清扫（启动 / 每次开始 / 创建成功后）");
-  else bad("v2.4.25：预览残留清理不完整");
+    ok("v2.4.26：预览残留按 PORTAL_PREVIEW_TAG 清扫（启动 / 每次开始 / 创建成功后）");
+  else bad("v2.4.26：预览残留清理不完整");
   if (corePrev.indexOf("portalFinishedGesture") >= 0 &&
     corePrev.indexOf("preview skip（已处理）") >= 0 &&
     corePrev.indexOf("portal create gesture=") >= 0 &&
     corePrev.indexOf("portalGestureId") >= 0)
-    ok("v2.4.25：同一手势只创建一次（portalFinishedGesture 去重 + 手势诊断日志）");
-  else bad("v2.4.25：手势去重缺失");
+    ok("v2.4.26：同一手势只创建一次（portalFinishedGesture 去重 + 手势诊断日志）");
+  else bad("v2.4.26：手势去重缺失");
   if (testPrev.indexOf("①d 启动/预览前清扫") >= 0 &&
     testPrev.indexOf("同一手势 dragEnd + toolUp") >= 0 &&
     testPrev.indexOf("创建成功后再次清扫预览") >= 0)
-    ok("v2.4.25：test-portal 有残留清扫 / 单手势去重断言");
-  else bad("v2.4.25：test-portal 缺少预览/手势断言");
+    ok("v2.4.26：test-portal 有残留清扫 / 单手势去重断言");
+  else bad("v2.4.26：test-portal 缺少预览/手势断言");
 }
 
-console.log("== v2.4.25 传送门创建验证 / 生命周期诊断");
+console.log("== v2.4.26 传送门创建验证 / 生命周期诊断");
 {
   const coreLife = fs.readFileSync(path.join(ROOT, "assets", "background.core.js"), "utf8");
   const testLife = fs.readFileSync(path.join(ROOT, "dev", "test-portal.mjs"), "utf8");
@@ -3858,15 +3858,15 @@ console.log("== v2.4.25 传送门创建验证 / 生命周期诊断");
     coreLife.indexOf("portalLifecycleSync") >= 0 &&
     coreLife.indexOf("portal added id=") >= 0 && coreLife.indexOf("portal removed id=") >= 0 &&
     coreLife.indexOf("portal hidden id=") >= 0 && coreLife.indexOf("portal lifecycle seed n=") >= 0)
-    ok("v2.4.25：创建后 getItems 验证 + onChange 生命周期日志（seed/added/removed/hidden）");
-  else bad("v2.4.25：创建验证 / 生命周期诊断缺失");
+    ok("v2.4.26：创建后 getItems 验证 + onChange 生命周期日志（seed/added/removed/hidden）");
+  else bad("v2.4.26：创建验证 / 生命周期诊断缺失");
   if (coreLife.indexOf("scene.items.deleteItems") < 0 && coreLife.indexOf("items.remove(") < 0 &&
     testLife.indexOf("①e 创建后立即 getItems 验证") >= 0)
-    ok("v2.4.25：后台没有删 scene item 的代码；test-portal 有诊断断言");
-  else bad("v2.4.25：存在 scene item 删除代码 / 缺少测试断言");
+    ok("v2.4.26：后台没有删 scene item 的代码；test-portal 有诊断断言");
+  else bad("v2.4.26：存在 scene item 删除代码 / 缺少测试断言");
 }
 
-console.log("== v2.4.25 传送门 position 只传干净 {x,y}");
+console.log("== v2.4.26 传送门 position 只传干净 {x,y}");
 {
   const corePos = fs.readFileSync(path.join(ROOT, "assets", "background.core.js"), "utf8");
   const testPos = fs.readFileSync(path.join(ROOT, "dev", "test-portal.mjs"), "utf8");
@@ -3874,33 +3874,33 @@ console.log("== v2.4.25 传送门 position 只传干净 {x,y}");
     corePos.indexOf("var cx = Number(center && center.x);") >= 0 &&
     corePos.indexOf("var center = { x: portalDragStart.x, y: portalDragStart.y };") >= 0 &&
     corePos.indexOf("center=") >= 0 && corePos.indexOf("test gesture") < 0)
-    ok("v2.4.25：portalImageItem 的 position 只传 {x,y}；dragFinish 从 gesture 对象剥出 center；日志带 center");
-  else bad("v2.4.25：position 仍可能带 gesture / 未剥离 center");
+    ok("v2.4.26：portalImageItem 的 position 只传 {x,y}；dragFinish 从 gesture 对象剥出 center；日志带 center");
+  else bad("v2.4.26：position 仍可能带 gesture / 未剥离 center");
   if (testPos.indexOf("①f portalImageItem 只把 {x,y} 传给 position") >= 0)
-    ok("v2.4.25：test-portal 有干净 position 断言");
-  else bad("v2.4.25：缺少 position 回归断言");
+    ok("v2.4.26：test-portal 有干净 position 断言");
+  else bad("v2.4.26：缺少 position 回归断言");
 }
 
-console.log("== v2.4.25 模块语法检查（防 import/本地重名白屏）");
+console.log("== v2.4.26 模块语法检查（防 import/本地重名白屏）");
 {
   const selfSyn = fs.readFileSync(path.join(ROOT, "dev", "selftest.mjs"), "utf8");
   const stepCount = (selfSyn.match(/"dev\/[^"]+\.mjs"/g) || []).length;
   if (fs.existsSync(path.join(ROOT, "dev", "check-syntax.mjs")) &&
     selfSyn.indexOf("dev/check-syntax.mjs") >= 0 && stepCount === 10)
-    ok("v2.4.25：selftest 10 步（新增 check-syntax.mjs 模块语法检查）");
-  else bad("v2.4.25：selftest 步骤数不是 10 / 未接 check-syntax：" + stepCount);
+    ok("v2.4.26：selftest 10 步（新增 check-syntax.mjs 模块语法检查）");
+  else bad("v2.4.26：selftest 步骤数不是 10 / 未接 check-syntax：" + stepCount);
   const synSrc = fs.readFileSync(path.join(ROOT, "dev", "check-syntax.mjs"), "utf8");
   if (synSrc.indexOf("vm.SourceTextModule") >= 0 && synSrc.indexOf('".js"') >= 0 &&
     synSrc.indexOf("experimental-vm-modules") >= 0)
-    ok("v2.4.25：check-syntax 用 vm.SourceTextModule 按 ESM 解析 assets/*.js");
-  else bad("v2.4.25：check-syntax 实现不完整");
+    ok("v2.4.26：check-syntax 用 vm.SourceTextModule 按 ESM 解析 assets/*.js");
+  else bad("v2.4.26：check-syntax 实现不完整");
   const pageFix = fs.readFileSync(path.join(ROOT, "assets", "portal-page.js"), "utf8");
   if (pageFix.indexOf("function closeSelf(") < 0 && pageFix.indexOf("closePortalEdit") >= 0)
-    ok("v2.4.25：portal-page.js 本地关闭函数改名（不与 import closeSelf 重名）");
-  else bad("v2.4.25：portal-page.js 仍有 closeSelf 重复声明");
+    ok("v2.4.26：portal-page.js 本地关闭函数改名（不与 import closeSelf 重名）");
+  else bad("v2.4.26：portal-page.js 仍有 closeSelf 重复声明");
 }
 
-console.log("== v2.4.25 传送门半径 ↔ 显示大小双向同步");
+console.log("== v2.4.26 传送门半径 ↔ 显示大小双向同步");
 {
   const coreSync = fs.readFileSync(path.join(ROOT, "assets", "background.core.js"), "utf8");
   const testSync = fs.readFileSync(path.join(ROOT, "dev", "test-portal.mjs"), "utf8");
@@ -3910,27 +3910,27 @@ console.log("== v2.4.25 传送门半径 ↔ 显示大小双向同步");
     coreSync.indexOf("portalRadiusInflight") >= 0 &&
     coreSync.indexOf("portal radius sync scale=") >= 0 &&
     coreSync.indexOf('role !== "GM"') >= 0)
-    ok("v2.4.25：onChange 缩放 → radius 同步（GM-only / inflight 防循环 / 日志）");
-  else bad("v2.4.25：缩放 → radius 同步缺失");
+    ok("v2.4.26：onChange 缩放 → radius 同步（GM-only / inflight 防循环 / 日志）");
+  else bad("v2.4.26：缩放 → radius 同步缺失");
   if (coreSync.indexOf("portalRadiusFromScale(drafts[i].scale, saveDpi)") >= 0 &&
     coreSync.indexOf("portalScaleFor(r, saveDpi)") >= 0 &&
     coreSync.indexOf("var PORTAL_EDIT_H = 430;") >= 0)
-    ok("v2.4.25：编辑窗保存从 item.scale 反算 radius（表单不再覆盖），窗口高度 430");
-  else bad("v2.4.25：编辑窗保存仍从表单取 radius / 高度没改");
+    ok("v2.4.26：编辑窗保存从 item.scale 反算 radius（表单不再覆盖），窗口高度 430");
+  else bad("v2.4.26：编辑窗保存仍从表单取 radius / 高度没改");
   if (testSync.indexOf("①h portalRadiusFromScale") >= 0 &&
     testSync.indexOf("①h onChange 缩放同步") >= 0 &&
     testSync.indexOf("①h 编辑窗保存") >= 0 &&
     testSync.indexOf("①i 编辑窗已去掉半径输入") >= 0)
-    ok("v2.4.25：test-portal 有 radius/scale 双向同步 + 去掉半径输入断言");
-  else bad("v2.4.25：test-portal 缺少半径/缩放同步或去半径断言");
+    ok("v2.4.26：test-portal 有 radius/scale 双向同步 + 去掉半径输入断言");
+  else bad("v2.4.26：test-portal 缺少半径/缩放同步或去半径断言");
   const pageNoRadius = fs.readFileSync(path.join(ROOT, "assets", "portal-page.js"), "utf8");
   const htmlNoRadius = fs.readFileSync(path.join(ROOT, "portal-edit.html"), "utf8");
   if (htmlNoRadius.indexOf("pe-radius") < 0 && pageNoRadius.indexOf("els.radius") < 0)
-    ok("v2.4.25：编辑窗 HTML/页面都不再含 pe-radius / els.radius");
-  else bad("v2.4.25：编辑窗仍有半径输入残留");
+    ok("v2.4.26：编辑窗 HTML/页面都不再含 pe-radius / els.radius");
+  else bad("v2.4.26：编辑窗仍有半径输入残留");
 }
 
-console.log("== v2.4.25 传送落点/冷却不重复触发（轻量版）");
+console.log("== v2.4.26 传送落点/冷却不重复触发（轻量版）");
 {
   const coreCd = fs.readFileSync(path.join(ROOT, "assets", "background.core.js"), "utf8");
   const testCd = fs.readFileSync(path.join(ROOT, "dev", "test-portal.mjs"), "utf8");
@@ -3938,20 +3938,20 @@ console.log("== v2.4.25 传送落点/冷却不重复触发（轻量版）");
     coreCd.indexOf("portal skip（传送落点未再变化）") >= 0 &&
     coreCd.indexOf("portal skip（冷却）") >= 0 &&
     coreCd.indexOf("portalInsideState") < 0)
-    ok("v2.4.25：传送后 700ms 冷却 + 写入 position 那轮跳过 + 落点记录（无全局「先离开再进入」门控）");
-  else bad("v2.4.25：冷却/落点记录/写入跳过接线不对");
+    ok("v2.4.26：传送后 700ms 冷却 + 写入 position 那轮跳过 + 落点记录（无全局「先离开再进入」门控）");
+  else bad("v2.4.26：冷却/落点记录/写入跳过接线不对");
   if (coreCd.indexOf("PORTAL_SUPPRESS_MS = 700") >= 0 &&
     coreCd.indexOf("portalSuppressUntil = Date.now() + PORTAL_SUPPRESS_MS") >= 0)
-    ok("v2.4.25：PORTAL_SUPPRESS_MS=700 并在传送后设置");
-  else bad("v2.4.25：700ms 冷却缺失");
+    ok("v2.4.26：PORTAL_SUPPRESS_MS=700 并在传送后设置");
+  else bad("v2.4.26：700ms 冷却缺失");
   if (testCd.indexOf("①j 传送写入 position 后的第一轮 onChange 不触发") >= 0 &&
     testCd.indexOf("①j 手动再次拖入（位置变化）→ 正常触发") >= 0 &&
     testCd.indexOf("①j 传送后 700ms 内位置变化 → 冷却期内不触发") >= 0)
-    ok("v2.4.25：test-portal 有落点不触发 / 手动再次拖入触发 / 700ms 冷却断言");
-  else bad("v2.4.25：test-portal 缺少冷却/落点断言");
+    ok("v2.4.26：test-portal 有落点不触发 / 手动再次拖入触发 / 700ms 冷却断言");
+  else bad("v2.4.26：test-portal 缺少冷却/落点断言");
 }
 
-console.log("== v2.4.25 目的地选择窗可拖动");
+console.log("== v2.4.26 目的地选择窗可拖动");
 {
   const coreDest = fs.readFileSync(path.join(ROOT, "assets", "background.core.js"), "utf8");
   const destPage = fs.readFileSync(path.join(ROOT, "assets", "portal-dest-page.js"), "utf8");
@@ -3960,19 +3960,19 @@ console.log("== v2.4.25 目的地选择窗可拖动");
     coreDest.indexOf("async function openDestinationPopover(") >= 0 &&
     coreDest.indexOf('openWin("portalDest"') >= 0 &&
     coreDest.indexOf("PORTAL_DEST_W") >= 0 && coreDest.indexOf("PORTAL_DEST_H") >= 0)
-    ok("v2.4.25：WINS.portalDest（360×320）+ openDestinationPopover 走 openWin");
-  else bad("v2.4.25：目的地窗未注册 / 未走 openWin");
+    ok("v2.4.26：WINS.portalDest（360×320）+ openDestinationPopover 走 openWin");
+  else bad("v2.4.26：目的地窗未注册 / 未走 openWin");
   if (destHtml.indexOf('class="win-head"') >= 0 && destPage.indexOf('createWindow({ name: "portalDest"') >= 0 &&
     destPage.indexOf('closeSelf(ID_PORTAL_DEST, "portalDest")') >= 0)
-    ok("v2.4.25：portal-dest 页面 windowize（.win-head / createWindow / closeSelf）");
-  else bad("v2.4.25：portal-dest 页面未 windowize");
+    ok("v2.4.26：portal-dest 页面 windowize（.win-head / createWindow / closeSelf）");
+  else bad("v2.4.26：portal-dest 页面未 windowize");
   if (coreDest.indexOf("openDestinationPopover(origin.portal.itemId, tokenIds)") >= 0 &&
     fs.readFileSync(path.join(ROOT, "dev", "test-portal.mjs"), "utf8").indexOf("①k 目的地选择窗接进窗口框架") >= 0)
-    ok("v2.4.25：检测→目的地窗调用已接入 + test-portal 断言");
-  else bad("v2.4.25：目的地打开调用 / 测试断言缺失");
+    ok("v2.4.26：检测→目的地窗调用已接入 + test-portal 断言");
+  else bad("v2.4.26：目的地打开调用 / 测试断言缺失");
 }
 
-console.log("== v2.4.25 窗口页 HTML 防缓存（统一 v=）");
+console.log("== v2.4.26 窗口页 HTML 防缓存（统一 v=）");
 {
   const coreVer = fs.readFileSync(path.join(ROOT, "assets", "background.core.js"), "utf8");
   const testVer = fs.readFileSync(path.join(ROOT, "dev", "test-portal.mjs"), "utf8");
@@ -3980,32 +3980,32 @@ console.log("== v2.4.25 窗口页 HTML 防缓存（统一 v=）");
     coreVer.indexOf("var url = withWindowVersion(") >= 0 &&
     coreVer.indexOf("encodeURIComponent(PLUGIN_VERSION)") >= 0 &&
     coreVer.indexOf("openDestinationPopover(origin.portal.itemId, tokenIds)") >= 0)
-    ok("v2.4.25：openWin 统一补 ?v=PLUGIN_VERSION（目的地/编辑窗 HTML 不再吃旧缓存）");
-  else bad("v2.4.25：窗口 URL 版本参数未统一");
+    ok("v2.4.26：openWin 统一补 ?v=PLUGIN_VERSION（目的地/编辑窗 HTML 不再吃旧缓存）");
+  else bad("v2.4.26：窗口 URL 版本参数未统一");
   if (testVer.indexOf("①l 窗口 URL 统一补 v=") >= 0)
-    ok("v2.4.25：test-portal 有 withWindowVersion 断言");
-  else bad("v2.4.25：缺少窗口 URL 版本断言");
+    ok("v2.4.26：test-portal 有 withWindowVersion 断言");
+  else bad("v2.4.26：缺少窗口 URL 版本断言");
 }
 
-console.log("== v2.4.25 目的地窗布局（380 高 / 列表可滚 / 底栏固定 / 无内层框）");
+console.log("== v2.4.26 目的地窗布局（380 高 / 列表可滚 / 底栏固定 / 无内层框）");
 {
   const coreDl = fs.readFileSync(path.join(ROOT, "assets", "background.core.js"), "utf8");
   const destDl = fs.readFileSync(path.join(ROOT, "portal-dest.html"), "utf8");
   if (coreDl.indexOf("var PORTAL_DEST_H = 380;") >= 0 &&
     coreDl.indexOf("portalDest: { id: ID_PORTAL_DEST") >= 0)
-    ok("v2.4.25：PORTAL_DEST_H=380（WINS.portalDest 同步）");
-  else bad("v2.4.25：目的地窗高度不是 380");
+    ok("v2.4.26：PORTAL_DEST_H=380（WINS.portalDest 同步）");
+  else bad("v2.4.26：目的地窗高度不是 380");
   if (destDl.indexOf("border: 0; background: transparent; border-radius: 0; box-shadow: none") >= 0 &&
     destDl.indexOf("border-bottom: 1px solid var(--line)") >= 0 &&
     destDl.indexOf('class="dest-list"') >= 0 && destDl.indexOf('class="dest-foot"') >= 0 &&
     /\.dest-list \{[^}]*overflow-y: auto/.test(destDl) &&
     /\.dest-foot \{[^}]*flex: 0 0 auto/.test(destDl) &&
     !/\.dest-foot \{[^}]*position: absolute/.test(destDl))
-    ok("v2.4.25：dest-list 可滚动 / dest-foot 固定（非 absolute）；标题栏 + 列表 + 底栏不裁切");
-  else bad("v2.4.25：目的地窗布局仍可能裁切");
+    ok("v2.4.26：dest-list 可滚动 / dest-foot 固定（非 absolute）；标题栏 + 列表 + 底栏不裁切");
+  else bad("v2.4.26：目的地窗布局仍可能裁切");
 }
 
-console.log("== v2.4.25 目的地窗防重 / 清残留");
+console.log("== v2.4.26 目的地窗防重 / 清残留");
 {
   const coreDf = fs.readFileSync(path.join(ROOT, "assets", "background.core.js"), "utf8");
   const testDf = fs.readFileSync(path.join(ROOT, "dev", "test-portal.mjs"), "utf8");
@@ -4014,32 +4014,32 @@ console.log("== v2.4.25 目的地窗防重 / 清残留");
     coreDf.indexOf("portalOldDestId") >= 0 &&
     coreDf.indexOf("清理旧传送门窗口残留（boot）") >= 0 &&
     coreDf.indexOf("portalDestLastKey") >= 0 && coreDf.indexOf("500ms 内重复触发") >= 0)
-    ok("v2.4.25：目的地窗并发锁 / 旧 id 清理 / boot 清理 / 500ms 触发去重");
-  else bad("v2.4.25：目的地窗防重或清残留缺失");
+    ok("v2.4.26：目的地窗并发锁 / 旧 id 清理 / boot 清理 / 500ms 触发去重");
+  else bad("v2.4.26：目的地窗防重或清残留缺失");
   if (testDf.indexOf("①n openDestinationPopover 并发两次只打开一次") >= 0 &&
     testDf.indexOf("①n boot 清理旧 id") >= 0)
-    ok("v2.4.25：test-portal 有并发防重 / 清残留断言");
-  else bad("v2.4.25：缺少目的地窗防重断言");
+    ok("v2.4.26：test-portal 有并发防重 / 清残留断言");
+  else bad("v2.4.26：缺少目的地窗防重断言");
 }
 
-console.log("== v2.4.25 传送门进阶（隐形门 / 成对创建）");
+console.log("== v2.4.26 传送门进阶（隐形门 / 成对创建）");
 {
   const coreAdv = fs.readFileSync(path.join(ROOT, "assets", "background.core.js"), "utf8");
   const testAdv = fs.readFileSync(path.join(ROOT, "dev", "test-portal.mjs"), "utf8");
   if (coreAdv.indexOf("PORTAL_GHOST_TAG") >= 0 && coreAdv.indexOf("async function portalGhostSync(") >= 0 &&
     coreAdv.indexOf(".opacity(0.45)") >= 0 && coreAdv.indexOf("portalDestinations(allPortals") >= 0)
-    ok("v2.4.25：隐形门 GM ghost（opacity 0.45 / 签名重建清理）；入口只认 visible、目的地保留隐形门");
-  else bad("v2.4.25：隐形门 / ghost 不完整");
+    ok("v2.4.26：隐形门 GM ghost（opacity 0.45 / 签名重建清理）；入口只认 visible、目的地保留隐形门");
+  else bad("v2.4.26：隐形门 / ghost 不完整");
   if (coreAdv.indexOf("TOOL_PORTAL_PAIR_MODE_ID") >= 0 && coreAdv.indexOf("portal pair first=") >= 0 &&
     coreAdv.indexOf("portal pair create tag=") >= 0 && coreAdv.indexOf("async function portalPairCreate(") >= 0)
-    ok("v2.4.25：成对创建 mode（点两处 / 同 tag / A·B）");
-  else bad("v2.4.25：pair mode 缺失");
+    ok("v2.4.26：成对创建 mode（点两处 / 同 tag / A·B）");
+  else bad("v2.4.26：pair mode 缺失");
   if (testAdv.indexOf("①o 隐形门仍出现在目的地") >= 0 && testAdv.indexOf("①q pair create 两个门") >= 0)
-    ok("v2.4.25：test-portal 有隐形门 / 成对创建断言");
-  else bad("v2.4.25：test-portal 缺 v2.2 断言");
+    ok("v2.4.26：test-portal 有隐形门 / 成对创建断言");
+  else bad("v2.4.26：test-portal 缺 v2.2 断言");
 }
 
-console.log("== v2.4.25 传送动画已整体移除");
+console.log("== v2.4.26 传送动画已整体移除");
 {
   const coreFx = fs.readFileSync(path.join(ROOT, "assets", "background.core.js"), "utf8");
   const testFx = fs.readFileSync(path.join(ROOT, "dev", "test-portal.mjs"), "utf8");
@@ -4049,18 +4049,18 @@ console.log("== v2.4.25 传送动画已整体移除");
     coreFx.indexOf("portalPlayFx") < 0 && coreFx.indexOf("CH_PORTAL_FX") < 0 &&
     coreFx.indexOf("PORTAL_FX_MS") < 0 && coreFx.indexOf("portalEffectFor") < 0 &&
     coreFx.indexOf("prefers-reduced-motion") < 0)
-    ok("v2.4.25：动画页面/函数/频道/常量/effect 逻辑全部移除（传送完全无动画）");
-  else bad("v2.4.25：动画仍有残留");
+    ok("v2.4.26：动画页面/函数/频道/常量/effect 逻辑全部移除（传送完全无动画）");
+  else bad("v2.4.26：动画仍有残留");
   if (editFx.indexOf("pe-effect") < 0 && editFx.indexOf("blink") < 0 &&
     editFx.indexOf("inherit") < 0 && pageFx.indexOf("effect") < 0)
-    ok("v2.4.25：编辑窗无传送效果下拉 / effect 字段");
-  else bad("v2.4.25：编辑窗仍有 effect 残留");
+    ok("v2.4.26：编辑窗无传送效果下拉 / effect 字段");
+  else bad("v2.4.26：编辑窗仍有 effect 残留");
   if (testFx.indexOf("①p 传送动画已整体移除") >= 0 && testFx.indexOf("①r 已无 fx 播放入口") >= 0)
-    ok("v2.4.25：test-portal 有「动画已移除」断言");
-  else bad("v2.4.25：缺动画移除断言");
+    ok("v2.4.26：test-portal 有「动画已移除」断言");
+  else bad("v2.4.26：缺动画移除断言");
 }
 
-console.log("== v2.4.25 传送门图标换成用户 PNG");
+console.log("== v2.4.26 传送门图标换成用户 PNG");
 {
   const coreIcon = fs.readFileSync(path.join(ROOT, "assets", "background.core.js"), "utf8");
   const pngPath = path.join(ROOT, "assets", "portal.png");
@@ -4068,18 +4068,18 @@ console.log("== v2.4.25 传送门图标换成用户 PNG");
     const b = fs.readFileSync(pngPath);
     const w = b.readUInt32BE(16), h = b.readUInt32BE(20), colorType = b[25];
     if (w === 150 && h === 150 && colorType === 6)
-      ok("v2.4.25：assets/portal.png 150×150 RGBA");
-    else bad("v2.4.25：portal.png 尺寸/格式不对：" + JSON.stringify({ w, h, colorType }));
-  } else bad("v2.4.25：缺少 assets/portal.png");
+      ok("v2.4.26：assets/portal.png 150×150 RGBA");
+    else bad("v2.4.26：portal.png 尺寸/格式不对：" + JSON.stringify({ w, h, colorType }));
+  } else bad("v2.4.26：缺少 assets/portal.png");
   if (coreIcon.indexOf('pageUrl("assets/portal.png") + "?v=" + PLUGIN_VERSION') >= 0 &&
     coreIcon.indexOf('mime: "image/png"') >= 0 &&
     coreIcon.indexOf("{ width: 150, height: 150, url: PORTAL_ICON_URL") >= 0 &&
     coreIcon.indexOf("{ dpi: 150, offset: { x: 75, y: 75 } }") >= 0)
-    ok("v2.4.25：item/预览/ghost 统一用 portal.png（150/dpi150/offset75），scale 仍=2r/dpi");
-  else bad("v2.4.25：图标接线不完整");
+    ok("v2.4.26：item/预览/ghost 统一用 portal.png（150/dpi150/offset75），scale 仍=2r/dpi");
+  else bad("v2.4.26：图标接线不完整");
 }
 
-console.log("== v2.4.25 工具栏精简 / 浮动按钮改设置");
+console.log("== v2.4.26 工具栏精简 / 浮动按钮改设置");
 {
   const coreUi = fs.readFileSync(path.join(ROOT, "assets", "background.core.js"), "utf8");
   const btnHtml = fs.readFileSync(path.join(ROOT, "button.html"), "utf8");
@@ -4088,96 +4088,96 @@ console.log("== v2.4.25 工具栏精简 / 浮动按钮改设置");
   if (!/registerOneTool\(\{[\s\S]{0,240}?id: TOOL_GLANCE_ID/.test(coreUi) &&
     !/registerOneTool\(\{[\s\S]{0,240}?id: TOOL_SETTINGS_ID/.test(coreUi) &&
     coreUi.indexOf('"注册工具栏按钮 (OBR.tool.create ×4)"') >= 0)
-    ok("v2.4.25：工具栏=角色卡 / 先攻 / 传送门 / 骰子（无速览 / 设置工具，启动日志 ×4）");
-  else bad("v2.4.25：工具栏精简不彻底");
+    ok("v2.4.26：工具栏=角色卡 / 先攻 / 传送门 / 骰子（无速览 / 设置工具，启动日志 ×4）");
+  else bad("v2.4.26：工具栏精简不彻底");
   if (btnHtml.indexOf("设置") >= 0 && btnHtml.indexOf("<svg") >= 0 &&
     btnHtml.indexOf("打开 4eNEXT to owlbear 设置") >= 0 && btnHtml.indexOf("4E") < 0)
-    ok("v2.4.25：浮动按钮 = 齿轮 SVG + 「设置」");
-  else bad("v2.4.25：浮动按钮内容没改");
+    ok("v2.4.26：浮动按钮 = 齿轮 SVG + 「设置」");
+  else bad("v2.4.26：浮动按钮内容没改");
   if (btnJs.indexOf("CH_OPEN_SETTINGS") >= 0 && btnJs.indexOf("ID_PANEL") < 0 &&
     btnJs.indexOf("URL_PANEL") < 0 && commonUi.indexOf("CH_OPEN_SETTINGS") >= 0 &&
     coreUi.indexOf("openWinOrNotify(\"settings\"") >= 0)
-    ok("v2.4.25：按钮只广播 CH_OPEN_SETTINGS，后台复用 openWinOrNotify(settings)");
-  else bad("v2.4.25：按钮 → 设置链路不对");
+    ok("v2.4.26：按钮只广播 CH_OPEN_SETTINGS，后台复用 openWinOrNotify(settings)");
+  else bad("v2.4.26：按钮 → 设置链路不对");
   if (coreUi.indexOf('NS + "/glance-menu"') >= 0 && coreUi.indexOf('label: "速览"') >= 0)
-    ok("v2.4.25：右键「速览」入口已补（GM / 玩家单枚 IMAGE 可用）");
-  else bad("v2.4.25：缺少右键速览入口");
+    ok("v2.4.26：右键「速览」入口已补（GM / 玩家单枚 IMAGE 可用）");
+  else bad("v2.4.26：缺少右键速览入口");
 }
 
-console.log("== v2.4.25 设置窗精简");
+console.log("== v2.4.26 设置窗精简");
 {
   const h = fs.readFileSync(path.join(ROOT, "settings.html"), "utf8");
   const js = fs.readFileSync(path.join(ROOT, "assets", "settings-page.js"), "utf8");
   if (h.indexOf("pane-limits") < 0 && h.indexOf("已知限制") < 0 &&
     js.indexOf("已知限制") < 0 && h.indexOf("data-pane=\"limits\"") < 0)
-    ok("v2.4.25：已知限制板块（导航 + 内容 + 路由文案）已整体移除");
-  else bad("v2.4.25：已知限制仍有残留");
+    ok("v2.4.26：已知限制板块（导航 + 内容 + 路由文案）已整体移除");
+  else bad("v2.4.26：已知限制仍有残留");
   if (h.indexOf("set-head-sub") < 0 && h.indexOf("独立窗口 · 可拖动") < 0 &&
     js.indexOf("set-head-sub") < 0)
-    ok("v2.4.25：标题区版本副标题已删除");
-  else bad("v2.4.25：标题副标题仍有残留");
+    ok("v2.4.26：标题区版本副标题已删除");
+  else bad("v2.4.26：标题副标题仍有残留");
   if (h.indexOf("按住标题栏可拖动") < 0 && h.indexOf("每个窗口各自记住位置") < 0)
-    ok("v2.4.25：底部拖动提示行已删除");
-  else bad("v2.4.25：底部提示仍有残留");
+    ok("v2.4.26：底部拖动提示行已删除");
+  else bad("v2.4.26：底部提示仍有残留");
   if (h.indexOf('data-pane="about"') >= 0 && h.indexOf('data-pane="thanks"') >= 0 &&
     h.indexOf('id="pane-about"') >= 0 && h.indexOf('id="pane-thanks"') >= 0)
-    ok("v2.4.25：其它设置页保留（关于 / 使用说明 / 骰子 / 先攻 / 数据与权限 / 重置 / 致谢）");
-  else bad("v2.4.25：其它设置页缺失");
+    ok("v2.4.26：其它设置页保留（关于 / 使用说明 / 骰子 / 先攻 / 数据与权限 / 重置 / 致谢）");
+  else bad("v2.4.26：其它设置页缺失");
 }
 
-console.log("== v2.4.25 角色卡面板文案精简");
+console.log("== v2.4.26 角色卡面板文案精简");
 {
   const ph = fs.readFileSync(path.join(ROOT, "panel.html"), "utf8");
   const pj = fs.readFileSync(path.join(ROOT, "assets", "panel.js"), "utf8");
   if (ph.indexOf("角色卡<b>双写</b>") < 0 && ph.indexOf("面板只读") < 0 &&
     ph.indexOf("先攻</b>与<b>骰子") < 0 && ph.indexOf('class="side-foot"') < 0)
-    ok("v2.4.25：面板底部帮助说明块已删除");
-  else bad("v2.4.25：帮助说明仍有残留");
+    ok("v2.4.26：面板底部帮助说明块已删除");
+  else bad("v2.4.26：帮助说明仍有残留");
   if (ph.indexOf('id="count"') < 0 && ph.indexOf("panel-sub") < 0 &&
     pj.indexOf("countEl") < 0 && pj.indexOf("张\"") < 0)
-    ok("v2.4.25：卡片计数与标题副标题已删除");
-  else bad("v2.4.25：计数/副标题仍有残留");
+    ok("v2.4.26：卡片计数与标题副标题已删除");
+  else bad("v2.4.26：计数/副标题仍有残留");
   if (ph.indexOf("每个窗口各自记住位置，可以同时打开") < 0)
-    ok("v2.4.25：底部窗口提示已删除");
-  else bad("v2.4.25：底部窗口提示仍在");
+    ok("v2.4.26：底部窗口提示已删除");
+  else bad("v2.4.26：底部窗口提示仍在");
   if (ph.indexOf("未选中 token（右键地图上的 token 可直接绑定）") < 0 &&
     pj.indexOf("未选中 token（右键地图上的 token 可直接绑定）") < 0 &&
     pj.indexOf('selEl.style.display = "none"') >= 0)
-    ok("v2.4.25：未选中 token 空状态不再显示（容器隐藏）");
-  else bad("v2.4.25：空状态文案仍存在");
+    ok("v2.4.26：未选中 token 空状态不再显示（容器隐藏）");
+  else bad("v2.4.26：空状态文案仍存在");
   if (ph.indexOf('id="pick"') >= 0 && ph.indexOf('id="list"') >= 0 &&
     ph.indexOf('id="view"') >= 0)
-    ok("v2.4.25：导入 / 卡片列表 / 预览核心区保留");
-  else bad("v2.4.25：核心区被误删");
+    ok("v2.4.26：导入 / 卡片列表 / 预览核心区保留");
+  else bad("v2.4.26：核心区被误删");
   const dh = fs.readFileSync(path.join(ROOT, "assets", "dice-history-page.js"), "utf8");
   if (dh.indexOf("这台机器还没有骰子记录") < 0 && dh.indexOf("掷一次就会出现在这里") < 0)
-    ok("v2.4.25：骰子记录空状态长文案已删除");
-  else bad("v2.4.25：骰子记录空状态文案仍有残留");
+    ok("v2.4.26：骰子记录空状态长文案已删除");
+  else bad("v2.4.26：骰子记录空状态文案仍有残留");
 }
 
-console.log("== v2.4.25 血条编辑窗权限兜底 / 诊断");
+console.log("== v2.4.26 血条编辑窗权限兜底 / 诊断");
 {
   const hpc = fs.readFileSync(path.join(ROOT, "assets", "hp-edit-core.js"), "utf8");
   const hpp = fs.readFileSync(path.join(ROOT, "assets", "hp-edit-page.js"), "utf8");
   const tg = fs.readFileSync(path.join(ROOT, "dev", "test-glance2.mjs"), "utf8");
   const hphtml = fs.readFileSync(path.join(ROOT, "hp-edit.html"), "utf8");
   if (hphtml.indexOf("hpe-diag") < 0 && hphtml.indexOf("role=GM") < 0 && hphtml.indexOf("editable=") < 0)
-    ok("v2.4.25：hp-edit.html 不再显示 role/editable/dis 诊断注脚");
-  else bad("v2.4.25：hp-edit.html 仍有诊断注脚");
+    ok("v2.4.26：hp-edit.html 不再显示 role/editable/dis 诊断注脚");
+  else bad("v2.4.26：hp-edit.html 仍有诊断注脚");
   if (hpc.indexOf("createdUserId == null || item.createdUserId === \"\"") >= 0 &&
     hpc.indexOf('if (role === "GM") return true;') >= 0)
-    ok("v2.4.25：mayEditToken GM 优先 + createdUserId 缺失/空时放宽可编辑");
-  else bad("v2.4.25：hp 权限兜底缺失");
+    ok("v2.4.26：mayEditToken GM 优先 + createdUserId 缺失/空时放宽可编辑");
+  else bad("v2.4.26：hp 权限兜底缺失");
   if (hpp.indexOf("[4enext][hpEdit] role=") >= 0 && hpp.indexOf("applyDisabled dis=") >= 0 &&
     hpp.indexOf('if (state.role === "GM") may = true;') >= 0)
-    ok("v2.4.25：hpEdit 诊断日志 + GM 强制可编辑兜底");
-  else bad("v2.4.25：hpEdit 诊断/GM 兜底缺失");
-  if (tg.indexOf("v2.4.25：GM 始终可编辑") >= 0 && tg.indexOf("lockedForPlayer 只对非 GM") >= 0)
-    ok("v2.4.25：test-glance2 有权限兜底断言");
-  else bad("v2.4.25：缺 hp 权限测试");
+    ok("v2.4.26：hpEdit 诊断日志 + GM 强制可编辑兜底");
+  else bad("v2.4.26：hpEdit 诊断/GM 兜底缺失");
+  if (tg.indexOf("v2.4.26：GM 始终可编辑") >= 0 && tg.indexOf("lockedForPlayer 只对非 GM") >= 0)
+    ok("v2.4.26：test-glance2 有权限兜底断言");
+  else bad("v2.4.26：缺 hp 权限测试");
 }
 
-console.log("== v2.4.25 血条编辑窗输入诊断日志");
+console.log("== v2.4.26 血条编辑窗输入诊断日志");
 {
   const hp = fs.readFileSync(path.join(ROOT, "assets", "hp-edit-page.js"), "utf8");
   const tg = fs.readFileSync(path.join(ROOT, "dev", "test-glance2.mjs"), "utf8");
@@ -4191,14 +4191,14 @@ console.log("== v2.4.25 血条编辑窗输入诊断日志");
     hp.indexOf('if (max === "" && cur !== "") max = cur;') >= 0 &&
     hp.indexOf("commit result trigger=") >= 0 &&
     !/if \(!built\.ok\)[\s\S]{0,240}?fillOne\(/.test(hp))
-    ok("v2.4.25：hpEdit 界面无诊断注脚（日志保留）+ fillForm 跳过焦点 / dirty 保护 / loaded 版本 URL 齐全");
-  else bad("v2.4.25：hpEdit 输入诊断不完整");
-  if (tg.indexOf("v2.4.25：hpEdit 输入诊断日志") >= 0)
-    ok("v2.4.25：test-glance2 有输入诊断断言");
-  else bad("v2.4.25：缺输入诊断测试");
+    ok("v2.4.26：hpEdit 界面无诊断注脚（日志保留）+ fillForm 跳过焦点 / dirty 保护 / loaded 版本 URL 齐全");
+  else bad("v2.4.26：hpEdit 输入诊断不完整");
+  if (tg.indexOf("v2.4.26：hpEdit 输入诊断日志") >= 0)
+    ok("v2.4.26：test-glance2 有输入诊断断言");
+  else bad("v2.4.26：缺输入诊断测试");
 }
 
-console.log("== v2.4.25 血条编辑窗预览 ↔ 速览卡 HP 视觉统一");
+console.log("== v2.4.26 血条编辑窗预览 ↔ 速览卡 HP 视觉统一");
 {
   const commonHp = fs.readFileSync(path.join(ROOT, "assets", "common.js"), "utf8");
   const uiHp = fs.readFileSync(path.join(ROOT, "assets", "ui.css"), "utf8");
@@ -4209,45 +4209,45 @@ console.log("== v2.4.25 血条编辑窗预览 ↔ 速览卡 HP 视觉统一");
   if (commonHp.indexOf("function hpBarVisual(") >= 0 && commonHp.indexOf("function hpStatusOf(") >= 0 &&
     commonHp.indexOf('HP_STATE_HEALTHY_COLOR = "#56d364"') >= 0 &&
     commonHp.indexOf('HP_STATE_CRITICAL_COLOR = "#f85149"') >= 0)
-    ok("v2.4.25：common.js 提供共享 hpStatusOf / hpBarVisual（绿 #56d364 / 黄 #e3b341 / 红 #f85149）");
-  else bad("v2.4.25：共享血条视觉缺失");
+    ok("v2.4.26：common.js 提供共享 hpStatusOf / hpBarVisual（绿 #56d364 / 黄 #e3b341 / 红 #f85149）");
+  else bad("v2.4.26：共享血条视觉缺失");
   if (hpPage.indexOf("hpBarVisual") >= 0 && hpPage.indexOf("--hp-color") >= 0 &&
     hpHtml.indexOf("hpe-hp-badge") < 0 && hpHtml.indexOf("hpe-hp-temp-note") >= 0 &&
     uiHp.indexOf("--hp-ok: #56d364") >= 0 && uiHp.indexOf("--hp-warn") >= 0 && uiHp.indexOf("--hp-danger") >= 0)
-    ok("v2.4.25：编辑窗预览用共享配色/分段，显示临时值，无状态文字徽章");
-  else bad("v2.4.25：编辑窗预览未统一 / 仍有徽章");
+    ok("v2.4.26：编辑窗预览用共享配色/分段，显示临时值，无状态文字徽章");
+  else bad("v2.4.26：编辑窗预览未统一 / 仍有徽章");
   if (hpHtml.indexOf("hpe-status") < 0 && hpHtml.indexOf("hpe-note") < 0 &&
     hpHtml.indexOf('id="win-flash"') < hpHtml.indexOf('class="hpe-body"') &&
     (hpHtml.match(/id="win-flash"/g) || []).length === 1)
-    ok("v2.4.25：底部区域完全干净（无 hpe-status/hpe-note）；flash 只在标题栏");
-  else bad("v2.4.25：底部仍有文本/提示，或 flash 不在标题栏");
+    ok("v2.4.26：底部区域完全干净（无 hpe-status/hpe-note）；flash 只在标题栏");
+  else bad("v2.4.26：底部仍有文本/提示，或 flash 不在标题栏");
   if (hpHtml.indexOf("hpe-note") < 0 && hpPage.indexOf("留空的四防") < 0 &&
     hpPage.indexOf("els.flash.textContent") >= 0 && hpPage.indexOf("1500") >= 0)
-    ok("v2.4.25：底部固定提示行已移除；保存/校验反馈走 #win-flash（1.5s）");
-  else bad("v2.4.25：底部提示行 / flash 反馈不对");
+    ok("v2.4.26：底部固定提示行已移除；保存/校验反馈走 #win-flash（1.5s）");
+  else bad("v2.4.26：底部提示行 / flash 反馈不对");
   if (bgHp.indexOf("var HPE_W = 420;") >= 0 && bgHp.indexOf("var HPE_H = 126;") >= 0 &&
     hpHtml.indexOf("width: 420px; height: 126px") >= 0 &&
     hpHtml.indexOf("hpe-pills") < hpHtml.indexOf("hpe-hp-bar-row") &&
     hpHtml.indexOf("hpe-hp-bar-row") < hpHtml.indexOf("hpe-defs") &&
     uiHp.indexOf(".hpe-hp-bar-row") >= 0 && /height: 12px/.test(uiHp) &&
     uiHp.indexOf("repeating-linear-gradient") < 0 && hpHtml.indexOf("hpe-hp-badge") < 0)
-    ok("v2.4.25：编辑窗 420×126 三行：数字行 → 整行进度条（12px 深色轨道）→ 四防行");
-  else bad("v2.4.25：编辑窗三行布局 / 窗口尺寸不对");
+    ok("v2.4.26：编辑窗 420×126 三行：数字行 → 整行进度条（12px 深色轨道）→ 四防行");
+  else bad("v2.4.26：编辑窗三行布局 / 窗口尺寸不对");
   if (uiHp.indexOf(".hpe-bar-fill") >= 0 && uiHp.indexOf(".hpe-hp-pill::before") < 0 &&
     uiHp.indexOf(".hpe-hp-track") >= 0 && uiHp.indexOf("repeating-linear-gradient") < 0 &&
     hpHtml.indexOf("hpe-hp-fill") >= 0 && hpHtml.indexOf("hpe-hp-track") >= 0 &&
     hpPage.indexOf("els.hpFill.style.width") >= 0 &&
     /#hpe-cur \{[^}]*background: #0b0f14/.test(uiHp))
-    ok("v2.4.25：HP 行=数字字段 + 临时 + 右侧深色轨道，填充一整条实色（无分割线 / 无 repeating-gradient）");
-  else bad("v2.4.25：HP 轨道/填充/数字输入未正确分层");
+    ok("v2.4.26：HP 行=数字字段 + 临时 + 右侧深色轨道，填充一整条实色（无分割线 / 无 repeating-gradient）");
+  else bad("v2.4.26：HP 轨道/填充/数字输入未正确分层");
   if (glanceHp.indexOf("#56d364") >= 0 && glanceHp.indexOf("#e3b341") >= 0 && glanceHp.indexOf("#f85149") >= 0 &&
     bgHp.indexOf('color: bloodied ? COLOR_HP_BLOODIED : "#b00000"') >= 0 &&
     bgHp.indexOf("hpStatusOf(cur, max).color") < 0)
-    ok("v2.4.25：速览卡原有徽章/配色保留；地图 token 血条未改");
-  else bad("v2.4.25：速览卡或地图血条被误改");
+    ok("v2.4.26：速览卡原有徽章/配色保留；地图 token 血条未改");
+  else bad("v2.4.26：速览卡或地图血条被误改");
 }
 
-console.log("== v2.4.25 传送门编辑窗控件与目的地窗统一");
+console.log("== v2.4.26 传送门编辑窗控件与目的地窗统一");
 {
   const uiShared = fs.readFileSync(path.join(ROOT, "assets", "ui.css"), "utf8");
   const editHtml = fs.readFileSync(path.join(ROOT, "portal-edit.html"), "utf8");
@@ -4255,60 +4255,60 @@ console.log("== v2.4.25 传送门编辑窗控件与目的地窗统一");
   if (uiShared.indexOf(".win-input") >= 0 && uiShared.indexOf(".win-check") >= 0 &&
     uiShared.indexOf(".win-btn") >= 0 && uiShared.indexOf(".win-label") >= 0 &&
     uiShared.indexOf(".win-note") >= 0)
-    ok("v2.4.25：ui.css 抽出公共控件类（win-input/win-check/win-btn/win-label/win-note）");
-  else bad("v2.4.25：公共控件样式缺失");
+    ok("v2.4.26：ui.css 抽出公共控件类（win-input/win-check/win-btn/win-label/win-note）");
+  else bad("v2.4.26：公共控件样式缺失");
   if (editHtml.indexOf("display: flex; flex-direction: column") >= 0 &&
     editHtml.indexOf("flex: 1 1 auto; min-height: 0; overflow-y: auto") >= 0 &&
     editHtml.indexOf(".pe-body .foot { flex: 0 0 auto") >= 0 &&
     editHtml.indexOf("padding: 8px 12px 12px") >= 0)
-    ok("v2.4.25：编辑窗 flex 布局（内容区可滚、按钮行固定、底部 12px 内边距），430 高不裁切");
-  else bad("v2.4.25：编辑窗 flex/内边距结构不对");
+    ok("v2.4.26：编辑窗 flex 布局（内容区可滚、按钮行固定、底部 12px 内边距），430 高不裁切");
+  else bad("v2.4.26：编辑窗 flex/内边距结构不对");
   if (editHtml.indexOf('class="win-input" id="pe-name"') >= 0 &&
     editHtml.indexOf('class="win-input" id="pe-tag"') >= 0 &&
     (editHtml.match(/class="win-check-row"/g) || []).length === 3 &&
     editHtml.indexOf('class="win-note"') >= 0 &&
     editHtml.indexOf('class="win-btn primary" id="pe-save"') >= 0 &&
     destHtml.indexOf('class="win-btn" id="pd-close"') >= 0)
-    ok("v2.4.25：编辑窗与目的地窗共用控件样式；保存主按钮 / 取消次按钮；三开关 + 说明保留");
-  else bad("v2.4.25：编辑窗控件未统一 / 字段缺失");
+    ok("v2.4.26：编辑窗与目的地窗共用控件样式；保存主按钮 / 取消次按钮；三开关 + 说明保留");
+  else bad("v2.4.26：编辑窗控件未统一 / 字段缺失");
 }
 
-console.log("== v2.4.25 传送落点禁跨墙 / 尺寸兜底");
+console.log("== v2.4.26 传送落点禁跨墙 / 尺寸兜底");
 {
   const coreP = fs.readFileSync(path.join(ROOT, "assets", "background.core.js"), "utf8");
   const testP = fs.readFileSync(path.join(ROOT, "dev", "test-portal.mjs"), "utf8");
   if (coreP.indexOf("function portalPathSafe(") >= 0 && coreP.indexOf("portalPathSafe(center, p, walls)") >= 0 &&
     coreP.indexOf("function portalSegIntersect(") >= 0 &&
     coreP.indexOf("candidates.sort(") >= 0)
-    ok("v2.4.25：落点路径不得穿墙（portalPathSafe），候选按离门中心由近到远排序");
-  else bad("v2.4.25：跨墙检测 / 就近排序缺失");
+    ok("v2.4.26：落点路径不得穿墙（portalPathSafe），候选按离门中心由近到远排序");
+  else bad("v2.4.26：跨墙检测 / 就近排序缺失");
   if (coreP.indexOf("function portalTokenRadius(item, sceneDpi)") >= 0 &&
     coreP.indexOf("dpi / 2; /* 1 格半径兜底 */") >= 0 &&
     coreP.indexOf("Math.min(dpi * 5") >= 0 &&
     coreP.indexOf("portalTokenRadius(it, dpiTele)") >= 0 &&
     coreP.indexOf("portal plan fail tokens=") >= 0)
-    ok("v2.4.25：token 半径按实际 width*scale、缺尺寸 DPI/2 兜底、clamp [0.5格,5格]；plan fail 日志");
-  else bad("v2.4.25：token 尺寸兜底 / fail 日志缺失");
+    ok("v2.4.26：token 半径按实际 width*scale、缺尺寸 DPI/2 兜底、clamp [0.5格,5格]；plan fail 日志");
+  else bad("v2.4.26：token 尺寸兜底 / fail 日志缺失");
   if (testP.indexOf("①v 墙在门右侧") >= 0 && testP.indexOf("①v 多 token 不重叠") >= 0)
-    ok("v2.4.25：test-portal 有跨墙 / 尺寸兜底 / 就近落点断言");
-  else bad("v2.4.25：缺少跨墙/尺寸测试");
+    ok("v2.4.26：test-portal 有跨墙 / 尺寸兜底 / 就近落点断言");
+  else bad("v2.4.26：缺少跨墙/尺寸测试");
 }
 
-console.log("== v2.4.25 传送落点规划诊断");
+console.log("== v2.4.26 传送落点规划诊断");
 {
   const coreDiag = fs.readFileSync(path.join(ROOT, "assets", "background.core.js"), "utf8");
   const testDiag = fs.readFileSync(path.join(ROOT, "dev", "test-portal.mjs"), "utf8");
   if (coreDiag.indexOf("portal plan n=") >= 0 && coreDiag.indexOf("portal plan warn：未检测到原生 WALL") >= 0 &&
     coreDiag.indexOf("portal plan walls[0] a=") >= 0 && coreDiag.indexOf("portal cand i=") >= 0 &&
     coreDiag.indexOf('reject=" + (reject') >= 0 && coreDiag.indexOf('"wall-cross"') >= 0)
-    ok("v2.4.25：落点规划诊断（plan/pos、walls[0] 坐标、候选 reject 原因）");
-  else bad("v2.4.25：落点规划诊断缺失");
+    ok("v2.4.26：落点规划诊断（plan/pos、walls[0] 坐标、候选 reject 原因）");
+  else bad("v2.4.26：落点规划诊断缺失");
   if (testDiag.indexOf("①w 诊断：plan n/pos") >= 0)
-    ok("v2.4.25：test-portal 有诊断断言");
-  else bad("v2.4.25：缺少诊断测试");
+    ok("v2.4.26：test-portal 有诊断断言");
+  else bad("v2.4.26：缺少诊断测试");
 }
 
-console.log("== v2.4.25 传送绕过 Dynamic Fog / Smoke 穿墙校验");
+console.log("== v2.4.26 传送绕过 Dynamic Fog / Smoke 穿墙校验");
 {
   const coreB = fs.readFileSync(path.join(ROOT, "assets", "background.core.js"), "utf8");
   const testB = fs.readFileSync(path.join(ROOT, "dev", "test-portal.mjs"), "utf8");
@@ -4316,15 +4316,15 @@ console.log("== v2.4.25 传送绕过 Dynamic Fog / Smoke 穿墙校验");
     coreB.indexOf("attenuationRadius") >= 0 && coreB.indexOf("visionRange") >= 0 &&
     coreB.indexOf("getItemAttachments") >= 0 && coreB.indexOf("portal bypass ext=") >= 0 &&
     coreB.indexOf("moveTokensWithFogBypass(tokens, byId)") >= 0)
-    ok("v2.4.25：传送临时剥离雾效 metadata / 隐藏 attachment 与 token，写位置后恢复；计数日志齐全");
-  else bad("v2.4.25：Dynamic Fog bypass 链路不完整");
+    ok("v2.4.26：传送临时剥离雾效 metadata / 隐藏 attachment 与 token，写位置后恢复；计数日志齐全");
+  else bad("v2.4.26：Dynamic Fog bypass 链路不完整");
   if (coreB.indexOf("portalMapBounds") < 0 && coreB.indexOf("portal plan fallback=center") < 0 &&
     testB.indexOf("①y 雾效 metadata 被临时剥离") >= 0 && testB.indexOf("①x portalMapBounds") < 0)
-    ok("v2.4.25：地图范围约束未启用（按计划延后）；fog bypass 测试已接入");
-  else bad("v2.4.25：地图范围残留 / 缺少 fog 测试");
+    ok("v2.4.26：地图范围约束未启用（按计划延后）；fog bypass 测试已接入");
+  else bad("v2.4.26：地图范围残留 / 缺少 fog 测试");
 }
 
-console.log("== v2.4.25 房间三级存储 / 血条锁与隐藏");
+console.log("== v2.4.26 房间三级存储 / 血条锁与隐藏");
 {
   const coreS = fs.readFileSync(path.join(ROOT, "assets", "background.core.js"), "utf8");
   const commonS = fs.readFileSync(path.join(ROOT, "assets", "common.js"), "utf8");
@@ -4332,48 +4332,48 @@ console.log("== v2.4.25 房间三级存储 / 血条锁与隐藏");
   if (coreS.indexOf("ROOM_WRITE_LIMIT = 15500") >= 0 && coreS.indexOf("OBR.scene.setMetadata") >= 0 &&
     coreS.indexOf("room bytes total=") >= 0 && commonS.indexOf("OBR.scene.setMetadata") >= 0 &&
     commonS.indexOf("ROOM_WRITE_LIMIT = 15500") >= 0)
-    ok("v2.4.25：房间/场景/本机三级存储（整包字节 15500 阈值 + scene fallback）");
-  else bad("v2.4.25：三级存储缺失");
+    ok("v2.4.26：房间/场景/本机三级存储（整包字节 15500 阈值 + scene fallback）");
+  else bad("v2.4.26：三级存储缺失");
   if (trackS.indexOf("export function computeViewMode") >= 0 && trackS.indexOf("export function quantiseRatio") >= 0 &&
     coreS.indexOf("hide: m.hide === true") >= 0 && coreS.indexOf("it.visible === false") >= 0 &&
     coreS.indexOf("quantiseBarRatio") >= 0)
-    ok("v2.4.25：viewMode / 25% 量化 / hide / hidden token 不画血条");
-  else bad("v2.4.25：血条锁/隐藏策略缺失");
+    ok("v2.4.26：viewMode / 25% 量化 / hide / hidden token 不画血条");
+  else bad("v2.4.26：血条锁/隐藏策略缺失");
   if (coreS.indexOf("syncInitFlags") >= 0 && coreS.indexOf("房间先攻 entries 是唯一真源") >= 0)
-    ok("v2.4.25：先攻以房间 entries 为唯一真源并反查修复标记");
-  else bad("v2.4.25：先攻真源修复缺失");
+    ok("v2.4.26：先攻以房间 entries 为唯一真源并反查修复标记");
+  else bad("v2.4.26：先攻真源修复缺失");
 }
 
-console.log("== v2.4.25 野蛮人蛮族机敏");
+console.log("== v2.4.26 野蛮人蛮族机敏");
 {
   const g = fs.readFileSync(path.join(ROOT, "assets", "glance.js"), "utf8");
   const t = fs.readFileSync(path.join(ROOT, "dev", "test-import.mjs"), "utf8");
   if (g.indexOf("function classDefenseFeature(") >= 0 && g.indexOf("蛮族机敏") >= 0 &&
     g.indexOf("狂战士|Berserker") >= 0 && g.indexOf("职业特性") >= 0 &&
     /value: 10 \+ half \+ acAbilityMod \+ dsum\("ac"\) \+ classDef\.ac/.test(g))
-    ok("v2.4.25：derive 补职业防御特性（野蛮人蛮族机敏 +1/+2/+3，重甲/狂战士排除）");
-  else bad("v2.4.25：蛮族机敏缺失");
-  if (t.indexOf("v2.4.25：3 级野蛮人") >= 0 && t.indexOf("v2.4.25：11 级 +2") >= 0)
-    ok("v2.4.25：test-import 有 3/11/21 级 / 重甲 / 狂战士 / 混职断言");
-  else bad("v2.4.25：缺少蛮族机敏回归测试");
+    ok("v2.4.26：derive 补职业防御特性（野蛮人蛮族机敏 +1/+2/+3，重甲/狂战士排除）");
+  else bad("v2.4.26：蛮族机敏缺失");
+  if (t.indexOf("v2.4.26：3 级野蛮人") >= 0 && t.indexOf("v2.4.26：11 级 +2") >= 0)
+    ok("v2.4.26：test-import 有 3/11/21 级 / 重甲 / 狂战士 / 混职断言");
+  else bad("v2.4.26：缺少蛮族机敏回归测试");
 }
 
-console.log("== v2.4.25 种族/职业固定防御加值");
+console.log("== v2.4.26 种族/职业固定防御加值");
 {
   const gen = fs.readFileSync(path.join(ROOT, "dev", "gen-rules.mjs"), "utf8");
   const rules = fs.readFileSync(path.join(ROOT, "data", "rules.js"), "utf8");
   const testI = fs.readFileSync(path.join(ROOT, "dev", "test-import.mjs"), "utf8");
   if (gen.indexOf("防御奖励") >= 0 && gen.indexOf("种族加值") >= 0 && gen.indexOf("选择型") >= 0 &&
     gen.indexOf("if (/或/.test(clause)) return out;") >= 0)
-    ok("v2.4.25：gen-rules 解析种族防御奖励 / 职业防御加值，选择型默认不加");
-  else bad("v2.4.25：gen-rules 防御解析缺失");
-  if (/"人类 Human":\[[^\]]*?,1,1,1,/.test(rules) && testI.indexOf("v2.4.25：不死人 fixture") >= 0 &&
-    testI.indexOf("v2.4.25：费兹 fixture") >= 0)
-    ok("v2.4.25：rules 人类三防 +1；test-import 有两份脱敏卡回归");
-  else bad("v2.4.25：rules / 回归测试缺失");
+    ok("v2.4.26：gen-rules 解析种族防御奖励 / 职业防御加值，选择型默认不加");
+  else bad("v2.4.26：gen-rules 防御解析缺失");
+  if (/"人类 Human":\[[^\]]*?,1,1,1,/.test(rules) && testI.indexOf("v2.4.26：不死人 fixture") >= 0 &&
+    testI.indexOf("v2.4.26：费兹 fixture") >= 0)
+    ok("v2.4.26：rules 人类三防 +1；test-import 有两份脱敏卡回归");
+  else bad("v2.4.26：rules / 回归测试缺失");
 }
 
-console.log("== v2.4.25 速览常驻 / 隐藏血条 UI");
+console.log("== v2.4.26 速览常驻 / 隐藏血条 UI");
 {
   const coreK = fs.readFileSync(path.join(ROOT, "assets", "background.core.js"), "utf8");
   const hpHtml = fs.readFileSync(path.join(ROOT, "hp-edit.html"), "utf8");
@@ -4381,16 +4381,16 @@ console.log("== v2.4.25 速览常驻 / 隐藏血条 UI");
   const hpCore = fs.readFileSync(path.join(ROOT, "assets", "hp-edit-core.js"), "utf8");
   if (coreK.indexOf("info keep（取消选中）") >= 0 && coreK.indexOf("info switch target=") >= 0 &&
     coreK.indexOf("info keep（选中无卡）") >= 0)
-    ok("v2.4.25：速览窗选中变空 / 非绑卡保持不关；切绑卡 token 走 target 切换日志");
-  else bad("v2.4.25：速览常驻逻辑缺失");
+    ok("v2.4.26：速览窗选中变空 / 非绑卡保持不关；切绑卡 token 走 target 切换日志");
+  else bad("v2.4.26：速览常驻逻辑缺失");
   if (hpHtml.indexOf("hpe-hide") >= 0 && hpPage.indexOf("function toggleHide(") >= 0 &&
     hpPage.indexOf('{ hide: next }') >= 0 && hpCore.indexOf("hide: m.hide === true") >= 0 &&
     hpCore.indexOf('if ("hide" in p) out.hide = !!p.hide;') >= 0)
-    ok("v2.4.25：编辑窗「隐藏」勾选 → 立即写 hp.hide，默认 false，GM-only");
-  else bad("v2.4.25：隐藏血条 UI / 读写缺失");
+    ok("v2.4.26：编辑窗「隐藏」勾选 → 立即写 hp.hide，默认 false，GM-only");
+  else bad("v2.4.26：隐藏血条 UI / 读写缺失");
 }
 
-console.log("== v2.4.25 场景兜底读取 / 订阅");
+console.log("== v2.4.26 场景兜底读取 / 订阅");
 {
   const bg = fs.readFileSync(path.join(ROOT, "assets", "background.core.js"), "utf8");
   const initJs = fs.readFileSync(path.join(ROOT, "assets", "initiative.js"), "utf8");
@@ -4398,39 +4398,39 @@ console.log("== v2.4.25 场景兜底读取 / 订阅");
   const common = fs.readFileSync(path.join(ROOT, "assets", "common.js"), "utf8");
   if (bg.indexOf("OBR.scene.getMetadata") >= 0 && bg.indexOf("atScene > atRoom") >= 0 &&
     initJs.indexOf("OBR.scene.getMetadata") >= 0 && initJs.indexOf("atS > atR") >= 0)
-    ok("v2.4.25：后台 / 先攻页 readInitiative 都同时读 room+scene，按 updatedAt 取新");
-  else bad("v2.4.25：先攻双源读取缺失");
+    ok("v2.4.26：后台 / 先攻页 readInitiative 都同时读 room+scene，按 updatedAt 取新");
+  else bad("v2.4.26：先攻双源读取缺失");
   if (bg.indexOf("scene.onMetadataChange（场景兜底存储）") >= 0 &&
     initPage.indexOf("OBR.scene.onMetadataChange(scheduleReload)") >= 0 &&
     common.indexOf("OBR.scene.getMetadata") >= 0)
-    ok("v2.4.25：订阅 scene.onMetadataChange；cards/state 读取也双源");
-  else bad("v2.4.25：场景变化订阅 / 双源读取缺失");
+    ok("v2.4.26：订阅 scene.onMetadataChange；cards/state 读取也双源");
+  else bad("v2.4.26：场景变化订阅 / 双源读取缺失");
 }
 
-console.log("== v2.4.25 非 GM 锁定隐藏不弹编辑窗 / 全掩码");
+console.log("== v2.4.26 非 GM 锁定隐藏不弹编辑窗 / 全掩码");
 {
   const bg = fs.readFileSync(path.join(ROOT, "assets", "background.core.js"), "utf8");
   const g = fs.readFileSync(path.join(ROOT, "assets", "glance.js"), "utf8");
   const info = fs.readFileSync(path.join(ROOT, "assets", "info.js"), "utf8");
   if (bg.indexOf("hpEdit skip（非GM/锁定/隐藏）") >= 0 && bg.indexOf("hpEdit skip（非GM/非owner）") >= 0 &&
     bg.indexOf("closeWin(\"hpEdit\")") >= 0)
-    ok("v2.4.25：非 GM / 非 owner / locked / hide 不自动弹编辑窗，已开则关闭");
-  else bad("v2.4.25：非 GM 编辑窗弹窗守卫缺失");
+    ok("v2.4.26：非 GM / 非 owner / locked / hide 不自动弹编辑窗，已开则关闭");
+  else bad("v2.4.26：非 GM 编辑窗弹窗守卫缺失");
   if (g.indexOf("locked/hide → HP 与四防（含 AC）全部掩码") >= 0 &&
     g.indexOf("value: \"?\"") >= 0 && info.indexOf("viewerRole !== \"GM\" && (!!hp.locked || hp.hide === true)") >= 0)
-    ok("v2.4.25：非 GM + locked/hide → 速览 HP 与四防（含 AC）全部掩码");
-  else bad("v2.4.25：速览全掩码缺失");
+    ok("v2.4.26：非 GM + locked/hide → 速览 HP 与四防（含 AC）全部掩码");
+  else bad("v2.4.26：速览全掩码缺失");
 }
 
-console.log("== v2.4.25 窗口健壮性");
+console.log("== v2.4.26 窗口健壮性");
 {
   const bg = fs.readFileSync(path.join(ROOT, "assets", "background.core.js"), "utf8");
   if (bg.indexOf("OBR.popover.getWidth(def.id)") >= 0 && bg.indexOf("win close ignore（刚打开）") >= 0)
-    ok("v2.4.25：openWin 探测真实 popover；旧 close 广播忽略");
-  else bad("v2.4.25：窗口健壮性缺失");
+    ok("v2.4.26：openWin 探测真实 popover；旧 close 广播忽略");
+  else bad("v2.4.26：窗口健壮性缺失");
 }
 
-console.log("== v2.4.25 阶段一布局/节奏/队列");
+console.log("== v2.4.26 阶段一布局/节奏/队列");
 {
   const fx = fs.readFileSync(path.join(ROOT, "assets", "dice-fx.js"), "utf8");
   const bg = fs.readFileSync(path.join(ROOT, "assets", "background.core.js"), "utf8");
@@ -4438,23 +4438,23 @@ console.log("== v2.4.25 阶段一布局/节奏/队列");
   if (fx.indexOf("export function diceLayout") >= 0 && fx.indexOf("export function diceFxDuration") >= 0 &&
     eff.indexOf("diceLayout(") >= 0 && eff.indexOf("diceFxDuration(") >= 0 &&
     bg.indexOf("diceFxQueue") < 0 && bg.indexOf("DICE_FX_MAX") < 0 &&
-    bg.indexOf("async function runDiceFx") >= 0 && bg.indexOf("v2.4.25（照 Full Suite") >= 0)
-    ok("v2.4.25：自适应布局/节奏/直开 modal（不再排队，照 Full Suite）");
-  else bad("v2.4.25：布局/节奏/直开 modal 缺失");
+    bg.indexOf("async function runDiceFx") >= 0 && bg.indexOf("v2.4.26（照 Full Suite") >= 0)
+    ok("v2.4.26：自适应布局/节奏/直开 modal（不再排队，照 Full Suite）");
+  else bad("v2.4.26：布局/节奏/直开 modal 缺失");
 }
 
-console.log("== v2.4.25 设置页初始化隔离");
+console.log("== v2.4.26 设置页初始化隔离");
 {
   const sp = fs.readFileSync(path.join(ROOT, "assets", "settings-page.js"), "utf8");
   const html = fs.readFileSync(path.join(ROOT, "settings.html"), "utf8");
   if (html.indexOf('id="set-dice-speed"') >= 0 && sp.indexOf("const diceSpeedBtn = document.getElementById") >= 0 &&
     sp.indexOf("function safeInit(") >= 0 && sp.indexOf('safeInit("diceSpeed"') >= 0 &&
     sp.indexOf("const win = createWindow({ name: \"settings\" })") < sp.indexOf('safeInit("diceSpeed"'))
-    ok("v2.4.25：设置页 createWindow 最先；diceSpeed 声明存在并 safeInit 隔离");
-  else bad("v2.4.25：设置页初始化隔离/声明缺失");
+    ok("v2.4.26：设置页 createWindow 最先；diceSpeed 声明存在并 safeInit 隔离");
+  else bad("v2.4.26：设置页初始化隔离/声明缺失");
 }
 
-console.log("== v2.4.25 进入房间自动打开骰子");
+console.log("== v2.4.26 进入房间自动打开骰子");
 {
   const bg = fs.readFileSync(path.join(ROOT, "assets", "background.core.js"), "utf8");
   const sp = fs.readFileSync(path.join(ROOT, "assets", "settings-page.js"), "utf8");
@@ -4464,49 +4464,49 @@ console.log("== v2.4.25 进入房间自动打开骰子");
     bg.indexOf("进入房间自动打开骰子：跳过（设置关）") >= 0 &&
     bg.indexOf("进入房间自动打开骰子：") >= 0 && bg.indexOf("已打开") >= 0 &&
     bg.indexOf("if (name === \"dice\") markDiceClosed(true)") >= 0)
-    ok("v2.4.25：场景就绪自动开骰子、手动关闭后本次会话不重开、设置关跳过、日志齐全");
-  else bad("v2.4.25：自动打开骰子逻辑缺失");
+    ok("v2.4.26：场景就绪自动开骰子、手动关闭后本次会话不重开、设置关跳过、日志齐全");
+  else bad("v2.4.26：自动打开骰子逻辑缺失");
   if (html.indexOf('id="set-dice-auto"') >= 0 && sp.indexOf('safeInit("diceAuto"') >= 0)
-    ok("v2.4.25：设置页有「进入房间自动打开骰子」开关");
-  else bad("v2.4.25：自动打开设置项缺失");
+    ok("v2.4.26：设置页有「进入房间自动打开骰子」开关");
+  else bad("v2.4.26：自动打开设置项缺失");
 }
 
-console.log("== v2.4.25 重复按钮");
+console.log("== v2.4.26 重复按钮");
 {
   const html = fs.readFileSync(path.join(ROOT, "dice.html"), "utf8");
   const page = fs.readFileSync(path.join(ROOT, "assets", "dice-page.js"), "utf8");
   const core = fs.readFileSync(path.join(ROOT, "assets", "dice-core.js"), "utf8");
   if (core.indexOf("export function repeatExpr") >= 0 && html.indexOf('id="repeat-n"') >= 0 &&
     html.indexOf('id="repeat-apply"') >= 0 && page.indexOf("repeat apply n=") >= 0)
-    ok("v2.4.25：repeatExpr + #repeat-n/#repeat-apply + 日志已接");
-  else bad("v2.4.25：重复按钮缺失");
+    ok("v2.4.26：repeatExpr + #repeat-n/#repeat-apply + 日志已接");
+  else bad("v2.4.26：重复按钮缺失");
 }
 
-console.log("== v2.4.25 repeat 顺序 / 历史换行");
+console.log("== v2.4.26 repeat 顺序 / 历史换行");
 {
   const core = fs.readFileSync(path.join(ROOT, "assets", "dice-core.js"), "utf8");
   const css = fs.readFileSync(path.join(ROOT, "assets", "ui.css"), "utf8");
   const hist = fs.readFileSync(path.join(ROOT, "assets", "dice-history-page.js"), "utf8");
   if (core.indexOf('if (w.kind === "repeat") return "repeat(" + p + "," + innerText + ")";') >= 0)
-    ok("v2.4.25：repeat formatWrapper 参数在前");
-  else bad("v2.4.25：repeat 顺序未修");
+    ok("v2.4.26：repeat formatWrapper 参数在前");
+  else bad("v2.4.26：repeat 顺序未修");
   if (css.indexOf("white-space: normal; word-break: break-word") >= 0 && hist.indexOf("hist-rows") >= 0)
-    ok("v2.4.25：历史公式换行 + rowStarts 分行显示");
-  else bad("v2.4.25：历史展示缺失");
+    ok("v2.4.26：历史公式换行 + rowStarts 分行显示");
+  else bad("v2.4.26：历史展示缺失");
 }
 
-console.log("== v2.4.25 去裸公式行 / 紧凑行距");
+console.log("== v2.4.26 去裸公式行 / 紧凑行距");
 {
   const page = fs.readFileSync(path.join(ROOT, "assets", "dice-page.js"), "utf8");
   const hist = fs.readFileSync(path.join(ROOT, "assets", "dice-history-page.js"), "utf8");
   const css = fs.readFileSync(path.join(ROOT, "assets", "ui.css"), "utf8");
   if (page.indexOf("res-formula") < 0 && hist.indexOf("hist-expr") < 0 &&
     hist.indexOf("hist-chips") >= 0 && /res-rows \{[^}]*gap: 0/.test(css))
-    ok("v2.4.25：结果/历史删除裸公式行，保留 chip + 等式，行距紧凑");
-  else bad("v2.4.25：裸公式行/行距未清理");
+    ok("v2.4.26：结果/历史删除裸公式行，保留 chip + 等式，行距紧凑");
+  else bad("v2.4.26：裸公式行/行距未清理");
 }
 
-console.log("== v2.4.25 审计修复");
+console.log("== v2.4.26 审计修复");
 {
   const bg = fs.readFileSync(path.join(ROOT, "assets", "background.core.js"), "utf8");
   const win = fs.readFileSync(path.join(ROOT, "assets", "window.js"), "utf8");
@@ -4515,16 +4515,16 @@ console.log("== v2.4.25 审计修复");
     bg.indexOf("portal teleport denied") >= 0 && bg.indexOf("document.hidden") >= 0 &&
     imp.indexOf("MAX_IMPORT_BYTES") >= 0 && win.indexOf("export function safeInit") >= 0 &&
     bg.indexOf("function safeLocalSet") >= 0 && bg.indexOf("init write conflict") >= 0)
-    ok("v2.4.25：限流/载荷校验、传送授权、8MB 限制、safeInit、hidden 跳过、quota、并发重读均已接");
-  else bad("v2.4.25：审计修复缺失");
+    ok("v2.4.26：限流/载荷校验、传送授权、8MB 限制、safeInit、hidden 跳过、quota、并发重读均已接");
+  else bad("v2.4.26：审计修复缺失");
 }
 
-console.log("== v2.4.25 全桌同步提示");
+console.log("== v2.4.26 全桌同步提示");
 {
   const html = fs.readFileSync(path.join(ROOT, "dice.html"), "utf8");
   if (html.indexOf("单次最多 40 颗骰子；投掷间隔 0.8 秒") >= 0 && html.indexOf("sync-hint") >= 0)
-    ok("v2.4.25：骰子面板常驻「单次最多 40 颗骰子；投掷间隔 0.8 秒」");
-  else bad("v2.4.25：限制提示缺失");
+    ok("v2.4.26：骰子面板常驻「单次最多 40 颗骰子；投掷间隔 0.8 秒」");
+  else bad("v2.4.26：限制提示缺失");
 }
 
 console.log(fail ? "\n" + fail + " 个问题" : "\n全部通过");

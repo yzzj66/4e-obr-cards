@@ -564,3 +564,9 @@ body.info-body input {
 .gl4-compact .gl4-name { flex: 0 1 auto; max-width: 100%; }
 .gl4-compact .gl4-sub { flex: 0 1 auto; min-width: 0; }
 .gl4-compact .gl4-head-right { flex: 0 1 auto; margin-left: auto; }
+
+/* v2.4.26：回复力圆点随数量缩小，30 颗也能一行塞进 378px。 */
+.gl4-surgepips .gl4-pips.mid { gap: 3px; }
+.gl4-surgepips .gl4-pips.mid .gl4-pip { width: 10px; height: 10px; }
+.gl4-surgepips .gl4-pips.many { gap: 2px; }
+.gl4-surgepips .gl4-pips.many .gl4-pip { width: 9px; height: 9px; }

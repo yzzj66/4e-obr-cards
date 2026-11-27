@@ -17,13 +17,13 @@ import OBR from "../vendor/obr-sdk.js";
 import { CH_INFO_ACK, CH_INFO_READY, CH_INFO_TARGET, CH_INFO_DRAG, CH_INFO_SIZE, ID_INFO, ID_PANEL, INFO_DRAG_THROTTLE_MS, URL_PANEL, KEY_BIND, getCards, findCard, esc, onReady, notify, syncDefTempToTokens } from "./common.js";
 /* v1.7.13：带版本查询串 —— 旧缓存的 glance.js / track.js 正是「chip 点不动」的另一种可能，
  * 更新后必须让浏览器重新取这两个文件（info.html 的入口也带了 ?v=）。 */
-import { renderGlanceHTML, deriveGlance, magicItemDailyUses, loadCardIndex } from "./glance.js?v=2.4.25";
+import { renderGlanceHTML, deriveGlance, magicItemDailyUses, loadCardIndex } from "./glance.js?v=2.4.26";
 /* v1.7.10：✕ 统一走「OBR.popover.close(正确 id) + OBR.modal.close + 后台 {op:"close-win"}」双保险。 */
 import { closeSelf, safeInit } from "./window.js";
-import { KEY_HP, applyAction, hpView, loadState, mayEditItem, readItem, scopeText, syncTokenStats } from "./track.js?v=2.4.25";
+import { KEY_HP, applyAction, hpView, loadState, mayEditItem, readItem, scopeText, syncTokenStats } from "./track.js?v=2.4.26";
 
 const params = new URLSearchParams(location.search);
-/* v2.4.25：点 token 自动弹 = compact（简化）；右键「速览」/工具栏 = full（完整旧界面）。 */
+/* v2.4.26：点 token 自动弹 = compact（简化）；右键「速览」/工具栏 = full（完整旧界面）。 */
 const viewMode = params.get("mode") === "full" ? "full" : "compact";
 document.body.classList.add(viewMode === "full" ? "mode-full" : "mode-compact");
 let itemId = params.get("item") || "";
@@ -152,11 +152,11 @@ async function resolveCard() {
   return hit;
 }
 
-/* v2.4.25（照 Full Suite characterCards/info-page.ts）：打开后按内容自动收紧高度，
+/* v2.4.26（照 Full Suite characterCards/info-page.ts）：打开后按内容自动收紧高度，
  * 不再用固定的 660×700 大窗（用户反馈「太大、挡视线」）。 */
 let fitTimer = 0;
 function scheduleFitHeight() {
-  /* v2.4.25：完整模式也按内容收（用户反馈「空窗太大」），只是上限更高、超出滚动。 */
+  /* v2.4.26：完整模式也按内容收（用户反馈「空窗太大」），只是上限更高、超出滚动。 */
   if (fitTimer) clearTimeout(fitTimer);
   fitTimer = setTimeout(function () {
     fitTimer = 0;
@@ -164,7 +164,7 @@ function scheduleFitHeight() {
       if (!OBR.popover || typeof OBR.popover.setHeight !== "function") return;
       const head = document.getElementById("head");
       const foot = document.querySelector(".pop-foot");
-      /* v2.4.25：不能量 .pop-body.scrollHeight —— 它是 flex:1，高度等于当前窗口，
+      /* v2.4.26：不能量 .pop-body.scrollHeight —— 它是 flex:1，高度等于当前窗口，
        * 量出来永远是「窗口高度」，setHeight 等于没缩。改量真实内容 .gl4 的高度。 */
       const gl4 = bodyEl ? bodyEl.querySelector(".gl4") : null;
       const contentH = gl4 ? Math.ceil(gl4.getBoundingClientRect().height) : (bodyEl ? bodyEl.scrollHeight : 0);
@@ -221,7 +221,7 @@ function render() {
   }
   paintScope();
   scheduleFitHeight();
-  /* v2.4.25：字体 / card-index 布局可能晚一拍，再补收一次，避免先出滚动条再消失。 */
+  /* v2.4.26：字体 / card-index 布局可能晚一拍，再补收一次，避免先出滚动条再消失。 */
   setTimeout(scheduleFitHeight, 160);
 }
 
@@ -261,7 +261,7 @@ async function refresh(force) {
     const d0 = deriveGlance(card.char);
     canHp = token ? await mayEditItem(token) : false;
     hp = hpView(token && token.metadata ? token.metadata[KEY_HP] : null, { maxHp: d0.hpMax, surges: d0.surges });
-    /* v2.4.25：先读 state，syncTokenStats 需要知道速览临时四防（defTemp），
+    /* v2.4.26：先读 state，syncTokenStats 需要知道速览临时四防（defTemp），
      * 否则它会把「卡片基础 + 临时值」误判成不一致又写回基础值。 */
     const loaded = await loadState(card.id);
     state = loaded.state;
@@ -328,7 +328,7 @@ async function runAction(act, el) {
     if (res.hp) hp = hpView(res.hp, { maxHp: derived.hpMax, surges: derived.surges });
     if (res.state) state = res.state;
     if (res.scope) scope = res.scope;
-    /* v2.4.25：四防临时加值单向写回绑定该卡的 token（地图血条只显示）——
+    /* v2.4.26：四防临时加值单向写回绑定该卡的 token（地图血条只显示）——
      * def-temp 改了值，短/长休已清空 defTemp；写回后 scene.items.onChange 会让血条自动重画。
      * 注意：手动在血条编辑窗改的四防会被下一次联动覆盖（绑卡本来就会覆盖四防，已知取舍）。 */
     if (act === "def-temp" || act === "rest-short" || act === "rest-long") {
