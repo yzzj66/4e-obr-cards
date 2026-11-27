@@ -35,7 +35,7 @@ const RESET_PREFIXES = [RESET_PREFIX, "4enext/win-size/"];
 /** 二次确认的有效期：第一次点击后这么久内没有再点，就自动回到普通状态。 */
 const CONFIRM_MS = 5000;
 
-const win = createWindow({ name: "settings" }); /* v2.4.36：窗口壳最先初始化，后续 init 抛错也能关窗 */
+const win = createWindow({ name: "settings" }); /* v2.4.37：窗口壳最先初始化，后续 init 抛错也能关窗 */
 function safeInit(name, fn) {
   try { fn(); } catch (e) { console.error("[4enext][settings] init " + name + " 失败", e); }
 }
@@ -237,7 +237,7 @@ async function renderRoom() {
   if (roomInitEl) roomInitEl.textContent = info.entries + " 条";
 }
 
-/* v2.4.36：骰子动画速度（标准/快速/关闭），effect-page 读取同一个 localStorage。 */
+/* v2.4.37：骰子动画速度（标准/快速/关闭），effect-page 读取同一个 localStorage。 */
 const diceSpeedBtn = document.getElementById("set-dice-speed");
 const diceAutoBtn = document.getElementById("set-dice-auto");
 safeInit("diceSpeed", function initDiceSpeed() {
@@ -251,7 +251,7 @@ safeInit("diceSpeed", function initDiceSpeed() {
   });
 });
 
-/* v2.4.36：进入房间自动打开骰子（每客户端）。 */
+/* v2.4.37：进入房间自动打开骰子（每客户端）。 */
 safeInit("diceAuto", function () {
   if (!diceAutoBtn) return;
   const paint = () => { diceAutoBtn.textContent = "进入房间自动打开骰子：" + (readDiceAutoOpenPref() ? "开" : "关"); };

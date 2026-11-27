@@ -486,7 +486,7 @@ let usage0 = await C.getRoomUsage();
 if (usage0.roomCards === 0 && usage0.sceneCards === 2 && usage0.cards === 2 && usage0.cardScope === "scene")
   ok("getRoomUsage 报出场景兜底：2 张（来源 = scene）");
 else bad("getRoomUsage 没报场景兜底：" + JSON.stringify(usage0));
-if (usage0.rows === 20 && usage0.entries === 1)
+if (usage0.rows === 40 && usage0.entries === 1)
   ok("getRoomUsage 同时报出「" + usage0.rows + " 条骰子 / " + usage0.entries + " 条先攻」");
 else bad("getRoomUsage 的骰子 / 先攻数字不对：" + JSON.stringify(usage0));
 

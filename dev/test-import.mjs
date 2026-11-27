@@ -434,11 +434,11 @@ if (exportPath && backupPath) {
   }
 }
 
-/* v2.4.36：真实新版导出（含 combatMods.damages[].dieUp）—— 能导入且第一项伤害骰 = 1d6 */
+/* v2.4.37：真实新版导出（含 combatMods.damages[].dieUp）—— 能导入且第一项伤害骰 = 1d6 */
 {
   const newFx = path.join(FIX, "申比软软-new.json");
   if (!fs.existsSync(newFx)) {
-    ok("v2.4.36：真实新版导出文件不存在 → 跳过（不依赖用户文件）");
+    ok("v2.4.37：真实新版导出文件不存在 → 跳过（不依赖用户文件）");
   } else {
     try {
       const r = I.parse4eFile(fs.readFileSync(newFx, "utf8"));
@@ -446,15 +446,15 @@ if (exportPath && backupPath) {
       const dNew = charNew ? G.deriveGlance(charNew) : null;
       const firstDie = dNew && dNew.damages[0] ? dNew.damages[0].dice : "";
       if (r.format === "single" && r.imports.length === 1 && firstDie === "1d6")
-        ok("v2.4.36：真实新版导出可导入，第一项伤害骰 = 1d6（dieUp=1）");
-      else bad("v2.4.36：真实新版导出导入 / 伤害骰不对：" + JSON.stringify({ format: r.format, n: r.imports.length, firstDie }));
+        ok("v2.4.37：真实新版导出可导入，第一项伤害骰 = 1d6（dieUp=1）");
+      else bad("v2.4.37：真实新版导出导入 / 伤害骰不对：" + JSON.stringify({ format: r.format, n: r.imports.length, firstDie }));
     } catch (e) {
-      bad("v2.4.36：真实新版导出解析抛错：" + (e && e.message ? e.message : e));
+      bad("v2.4.37：真实新版导出解析抛错：" + (e && e.message ? e.message : e));
     }
   }
 }
 
-/* ---- v2.4.36：野蛮人「蛮族机敏」AC/反射 +1/+2/+3 ---- */
+/* ---- v2.4.37：野蛮人「蛮族机敏」AC/反射 +1/+2/+3 ---- */
 {
   const mk = (level, classId, armor) => ({
     level, classId, raceId: "", hybrid: false,
@@ -465,31 +465,31 @@ if (exportPath && backupPath) {
   const b3 = defOf(mk(3, "野蛮人 Barbarian"));
   const f3 = defOf(mk(3, "战士 Fighter"));
   if (b3.ac === f3.ac + 1 && b3.ref === f3.ref + 1)
-    ok("v2.4.36：3 级野蛮人（轻甲/无甲）AC/反射各 +1（蛮族机敏）");
-  else bad("v2.4.36：3 级蛮族机敏不对：" + JSON.stringify({ b3, f3 }));
+    ok("v2.4.37：3 级野蛮人（轻甲/无甲）AC/反射各 +1（蛮族机敏）");
+  else bad("v2.4.37：3 级蛮族机敏不对：" + JSON.stringify({ b3, f3 }));
   const b11 = defOf(mk(11, "野蛮人 Barbarian"));
   const f11 = defOf(mk(11, "战士 Fighter"));
   const b21 = defOf(mk(21, "野蛮人 Barbarian"));
   const f21 = defOf(mk(21, "战士 Fighter"));
   if (b11.ac === f11.ac + 2 && b11.ref === f11.ref + 2 && b21.ac === f21.ac + 3 && b21.ref === f21.ref + 3)
-    ok("v2.4.36：11 级 +2、21 级 +3（AC/反射）");
-  else bad("v2.4.36：11/21 级加值不对");
+    ok("v2.4.37：11 级 +2、21 级 +3（AC/反射）");
+  else bad("v2.4.37：11/21 级加值不对");
   const plate = defOf(mk(3, "野蛮人 Barbarian", "a:链甲 Chainmail"));
   const plateF = defOf(mk(3, "战士 Fighter", "a:链甲 Chainmail"));
   if (plate.ac === plateF.ac && plate.ref === plateF.ref)
-    ok("v2.4.36：穿重甲（链甲）不享受蛮族机敏");
-  else bad("v2.4.36：重甲仍加蛮族机敏");
+    ok("v2.4.37：穿重甲（链甲）不享受蛮族机敏");
+  else bad("v2.4.37：重甲仍加蛮族机敏");
   const bers = defOf(mk(3, "野蛮人（狂战士） Barbarian (Berserker)"));
   if (bers.ac === f3.ac && bers.ref === f3.ref)
-    ok("v2.4.36：狂战士不享有蛮族机敏");
-  else bad("v2.4.36：狂战士错误获得蛮族机敏");
+    ok("v2.4.37：狂战士不享有蛮族机敏");
+  else bad("v2.4.37：狂战士错误获得蛮族机敏");
   const hybridNo = defOf(mk(3, "混职野蛮人 Hybrid Barbarian"));
   if (hybridNo.ac === f3.ac && hybridNo.ref === f3.ref)
-    ok("v2.4.36：混职野蛮人未选天赋时不加");
-  else bad("v2.4.36：混职野蛮人无条件加值");
+    ok("v2.4.37：混职野蛮人未选天赋时不加");
+  else bad("v2.4.37：混职野蛮人无条件加值");
 }
 
-/* ---- v2.4.36：种族/职业固定防御加值（脱敏 fixture 回归） ---- */
+/* ---- v2.4.37：种族/职业固定防御加值（脱敏 fixture 回归） ---- */
 {
   const fixDir = path.join(ROOT, "dev", "fixtures");
   const barb = JSON.parse(fs.readFileSync(path.join(fixDir, "character-barbarian-lv3.json"), "utf8"));
@@ -497,27 +497,27 @@ if (exportPath && backupPath) {
   const def = (ch) => { const d = G.deriveGlance(ch); const o = {}; d.defenses.forEach(x => o[x.key] = x.value); return o; };
   const b = def(barb), w = def(warlord);
   if (b.ac === 16 && b.fort === 19 && b.ref === 13 && b.will === 12)
-    ok("v2.4.36：不死人 fixture AC16 / 强韧19 / 反射13 / 意志12（穆尔人不吃人类 +1）");
-  else bad("v2.4.36：不死人回归失败：" + JSON.stringify(b));
+    ok("v2.4.37：不死人 fixture AC16 / 强韧19 / 反射13 / 意志12（穆尔人不吃人类 +1）");
+  else bad("v2.4.37：不死人回归失败：" + JSON.stringify(b));
   if (w.ac === 21 && w.fort === 18 && w.ref === 22 && w.will === 15)
-    ok("v2.4.36：费兹 fixture AC21 / 强韧18 / 反射22 / 意志15（人类三防 +1，选择型职业防御默认不加）");
-  else bad("v2.4.36：费兹回归失败：" + JSON.stringify(w));
+    ok("v2.4.37：费兹 fixture AC21 / 强韧18 / 反射22 / 意志15（人类三防 +1，选择型职业防御默认不加）");
+  else bad("v2.4.37：费兹回归失败：" + JSON.stringify(w));
   const rulesText = fs.readFileSync(path.join(ROOT, "data", "rules.js"), "utf8");
   if (/"人类 Human":\[[^\]]*?,1,1,1,/.test(rulesText) &&
     /"混职游荡者（恶棍） Hybrid Rogue \(Scoundrel\)":\[[^\]]*?,0,1,0,/.test(rulesText) &&
     /"混职督军（元帅） Hybrid Warlord \(Marshal\)":\[[^\]]*?,0,0,0,0,/.test(rulesText))
-    ok("v2.4.36：rules 数据 人类 1/1/1、混职游荡者反射+1、混职督军选择型默认 0");
-  else bad("v2.4.36：rules 防御列不对");
+    ok("v2.4.37：rules 数据 人类 1/1/1、混职游荡者反射+1、混职督军选择型默认 0");
+  else bad("v2.4.37：rules 防御列不对");
 }
 
-/* ---- v2.4.36：导入大小上限 ---- */
+/* ---- v2.4.37：导入大小上限 ---- */
 {
   try {
     I.parse4eFile("x".repeat(8 * 1024 * 1024 + 1));
-    bad("v2.4.36：8MB 以上导入未拒绝");
+    bad("v2.4.37：8MB 以上导入未拒绝");
   } catch (e) {
-    if (/8 MB|太大/.test(String(e && e.message))) ok("v2.4.36：导入文本 >8MB 抛中文错误");
-    else bad("v2.4.36：大小错误文案不对：" + (e && e.message));
+    if (/8 MB|太大/.test(String(e && e.message))) ok("v2.4.37：导入文本 >8MB 抛中文错误");
+    else bad("v2.4.37：大小错误文案不对：" + (e && e.message));
   }
 }
 
