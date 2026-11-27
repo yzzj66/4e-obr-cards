@@ -13,7 +13,7 @@
 // 数据读写全部在 assets/initiative.js（与自测共用同一份）；窗口壳在 assets/window.js。
 import OBR from "../vendor/obr-sdk.js";
 import {
-  CH_GLANCE_SUPPRESS, CH_HELLO, CH_INIT_REQUEST, CH_STRIP_CMD, CH_STRIP_DRAG, ID_INIT_WIN, ID_STRIP,
+  CH_GLANCE_SUPPRESS, CH_HELLO, CH_INIT_REQUEST, CH_STRIP_CMD, CH_STRIP_DRAG, CH_DICE_ROLL, CH_ROLL, ID_INIT_WIN, ID_STRIP,
   STRIP_DRAG_THROTTLE_MS, getCards, onReady, pingBackground
 } from "./common.js";
 import { createWindow, feedback, closeSelf, safeInit } from "./window.js";
@@ -344,7 +344,7 @@ async function onRoll(mode, tokenId) {
     feedback("这枚 token 已经不在先攻列表里了", "WARNING");
     return;
   }
-  /* v2.4.35（照 Full Suite）：准备阶段玩家可以掷自己的条目；战斗阶段只有 GM 能重掷。 */
+  /* v2.4.36（照 Full Suite）：准备阶段玩家可以掷自己的条目；战斗阶段只有 GM 能重掷。 */
   const allowed = myRole === "GM" ||
     (initiative.phase === "preparing" && canEditBonus(entry, { role: myRole, playerId: playerId, items: itemsMap }));
   if (!allowed) {
@@ -352,8 +352,37 @@ async function onRoll(mode, tokenId) {
     return;
   }
   /* v1.8.0：传函数，连点 d20 时每次都在最新的 state 上重掷（不会两次都基于同一个旧 state）。 */
-  return saveInit(function (st) { return rerollEntry(st, tokenId, undefined, "normal"); },
+  await saveInit(function (st) { return rerollEntry(st, tokenId, undefined, "normal"); },
     "「" + entry.name + "」重新掷先攻");
+  /* v2.4.36（对齐 Full Suite）：先攻掷骰也走 broadcastDiceRoll —— 全桌看到骰子动画 + 骰子记录。
+   * 之前只改先攻条数字，没有动画/记录。 */
+  try {
+    const done = initiative.entries.filter(function (e) { return e.tokenId === tokenId; })[0];
+    if (done && done.d20 !== null && done.d20 !== undefined) {
+      var nm = "";
+      var col = "";
+      try { nm = await OBR.player.getName(); } catch (eNm) { nm = ""; }
+      try { col = await OBR.player.getColor(); } catch (eCol) { col = ""; }
+      var rollId = "init-" + Date.now().toString(36) + "-" + Math.random().toString(36).slice(2, 8);
+      var payload = {
+        v: 1,
+        id: rollId,
+        rollId: rollId,
+        rollerId: playerId,
+        rollerName: nm || "城主",
+        rollerColor: col || "#5dade2",
+        dice: [{ type: "d20", value: Math.round(Number(done.d20)) }],
+        total: Math.round(Number(done.init)),
+        modifier: Math.round(Number(done.bonus) || 0),
+        label: "先攻",
+        mode: "initiative",
+        crit: false,
+        ts: Date.now()
+      };
+      try { OBR.broadcast.sendMessage(CH_DICE_ROLL, payload, { destination: "ALL" }); } catch (eFx) { /* 忽略 */ }
+      try { OBR.broadcast.sendMessage(CH_ROLL, payload, { destination: "ALL" }); } catch (eH) { /* 忽略 */ }
+    }
+  } catch (eBc) { /* 动画失败不影响先攻写入 */ }
 }
 
 /* ---------------- v1.7.10：先攻加值可编辑（卡片左上角 + 状态行同一份写逻辑） ---------------- */
@@ -449,7 +478,7 @@ async function onCardClick(tokenId) {
   }
   /* 非战斗 / 玩家：把选中切到这枚 token（地图高亮照旧），但**不弹速览**。
    * v1.8.2：先广播 CH_GLANCE_SUPPRESS 再 select —— 后台 refreshInfo 收到抑制信号，1.5s 内不弹窗。
-   * v2.4.35：**必须 await 抑制广播送达后再 select**。之前 `void sendMessage` 直接 select，
+   * v2.4.36：**必须 await 抑制广播送达后再 select**。之前 `void sendMessage` 直接 select，
    * 真机上偶尔 select 引发的 refreshInfo 比抑制消息先到 → 速览弹一次（竞态）。 */
   try {
     await OBR.broadcast.sendMessage(CH_GLANCE_SUPPRESS, { tokenId: tokenId, at: Date.now() }, { destination: "LOCAL" });
