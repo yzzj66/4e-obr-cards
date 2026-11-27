@@ -1520,3 +1520,7 @@ body.dice-action .dice-result { pointer-events: auto; }
 body.resizing, body.resizing * { cursor: nwse-resize !important; user-select: none !important; }
 
 .sync-hint { display: block; margin-top: 2px; font-size: 9.5px; line-height: 1.35; color: var(--muted); white-space: normal; word-break: break-word; }
+
+/* v2.4.23：紧凑速览内容已经按高度收住，不要出现滚动条（1px 误差也别闪）。 */
+body.mode-compact .pop-body { overflow-y: hidden !important; }
+body.mode-compact .pop { overflow: hidden; }
