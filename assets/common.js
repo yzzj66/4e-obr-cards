@@ -51,7 +51,7 @@ export const ID_SETTINGS_WIN = NS + "/settings-window";
  * id 与其它窗口都不同 → 可以和速览 / 先攻条同时开着；位置按窗口名 "hpEdit" 单独记。 */
 export const ID_HP_EDIT = NS + "/hp-edit";
 
-export const PLUGIN_VERSION = "2.4.28";
+export const PLUGIN_VERSION = "2.4.29";
 
 /**
  * 站点根地址。
@@ -95,7 +95,7 @@ export const CH_INFO_TARGET = NS + "/info-target";
 export const CH_INFO_READY = NS + "/info-ready";
 /** v1.9.0：页面刷新成功的 ack（{session, version, itemId}）—— 后台 700ms 没收到就兜底重开一次。 */
 export const CH_INFO_ACK = NS + "/info-ack";
-/* v2.4.28：页面按内容 setHeight 后，把新高度同步给后台（拖动/重开时不再弹回 700）。 */
+/* v2.4.29：页面按内容 setHeight 后，把新高度同步给后台（拖动/重开时不再弹回 700）。 */
 export const CH_INFO_SIZE = NS + "/info-size";
 
 /* ---- v1.5.0：骰子（团队共享）----
@@ -198,12 +198,12 @@ export const CH_DICE_HIST_STATE = NS + "/dice-hist-state";
 export const CH_HP_EDIT_TARGET = NS + "/hp-edit-target";
 export const CH_HP_EDIT_READY = NS + "/hp-edit-ready";
 export const CH_HP_EDIT_SAVED = NS + "/hp-edit-saved";
-/** v2.4.28：页面切换/载入完成回 ack，后台据此判断「单窗换目标」是否成功（600ms 无 ack 兜底重开一次）。 */
+/** v2.4.29：页面切换/载入完成回 ack，后台据此判断「单窗换目标」是否成功（600ms 无 ack 兜底重开一次）。 */
 export const CH_HP_EDIT_ACK = NS + "/hp-edit-ack";
-/** v2.4.28：编辑窗「重绘血条」按钮 → 后台强制重算这张 token 的血条环 / 四防盾 / 资源徽记。 */
+/** v2.4.29：编辑窗「重绘血条」按钮 → 后台强制重算这张 token 的血条环 / 四防盾 / 资源徽记。 */
 export const CH_HP_REPAINT = NS + "/hp-repaint";
 export const CH_HPEDIT_LOG = NS + "/hpedit-log";
-/* v2.4.28：传送门（与 background.core.js 逐字一致）。 */
+/* v2.4.29：传送门（与 background.core.js 逐字一致）。 */
 export const KEY_PORTAL = NS + "/portal";
 export const CH_WIN_RESIZE = NS + "/win-resize";
 export const CH_OPEN_SETTINGS = NS + "/open-settings";
@@ -405,7 +405,7 @@ async function readRoomMeta() {
   let room = {}, scene = {};
   try { room = (await OBR.room.getMetadata()) || {}; } catch (e) { console.error("[4enext] 读取房间数据失败", e); }
   try { scene = (await OBR.scene.getMetadata()) || {}; } catch (e2) { scene = {}; }
-  /* v2.4.28：scene 兜底键与房间键按 updatedAt 取较新者。 */
+  /* v2.4.29：scene 兜底键与房间键按 updatedAt 取较新者。 */
   const out = Object.assign({}, scene, room);
   for (const k of Object.keys(scene)) {
     const a = scene[k] && typeof scene[k].updatedAt === "number" ? scene[k].updatedAt : -1;
@@ -622,7 +622,7 @@ export async function getRoomUsage() {
   if (roomCards && roomCards.length) cardScope = "room";
   else if (sceneCards.length) cardScope = "scene";
   else if (local && local.cards.length) cardScope = "local";
-  /* v2.4.28：16KB 是**整个房间 metadata** 共享上限，其它插件也占；统计总量 / 本插件 / 其它。 */
+  /* v2.4.29：16KB 是**整个房间 metadata** 共享上限，其它插件也占；统计总量 / 本插件 / 其它。 */
   let totalBytes = 0, oursBytes = 0, top = [];
   try {
     totalBytes = JSON.stringify(meta || {}).length;
@@ -944,11 +944,11 @@ export async function propagateCardStats(cards, updatedIds) {
 }
 
 /**
- * v2.4.28：把「卡片基础四防 + 速览临时四防」合并成 token 该有的 defenses。
+ * v2.4.29：把「卡片基础四防 + 速览临时四防」合并成 token 该有的 defenses。
  * base 用 token 侧键名（ac/fort/reflex/will）；defTemp 用 track state 键名（ac/fort/ref/reflex/will）。
  * 只覆盖 base 里存在的项（卡片没有的项 = 不返回 → 调用方保留 token 原值）；round + clamp 到 ≥0。
  * syncDefTempToTokens（写 token）与 track.syncTokenStats（比较是否回写）**必须共用这一套**，
- * 否则会出现「临时值写进去 → 速览刷新又按基础值写回」的抖动（v2.4.28 bug）。
+ * 否则会出现「临时值写进去 → 速览刷新又按基础值写回」的抖动（v2.4.29 bug）。
  */
 export function combineDefenses(base, defTemp) {
   /* 只用 track state 的键名（ac / fort / ref / will）逐项取临时值；base 侧键名是 ac/fort/reflex/will。
@@ -973,7 +973,7 @@ export function combineDefenses(base, defTemp) {
 }
 
 /**
- * v2.4.28：速览「四防临时加值」→ 绑定该卡 token 的 hp.defenses（单向联动，地图血条只显示）。
+ * v2.4.29：速览「四防临时加值」→ 绑定该卡 token 的 hp.defenses（单向联动，地图血条只显示）。
  * 目标值 = 卡片基础四防 + defTemp（只覆盖卡片有值的项；卡片没有的项保持 token 原值）。
  * 保留 cur / max / temp / locked / surges；值没变不写；无权限（非 GM 且非创建者）的 token 跳过；
  * 写失败静默（血条下次重算）。
@@ -1065,7 +1065,7 @@ export function fmtTime(ts) {
     return "";
   }
 }
-/* v2.4.28：血条状态/配色唯一来源（地图血条与血条编辑窗预览共用）。
+/* v2.4.29：血条状态/配色唯一来源（地图血条与血条编辑窗预览共用）。
  * 阈值沿用 4E bloodied（≤50% 进入血怒）：>50% 健康绿、25%~50% 受伤黄、≤25% 濒死红。 */
 export const HP_STATE_HEALTHY_COLOR = "#56d364";
 export const HP_STATE_WOUNDED_COLOR = "#e3b341";
@@ -1101,7 +1101,7 @@ export function hpStatusOf(cur, max) {
   return { key: key, label: label, color: color, ratio: ratio, bloodied: m > 0 && c <= m / 2 };
 }
 
-/* v2.4.28：骰子动画速度偏好（设置页 / effect 共用；settings 页不直接碰 localStorage）。 */
+/* v2.4.29：骰子动画速度偏好（设置页 / effect 共用；settings 页不直接碰 localStorage）。 */
 export const LS_DICE_SPEED = "4enext/dice-speed";
 export function readDiceSpeedPref() {
   try {
@@ -1116,7 +1116,7 @@ export function cycleDiceSpeedPref() {
   return next;
 }
 
-/* v2.4.28：骰子面板进入房间自动打开（每客户端；本次会话手动关闭后不再自动开）。 */
+/* v2.4.29：骰子面板进入房间自动打开（每客户端；本次会话手动关闭后不再自动开）。 */
 export const DICE_AUTOSTART_KEY = "4enext/dice-autostart";
 export const DICE_CLOSED_KEY = "4enext/dice-closed-this-session";
 export function readDiceAutoOpenPref() {

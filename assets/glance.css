@@ -574,3 +574,12 @@ body.info-body input {
 /* v2.4.27：共享数据按钮挪到速览标题栏后，用标题栏的小尺寸。 */
 #head .gl4-share { font-size: 10px; padding: 2px 6px; min-height: 20px; gap: 2px; border-radius: 8px; }
 #head .gl4-share svg { width: 10px; height: 10px; }
+
+/* v2.4.29：四防/攻击行单行不折；整卡左右留白一致，所有行左右对齐。 */
+.gl4-compact .gl4-def-i { white-space: nowrap; }
+.gl4-compact .gl4-card.gl4-defs { flex-wrap: nowrap !important; }
+.gl4-compact .gl4-atk-row { white-space: nowrap; }
+.gl4-compact .gl4-tags { white-space: nowrap; }
+.gl4-compact .gl4-surgepips { width: 100%; }
+.gl4-compact .gl4-surge-line { width: 100%; }
+.gl4-compact .gl4-hp-pad { width: 100%; }

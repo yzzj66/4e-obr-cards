@@ -19,7 +19,7 @@
 import OBR from "../vendor/obr-sdk.js";
 import { NS, onReady } from "./common.js";
 import { FX_MAX_DICE, fxBeat, fxLayout, sidesOf } from "./dice-core.js";
-import { diceSvg, diceImage, diceLayout, diceFxDuration, diceSpeed } from "./dice-fx.js?v=2.4.28";
+import { diceSvg, diceImage, diceLayout, diceFxDuration, diceSpeed } from "./dice-fx.js?v=2.4.29";
 
 /** v1.7.1：兜底关闭时长（ms）。动画总时长是 2600 ms（fxBeat().total），这里再留 400 ms 余量：
  *  到点不管动画播到哪一步都强制 OBR.modal.close —— 页面被挂起 / rAF 挂掉 / 动画被打断时，
@@ -241,10 +241,10 @@ function buildDice() {
 
     var box = document.createElement("div");
     box.className = "fx-box";
-    /* v2.4.28：自绘骰子轮廓（d4/d6/d8/d10/d12/d20/d100），号码仍由 .fx-num 滚动/定格。 */
+    /* v2.4.29：自绘骰子轮廓（d4/d6/d8/d10/d12/d20/d100），号码仍由 .fx-num 滚动/定格。 */
     var shape = document.createElement("span");
     shape.className = "fx-shape";
-    /* v2.4.28：优先用用户提供的 PNG 骰子素材；加载失败时回退自绘 SVG。 */
+    /* v2.4.29：优先用用户提供的 PNG 骰子素材；加载失败时回退自绘 SVG。 */
     shape.innerHTML = diceImage(d.type);
     var art = shape.firstChild;
     if (art && art.tagName === "IMG") {
