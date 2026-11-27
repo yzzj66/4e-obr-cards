@@ -1,7 +1,7 @@
 # 4eNEXT to owlbear · Owlbear Rodeo 插件
 
 > 基于 4E NEXT 的 4E 跑团适配 mod：在枭熊里看角色卡速览、绑定 token、先攻条、骰子与血条。
-> **当前版本 v2.4.23** · 纯静态（无需 npm / 无需构建）· 零服务器。
+> **当前版本 v2.4.24** · 纯静态（无需 npm / 无需构建）· 零服务器。
 > 历史更新记录见 [CHANGELOG.md](CHANGELOG.md)。
 
 ## ⭐ 安装地址（复制这一行）

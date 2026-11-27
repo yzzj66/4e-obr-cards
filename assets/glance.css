@@ -531,3 +531,36 @@ body.info-body input {
 }
 .gl4-compact .gl4-tags > span { flex: 0 0 auto; }
 .gl4-compact .gl4-tags .gl4-resline { display: inline-flex; flex: 0 0 auto; gap: 6px; }
+
+/* v2.4.24：回复力圆点（蓝色）占据原蓝条位置，左对齐血条；与血条同宽起始。 */
+.gl4-surgepips { display: flex; align-items: center; gap: 4px; margin: 3px 0 2px; }
+.gl4-surgepips .gl4-pips { display: flex; gap: 4px; }
+.gl4-surgepips .gl4-pip { width: 11px; height: 11px; border-radius: 50%; border: 1px solid #2f5d8f; background: #14212f; cursor: pointer; padding: 0; }
+.gl4-surgepips .gl4-pip.on { background: #58a6ff; border-color: #7cc0ff; }
+.gl4-surgepips .gl4-pip.static.on { background: #58a6ff; }
+.gl4-compact .gl4-surge-line { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+
+/* v2.4.24（用户图5）：标题行左右必须同一行、垂直居中，右侧属性区更紧凑。 */
+.gl4-compact .gl4-head { display: flex; flex-wrap: nowrap; align-items: center; gap: 8px; }
+.gl4-compact .gl4-id { min-width: 0; flex: 0 1 auto; }
+.gl4-compact .gl4-name { font-size: 16px; line-height: 1.15; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.gl4-compact .gl4-sub { font-size: 11px; line-height: 1.2; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.gl4-compact .gl4-head-right { flex: 1 1 auto; display: flex; align-items: center; justify-content: flex-end; gap: 5px; min-width: 0; }
+.gl4-compact .gl4-quick.flat { gap: 7px; flex-wrap: nowrap; justify-content: flex-end; }
+.gl4-compact .gl4-quick.flat .gl4-q { flex-direction: row; align-items: baseline; gap: 2px; }
+.gl4-compact .gl4-quick.flat .gl4-q i { font-size: 9.5px; }
+.gl4-compact .gl4-quick.flat .gl4-q b { font-size: 11.5px; }
+.gl4-compact .gl4-share { font-size: 10px; padding: 2px 5px; min-height: 22px; gap: 2px; }
+.gl4-compact .gl4-share svg { width: 10px; height: 10px; }
+
+/* v2.4.24（用户图5）：名字和等级/种族/职业同一行，右侧属性仍同一行。 */
+.gl4-compact .gl4-id { display: flex; align-items: baseline; gap: 8px; min-width: 0; }
+.gl4-compact .gl4-name { flex: 0 1 auto; }
+.gl4-compact .gl4-sub { flex: 0 1 auto; min-width: 0; }
+
+/* v2.4.24b：名字+等级同一行（不截断）；右侧属性/共享数据自动换到第二行右对齐。 */
+.gl4-compact .gl4-head { flex-wrap: wrap; align-items: center; gap: 3px 8px; }
+.gl4-compact .gl4-id { flex: 1 1 100%; max-width: 100%; display: flex; align-items: baseline; gap: 8px; }
+.gl4-compact .gl4-name { flex: 0 1 auto; max-width: 100%; }
+.gl4-compact .gl4-sub { flex: 0 1 auto; min-width: 0; }
+.gl4-compact .gl4-head-right { flex: 0 1 auto; margin-left: auto; }
