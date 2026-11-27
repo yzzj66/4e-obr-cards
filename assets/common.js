@@ -26,10 +26,22 @@ export const KEY_BIND = NS + "/cardId";
 export const KEY_HP = NS + "/hp";
 /** Token（item）上的血条组件开关（false = 用户显式「移除血条组件」）。 */
 export const KEY_HPBAR = NS + "/hp-bar/enabled";
-/** Token（item）上的先攻加值（v1.3.0）：{ bonus, cardId, updatedAt }。 */
+/* v2.5（先攻 per-token 存储，照 Full Suite 的做法）：
+ *   · token.metadata[KEY_INIT] 改成「这一枚 token 在自己先攻名单里的那一条」：
+ *       { v:2, d20:number|null, bonus:number, init:number, tb:number|null, hidden:boolean, ownerId:string, updatedAt:number }
+ *     老版本这里只存「先攻加值缓存」（数字，或 { bonus, cardId, updatedAt }）—— 只当加值读，
+ *     没有 v:2 的旧值不会把 token 误加进先攻名单（`entriesFromItems` 只认 v === 2）。
+ *   · 战斗态（phase / round / surprise / activeId）放**场景** metadata[KEY_COMBAT]（全桌共享，GM 写；
+ *     玩家写不进时继续走现有 CH_INIT_JOIN / CH_INIT_REQUEST 通道请求 GM）。
+ *   · KEY_INITIATIVE 是 v1.3 ~ v2.4 的旧「房间/场景整份名单」，只用于**迁移前过渡读取**（只读）；
+ *     GM 首次启动 / 首次读先攻时迁移到 token metadata，迁完清成空名单，并在 localStorage 留备份。 */
 export const KEY_INIT = NS + "/init";
-/** 房间数据里的先攻状态（v1.3.0）。 */
+/** 旧「房间/场景整份先攻名单」键（只读过渡 + 迁移）。 */
 export const KEY_INITIATIVE = NS + "/initiative";
+/** token 上「先攻条目」元数据版本号（v:2）。background.core.js 的同名常量必须一致。 */
+export const INIT_META_V = 2;
+/** 战斗态键：scene metadata["com.4enext-owlbear/combat"] = { v:1, phase, round, surprise, activeId, updatedAt, migratedAt? }。 */
+export const KEY_COMBAT = NS + "/combat";
 /** 面板与弹窗的 id。 */
 export const ID_BUTTON = NS + "/button";
 export const ID_INFO = NS + "/info";
@@ -51,7 +63,7 @@ export const ID_SETTINGS_WIN = NS + "/settings-window";
  * id 与其它窗口都不同 → 可以和速览 / 先攻条同时开着；位置按窗口名 "hpEdit" 单独记。 */
 export const ID_HP_EDIT = NS + "/hp-edit";
 
-export const PLUGIN_VERSION = "2.4.37";
+export const PLUGIN_VERSION = "2.5.0";
 
 /**
  * 站点根地址。
@@ -95,7 +107,7 @@ export const CH_INFO_TARGET = NS + "/info-target";
 export const CH_INFO_READY = NS + "/info-ready";
 /** v1.9.0：页面刷新成功的 ack（{session, version, itemId}）—— 后台 700ms 没收到就兜底重开一次。 */
 export const CH_INFO_ACK = NS + "/info-ack";
-/* v2.4.37：页面按内容 setHeight 后，把新高度同步给后台（拖动/重开时不再弹回 700）。 */
+/* v2.5.0：页面按内容 setHeight 后，把新高度同步给后台（拖动/重开时不再弹回 700）。 */
 export const CH_INFO_SIZE = NS + "/info-size";
 
 /* ---- v1.5.0：骰子（团队共享）----
@@ -111,7 +123,7 @@ export const CH_ROLL_CLEAR = NS + "/roll-clear";
 export const CH_ROLL_SAVED = NS + "/roll-saved";
 export const KEY_ROLLS = NS + "/rolls";
 /** 与 dice-core.js 的 ROLL_MAX_ROWS 相同（房间数据容量预算，规格 §1.6；v1.8.0：40 → 20）。 */
-export const ROLL_MAX_ROWS = 100; /* v2.4.37：对齐 Full Suite DICE_HISTORY_LIMIT=100 */
+export const ROLL_MAX_ROWS = 100; /* v2.5.0：对齐 Full Suite DICE_HISTORY_LIMIT=100 */
 export const LS_DICE_COMBOS = "4enext/dice/combos";
 export const LS_DICE_LAST = "4enext/dice/last";
 export const LS_DICE_LOCAL = "4enext/dice/local";
@@ -198,12 +210,12 @@ export const CH_DICE_HIST_STATE = NS + "/dice-hist-state";
 export const CH_HP_EDIT_TARGET = NS + "/hp-edit-target";
 export const CH_HP_EDIT_READY = NS + "/hp-edit-ready";
 export const CH_HP_EDIT_SAVED = NS + "/hp-edit-saved";
-/** v2.4.37：页面切换/载入完成回 ack，后台据此判断「单窗换目标」是否成功（600ms 无 ack 兜底重开一次）。 */
+/** v2.5.0：页面切换/载入完成回 ack，后台据此判断「单窗换目标」是否成功（600ms 无 ack 兜底重开一次）。 */
 export const CH_HP_EDIT_ACK = NS + "/hp-edit-ack";
-/** v2.4.37：编辑窗「重绘血条」按钮 → 后台强制重算这张 token 的血条环 / 四防盾 / 资源徽记。 */
+/** v2.5.0：编辑窗「重绘血条」按钮 → 后台强制重算这张 token 的血条环 / 四防盾 / 资源徽记。 */
 export const CH_HP_REPAINT = NS + "/hp-repaint";
 export const CH_HPEDIT_LOG = NS + "/hpedit-log";
-/* v2.4.37：传送门（与 background.core.js 逐字一致）。 */
+/* v2.5.0：传送门（与 background.core.js 逐字一致）。 */
 export const KEY_PORTAL = NS + "/portal";
 export const CH_WIN_RESIZE = NS + "/win-resize";
 export const CH_OPEN_SETTINGS = NS + "/open-settings";
@@ -405,7 +417,7 @@ async function readRoomMeta() {
   let room = {}, scene = {};
   try { room = (await OBR.room.getMetadata()) || {}; } catch (e) { console.error("[4enext] 读取房间数据失败", e); }
   try { scene = (await OBR.scene.getMetadata()) || {}; } catch (e2) { scene = {}; }
-  /* v2.4.37：scene 兜底键与房间键按 updatedAt 取较新者。 */
+  /* v2.5.0：scene 兜底键与房间键按 updatedAt 取较新者。 */
   const out = Object.assign({}, scene, room);
   for (const k of Object.keys(scene)) {
     const a = scene[k] && typeof scene[k].updatedAt === "number" ? scene[k].updatedAt : -1;
@@ -609,6 +621,17 @@ export async function getRoomUsage() {
   } catch (eSrc) { /* 忽略 */ }
   const cardsBox = meta[KEY_CARDS];
   const initBox = meta[KEY_INITIATIVE];
+  /* v2.5：先攻名单改成每 token 一条（token.metadata[KEY_INIT].v === 2），房间数据里不再有名单，
+   * 用量统计直接数场景里的 token；迁移前的旧房间名单只作为过渡（数旧 entries）。 */
+  let tokenInits = 0;
+  try {
+    const sceneItems = await OBR.scene.items.getItems();
+    for (const it of sceneItems || []) {
+      const m = it && it.metadata ? it.metadata[KEY_INIT] : null;
+      if (it && it.type === "IMAGE" && m && typeof m === "object" && m.v === INIT_META_V) tokenInits++;
+    }
+  } catch (eTok) { /* 场景没准备好 / 读不到就按 0 */ }
+  const legacyEntries = initBox && Array.isArray(initBox.entries) ? initBox.entries.length : 0;
   const local = readLocalCards();
   const roomCards = cardsBox && Array.isArray(cardsBox.cards) ? cardsBox.cards : null;
   let sceneCards = [];
@@ -622,7 +645,7 @@ export async function getRoomUsage() {
   if (roomCards && roomCards.length) cardScope = "room";
   else if (sceneCards.length) cardScope = "scene";
   else if (local && local.cards.length) cardScope = "local";
-  /* v2.4.37：16KB 是**整个房间 metadata** 共享上限，其它插件也占；统计总量 / 本插件 / 其它。 */
+  /* v2.5.0：16KB 是**整个房间 metadata** 共享上限，其它插件也占；统计总量 / 本插件 / 其它。 */
   let totalBytes = 0, oursBytes = 0, top = [];
   try {
     totalBytes = JSON.stringify(meta || {}).length;
@@ -649,7 +672,7 @@ export async function getRoomUsage() {
     localCards: local ? local.cards.length : 0,
     cardScope: cardScope,
     rows: readDiceHistoryRows().length,
-    entries: initBox && Array.isArray(initBox.entries) ? initBox.entries.length : 0
+    entries: tokenInits || legacyEntries
   };
 }
 
@@ -825,8 +848,23 @@ export async function bindToken(itemId, cardId) {
       if (!it.metadata || typeof it.metadata !== "object") it.metadata = {};
       if (cardId) it.metadata[KEY_BIND] = cardId;
       else delete it.metadata[KEY_BIND];
-      if (init) it.metadata[KEY_INIT] = init;
-      else delete it.metadata[KEY_INIT];
+      /* v2.5：token 上的 KEY_INIT 现在可能有两种形态 ——
+       *   ① v2 = 先攻条目（{v:2,d20,bonus,init,tb,hidden,ownerId,updatedAt}，见 initiative.js）；
+       *   ② 旧版加值缓存（{bonus,cardId,updatedAt} 或数字）。
+       * 绑卡只更新**加值**：v2 形态必须保留 d20 / tb / hidden / ownerId / init，否则绑一次卡
+       * 这张卡就从先攻名单里消失（条目就是 token 元数据本身）。解绑也只摘 cardId，保留 v2 条目。 */
+      const prevInit = it.metadata[KEY_INIT];
+      const v2 = prevInit && typeof prevInit === "object" && prevInit.v === INIT_META_V;
+      if (init) {
+        if (v2) it.metadata[KEY_INIT] = Object.assign({}, prevInit, { bonus: init.bonus, updatedAt: Date.now() });
+        else it.metadata[KEY_INIT] = init;
+      } else if (v2) {
+        const kept = Object.assign({}, prevInit);
+        delete kept.cardId;
+        it.metadata[KEY_INIT] = kept;
+      } else {
+        delete it.metadata[KEY_INIT];
+      }
       /* v1.8.4（与 Full Suite 一致）：**卡数据优先** —— 绑卡即用卡的血量覆盖 token 的
        * 当前 / 上限 / 回复力 / 四防（cur = max = 卡上限，surges = surgesMax）。
        * 只保留 token 自己的 temp（临时生命）与 locked（玩家端锁定）；其它 hp 字段（如 legacy boss）原样带过。
@@ -915,7 +953,11 @@ export async function propagateCardStats(cards, updatedIds) {
       (st.surgesMax != null && prevHp.surgesMax !== st.surgesMax) ||
       (!!st.defenses && !sameDefenses(prevHp.defenses, st.defenses));
     const prevInit = it.metadata[KEY_INIT] && typeof it.metadata[KEY_INIT] === "object" ? it.metadata[KEY_INIT] : null;
-    const initChanged = !prevInit || prevInit.bonus !== st.bonus || prevInit.cardId !== bind;
+    const prevV2 = !!(prevInit && prevInit.v === INIT_META_V);
+    /* v2 条目没有 cardId（条目本身归 token，不归卡）：只比加值，别把 d20 / tb / hidden 冲掉。 */
+    const initChanged = prevV2
+      ? prevInit.bonus !== st.bonus
+      : (!prevInit || prevInit.bonus !== st.bonus || prevInit.cardId !== bind);
     if (!hpChanged && !initChanged) continue;
     plan.push({ id: it.id, st: st, hpChanged: hpChanged, initChanged: initChanged, bind: bind });
   }
@@ -936,7 +978,12 @@ export async function propagateCardStats(cards, updatedIds) {
         it.metadata[KEY_HP] = out;
       }
       if (p.initChanged) {
-        it.metadata[KEY_INIT] = { bonus: p.st.bonus, cardId: p.bind, updatedAt: Date.now() };
+        const prev = it.metadata[KEY_INIT];
+        if (prev && typeof prev === "object" && prev.v === INIT_META_V) {
+          it.metadata[KEY_INIT] = Object.assign({}, prev, { bonus: p.st.bonus, updatedAt: Date.now() });
+        } else {
+          it.metadata[KEY_INIT] = { bonus: p.st.bonus, cardId: p.bind, updatedAt: Date.now() };
+        }
       }
     }
   });
@@ -944,11 +991,11 @@ export async function propagateCardStats(cards, updatedIds) {
 }
 
 /**
- * v2.4.37：把「卡片基础四防 + 速览临时四防」合并成 token 该有的 defenses。
+ * v2.5.0：把「卡片基础四防 + 速览临时四防」合并成 token 该有的 defenses。
  * base 用 token 侧键名（ac/fort/reflex/will）；defTemp 用 track state 键名（ac/fort/ref/reflex/will）。
  * 只覆盖 base 里存在的项（卡片没有的项 = 不返回 → 调用方保留 token 原值）；round + clamp 到 ≥0。
  * syncDefTempToTokens（写 token）与 track.syncTokenStats（比较是否回写）**必须共用这一套**，
- * 否则会出现「临时值写进去 → 速览刷新又按基础值写回」的抖动（v2.4.37 bug）。
+ * 否则会出现「临时值写进去 → 速览刷新又按基础值写回」的抖动（v2.5.0 bug）。
  */
 export function combineDefenses(base, defTemp) {
   /* 只用 track state 的键名（ac / fort / ref / will）逐项取临时值；base 侧键名是 ac/fort/reflex/will。
@@ -973,7 +1020,7 @@ export function combineDefenses(base, defTemp) {
 }
 
 /**
- * v2.4.37：速览「四防临时加值」→ 绑定该卡 token 的 hp.defenses（单向联动，地图血条只显示）。
+ * v2.5.0：速览「四防临时加值」→ 绑定该卡 token 的 hp.defenses（单向联动，地图血条只显示）。
  * 目标值 = 卡片基础四防 + defTemp（只覆盖卡片有值的项；卡片没有的项保持 token 原值）。
  * 保留 cur / max / temp / locked / surges；值没变不写；无权限（非 GM 且非创建者）的 token 跳过；
  * 写失败静默（血条下次重算）。
@@ -1065,7 +1112,7 @@ export function fmtTime(ts) {
     return "";
   }
 }
-/* v2.4.37：血条状态/配色唯一来源（地图血条与血条编辑窗预览共用）。
+/* v2.5.0：血条状态/配色唯一来源（地图血条与血条编辑窗预览共用）。
  * 阈值沿用 4E bloodied（≤50% 进入血怒）：>50% 健康绿、25%~50% 受伤黄、≤25% 濒死红。 */
 export const HP_STATE_HEALTHY_COLOR = "#56d364";
 export const HP_STATE_WOUNDED_COLOR = "#e3b341";
@@ -1101,7 +1148,7 @@ export function hpStatusOf(cur, max) {
   return { key: key, label: label, color: color, ratio: ratio, bloodied: m > 0 && c <= m / 2 };
 }
 
-/* v2.4.37：骰子动画速度偏好（设置页 / effect 共用；settings 页不直接碰 localStorage）。 */
+/* v2.5.0：骰子动画速度偏好（设置页 / effect 共用；settings 页不直接碰 localStorage）。 */
 export const LS_DICE_SPEED = "4enext/dice-speed";
 export function readDiceSpeedPref() {
   try {
@@ -1116,7 +1163,7 @@ export function cycleDiceSpeedPref() {
   return next;
 }
 
-/* v2.4.37：骰子面板进入房间自动打开（每客户端；本次会话手动关闭后不再自动开）。 */
+/* v2.5.0：骰子面板进入房间自动打开（每客户端；本次会话手动关闭后不再自动开）。 */
 export const DICE_AUTOSTART_KEY = "4enext/dice-autostart";
 export const DICE_CLOSED_KEY = "4enext/dice-closed-this-session";
 export function readDiceAutoOpenPref() {

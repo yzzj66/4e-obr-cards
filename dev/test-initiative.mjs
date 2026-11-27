@@ -142,7 +142,7 @@ const OBR = {
   }
 };
 
-/* v2.4.37：场景 metadata 兜底 */
+/* v2.5.0：场景 metadata 兜底 */
 OBR.scene.getMetadata = async () => sceneMeta;
 OBR.scene.setMetadata = async (update) => { Object.assign(sceneMeta, update); };
 
@@ -184,6 +184,61 @@ for (const f of ["cards-core.js", "cards-scene.js", "common.js", "glance.js", "i
 const C = await import(pathToFileURL(path.join(tmp, "assets", "common.js")).href);
 const G = await import(pathToFileURL(path.join(tmp, "assets", "glance.js")).href);
 const I = await import(pathToFileURL(path.join(tmp, "assets", "initiative.js")).href);
+
+/* ---------------------------------------------------------------------------
+ * v2.5 存储 helpers：token metadata（KEY_INIT v2）+ 场景 combat（KEY_COMBAT）
+ * ------------------------------------------------------------------------- */
+const KEY_COMBAT = NS + "/combat";
+const KEY_INIT_PRESET = NS + "/init-preset";
+
+/** 确保 items 里有这些 IMAGE token；owner 默认 GM。返回 token 对象。 */
+function ensureToken(id, name, ownerId) {
+  let it = itemById(id);
+  if (it) return it;
+  it = {
+    id, type: "IMAGE", name: name || id, createdUserId: ownerId || "user-gm",
+    metadata: {}, position: { x: 0, y: 0 }, scale: { x: 1, y: 1 }
+  };
+  items.push(it);
+  return it;
+}
+
+/** 直接构造「新存储」：把 state 的每条 entry 写进对应 token metadata + 战斗态写 scene。 */
+function seedInitStorage(state) {
+  const st = I.normalizeInitiative(state);
+  for (const it of items) {
+    if (it.type !== "IMAGE") continue;
+    if (!it.metadata || typeof it.metadata !== "object") it.metadata = {};
+    if (I.isInitMeta(it.metadata[KEY_INIT])) delete it.metadata[KEY_INIT];
+  }
+  for (const e of st.entries) {
+    const it = itemById(e.tokenId);
+    if (!it || it.type !== "IMAGE") continue;
+    if (!it.metadata) it.metadata = {};
+    it.metadata[KEY_INIT] = I.initMetaFromEntry(e, st.updatedAt || Date.now());
+  }
+  sceneMeta[KEY_COMBAT] = {
+    v: 1,
+    phase: st.phase,
+    round: st.round,
+    surprise: st.surprise,
+    activeId: st.activeId,
+    updatedAt: st.updatedAt || Date.now(),
+    migratedAt: (sceneMeta[KEY_COMBAT] && sceneMeta[KEY_COMBAT].migratedAt) || 0
+  };
+}
+
+/** 清掉新存储（只删 v2 条目；旧版「加值缓存」{bonus,cardId} 保留，模拟从 v2.4 升级上来的 token）。 */
+function clearInitStorage() {
+  for (const it of items) {
+    if (it.metadata && typeof it.metadata === "object" && I.isInitMeta(it.metadata[KEY_INIT])) {
+      delete it.metadata[KEY_INIT];
+    }
+  }
+  delete sceneMeta[KEY_COMBAT];
+  delete roomMeta[KEY_INITIATIVE];
+  delete sceneMeta[KEY_INITIATIVE];
+}
 
 /* ---------------------------------------------------------------------------
  * 1. 绑定 → 写 init 元数据
@@ -279,6 +334,41 @@ const unbound = itemById(TOKEN.id).metadata;
 if (!(KEY_BIND in unbound) && !(KEY_INIT in unbound)) ok("解绑同时删掉 cardId 与 init");
 else bad("解绑后元数据没清干净：" + JSON.stringify(unbound));
 await C.bindToken(TOKEN.id, CARD.id);
+
+/* v2.5：token 已是 v2 先攻条目时，绑卡 / 解绑 / 卡片回推**只更新加值**，
+ * 不能把 d20 / tb / hidden / ownerId 冲掉（否则绑一次卡这张就从先攻名单里消失）。 */
+{
+  const V2_TOKEN = ensureToken("tok-v2-bind", "v2绑定单位", "user-gm");
+  const V2_META = { v: 2, d20: 11, bonus: 0, init: 11, tb: 0.33, hidden: true, ownerId: "user-gm", updatedAt: 1 };
+  V2_TOKEN.metadata[KEY_BIND] = CARD.id;
+  V2_TOKEN.metadata[KEY_INIT] = deep(V2_META);
+  await C.bindToken(V2_TOKEN.id, CARD.id);
+  const v2Bound = itemById(V2_TOKEN.id).metadata[KEY_INIT];
+  if (v2Bound && v2Bound.v === 2 && v2Bound.bonus === expectedBonus && v2Bound.d20 === 11 &&
+    v2Bound.tb === 0.33 && v2Bound.hidden === true && v2Bound.ownerId === "user-gm") {
+    ok("bindToken：token 已有 v2 条目时只改加值（d20 / tb / hidden / ownerId 全保留）");
+  } else bad("bindToken 把 v2 条目冲掉了：" + JSON.stringify(v2Bound));
+  await C.bindToken(V2_TOKEN.id, null);
+  const v2Unbound = itemById(V2_TOKEN.id).metadata[KEY_INIT];
+  if (v2Unbound && v2Unbound.v === 2 && v2Unbound.d20 === 11 && itemById(V2_TOKEN.id).metadata[KEY_BIND] === undefined) {
+    ok("bindToken 解绑：保留 v2 先攻条目（卡片解绑 ≠ 移出先攻）");
+  } else bad("解绑把 v2 条目删了：" + JSON.stringify(v2Unbound));
+  /* propagateCardStats 回推加值时也不能碰 v2 的其他字段 */
+  itemById(V2_TOKEN.id).metadata[KEY_BIND] = CARD.id;
+  itemById(V2_TOKEN.id).metadata[KEY_INIT] = deep(V2_META);
+  const updCard = deep(CARD);
+  updCard.char.customBonuses = { init: [{ label: "", value: 3 }] };
+  await C.propagateCardStats([updCard], [CARD.id]);
+  const v2Prop = itemById(V2_TOKEN.id).metadata[KEY_INIT];
+  if (v2Prop && v2Prop.v === 2 && v2Prop.d20 === 11 && v2Prop.tb === 0.33 && v2Prop.hidden === true &&
+    v2Prop.bonus === G.initiativeBonus(updCard.char)) {
+    ok("propagateCardStats：回推先攻加值只改 bonus（v2 条目的 d20 / tb / hidden 保留）");
+  } else bad("propagateCardStats 冲掉了 v2 条目：" + JSON.stringify(v2Prop));
+  items = items.filter((it) => it.id !== V2_TOKEN.id);
+  /* 上面那张测试卡加了 +3 先攻：把 tok-1 / HP_TOKEN 的加值缓存恢复，别影响后面的「加入先攻」断言。 */
+  itemById(TOKEN.id).metadata[KEY_INIT] = { bonus: expectedBonus, cardId: CARD.id, updatedAt: 1 };
+  itemById(HP_TOKEN.id).metadata[KEY_INIT] = { bonus: expectedBonus, cardId: CARD.id, updatedAt: 1 };
+}
 
 /* ---------------------------------------------------------------------------
  * 2. 数据模型 / 掷骰 / 回合推进
@@ -389,6 +479,12 @@ const run = new Function("OBR", "buildCurve", "buildShape", "buildText",
   " onInitRequest: typeof onInitRequest === 'function' ? onInitRequest : null," +
   " initAdvance: typeof initAdvance === 'function' ? initAdvance : null," +
   " initRead: typeof initRead === 'function' ? initRead : null," +
+  " initWrite: typeof initWrite === 'function' ? initWrite : null," +
+  " initEntriesFromItems: typeof initEntriesFromItems === 'function' ? initEntriesFromItems : null," +
+  " initReadCombat: typeof initReadCombat === 'function' ? initReadCombat : null," +
+  " initMetaFromEntry: typeof initMetaFromEntry === 'function' ? initMetaFromEntry : null," +
+  " migrateInitiativeFromLegacy: typeof migrateInitiativeFromLegacy === 'function' ? migrateInitiativeFromLegacy : null," +
+  " initMenuFilter: typeof initMenuFilter === 'function' ? initMenuFilter : null," +
   " roomWriteGuarded: typeof roomWriteGuarded === 'function' ? roomWriteGuarded : null," +
   " roomAuditLog: typeof roomAuditLog === 'function' ? roomAuditLog : null," +
   " initNorm: typeof initNorm === 'function' ? initNorm : null," +
@@ -431,17 +527,22 @@ if (addMenu && hiddenMenu && !addMenu.icons[0].filter.roles &&
   ok("「加入先攻」对玩家开放（无 roles 限制）；「隐形加入先攻」仍 GM 专属；都要求单个 IMAGE token");
 } else bad("两项右键的 filter 不对");
 
-roomMeta[KEY_INITIATIVE] = null;
+clearInitStorage();
 if (addMenu) await addMenu.onClick({ items: [itemById("tok-1")] }, "x");
-let state = I.normalizeInitiative(roomMeta[KEY_INITIATIVE]);
+let state = await I.readInitiative();
 let e1 = state.entries.filter((e) => e.tokenId === "tok-1")[0];
+const tok1Meta = itemById("tok-1").metadata[KEY_INIT];
 if (e1 && e1.bonus === expectedBonus && e1.init >= expectedBonus + 1 && e1.init <= expectedBonus + 20 &&
   e1.hidden === false && e1.ownerId === "user-player" && state.activeId === "tok-1") {
-  ok("「加入先攻」写入房间数据：bonus " + e1.bonus + " / init " + e1.init + " / 公开 / owner 正确");
+  ok("「加入先攻」写入 token metadata（v2）：bonus " + e1.bonus + " / init " + e1.init + " / 公开 / owner 正确");
 } else bad("加入先攻写入不对：" + JSON.stringify(state));
+if (tok1Meta && tok1Meta.v === 2 && typeof tok1Meta.updatedAt === "number" && sceneMeta[KEY_COMBAT] &&
+  sceneMeta[KEY_COMBAT].v === 1 && typeof sceneMeta[KEY_COMBAT].updatedAt === "number") {
+  ok("v2.5：条目在 token metadata[" + KEY_INIT + "]（v:2），战斗态在 scene metadata[" + KEY_COMBAT + "]");
+} else bad("v2.5 存储位置不对：" + JSON.stringify({ meta: tok1Meta, combat: sceneMeta[KEY_COMBAT] }));
 
 if (hiddenMenu) await hiddenMenu.onClick({ items: [itemById("tok-2")] }, "x");
-state = I.normalizeInitiative(roomMeta[KEY_INITIATIVE]);
+state = await I.readInitiative();
 const e2 = state.entries.filter((e) => e.tokenId === "tok-2")[0];
 if (e2 && e2.hidden === true) ok("「隐形加入先攻」写入 hidden = true");
 else bad("隐形加入不对：" + JSON.stringify(state));
@@ -462,42 +563,38 @@ if (api && typeof api.initAdvance === "function") {
   else bad("GM 推进不对：" + JSON.stringify([s1, s2]));
 }
 
-roomMeta[KEY_INITIATIVE] = I.normalizeInitiative({
+const combatFixture = () => I.normalizeInitiative({
   phase: "combat", round: 1, activeId: "tok-1",
   entries: [
     { tokenId: "tok-1", name: "甲的 token", init: 20, bonus: 5, hidden: false, ownerId: "user-player" },
     { tokenId: "tok-2", name: "乙的 token", init: 10, bonus: 0, hidden: false, ownerId: "user-gm" }
   ]
 });
+seedInitStorage(combatFixture());
 role = "GM";
 await api.onInitRequest({ data: { op: "end-turn", playerId: "user-player", activeId: "tok-1" } });
-state = I.normalizeInitiative(roomMeta[KEY_INITIATIVE]);
-if (state.activeId === "tok-2") ok("玩家结束自己的回合：GM 客户端校验 owner 后推进");
+state = await I.readInitiative();
+if (state.activeId === "tok-2") ok("玩家结束自己的回合：GM 客户端校验 owner 后推进（token metadata + scene combat 都更新）");
 else bad("玩家结束自己的回合没有推进：" + JSON.stringify(state));
 
-roomMeta[KEY_INITIATIVE] = I.normalizeInitiative({
-  phase: "combat", round: 1, activeId: "tok-1",
-  entries: [
-    { tokenId: "tok-1", name: "甲的 token", init: 20, bonus: 5, hidden: false, ownerId: "user-player" },
-    { tokenId: "tok-2", name: "乙的 token", init: 10, bonus: 0, hidden: false, ownerId: "user-gm" }
-  ]
-});
+seedInitStorage(combatFixture());
 const warnBefore = notifications.length;
 await api.onInitRequest({ data: { op: "end-turn", playerId: "someone-else", activeId: "tok-1" } });
-state = I.normalizeInitiative(roomMeta[KEY_INITIATIVE]);
+state = await I.readInitiative();
 if (state.activeId === "tok-1" && notifications.slice(warnBefore).some((n) => /只能结束自己的回合/.test(n.msg)))
   ok("不是自己的回合：不推进并提示「只能结束自己的回合」");
 else bad("别人的回合被推进了 / 没有提示");
 
-roomMeta[KEY_INITIATIVE] = I.normalizeInitiative({
+seedInitStorage(I.normalizeInitiative({
   phase: "combat", round: 1, activeId: "tok-1",
   entries: [{ tokenId: "tok-1", name: "甲的 token", init: 20, bonus: 5, hidden: false, ownerId: "user-player" }]
-});
+}));
 role = "PLAYER";
-const writesBefore = JSON.stringify(roomMeta[KEY_INITIATIVE]);
+const writesBefore = JSON.stringify({ meta: itemById("tok-1").metadata[KEY_INIT], combat: sceneMeta[KEY_COMBAT] });
 await api.onInitRequest({ data: { op: "end-turn", playerId: "user-player", activeId: "tok-1" } });
-if (JSON.stringify(roomMeta[KEY_INITIATIVE]) === writesBefore) ok("非 GM 的后台不写房间数据（请求只由 GM 客户端处理）");
-else bad("非 GM 的后台也写了房间数据");
+if (JSON.stringify({ meta: itemById("tok-1").metadata[KEY_INIT], combat: sceneMeta[KEY_COMBAT] }) === writesBefore)
+  ok("非 GM 的后台不写任何先攻存储（请求只由 GM 客户端处理）");
+else bad("非 GM 的后台也写了先攻存储");
 role = "GM";
 
 /* ---------------------------------------------------------------------------
@@ -511,6 +608,20 @@ const oldInit = itemById("tok-old").metadata[KEY_INIT];
 if (synced >= 1 && oldInit && oldInit.bonus === expectedBonus && oldInit.cardId === "c-1")
   ok("syncInitBonuses 给旧绑定补写 init 元数据（+" + oldInit.bonus + "）");
 else bad("syncInitBonuses 没补写：" + JSON.stringify({ synced, init: oldInit }));
+
+/* v2.5：已是 v2 条目的 token 同步时只改加值，不能把 d20 / tb / hidden / ownerId 冲掉。 */
+ensureToken("tok-sync", "同步卡单位", "user-gm");
+itemById("tok-sync").metadata[KEY_BIND] = CARD.id;
+itemById("tok-sync").metadata[KEY_INIT] = {
+  v: 2, d20: 12, bonus: 5, init: 17, tb: 0.3, hidden: true, ownerId: "user-gm", updatedAt: 1
+};
+await I.syncInitBonuses([CARD]);
+const syncMeta = itemById("tok-sync").metadata[KEY_INIT];
+if (syncMeta && syncMeta.v === 2 && syncMeta.bonus === expectedBonus && syncMeta.d20 === 12 &&
+  syncMeta.init === 12 + expectedBonus && syncMeta.tb === 0.3 && syncMeta.hidden === true) {
+  ok("syncInitBonuses：v2 条目只更新加值（d20 / tb / hidden 保留、init = d20 + 新加值）");
+} else bad("syncInitBonuses 把 v2 条目冲掉了：" + JSON.stringify(syncMeta));
+items = items.filter((it) => it.id !== "tok-sync");
 
 
 /* ---------------------------------------------------------------------------
@@ -744,31 +855,58 @@ if (I.renderStripHTML(ownSt, { role: "PLAYER", playerId: "p9", items: {} }).inde
 if (I.renderStripHTML(ownSt, { role: "GM", playerId: "gm", items: {} }).indexOf('data-strip-act="end"') < 0)
   ok("GM 的卡片上没有玩家的「结束」按钮");
 
-/* ---- 8) 写失败降级到本机 ---- */
+/* ---- 8) 写失败降级到本机（v2.5：token metadata 完全写不进才降级） ---- */
 console.log("== v1.4.0 先攻条：写失败降级");
-const realSetMetadata = OBR.room.setMetadata;
-const realSetScene = OBR.scene.setMetadata;
-OBR.room.setMetadata = async () => { throw new Error("room metadata quota exceeded"); };
-OBR.scene.setMetadata = async () => { throw new Error("scene metadata quota exceeded"); };
 const noteBefore = notifications.length;
+const realUpdateItems = OBR.scene.items.updateItems;
+OBR.scene.items.updateItems = async () => { throw new Error("token metadata denied"); };
 const degraded = await I.writeInitiative(I.normalizeInitiative({
-  entries: [{ tokenId: "z1", name: "丙", bonus: 2, d20: 9, init: 11, tb: 0.4 }]
+  entries: [{ tokenId: "tok-1", name: "丙", bonus: 2, d20: 9, init: 11, tb: 0.4 }]
 }));
-OBR.room.setMetadata = realSetMetadata;
-OBR.scene.setMetadata = realSetScene;
+OBR.scene.items.updateItems = realUpdateItems;
 if (degraded && degraded.local === true && degraded.entries.length === 1)
-  ok("写房间数据失败：writeInitiative 不抛错，返回 .local = true");
+  ok("token 元数据写不进去：writeInitiative 不抛错，返回 .local = true");
 else bad("写失败没有降级：" + JSON.stringify(degraded));
 let stashedInit = null;
 try { stashedInit = JSON.parse(globalThis.localStorage.getItem("4enext/state/initiative") || "null"); } catch (e) { stashedInit = null; }
 if (stashedInit && stashedInit.state && stashedInit.state.entries.length === 1)
   ok("写失败降级到本机 localStorage[4enext/state/initiative]");
 else bad("本机没有暂存：" + JSON.stringify(stashedInit));
-if (notifications.slice(noteBefore).some((n) => /房间数据已满（本插件/.test(n.msg)))
-  ok("写失败弹 WARNING 通知（不静默）");
+if (notifications.slice(noteBefore).some((n) => /先攻没能写进 token \/ 场景数据/.test(n.msg)))
+  ok("写失败弹 ERROR 通知（不静默）");
 else bad("写失败没有通知");
 globalThis.localStorage.removeItem("4enext/state/initiative");
-sceneMeta = {};
+clearInitStorage();
+
+/* ---- 8b) v2.5：场景 combat 写不进（玩家常见）不算失败；名单照样共享 ---- */
+console.log("== v2.5：玩家写不进 scene combat 时名单仍落 token（不误报失败）");
+{
+  clearInitStorage();
+  ensureToken("tok-1", "甲的 token", "user-player");
+  ensureToken("tok-2", "乙的 token", "user-gm");
+  itemById("tok-1").metadata[KEY_INIT] = { v: 2, d20: 10, bonus: 5, init: 15, tb: 0.2, hidden: false, ownerId: "user-player", updatedAt: 1 };
+  itemById("tok-2").metadata[KEY_INIT] = { v: 2, d20: 18, bonus: 0, init: 18, tb: 0.5, hidden: false, ownerId: "user-gm", updatedAt: 1 };
+  sceneMeta[KEY_COMBAT] = { v: 1, phase: "idle", round: 1, surprise: false, activeId: "", updatedAt: 1 };
+  const realSceneSet = OBR.scene.setMetadata;
+  OBR.scene.setMetadata = async () => { throw new Error("scene metadata is GM only"); };
+  role = "PLAYER";
+  const writeRes = await I.writeInitiative(I.normalizeInitiative({
+    phase: "combat", round: 1, activeId: "tok-1",
+    entries: [
+      { tokenId: "tok-1", name: "甲的 token", bonus: 5, d20: 10, init: 15, tb: 0.2, ownerId: "user-player" },
+      { tokenId: "tok-2", name: "乙的 token", bonus: 0, d20: 18, init: 18, tb: 0.5, ownerId: "user-gm" }
+    ]
+  }));
+  OBR.scene.setMetadata = realSceneSet;
+  role = "GM";
+  if (writeRes && !writeRes.local && writeRes.phase === "combat") {
+    ok("玩家写不进 scene combat：writeInitiative 仍返回成功（.local 不置 true），名单已写 token metadata");
+  } else bad("场景 combat 写不进被误当成整次失败：" + JSON.stringify(writeRes && { local: writeRes.local, phase: writeRes.phase }));
+  const warNotes = notifications.slice(noteBefore);
+  if (!warNotes.some((n) => /战斗状态（场景数据）没写进去/.test(n.msg)))
+    ok("玩家身份不弹「战斗状态没写进去」WARNING（对玩家来说是正常权限）");
+  else bad("玩家身份弹了场景写失败的 WARNING");
+}
 
 /* ---- 9) 后台：数据层镜像 + 右键加入写 d20/tb + 打开先攻条 ---- */
 console.log("== v1.4.0 后台：数据层 / 先攻条");
@@ -790,16 +928,21 @@ if (api && typeof api.initNorm === "function") {
 }
 if (!api || typeof api.openStrip !== "function") bad("后台没有暴露 openStrip");
 if (typeof api.closeStrip === "function") await api.closeStrip();
-roomMeta[KEY_INITIATIVE] = null;
+clearInitStorage();
 openedPopovers.length = 0;
 if (addMenu) await addMenu.onClick({ items: [itemById("tok-1")] }, "x");
 await sleep(80);
-const addedState = I.normalizeInitiative(roomMeta[KEY_INITIATIVE]);
+const addedState = await I.readInitiative();
 const addedEntry = addedState.entries.filter((e) => e.tokenId === "tok-1")[0];
 if (addedEntry && addedEntry.d20 >= 1 && addedEntry.d20 <= 20 && addedEntry.init === addedEntry.d20 + addedEntry.bonus &&
   typeof addedEntry.tb === "number" && addedEntry.tb >= 0.001 && addedEntry.tb <= 0.999) {
   ok("「加入先攻」写入 d20 / init=d20+加值 / tb（" + addedEntry.d20 + "+" + addedEntry.bonus + "=" + addedEntry.init + "）");
 } else bad("加入先攻没有写 d20/tb：" + JSON.stringify(addedEntry));
+const addedRawMeta = itemById("tok-1").metadata[KEY_INIT];
+if (addedRawMeta && addedRawMeta.v === 2 && addedRawMeta.d20 === addedEntry.d20 &&
+  addedRawMeta.init === addedEntry.init && addedRawMeta.updatedAt > 0) {
+  ok("token metadata 里是完整 v2 条目（v / d20 / bonus / init / tb / hidden / ownerId / updatedAt）");
+} else bad("token metadata 的 v2 结构不对：" + JSON.stringify(addedRawMeta));
 const stripOpenCfg = openedPopovers.filter((c) => c && c.id === "com.4enext-owlbear/initiative-strip").pop();
 if (stripOpenCfg) {
   if (stripOpenCfg.anchorReference === "POSITION" && stripOpenCfg.hidePaper === true &&
@@ -811,9 +954,9 @@ if (stripOpenCfg) {
   } else bad("先攻条的 popover 参数不对：" + JSON.stringify(stripOpenCfg));
 } else bad("加入先攻后没有打开先攻条");
 
-/* ---- 10) 权限：四道校验 ---- */
+/* ---- 10) 权限：四道校验（数据种子 = token metadata + scene combat） ---- */
 console.log("== v1.4.0 玩家结束回合的四道校验");
-const combatFixture = () => I.normalizeInitiative({
+const combatFixture4 = () => I.normalizeInitiative({
   phase: "combat", round: 1, activeId: "tok-1",
   entries: [
     { tokenId: "tok-1", name: "甲", init: 20, bonus: 5, ownerId: "user-player" },
@@ -821,34 +964,34 @@ const combatFixture = () => I.normalizeInitiative({
     { tokenId: "tok-3", name: "丙", init: 5, ownerId: "user-gm" }
   ]
 });
-roomMeta[KEY_INITIATIVE] = combatFixture();
+seedInitStorage(combatFixture4());
 role = "GM";
 const req1 = api.onInitRequest({ data: { op: "end-turn", playerId: "user-player", activeId: "tok-1" } });
 const req2 = api.onInitRequest({ data: { op: "end-turn", playerId: "user-player", activeId: "tok-1" } });
 await Promise.all([req1, req2]);
-let permState = I.normalizeInitiative(roomMeta[KEY_INITIATIVE]);
+let permState = await I.readInitiative();
 if (permState.activeId === "tok-2") ok("同一个结束回合请求连发两次只推进一格（第四道校验：正在推进中）");
 else bad("重复请求推进了多格：" + permState.activeId);
 
-roomMeta[KEY_INITIATIVE] = combatFixture();
+seedInitStorage(combatFixture4());
 await api.onInitRequest({ data: { op: "end-turn", playerId: "user-player" } });
-permState = I.normalizeInitiative(roomMeta[KEY_INITIATIVE]);
+permState = await I.readInitiative();
 if (permState.activeId === "tok-1") ok("请求里没有 activeId → 拒绝（老实现「缺失就放行」的 bug 不会复发）");
 else bad("没有 activeId 的请求也推进了");
 
-roomMeta[KEY_INITIATIVE] = combatFixture();
+seedInitStorage(combatFixture4());
 await api.onInitRequest({ data: { op: "end-turn", playerId: "user-player", activeId: "tok-2" } });
-permState = I.normalizeInitiative(roomMeta[KEY_INITIATIVE]);
+permState = await I.readInitiative();
 if (permState.activeId === "tok-1") ok("请求里的 activeId 过期 → 拒绝");
 else bad("过期的 activeId 也推进了");
 
-roomMeta[KEY_INITIATIVE] = I.normalizeInitiative({
+seedInitStorage(I.normalizeInitiative({
   phase: "preparing", entries: [{ tokenId: "tok-1", name: "甲", init: 0, ownerId: "user-player" }]
-});
+}));
 await api.onInitRequest({ data: { op: "end-turn", playerId: "user-player", activeId: "tok-1" } });
-permState = I.normalizeInitiative(roomMeta[KEY_INITIATIVE]);
-if (permState.activeId === "tok-1") ok("准备阶段不推进回合");
-else bad("准备阶段被推进了");
+permState = await I.readInitiative();
+if (permState.phase === "preparing") ok("准备阶段不推进回合");
+else bad("准备阶段被推进了：" + JSON.stringify(permState));
 
 /* ---- 11) v1.7.11 先攻条：popover 透明 + 宿主定位拖动 + 命令频道 ---- */
 console.log("== v1.7.11 先攻条：popover 透明 + 拖动重开 + 命令");
@@ -883,12 +1026,12 @@ if (typeof api.onStripDrag === "function" && typeof api.onStripCmd === "function
 
   /* 【关键回归】先攻条打开时右键「加入先攻」→ entries 必须增加（v1.7.10 的全屏 modal 会挡住右键菜单）。 */
   if (addMenu && typeof addMenu.onClick === "function") {
-    roomMeta[KEY_INITIATIVE] = null;
-    const beforeAdd = I.normalizeInitiative(roomMeta[KEY_INITIATIVE]).entries.length;
+    clearInitStorage();
+    const beforeAdd = (await I.readInitiative()).entries.length;
     const openCount = stripPops().length;
     await addMenu.onClick({ items: [itemById("tok-2")] }, "x");
     await sleep(120);
-    const addedState = I.normalizeInitiative(roomMeta[KEY_INITIATIVE]);
+    const addedState = await I.readInitiative();
     const addedEntry = addedState.entries.filter((e) => e.tokenId === "tok-2")[0];
     if (addedEntry && addedState.entries.length === beforeAdd + 1 && stripPops().length === openCount)
       ok("先攻条打开时右键「加入先攻」→ entries 增加（" + beforeAdd + "→" + addedState.entries.length + "；popover 不挡右键菜单）");
@@ -991,13 +1134,14 @@ const MENU_REMOVE = "com.4enext-owlbear/init-remove";
 const KEY_IN_INIT = "com.4enext-owlbear/in-init";
 const latestMenu = (id) => createdMenus.filter((m) => m && m.id === id).pop() || null;
 const filterOf = (m) => (m && m.icons && m.icons[0] ? m.icons[0].filter : null);
-const inInitCond = (m) => {
+/** v2.5：菜单 filter 读的是 token metadata[KEY_INIT].v 是否 === 2（旧版是 in-init 布尔旗标）。 */
+const initCond = (m) => {
   const f = filterOf(m);
   const every = (f && f.every) || [];
-  return every.filter((c) => Array.isArray(c.key) && c.key[0] === "metadata" && c.key[1] === KEY_IN_INIT)[0] || null;
+  return every.filter((c) => Array.isArray(c.key) && c.key[0] === "metadata" && c.key[1] === KEY_INIT)[0] || null;
 };
 
-/* 1) 三项都在 + filter 读 token 元数据 in-init 且互斥 */
+/* 1) 三项都在 + filter 按 token metadata[KEY_INIT].v 互斥 */
 {
   const addM = latestMenu(MENU_ADD);
   const hidM = latestMenu(MENU_ADD_HIDDEN);
@@ -1005,57 +1149,59 @@ const inInitCond = (m) => {
   if (addM && hidM && rmM && rmM.icons[0].label === "移出先攻")
     ok("右键注册了三项：加入先攻 / 隐形加入先攻 / 移出先攻");
   else bad("右键三项没注册齐（" + [!!addM, !!hidM, !!rmM].join("/") + "）");
-  const addC = inInitCond(addM);
-  const rmC = inInitCond(rmM);
-  if (addC && addC.operator === "!=" && addC.value === true && rmC && rmC.value === true && !rmC.operator)
-    ok("菜单 filter 互斥：加入两项要求 in-init「!= true」，移出要求 in-init「== true」（同一枚 token 只出现一种）");
-  else bad("菜单 filter 不是按 in-init 互斥：" + JSON.stringify({ addC, rmC }));
+  const addC = initCond(addM);
+  const rmC = initCond(rmM);
+  if (addC && addC.operator === "!=" && addC.value === 2 && rmC && rmC.value === 2 && !rmC.operator &&
+    Array.isArray(addC.key) && addC.key[2] === "v") {
+    ok("菜单 filter 互斥：加入两项要求 token metadata[" + KEY_INIT + "].v「!= 2」，移出要求「== 2」（同一枚 token 只出现一种）");
+  } else bad("菜单 filter 不是按 init.v 互斥：" + JSON.stringify({ addC, rmC }));
+  if (!/d\.metadata\[KEY_IN_INIT\]\s*=/.test(CORE) && CORE.indexOf('var KEY_IN_INIT = NS + "/in-init";') >= 0)
+    ok("v2.5：旧 in-init 旗标只留常量做兼容，运行代码不再写（菜单由宿主按 metadata 现算）");
+  else bad("后台还在写 in-init 镜像旗标 / 删掉了兼容常量");
   if (addM && !addM.icons[0].filter.roles && hidM.icons[0].filter.roles.indexOf("GM") >= 0 &&
     addM.icons[0].filter.max === 1 && addM.icons[0].filter.every[0].value === "IMAGE")
     ok("「加入先攻」对玩家开放（无 roles），隐形/移出仍 GM，都限定单个 IMAGE token");
   else bad("右键三项的 GM / IMAGE / max 条件不对");
 }
 
-/* 2) 加入 → token 上 in-init = true；移出 → 写回 false */
+/* 2) 加入 → token metadata 出现 v2 条目；移出 → v2 条目被删掉（不再写 in-init） */
 {
-  roomMeta[KEY_INITIATIVE] = null;
+  clearInitStorage();
   const addMenu = latestMenu(MENU_ADD);
   await addMenu.onClick({ items: [itemById("tok-1")] }, "x");
   await sleep(160);
-  if (itemById("tok-1").metadata[KEY_IN_INIT] === true)
-    ok("加入先攻后 token 元数据 in-init = true（右键菜单随之换成「移出先攻」）");
-  else bad("加入后 in-init 不是 true：" + JSON.stringify(itemById("tok-1").metadata[KEY_IN_INIT]));
-  if (itemById("tok-2").metadata[KEY_IN_INIT] !== true)
-    ok("没加入的 token 不会被标记（in-init 不是 true）");
-  else bad("没加入的 token 也被标记了");
+  const m1 = itemById("tok-1").metadata[KEY_INIT];
+  if (m1 && m1.v === 2)
+    ok("加入先攻后 token metadata[" + KEY_INIT + "] = v2 条目（菜单随之换成「移出先攻」）");
+  else bad("加入后 token metadata 不是 v2 条目：" + JSON.stringify(m1));
+  if (!("in-init" in itemById("tok-1").metadata) && itemById("tok-1").metadata[KEY_IN_INIT] === undefined)
+    ok("加入后不再写 in-init 旗标（v2.5：菜单按 token metadata 现算）");
+  else bad("加入后还写了 in-init：" + JSON.stringify(itemById("tok-1").metadata[KEY_IN_INIT]));
 
   const rmMenu = latestMenu(MENU_REMOVE);
   const noteBefore = notifications.length;
   await rmMenu.onClick({ items: [itemById("tok-1")] });
   await sleep(160);
-  const after = I.normalizeInitiative(roomMeta[KEY_INITIATIVE]);
+  const after = await I.readInitiative();
   if (after.entries.every((e) => e.tokenId !== "tok-1")) ok("点「移出先攻」→ entries 里不再有该 tokenId（先攻条会跟着刷新）");
   else bad("移出后 entries 里还有 tok-1：" + JSON.stringify(after.entries.map((e) => e.tokenId)));
   /* [v1.7.8] 反向断言：移出成功**不再**弹「已移出先攻」（条上那张卡当场就消失）。 */
   const rmNotes = notifications.slice(noteBefore);
   if (!rmNotes.some((n) => /已移出先攻/.test(n.msg))) ok("移出后不弹「已移出先攻」（v1.7.8：成功类通知为 0）");
   else bad("移出后还在弹通知：" + JSON.stringify(rmNotes));
-  if (itemById("tok-1").metadata[KEY_IN_INIT] === false)
-    ok("移出后 in-init 写回 false（菜单变回「加入先攻」，不 delete）");
-  else bad("移出后 in-init 没有写回 false：" + JSON.stringify(itemById("tok-1").metadata[KEY_IN_INIT]));
+  if (!itemById("tok-1").metadata[KEY_INIT])
+    ok("移出后 token 上的 v2 条目被删掉（菜单变回「加入先攻」）");
+  else bad("移出后 v2 条目还在：" + JSON.stringify(itemById("tok-1").metadata[KEY_INIT]));
 
-  /* 镜像过期（名单里没有、token 上还是 true）→ 提示 + 立刻改回 false */
-  roomMeta[KEY_INITIATIVE] = I.normalizeInitiative({ entries: [] });
-  await OBR.scene.items.updateItems(["tok-1"], function (drafts) {
-    for (const d of drafts) { if (!d.metadata) d.metadata = {}; d.metadata[KEY_IN_INIT] = true; }
-  });
+  /* 过期点「移出先攻」（token 上本来就没有 v2 条目）→ 提示，不写任何东西 */
+  clearInitStorage();
   const noteStale = notifications.length;
   await latestMenu(MENU_REMOVE).onClick({ items: [itemById("tok-1")] });
   await sleep(160);
   if (notifications.slice(noteStale).some((n) => /已经不在先攻里/.test(n.msg)) &&
-    itemById("tok-1").metadata[KEY_IN_INIT] === false)
-    ok("镜像过期时点「移出先攻」→ 提示「已经不在先攻里了」并立刻把 in-init 改回 false");
-  else bad("镜像过期时的处理不对：" + JSON.stringify(itemById("tok-1").metadata[KEY_IN_INIT]));
+    !itemById("tok-1").metadata[KEY_INIT])
+    ok(" token 不在名单里时点「移出先攻」→ 提示「已经不在先攻里了」且不写元数据");
+  else bad("过期移出的处理不对：" + JSON.stringify(itemById("tok-1").metadata[KEY_INIT]));
 }
 
 /* 卡片上的 ✕（GM 有、玩家没有） */
@@ -1101,40 +1247,48 @@ console.log("== v1.7.3 token 被删除 → 自动清理 + 游标顺移");
 }
 
 {
-  /* 后台版：先记住「现在有哪些 token」，再删一枚 → 清理只针对「见过 → 消失」 */
+  /* v2.5 后台版：token 被删 → 条目随 token 元数据消失；后台只负责把失效的当前回合指针写回第一张。 */
   role = "GM";
-  roomMeta[KEY_INITIATIVE] = I.normalizeInitiative({
+  clearInitStorage();
+  ensureToken("tok-1", "甲", "user-player");
+  ensureToken("tok-2", "乙", "user-gm");
+  seedInitStorage(I.normalizeInitiative({
     phase: "combat", round: 1, activeId: "tok-1",
     entries: [
       { tokenId: "tok-1", name: "甲", init: 20, ownerId: "user-player" },
       { tokenId: "tok-2", name: "乙", init: 10, ownerId: "user-gm" }
     ]
-  });
+  }));
   await api.refreshInitKnownTokens();
-  await sleep(1300); /* 等「刚进场景」的静音窗口过去（防止把切换场景当成删除） */
+  await sleep(1300); /* 等「刚进场景」的静音窗口过去（prune 在 1200ms 内是 no-op） */
   items = items.filter((it) => it.id !== "tok-1");
   const noteBefore = notifications.length;
   const cleaned = await api.pruneMissingInitEntries();
-  const state173 = I.normalizeInitiative(roomMeta[KEY_INITIATIVE]);
+  const state173 = await I.readInitiative();
   if (cleaned === 1 && state173.entries.length === 1 && state173.entries[0].tokenId === "tok-2" &&
     state173.activeId === "tok-2")
-    ok("token tok-1 被删 → 先攻条目自动清理，当前回合游标顺移到 tok-2");
+    ok("token tok-1 被删 → 条目随元数据消失、当前回合游标顺移到 tok-2（后台 prune 校正 combat）");
   else bad("自动清理不对：" + JSON.stringify({ cleaned, ids: state173.entries.map((e) => e.tokenId), active: state173.activeId }));
   /* [v1.7.8] 反向断言：token 被删 → 自动清理不再弹通知（条上少了一张卡，看得见）。 */
   if (!notifications.slice(noteBefore).some((n) => /已被删除/.test(n.msg))) ok("自动清理后不弹通知（v1.7.8：成功类通知为 0）");
   else bad("自动清理还在弹通知：" + JSON.stringify(notifications.slice(noteBefore)));
+  ensureToken("tok-1", "甲", "user-player");
 
-  /* 切场景保护：只「刷新见过集合」，不因为「不在 items 里」就清空 */
+  /* 换场景：名单只跟随当前场景里带 v2 元数据的 token —— 不会把上一个场景的整份名单搬过来。
+   * 旧整份名单即使还在（迁移失败），只要本场景已有 token 条目，就以 token 为准。 */
+  clearInitStorage();
+  ensureToken("tok-2", "乙", "user-gm");
+  itemById("tok-2").metadata[KEY_INIT] = {
+    v: 2, d20: 10, bonus: 0, init: 10, tb: 0.5, hidden: false, ownerId: "user-gm", updatedAt: 1
+  };
   roomMeta[KEY_INITIATIVE] = I.normalizeInitiative({
-    phase: "combat", round: 1, activeId: "tok-x",
     entries: [{ tokenId: "tok-x", name: "别的场景的 token", init: 15 }]
   });
-  await api.refreshInitKnownTokens();
-  const keep = await api.pruneMissingInitEntries();
-  const stateKeep = I.normalizeInitiative(roomMeta[KEY_INITIATIVE]);
-  if (keep === 0 && stateKeep.entries.length === 1)
-    ok("刚进场景 / 换场景时不清名单（否则换个场景就把整条先攻清了）");
-  else bad("换场景把名单清了：" + JSON.stringify({ keep, n: stateKeep.entries.length }));
+  const sceneState = await I.readInitiative();
+  if (sceneState.entries.length === 1 && sceneState.entries[0].tokenId === "tok-2")
+    ok("换场景：新场景只有 tok-2 的 v2 条目时，名单就是 tok-2（旧整份名单不再被当成真源）");
+  else bad("换场景后名单来源不对：" + JSON.stringify(sceneState.entries.map((e) => e.tokenId)));
+  delete roomMeta[KEY_INITIATIVE];
 }
 
 console.log("== v1.7.3 / v1.7.11 先攻条常驻（popover 透明 / 进入房间自动显示 / 关掉不再弹）");
@@ -1340,27 +1494,28 @@ console.log("== v1.7.10 先攻加值可编辑 + 无卡 token 加入先攻");
   else bad("无卡条目默认加值不对：" + JSON.stringify(unboundEntry));
 
   /* 后台也允许无卡 token 加入（不检查 init.bonus 是否存在、不弹通知） */
+  clearInitStorage();
   items.push({ id: "tok-3", type: "IMAGE", name: "无名杂兵", createdUserId: "user-gm", metadata: {}, position: { x: 0, y: 0 }, scale: { x: 1, y: 1 } });
-  roomMeta[KEY_INITIATIVE] = null;
   const noteBefore10 = notifications.length;
   await latestMenu(MENU_ADD).onClick({ items: [itemById("tok-3")] }, "x");
   await sleep(160);
-  const st3 = I.normalizeInitiative(roomMeta[KEY_INITIATIVE]);
+  const st3 = await I.readInitiative();
   const e3 = st3.entries.filter((e) => e.tokenId === "tok-3")[0];
-  if (e3 && e3.bonus === 0 && e3.d20 >= 1 && e3.d20 <= 20 && e3.init === e3.d20)
-    ok("无绑定卡的 token 也能加入先攻：entries 里有它、bonus = 0（默认）");
+  if (e3 && e3.bonus === 0 && e3.d20 >= 1 && e3.d20 <= 20 && e3.init === e3.d20 &&
+    itemById("tok-3").metadata[KEY_INIT] && itemById("tok-3").metadata[KEY_INIT].v === 2)
+    ok("无绑定卡的 token 也能加入先攻：token metadata 里有 v2 条目、bonus = 0（默认）");
   else bad("无绑定卡的 token 加不进去：" + JSON.stringify(st3));
   if (!notifications.slice(noteBefore10).some((n) => /加入先攻|没有|失败|错误/.test(n.msg)))
     ok("无卡加入不弹错误 / 提示（v1.7.8：成功类通知为 0）");
   else bad("无卡加入弹了通知：" + JSON.stringify(notifications.slice(noteBefore10)));
   items = items.filter((it) => it.id !== "tok-3");
-  roomMeta[KEY_INITIATIVE] = null;
+  clearInitStorage();
 }
 
 console.log("== 静态检查");
 const man = JSON.parse(fs.readFileSync(path.join(ROOT, "manifest.json"), "utf8"));
-if (!man.action) man.action = { icon: "https://example.invalid/icon.svg", popover: "https://example.invalid/dice.html?v=2.4.37" };
-if (man.name === "4eNEXT to owlbear" && man.version === "2.4.37") ok("manifest 名称 / 版本 = 4eNEXT to owlbear 2.4.37");
+if (!man.action) man.action = { icon: "https://example.invalid/icon.svg", popover: "https://example.invalid/dice.html?v=2.5.0" };
+if (man.name === "4eNEXT to owlbear" && man.version === "2.5.0") ok("manifest 名称 / 版本 = 4eNEXT to owlbear 2.5.0");
 else bad("manifest 名称 / 版本不对：" + man.name + " " + man.version);
 if (man.action && /^https:\/\//.test(man.action.popover) && /\/dice(?:-entry)?\.html(?:\?v=[0-9.]+)?$/.test(man.action.popover))
   ok("manifest.action = 骰子入口 launcher（dice-entry.html，绝对 URL）");
@@ -1405,9 +1560,10 @@ if (initPageSrc.indexOf('act === "next") return saveInit(function (st) { return 
   initPageSrc.indexOf('act === "prev") return saveInit(function (st) { return advanceInitiative(st, -1); }') >= 0)
   ok("「下一回合 / 上一回合」把推进函数交给队列：执行时才基于最新 state（连点 3 次 → 推进 3 次，不丢）");
 else bad("next / prev 仍把提前算好的旧 state 交给 saveInit（连点会少推进）");
-if (initPageSrc.indexOf('超过 " + INIT_MAX_ENTRIES + " 条') >= 0 && initPageSrc.indexOf("超过 60 条") < 0)
-  ok("先攻上限文案跟 INIT_MAX_ENTRIES（40）一致，不再写死 60");
-else bad("先攻上限文案还是写死 60 / 没跟 INIT_MAX_ENTRIES");
+if (initPageSrc.indexOf("先攻没能写进 token / 场景数据") >= 0 &&
+  initPageSrc.indexOf("写不进 token / 场景数据：先攻通常只有城主能改") >= 0)
+  ok("页面失败提示已改成 token / 场景数据口径（不再说「房间数据」）");
+else bad("页面失败提示还是旧房间数据口径");
 
 /* v1.8.2：①点先攻条卡片不再弹速览（先广播抑制频道再 select；后台 refreshInfo 早退）。
  *         ②大号数字可手填 d20（commitD20 → setEntryRoll，保持加值、合计自动 = d20 + 加值）。 */
@@ -1416,11 +1572,11 @@ if (initPageSrc.indexOf("CH_GLANCE_SUPPRESS") >= 0 &&
   initPageSrc.indexOf("sendMessage(CH_GLANCE_SUPPRESS") < initPageSrc.indexOf("OBR.player.select"))
   ok("点先攻条卡片：先广播 CH_GLANCE_SUPPRESS 再 OBR.player.select（地图高亮保留、不再弹速览）");
 else bad("点卡片没有先广播 CH_GLANCE_SUPPRESS / 顺序不对（速览还是会弹）");
-/* v2.4.37：动态顺序断言 —— 抑制广播的 promise resolve 之前，player.select 绝不能被调用。 */
+/* v2.5.0：动态顺序断言 —— 抑制广播的 promise resolve 之前，player.select 绝不能被调用。 */
 {
   const start = initPageSrc.indexOf("async function onCardClick(tokenId) {");
   const end = initPageSrc.indexOf("\n\n/** 玩家「结束我的回合」", start);
-  if (start < 0 || end < 0) bad("v2.4.37：抽不出 onCardClick()（页面结构变了）");
+  if (start < 0 || end < 0) bad("v2.5.0：抽不出 onCardClick()（页面结构变了）");
   else {
     const snippet = initPageSrc.slice(start, end);
     const order = [];
@@ -1446,8 +1602,8 @@ else bad("点卡片没有先广播 CH_GLANCE_SUPPRESS / 顺序不对（速览还
     if (release) release();
     await pending;
     if (before === "send" && order.join(",") === "send,select")
-      ok("v2.4.37：先 await 抑制广播送达，再 player.select（旧写法会在广播 resolve 前就 select → 偶发弹速览）");
-    else bad("v2.4.37：抑制广播未 await 就 select（顺序 " + before + " → " + order.join(",") + "）");
+      ok("v2.5.0：先 await 抑制广播送达，再 player.select（旧写法会在广播 resolve 前就 select → 偶发弹速览）");
+    else bad("v2.5.0：抑制广播未 await 就 select（顺序 " + before + " → " + order.join(",") + "）");
   }
 }
 
@@ -1476,115 +1632,312 @@ else bad("「结束我的回合」没有标 data-bg（后台离线时不会被�
 if (winGmHtml.indexOf("data-bg-soft") >= 0) ok("GM 的回合按钮带 data-bg-soft（后台离线只弱化外观）");
 else bad("GM 的回合按钮没有标 data-bg-soft");
 
-/* ---- v2.4.37：房间 16KB 治理 / 先攻真源 ---- */
+/* ---- v2.5.0：房间 16KB 治理（对角色卡 / 其它房间数据仍然有效；先攻已不占房间） ---- */
 {
   const coreSrc = fs.readFileSync(path.join(ROOT, "assets", "background.core.js"), "utf8");
   if (api.roomWriteGuarded && api.roomAuditLog && coreSrc.indexOf("room meta total=") >= 0 &&
     coreSrc.indexOf("other=") >= 0 && coreSrc.indexOf("top=") >= 0 && coreSrc.indexOf("ROOM_WRITE_LIMIT = 15500") >= 0 && coreSrc.indexOf("TextEncoder") >= 0)
-    ok("v2.4.37：房间写入按整包 + UTF-8 字节计算（16KB-512），体检含 ours/other/top");
-  else bad("v2.4.37：整包预算 / 体检日志缺失");
-  if (!api.roomWriteGuarded) bad("v2.4.37：roomWriteGuarded 未暴露");
+    ok("v2.5.0：房间写入按整包 + UTF-8 字节计算（16KB-512），体检含 ours/other/top");
+  else bad("v2.5.0：整包预算 / 体检日志缺失");
+  if (!api.roomWriteGuarded) bad("v2.5.0：roomWriteGuarded 未暴露");
   else {
     roomMeta = { [KEY_CARDS]: { v: 1, cards: [] }, ["com.other-plugin/blob"]: { blob: "x".repeat(20 * 1024) } };
-    const res = await api.roomWriteGuarded(KEY_INITIATIVE, I.normalizeInitiative(null));
-    if (res.ok && res.store === "scene" && res.other > 15 * 1024 && sceneMeta[KEY_INITIATIVE])
-      ok("v2.4.37：其它插件占满整包时本插件改写场景，并回报 ours/other");
-    else bad("v2.4.37：整包超限未回退场景：" + JSON.stringify({ ok: res.ok, store: res.store, other: res.other }));
-    roomMeta = { [KEY_ROLLS]: { v: 1, seq: 1, rows: [{ x: "r".repeat(100) }] }, ["com.other-plugin/blob"]: { blob: "x".repeat(16 * 1024) } };
-    const big = api.initNorm({ entries: [{ tokenId: "t1", name: "名字".repeat(10), init: 1, bonus: 0 }] });
-    const res2 = await api.roomWriteGuarded(KEY_INITIATIVE, big);
-    if (res2.ok && res2.store === "scene" && sceneMeta[KEY_INITIATIVE])
-      ok("v2.4.37：接近/超过上限时改写场景 metadata（不再挤房间）");
-    else bad("v2.4.37：超限未回退场景：" + JSON.stringify({ ok: res2.ok, reason: res2.reason, store: res2.store }));
+    const res = await api.roomWriteGuarded(KEY_ROLLS, { v: 1, updatedAt: 1, rows: [] });
+    if (res.ok && res.store === "scene" && res.other > 15 * 1024 && sceneMeta[KEY_ROLLS])
+      ok("v2.5.0：其它插件占满整包时本插件改写场景，并回报 ours/other");
+    else bad("v2.5.0：整包超限未回退场景：" + JSON.stringify({ ok: res.ok, store: res.store, other: res.other }));
   }
   const initAddSrc = coreSrc.slice(coreSrc.indexOf("async function initAdd"), coreSrc.indexOf("function initRemove"));
-  if (initAddSrc.indexOf('persisted: !next.local') >= 0 && coreSrc.indexOf("if (!res.persisted)") >= 0 &&
-    coreSrc.indexOf("await syncInitFlags();") >= 0)
-    ok("v2.4.37：先攻以房间状态为真源，写失败不打 token 标记");
-  else bad("v2.4.37：initAdd 失败仍可能打 token 标记");
-  if (coreSrc.indexOf("房间先攻 entries 是唯一真源") >= 0 &&
-    coreSrc.indexOf("function initWantIds") >= 0 &&
-    coreSrc.slice(coreSrc.indexOf("function initWantIds"), coreSrc.indexOf("async function syncInitFlags")).indexOf("Array.isArray(ids)") < 0)
-    ok("v2.4.37：syncInitFlags 只按房间 entries 反推，忽略调用方临时 ids");
-  else bad("v2.4.37：syncInitFlags 仍可能被临时 ids 污染");
-  if (coreSrc.indexOf("房间数据已满（本插件 ") >= 0 && coreSrc.indexOf("其它插件 ") >= 0)
-    ok("v2.4.37：写满通知含本插件 / 其它插件占用");
-  else bad("v2.4.37：写满通知文案缺失");
+  if (initAddSrc.indexOf("persisted: !next.local") >= 0 && coreSrc.indexOf("if (!res.persisted)") >= 0)
+    ok("v2.5：右键加入先攻按 initWrite 的 .local 判断是否真落盘（失败不打标记 / 走 GM 代写回退）");
+  else bad("v2.5：initAdd 失败仍可能当成成功");
+  if (coreSrc.indexOf("async function initPersistOnce(") >= 0 && coreSrc.indexOf("upserts.concat(deletes)") >= 0 &&
+    coreSrc.indexOf("await OBR.scene.setMetadata({ [KEY_COMBAT]: nextCombat })") >= 0 &&
+    coreSrc.indexOf("migratedAt") >= 0)
+    ok("v2.5：先攻是差异写（只 update 变了的 token、删已移出条目）+ combat 写 scene + 迁移标记");
+  else bad("v2.5：后台差异写 / scene combat / 迁移标记缺失");
+  if (coreSrc.indexOf('var ROOM_FULL_MESSAGE = "房间数据已满（16KB）') >= 0 &&
+    coreSrc.indexOf("ROOM_WRITE_LIMIT = 15500") >= 0)
+    ok("房间 16KB 预算 / 写满文案仍在（角色卡等房间数据用；先攻不再走房间预算）");
+  else bad("房间写满预算 / 文案被误删");
 }
 
-/* ---- v2.4.37 场景兜底 / updatedAt 取新 ---- */
+/* ---- v2.5.0 旧整份名单：只读回退（迁移前过渡） ---- */
 {
-  if (!api.initRead || !api.roomWriteGuarded) bad("v2.4.37：initRead/roomWriteGuarded 未暴露");
-  else {
-    const st = I.normalizeInitiative({ updatedAt: 5, entries: [{ tokenId: "t1", name: "A", init: 5, bonus: 0 }] });
-    roomMeta = { ["com.other-plugin/blob"]: { blob: "x".repeat(20 * 1024) } };
-    sceneMeta = {};
-    const res = await api.roomWriteGuarded(KEY_INITIATIVE, st);
-    if (res.ok && res.store === "scene" && sceneMeta[KEY_INITIATIVE] && !roomMeta[KEY_INITIATIVE])
-      ok("v2.4.37：整包 >15500B → 写场景 metadata 而非房间");
-    else bad("v2.4.37：整包超限未回退场景：" + JSON.stringify({ ok: res.ok, store: res.store }));
-    /* 房间抛 quota → 回退场景 */
-    roomMeta = {}; sceneMeta = {};
-    const oldSet = OBR.room.setMetadata;
-    OBR.room.setMetadata = async () => { const e = new Error("Unable to update metadata: over size limit of 16 kB"); throw e; };
-    const res2 = await api.roomWriteGuarded(KEY_INITIATIVE, st);
-    OBR.room.setMetadata = oldSet;
-    if (res2.ok && res2.store === "scene" && sceneMeta[KEY_INITIATIVE])
-      ok("v2.4.37：房间 quota 报错 → 回退场景 metadata");
-    else bad("v2.4.37：quota 未回退场景：" + JSON.stringify({ ok: res2.ok, store: res2.store }));
-    /* 场景也失败 → local 兜底 */
-    roomMeta = {}; sceneMeta = {};
-    const oldSetR = OBR.room.setMetadata;
-    const oldSetS = OBR.scene.setMetadata;
-    OBR.room.setMetadata = async () => { throw new Error("quota exceeded"); };
-    OBR.scene.setMetadata = async () => { throw new Error("metadata size limit"); };
-    const res3 = await api.roomWriteGuarded(KEY_INITIATIVE, st);
-    OBR.room.setMetadata = oldSetR; OBR.scene.setMetadata = oldSetS;
-    if (!res3.ok && res3.store === "local" && res3.reason === "full")
-      ok("v2.4.37：场景也失败 → 返回 local（调用方本机兜底 + 通知）");
-    else bad("v2.4.37：场景失败未降级 local：" + JSON.stringify({ ok: res3.ok, store: res3.store }));
-    /* updatedAt 取较新：room 旧 / scene 新 */
-    roomMeta = { [KEY_INITIATIVE]: { updatedAt: 10, entries: [{ tokenId: "room", name: "旧", init: 1, bonus: 0 }] } };
-    sceneMeta = { [KEY_INITIATIVE]: { updatedAt: 20, entries: [{ tokenId: "scene", name: "新", init: 2, bonus: 0 }] } };
-    const read = await api.initRead();
-    if (read.entries.length === 1 && read.entries[0].tokenId === "scene")
-      ok("v2.4.37：initRead 读取 scene/room 中 updatedAt 较新者");
-    else bad("v2.4.37：initRead 未取较新：" + JSON.stringify(read.entries));
-    if (fs.readFileSync(path.join(ROOT, "assets", "background.core.js"), "utf8").indexOf("room bytes total=") >= 0)
-      ok("v2.4.37：写前日志 room bytes total=… key=… → room|scene|local");
-    else bad("v2.4.37：缺少 room bytes 日志");
-  }
+  clearInitStorage();
+  roomMeta = { [KEY_INITIATIVE]: { updatedAt: 10, entries: [{ tokenId: "room", name: "旧", init: 1, bonus: 0 }] } };
+  sceneMeta = { [KEY_INITIATIVE]: { updatedAt: 20, entries: [{ tokenId: "scene", name: "新", init: 2, bonus: 0 }] } };
+  role = "PLAYER"; /* 玩家不迁移：只读回退，验证过渡读取 */
+  const read = await api.initRead();
+  role = "GM";
+  if (read.entries.length === 1 && read.entries[0].tokenId === "scene" && read.legacy === true)
+    ok("旧整份名单只读回退：initRead 读 room/scene 中 updatedAt 较新者（legacy 标记）");
+  else bad("旧整份名单回退读取不对：" + JSON.stringify(read.entries));
+  if (sceneMeta[KEY_INITIATIVE] && sceneMeta[KEY_INITIATIVE].entries.length === 1 &&
+    itemById("tok-1") && !I.isInitMeta(itemById("tok-1").metadata[KEY_INIT])) {
+    ok("回退读取是只读的：不会把旧名单写成 token metadata");
+  } else bad("只读回退时却改了 token 存储");
+  clearInitStorage();
 }
 
-/* ---- v2.4.37 场景兜底读取 / 订阅 ---- */
+/* ---- v2.5.0 场景订阅（v2.5 起 scene metadata 里放的是 combat） ---- */
 {
   const bg = fs.readFileSync(path.join(ROOT, "assets", "background.core.js"), "utf8");
   const initJs = fs.readFileSync(path.join(ROOT, "assets", "initiative.js"), "utf8");
   const initPage = fs.readFileSync(path.join(ROOT, "assets", "initiative-page.js"), "utf8");
   if (bg.indexOf("OBR.scene.getMetadata") >= 0 && bg.indexOf("scene.onMetadataChange（场景兜底存储）") >= 0 &&
     initJs.indexOf("OBR.scene.getMetadata") >= 0 && initPage.indexOf("OBR.scene.onMetadataChange") >= 0)
-    ok("v2.4.37：先攻读取 scene+room 取新，并订阅 scene.onMetadataChange");
-  else bad("v2.4.37：先攻场景兜底读取/订阅缺失");
-  if (api.initRead) {
-    roomMeta = { [KEY_INITIATIVE]: { updatedAt: 10, entries: [{ tokenId: "room", name: "旧", init: 1, bonus: 0 }] } };
-    sceneMeta = { [KEY_INITIATIVE]: { updatedAt: 20, entries: [{ tokenId: "scene", name: "新", init: 2, bonus: 0 }] } };
-    const st = await api.initRead();
-    if (st.entries[0] && st.entries[0].tokenId === "scene") ok("v2.4.37：先攻 room 旧 / scene 新 → 读 scene");
-    else bad("v2.4.37：先攻双源取新失败");
-    sceneMeta = { [KEY_INITIATIVE]: { updatedAt: 5, entries: [{ tokenId: "scene", name: "旧", init: 1, bonus: 0 }] } };
-    roomMeta = { [KEY_INITIATIVE]: { updatedAt: 30, entries: [{ tokenId: "room", name: "新", init: 2, bonus: 0 }] } };
-    const st2 = await api.initRead();
-    if (st2.entries[0] && st2.entries[0].tokenId === "room") ok("v2.4.37：scene 旧 / room 新 → 读 room");
-    else bad("v2.4.37：先攻 room 新时未读 room");
-  }
+    ok("v2.5：先攻读 scene metadata（combat）+ 旧名单回退，并订阅 scene.onMetadataChange");
+  else bad("先攻场景 metadata 读取 / 订阅缺失");
+  if (initJs.indexOf("atS > atR") >= 0 && bg.indexOf("atScene > atRoom") >= 0)
+    ok("旧整份名单回退：页面 / 后台都按 updatedAt 取 room / scene 较新者");
+  else bad("旧整份名单回退的双源取新逻辑缺失");
 }
 
-/* ---- v2.4.37：init 并发写保护 ---- */
+/* ---- v2.5：迁移（旧整份名单 → token metadata + scene combat） ---- */
+console.log("== v2.5 迁移：旧名单 → token metadata + scene combat");
 {
-  const bg = fs.readFileSync(path.join(ROOT, "assets", "background.core.js"), "utf8");
-  if (bg.indexOf("init write conflict") >= 0 && bg.indexOf("其他人刚修改先攻，已刷新") >= 0)
-    ok("v2.4.37：先攻写前比较 updatedAt，冲突重读并提示");
-  else bad("v2.4.37：先攻并发保护缺失");
+  clearInitStorage();
+  ensureToken("tok-1", "甲的 token", "user-player");
+  ensureToken("tok-2", "乙的 token", "user-gm");
+  const legacy = I.normalizeInitiative({
+    phase: "combat", round: 2, surprise: false, activeId: "tok-2", updatedAt: 12345,
+    entries: [
+      { tokenId: "tok-1", name: "甲的 token", bonus: 5, d20: 12, init: 17, tb: 0.2, hidden: false, ownerId: "user-player" },
+      { tokenId: "tok-2", name: "乙的 token", bonus: 0, d20: 18, init: 18, tb: 0.5, hidden: true, ownerId: "user-gm" }
+    ]
+  });
+  roomMeta = { [KEY_INITIATIVE]: legacy };
+  sceneMeta = {};
+  role = "PLAYER";
+  const preview = await I.readInitiative();
+  if (preview.legacy === true && preview.entries.length === 2 && preview.phase === "combat" && preview.round === 2)
+    ok("迁移前（玩家）：readInitiative 回退读旧整份名单（legacy 标记，只读）");
+  else bad("迁移前回退读取不对：" + JSON.stringify(preview));
+  if (role === "PLAYER") {
+    const skip = await I.migrateLegacyInitiative();
+    if (!skip.ok && skip.reason === "role")
+      ok("迁移只由 GM 执行（玩家调用返回 reason=role，不动数据）");
+    else bad("玩家也执行了迁移：" + JSON.stringify(skip));
+  }
+  role = "GM";
+  const mig = await I.migrateLegacyInitiative();
+  const m1 = itemById("tok-1").metadata[KEY_INIT];
+  const m2 = itemById("tok-2").metadata[KEY_INIT];
+  const combatMeta = sceneMeta[KEY_COMBAT];
+  let backup = null;
+  try {
+    backup = JSON.parse(globalThis.localStorage.getItem("4enext/init-backup/" + OBR.room.id) || "null");
+  } catch (eBk) { backup = null; }
+  const readAfter = await I.readInitiative();
+  if (mig.ok && mig.migrated === 2 && m1 && m1.v === 2 && m1.bonus === 5 && m1.d20 === 12 && m1.init === 17 &&
+    m2 && m2.v === 2 && m2.hidden === true) {
+    ok("迁移：旧名单逐条写进 token metadata（v2 结构 / 原 d20 / init / tb / hidden / owner 全保留）");
+  } else bad("迁移写 token metadata 不对：" + JSON.stringify({ mig, m1, m2 }));
+  if (combatMeta && combatMeta.v === 1 && combatMeta.phase === "combat" && combatMeta.round === 2 &&
+    combatMeta.activeId === "tok-2" && combatMeta.migratedAt > 0) {
+    ok("迁移：战斗态写到 scene metadata[" + KEY_COMBAT + "]（phase / round / activeId + migratedAt 一次性标记）");
+  } else bad("迁移没写 combat / 没打 migratedAt：" + JSON.stringify(combatMeta));
+  if (backup && backup.v === 1 && backup.room && Array.isArray(backup.room.entries) && backup.room.entries.length === 2)
+    ok("迁移：旧数据整份备份到 localStorage[" + I.initBackupKey() + "]（含 2 条 entries）");
+  else bad("迁移前没有备份旧数据：" + JSON.stringify(backup));
+  if (!roomMeta[KEY_INITIATIVE] || roomMeta[KEY_INITIATIVE].entries.length === 0)
+    ok("迁移成功后旧房间名单清空（token metadata 成为真源）");
+  else bad("旧房间名单没清空：" + JSON.stringify(roomMeta[KEY_INITIATIVE]));
+  if (readAfter.legacy !== true && readAfter.entries.map((e) => e.tokenId).sort().join(",") === "tok-1,tok-2" &&
+    readAfter.phase === "combat" && readAfter.round === 2 && readAfter.activeId === "tok-2")
+    ok("迁移后 readInitiative 从 token metadata + scene combat 读回（不再走 legacy 回退）");
+  else bad("迁移后读取不对：" + JSON.stringify(readAfter));
+  const again = await I.migrateLegacyInitiative();
+  if (again.skipped === true) ok("迁移幂等：旧名单已清空 / 已标记后再次调用直接 skipped");
+  else bad("迁移不幂等：" + JSON.stringify(again));
+
+  /* 迁移失败必须保留旧数据并 WARNING（token 写失败 / combat 写失败两条路径） */
+  {
+    const realUpd = OBR.scene.items.updateItems;
+    clearInitStorage();
+    roomMeta = { [KEY_INITIATIVE]: deep(legacy) };
+    sceneMeta = {};
+    const noteTok = notifications.length;
+    OBR.scene.items.updateItems = async () => { throw new Error("token metadata denied"); };
+    const failTok = await I.migrateLegacyInitiative();
+    OBR.scene.items.updateItems = realUpd;
+    const tokKept = roomMeta[KEY_INITIATIVE];
+    if (!failTok.ok && failTok.reason === "token-write" && tokKept && tokKept.entries.length === 2 &&
+      notifications.slice(noteTok).some((n) => /先攻数据迁移失败/.test(n.msg)) &&
+      !(sceneMeta[KEY_COMBAT] && sceneMeta[KEY_COMBAT].migratedAt)) {
+      ok("迁移失败（token 写不进）：旧房间名单原样保留 + WARNING + 不打 migratedAt（下次启动会重试）");
+    } else bad("迁移失败处理不对：" + JSON.stringify({ failTok, kept: tokKept && tokKept.entries.length, combat: sceneMeta[KEY_COMBAT] }));
+
+    clearInitStorage();
+    roomMeta = { [KEY_INITIATIVE]: deep(legacy) };
+    sceneMeta = {};
+    const realSceneSet = OBR.scene.setMetadata;
+    const noteCombat = notifications.length;
+    OBR.scene.setMetadata = async () => { throw new Error("scene metadata denied"); };
+    const failCombat = await I.migrateLegacyInitiative();
+    OBR.scene.setMetadata = realSceneSet;
+    if (!failCombat.ok && failCombat.reason === "combat-write" &&
+      roomMeta[KEY_INITIATIVE] && roomMeta[KEY_INITIATIVE].entries.length === 2 &&
+      notifications.slice(noteCombat).some((n) => /战斗状态写不进去/.test(n.msg))) {
+      ok("迁移失败（combat 写不进）：token 已写但旧名单保留 + WARNING（下次启动重试）");
+    } else bad("迁移 combat 失败处理不对：" + JSON.stringify({ failCombat, kept: roomMeta[KEY_INITIATIVE] && roomMeta[KEY_INITIATIVE].entries.length }));
+    clearInitStorage();
+  }
+
+  /* 后台版迁移（GM 启动路径）：同样写 token + combat，留下备份 */
+  clearInitStorage();
+  for (const it of items) if (it.metadata) delete it.metadata[KEY_INIT];
+  roomMeta = { [KEY_INITIATIVE]: legacy };
+  sceneMeta = {};
+  role = "GM";
+  const bgMig = await api.migrateInitiativeFromLegacy();
+  const bgM1 = itemById("tok-1").metadata[KEY_INIT];
+  const bgCombat = sceneMeta[KEY_COMBAT];
+  if (bgMig.ok && bgMig.migrated === 2 && bgM1 && bgM1.v === 2 && bgCombat && bgCombat.migratedAt > 0 &&
+    roomMeta[KEY_INITIATIVE].entries.length === 0) {
+    ok("后台 GM 启动迁移：token metadata ×2 + scene combat + 清空旧房间名单");
+  } else bad("后台迁移不对：" + JSON.stringify({ bgMig, bgM1, bgCombat, room: roomMeta[KEY_INITIATIVE] }));
+  const bgAgain = await api.migrateInitiativeFromLegacy();
+  if (bgAgain.skipped === true) ok("后台迁移也幂等（已迁移 / 无旧名单 → skipped）");
+  else bad("后台迁移不幂等：" + JSON.stringify(bgAgain));
+}
+
+/* ---- v2.5：token metadata 读回 / 差异写 / 玩家只写自己 token ---- */
+console.log("== v2.5 token 存储：读回 / 差异写 / 权限");
+{
+  clearInitStorage();
+  ensureToken("tok-2", "乙的 token", "user-gm");
+  role = "GM";
+  seedInitStorage(I.normalizeInitiative({
+    phase: "combat", round: 1, activeId: "tok-1",
+    entries: [
+      { tokenId: "tok-1", name: "甲的 token", bonus: 5, d20: 12, init: 17, tb: 0.2, ownerId: "user-player" },
+      { tokenId: "tok-2", name: "乙的 token", bonus: 0, d20: 18, init: 18, tb: 0.5, ownerId: "user-gm" }
+    ]
+  }));
+  const st = await I.readInitiative();
+  if (st.entries.length === 2 && st.entries[0].tokenId === "tok-2" && st.entries[0].d20 === 18 &&
+    st.entries[1].tokenId === "tok-1" && st.entries[1].init === 17) {
+    ok("token metadata 读回：按「合计 DESC → tb ASC」排序（tok-2 18 → tok-1 17）");
+  } else bad("token 读回不对：" + JSON.stringify(st.entries));
+  /* 拖拽排序写的是小数中点：必须原样落盘，刷新后顺序不能回退 */
+  ensureToken("tok-3", "丙的 token", "user-gm");
+  const m1r = itemById("tok-1").metadata[KEY_INIT];
+  m1r.d20 = 20; m1r.init = 20;
+  const m2r = itemById("tok-2").metadata[KEY_INIT];
+  m2r.d20 = 13; m2r.init = 13;
+  itemById("tok-3").metadata[KEY_INIT] = { v: 2, d20: 30, bonus: 0, init: 30, tb: 0.8, hidden: false, ownerId: "user-gm", updatedAt: 1 };
+  const three = await I.readInitiative();
+  const dragged = I.reorderEntry(three, "tok-1", 1); /* 插到 tok-3(30) 与 tok-2(12) 之间 → 中点 21 */
+  const draggedMeta = I.initMetaFromEntry(dragged.entries.filter((e) => e.tokenId === "tok-1")[0], Date.now());
+  const draggedBack = await I.writeInitiative(dragged);
+  const draggedRead = await I.readInitiative();
+  if (draggedBack && !draggedBack.local && draggedRead.entries[0].tokenId === "tok-3" &&
+    draggedRead.entries[1].tokenId === "tok-1" && draggedRead.entries[1].init === draggedMeta.init &&
+    !Number.isInteger(draggedRead.entries[1].init)) {
+    ok("拖拽排序的中点数 init（" + draggedRead.entries[1].init + "）原样写进 token metadata，刷新后顺序不回退");
+  } else bad("拖拽中点没落盘：" + JSON.stringify(draggedRead.entries.map((e) => [e.tokenId, e.init])));
+
+  /* 差异写：值没变的 token 不写 */
+  const calls = [];
+  const realUpdate = OBR.scene.items.updateItems;
+  OBR.scene.items.updateItems = async (ids, fn) => { calls.push(ids.slice()); return realUpdate(ids, fn); };
+  const noChange = await I.writeInitiative(await I.readInitiative());
+  if (calls.length === 0 && !noChange.local)
+    ok("差异写：状态没变时不调用 updateItems（不抖 token 元数据）");
+  else bad("没有变化也写了 token：" + JSON.stringify(calls));
+
+  /* 玩家改自己条目的加值 → 只写自己那枚 token */
+  role = "PLAYER"; playerId = "user-player";
+  calls.length = 0;
+  const playerState = await I.readInitiative();
+  const playerNext = I.setEntryBonus(playerState, "tok-1", 9);
+  const playerWritten = await I.writeInitiative(playerNext);
+  OBR.scene.items.updateItems = realUpdate;
+  role = "GM"; playerId = "user-gm";
+  const tok1After = itemById("tok-1").metadata[KEY_INIT];
+  const tok2After = itemById("tok-2").metadata[KEY_INIT];
+  if (playerWritten && !playerWritten.local && calls.length === 1 && calls[0].join(",") === "tok-1" &&
+    tok1After.bonus === 9 && tok2After.bonus === 0) {
+    ok("权限：玩家改自己的条目只更新自己那枚 token（updateItems 只收到 tok-1，tok-2 一个字节没动）");
+  } else bad("玩家差异写不对：" + JSON.stringify({ calls, written: playerWritten && playerWritten.local, tok1: tok1After, tok2: tok2After }));
+
+  /* GM 改两条 → 一次 updateItems 带上两枚 token */
+  calls.length = 0;
+  OBR.scene.items.updateItems = async (ids, fn) => { calls.push(ids.slice()); return realUpdate(ids, fn); };
+  const gmState = await I.readInitiative();
+  const gmNext = I.setEntryBonus(I.setEntryBonus(gmState, "tok-1", 7), "tok-2", 3);
+  await I.writeInitiative(gmNext);
+  OBR.scene.items.updateItems = realUpdate;
+  if (calls.length === 1 && calls[0].sort().join(",") === "tok-1,tok-2")
+    ok("权限：GM 改两条 → 一次 updateItems 写两枚 token（批量、非整份名单）");
+  else bad("GM 批量写不对：" + JSON.stringify(calls));
+}
+
+/* ---- v2.5：scene combat 读写 / activeId 失效回退 / 移出删除 ---- */
+console.log("== v2.5 scene combat / activeId 回退");
+{
+  clearInitStorage();
+  role = "GM";
+  ensureToken("tok-1", "甲的 token", "user-player");
+  ensureToken("tok-2", "乙的 token", "user-gm");
+  const st = await I.writeInitiative(I.normalizeInitiative({
+    phase: "combat", round: 3, surprise: false, activeId: "tok-2",
+    entries: [
+      { tokenId: "tok-1", name: "甲的 token", bonus: 5, d20: 12, init: 17, tb: 0.2, ownerId: "user-player" },
+      { tokenId: "tok-2", name: "乙的 token", bonus: 0, d20: 18, init: 18, tb: 0.5, ownerId: "user-gm" }
+    ]
+  }));
+  const combat = sceneMeta[KEY_COMBAT];
+  if (combat && combat.v === 1 && combat.phase === "combat" && combat.round === 3 &&
+    combat.surprise === false && combat.activeId === "tok-2") {
+    ok("scene combat 写：{v:1, phase, round, surprise, activeId, updatedAt} 都落到 " + KEY_COMBAT);
+  } else bad("scene combat 写得不对：" + JSON.stringify(combat));
+  if (st && st.updatedAt > 0 && !st.local) ok("writeInitiative 返回的内部 state 形状不变（仍带 phase/round/activeId/entries）");
+  else bad("writeInitiative 返回形状变了：" + JSON.stringify(st));
+  const back = await I.readInitiative();
+  if (back.phase === "combat" && back.round === 3 && back.activeId === "tok-2" && back.entries.length === 2)
+    ok("scene combat 读：readInitiative 从 scene metadata 读回战斗态");
+  else bad("combat 读回不对：" + JSON.stringify(back));
+
+  /* activeId 失效（token 被删 / 死指针）→ 回退排序后的第一张 */
+  sceneMeta[KEY_COMBAT] = { v: 1, phase: "combat", round: 2, surprise: false, activeId: "gone-token", updatedAt: 99 };
+  const fallback = await I.readInitiative();
+  if (fallback.activeId === "tok-2") ok("activeId 失效 → 回退排序后的第一张（tok-2）");
+  else bad("activeId 失效没有回退：" + JSON.stringify(fallback.activeId));
+  if (await I.currentEntry(fallback) && I.currentEntry(fallback).tokenId === "tok-2")
+    ok("currentEntry() 与回退后的 activeId 一致");
+  else bad("currentEntry 没有跟着回退");
+
+  /* 移出一条 → token metadata 删除（差异写 deletes），其它条目不动 */
+  const removed = I.removeEntry(await I.readInitiative(), "tok-2");
+  await I.writeInitiative(removed);
+  if (!I.isInitMeta(itemById("tok-2").metadata[KEY_INIT]) && I.isInitMeta(itemById("tok-1").metadata[KEY_INIT]))
+    ok("移出条目：对应 token 的 v2 元数据被删除（差异写 deletes），没移的条目不动");
+  else bad("移出没有删 token 元数据：" + JSON.stringify({ t2: itemById("tok-2").metadata[KEY_INIT], t1: itemById("tok-1").metadata[KEY_INIT] }));
+  const afterRemove = await I.readInitiative();
+  if (afterRemove.entries.length === 1 && afterRemove.activeId === "tok-1")
+    ok("移出后读取只剩 tok-1，activeId 回退到唯一一张");
+  else bad("移出后读取不对：" + JSON.stringify(afterRemove));
+}
+
+/* ---- v2.5：旧值兼容（数字 = 加值，不误当名单成员） ---- */
+{
+  clearInitStorage();
+  ensureToken("tok-1", "旧数字加值", "user-player");
+  itemById("tok-1").metadata[KEY_INIT] = 7;
+  const legacyList = await I.readInitiative();
+  const bonus7 = I.bonusOfItem(itemById("tok-1"), []);
+  if (legacyList.entries.length === 0 && bonus7 === 7)
+    ok("旧值兼容：token 上 init = 数字时只当「加值 7」读，不会被误加成先攻条目");
+  else bad("旧数字 init 兼容不对：" + JSON.stringify({ entries: legacyList.entries, bonus7 }));
+  itemById("tok-1").metadata[KEY_INIT] = { bonus: 12, cardId: CARD.id, updatedAt: 1 };
+  const legacyB = I.bonusOfItem(itemById("tok-1"), []);
+  if ((await I.readInitiative()).entries.length === 0 && legacyB === 12)
+    ok("旧值兼容：v2.4 的 {bonus,cardId} 加值缓存仍按加值读，不会把绑卡 token 误加进先攻");
+  else bad("旧 {bonus,cardId} 兼容不对：" + legacyB);
+  clearInitStorage();
 }
 
 console.log(fail ? "\n" + fail + " 个问题" : "\n全部通过");

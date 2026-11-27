@@ -35,7 +35,7 @@ const RESET_PREFIXES = [RESET_PREFIX, "4enext/win-size/"];
 /** 二次确认的有效期：第一次点击后这么久内没有再点，就自动回到普通状态。 */
 const CONFIRM_MS = 5000;
 
-const win = createWindow({ name: "settings" }); /* v2.4.37：窗口壳最先初始化，后续 init 抛错也能关窗 */
+const win = createWindow({ name: "settings" }); /* v2.5.0：窗口壳最先初始化，后续 init 抛错也能关窗 */
 function safeInit(name, fn) {
   try { fn(); } catch (e) { console.error("[4enext][settings] init " + name + " 失败", e); }
 }
@@ -178,10 +178,11 @@ if (diceHistToggle) {
 }
 
 /* ---------------- v1.7.15：清理房间数据 ----------------
- * 房间数据（room metadata）有 16 KB 上限，超了之后**所有**写入都会被拒（加入先攻 / 改加值 /
- * 回合推进 / 骰子历史 / 资源追踪），而且真机上以前是静默失败。这一栏给用户两个「一键瘦身」按钮：
+ * 房间数据（room metadata）有 16 KB 上限，超了之后**所有**写入都会被拒（角色卡 / 资源追踪 /
+ * 其它房间小设置），而且真机上以前是静默失败。这一栏给用户两个「一键瘦身」按钮：
  *   ① 清理骰子历史（v1.9.2 起历史在本机：清本机 + GM 顺带清房间旧残留）
  *   ② 清空角色卡（v1.8.0：房间装不下时先改存本场景的隐藏 item，再兜底本机）
+ * v2.5：先攻改存 token metadata + scene combat，**不占房间 16 KB**（「先攻」来源显示 token）。
  * 这一页仍然**不直接**写房间数据 / token 元数据：读写全部走 common.js 的
  * getRoomUsage / clearRoomRolls / clearRoomCards（dev/check.mjs 断言这一点没变）。 */
 const roomUsageEl = document.getElementById("room-usage");
@@ -211,13 +212,15 @@ async function renderRoom() {
   }
   const pct = info.max > 0 ? Math.round((info.bytes / info.max) * 100) : 0;
   roomUsageEl.textContent = kb(info.bytes) + " / " + kb(info.max) + "（" + pct + "%）" +
-    (info.bytes > info.max ? " · 已超预算，先攻 / 骰子会被拒绝写入"
+    (info.bytes > info.max ? " · 已超预算，角色卡 / 资源标记会被拒绝写入"
       : info.bytes > 14 * 1024 ? " · 接近上限（其它插件也占房间数据）" : "");
   if (roomOtherEl) roomOtherEl.textContent = kb(info.otherBytes || 0);
   if (roomSourcesEl) {
     const src = info.sources || {};
-    const label = (v) => v === "scene" ? "场景" : v === "local" ? "本机" : v === "room" ? "房间" : "—";
-    roomSourcesEl.textContent = "卡 " + label(src.cards) + " · 先攻 " + label(src.initiative) +
+    const label = (v) => v === "scene" ? "场景" : v === "local" ? "本机" : v === "room" ? "房间" : v === "token" ? "token" : "—";
+    /* v2.5：先攻在 token metadata（不在房间）→ 有条目但旧键没有来源时显示 token。 */
+    const initSrc = src.initiative === "none" && info.entries > 0 ? "token" : src.initiative;
+    roomSourcesEl.textContent = "卡 " + label(src.cards) + " · 先攻 " + label(initSrc) +
       " · 骰子 " + label(src.rolls) + " · 状态 " + label(src.state);
   }
   if (roomTopEl) {
@@ -237,7 +240,7 @@ async function renderRoom() {
   if (roomInitEl) roomInitEl.textContent = info.entries + " 条";
 }
 
-/* v2.4.37：骰子动画速度（标准/快速/关闭），effect-page 读取同一个 localStorage。 */
+/* v2.5.0：骰子动画速度（标准/快速/关闭），effect-page 读取同一个 localStorage。 */
 const diceSpeedBtn = document.getElementById("set-dice-speed");
 const diceAutoBtn = document.getElementById("set-dice-auto");
 safeInit("diceSpeed", function initDiceSpeed() {
@@ -251,7 +254,7 @@ safeInit("diceSpeed", function initDiceSpeed() {
   });
 });
 
-/* v2.4.37：进入房间自动打开骰子（每客户端）。 */
+/* v2.5.0：进入房间自动打开骰子（每客户端）。 */
 safeInit("diceAuto", function () {
   if (!diceAutoBtn) return;
   const paint = () => { diceAutoBtn.textContent = "进入房间自动打开骰子：" + (readDiceAutoOpenPref() ? "开" : "关"); };

@@ -1,11 +1,17 @@
-// 先攻（v1.4.0）：数据模型、先攻条渲染、掷先攻、回合推进、拖拽排序。
+// 先攻（v1.4.0，v2.5 改存储）：数据模型、先攻条渲染、掷先攻、回合推进、拖拽排序。
 // ---------------------------------------------------------------------------
-// 数据放在「房间数据」里，全桌共享（写权限通常只有 GM）：
-//   room.metadata["com.4enext-owlbear/initiative"] = {
-//     v: 1, updatedAt, phase, round, surprise, activeId,
-//     entries: [{ tokenId, name, bonus, d20, init, tb, hidden, ownerId, updatedAt }]
-//   }
+// v2.5 起数据**不再是房间/场景一份整名单**，而是照 Full Suite 的做法：
+//   · 每个 IMAGE token 的 metadata["com.4enext-owlbear/init"] = 一条先攻条目
+//       { v:2, d20:number|null, bonus:number, init:number, tb:number|null,
+//         hidden:boolean, ownerId:string, updatedAt:number }
+//     （init = 合计；拖拽排序会写小数中点，所以必须原样落盘，不改成读时 d20+bonus）
+//   · 战斗态 scene.metadata["com.4enext-owlbear/combat"] =
+//       { v:1, phase, round, surprise, activeId, updatedAt, migratedAt? }
+//   · 旧键 room/scene metadata["com.4enext-owlbear/initiative"]（v1.3 ~ v2.4 的整份名单）
+//     只在迁移前**只读回退**；GM 首次启动 / 首次读先攻时迁移到 token metadata 后清空，
+//     迁移前整份旧数据备份到 localStorage["4enext/init-backup/<roomId>"]。
 //
+// 内部 state 形状不变（{phase,round,surprise,activeId,entries[]}），渲染 / 操作逻辑一行不改。
 // v1.4.0 在 v1.3.0 的结构上**只新增字段**，键名一个都没改：
 //   · phase    "idle" | "preparing" | "combat"（缺省 idle —— 旧数据照旧能读，不报错）
 //   · surprise 突袭轮标记（4E 的 surprise round，在正常第 1 轮之前）
@@ -14,33 +20,39 @@
 //   · init     = d20 + bonus（掷的时候一次算好，**不要**改成显示时相加，否则旧数据全错位）
 //   init 可以是小数：拖拽排序写「两卡中点」，显示一律 Math.round（规格 §4 / §7.3）。
 //
-// 条目上限 40（v1.8.0：60 → 40，给角色卡 + 骰子记录留余量）：仍然受房间数据 16 KB 预算约束。
-// normalizeInitiative 里截断（不抛错）；writeInitiative 写不进去时降级到本机
-// localStorage["4enext/state/initiative"] 并弹 WARNING（不允许静默）。
+// 条目上限 40（v1.8.0：60 → 40；v2.5 起 per-token 存储不再受房间 16 KB 约束，
+// 但内部结构与 Full Suite 的口径保持 40 条上限，normalizeInitiative 里截断，不抛错）。
+// writeInitiative 差异写 token / scene metadata；完全写不进时降级到本机
+// localStorage["4enext/state/initiative"] 并弹 WARNING / ERROR（不允许静默）。
 //
 // 权限：
 //   · GM：加入 / 隐形加入 / 掷先攻 / 拖拽排序 / 上下移动 / 设为当前 / 删除 / 清空 /
-//         战斗准备 / 开始战斗 / 突袭 / 结束战斗 / 上一回合 / 下一回合；
-//   · 玩家：只看到公开条目，「结束我的回合」不写房间数据，只 broadcast 请求
-//     （GM 的 background.core.js 校验 ownerId 后代写，见规格 §5 的四道校验）；
+//         战斗准备 / 开始战斗 / 突袭 / 结束战斗 / 上一回合 / 下一回合（写所有 token + scene）；
+//   · 玩家：只看到公开条目，「结束我的回合」不写 scene（broadcast 请求 GM 推进）；
+//     玩家可以**直接写自己创建的 token**（加值 / 掷骰 / 加入先攻），scene 写不进时走现有请求通道；
 //   · 隐形的条目对非 GM 完全不渲染，连名字都不发到 DOM（当前回合只显示「？？？」）。
 //
 // v1.7.3：① 卡片右上角加「✕」（GM 直接把人从先攻里移出，见 stripCard / 页面 onStripAct("remove")）；
-//   ② 新增 missingEntryIds / pruneMissingEntries：token 被删掉后由后台按「见过 → 消失」清理名单，
-//      删掉当前回合那张时游标顺移（与 removeEntry 同一套规则）；
+//   ② 新增 missingEntryIds / pruneMissingEntries：token 被删掉后条目不跟随（元数据在 token 上），
+//      后台按「见过 → 消失」校正当前回合指针（与 removeEntry 同一套规则）；
 //   ③ 先攻条外壳透明 / 常驻是 CSS 与 background.core.js 的事，数据层不变。
 //
 // 本模块是 ESM，只在窗口页加载；background.core.js 是经典脚本，不能 import，
-// 它有一份只服务于「右键加入先攻 / 响应玩家结束回合 / 打开先攻条」的精简实现，
+// 它有一份只服务于「右键加入先攻 / 响应玩家结束回合 / 打开先攻条 / 启动迁移」的精简实现，
 // 常量与排序 / 回合推进公式由 dev/check.mjs 与 dev/test-initiative.mjs 对齐。
 
 import OBR from "../vendor/obr-sdk.js";
 import {
-  KEY_BIND, KEY_INIT, KEY_INITIATIVE, NS, ROOM_FULL_MESSAGE, esc, getCards, findCard, notify, writeRoomKey
+  INIT_META_V, KEY_BIND, KEY_COMBAT, KEY_INIT, KEY_INITIATIVE, NS, diceHistoryRoomId, esc, findCard, getCards, notify
 } from "./common.js";
 import { initiativeBonus } from "./glance.js";
 
-/** 条目上限：房间数据约 16 KB；v1.8.0：60 → 40（给角色卡 + 骰子记录留出余量）。 */
+/** 战斗态元数据版本（scene.metadata[KEY_COMBAT].v）。 */
+export const COMBAT_META_V = 1;
+/** 旧名单迁移前的本机备份键前缀：4enext/init-backup/<roomId>。 */
+export const LS_INIT_BACKUP_PREFIX = "4enext/init-backup/";
+
+/** 条目上限：内部结构上限 40（v1.8.0：60 → 40）。v2.5 起存储不再受房间 16 KB 约束，保留上限只为口径一致。 */
 export const INIT_MAX_ENTRIES = 40;
 export const INIT_NAME_MAX = 80;
 const INIT_MIN = -99;
@@ -74,7 +86,7 @@ export const STRIP_CARD_W = 56;
 export const STRIP_CARD_H = 80;
 export const STRIP_CARD_ACTIVE_H = 100;
 
-/** 本机降级键：房间数据写不进去时先记在这（settings 页的 4enext/state/* 白名单内）。 */
+/** 本机降级键：token / 场景 metadata 写不进去时先记在这（settings 页的 4enext/state/* 白名单内）。 */
 export const LS_INIT_FALLBACK = "4enext/state/initiative";
 /** 先攻条折叠状态（只在本机）。 */
 export const LS_STRIP_COLLAPSED = "4enext/strip-collapsed";
@@ -480,9 +492,11 @@ export function setActiveEntry(state, tokenId) {
  * 加值 / 加入 / 重掷
  * ------------------------------------------------------------------------- */
 
-/** 从 token 上取加值：优先 init 元数据，其次按绑定卡现算（同一函数），都没有就 +0。 */
+/** 从 token 上取加值：优先 init 元数据（v2 条目 / 旧版加值缓存都行），其次按绑定卡现算，都没有就 +0。
+ *  v2.5 兼容：v1.2 时代 token 上的 init 是**一个数字**（加值），按加值读，不报错。 */
 export function bonusOfItem(item, cards) {
   const m = item && item.metadata ? item.metadata[KEY_INIT] : null;
+  if (typeof m === "number" && isFinite(m)) return clamp(Math.round(m), INIT_MIN, INIT_MAX);
   if (m && typeof m === "object" && typeof m.bonus === "number" && isFinite(m.bonus)) {
     return clamp(Math.round(m.bonus), INIT_MIN, INIT_MAX);
   }
@@ -640,8 +654,159 @@ export function rerollAll(state, rng) {
 }
 
 /* ---------------------------------------------------------------------------
- * 读写房间数据（写失败 → 本机降级）
+ * token / scene 存储层（v2.5：照 Full Suite 的 per-token 做法）
+ * -------------------------------------------------------------------------
+ * 内部 state 形状**完全不变**（{phase,round,surprise,activeId,entries[]}），只换落盘位置：
+ *   · 每个 IMAGE token 的 metadata[KEY_INIT] = 一条先攻条目
+ *       { v:2, d20:number|null, bonus:number, init:number, tb:number|null, hidden:boolean, ownerId:string, updatedAt:number }
+ *     `init` 是合计（正常掷骰 = d20+bonus；拖拽排序写的是两张卡的中点，必须原样落盘，
+ *     否则一刷新顺序就回退 —— 这是它和 Full Suite 只存原始 d20 的唯一差别）。
+ *   · 战斗态 scene.metadata[KEY_COMBAT] = { v:1, phase, round, surprise, activeId, updatedAt, migratedAt? }
+ *     —— 全桌共享；GM 写，玩家写不进时回合推进仍走现有 CH_INIT_REQUEST（不静默失败）。
+ *   · 旧版「房间/场景整份名单」KEY_INITIATIVE 只在**迁移前**只读回退：没有任何 token 带 v2 时用它。
+ * 迁移（GM 首次启动 / 首次读先攻）：旧 entries 逐条写进 token metadata + 写 combat + 本机备份后清旧键；
+ * 见 migrateLegacyInitiative()。失败保留旧数据并 WARNING（不静默）。
+ * 权限：GM 写所有 token + scene；玩家写自己创建的 token（OBR 允许），diff 写只碰本页真正变了的 token。
  * ------------------------------------------------------------------------- */
+
+/** 旧「整份名单」清空后写的空状态（用于迁移成功后清房间/场景旧键；键名不变，旧客户端读到空名单不报错）。 */
+function emptyLegacyInitiative() {
+  return { v: 1, updatedAt: Date.now(), phase: PHASE_IDLE, round: 1, surprise: false, activeId: "", entries: [] };
+}
+
+/** 本机备份键：迁移前把旧房间/场景名单整份存在这台机器上（只写一次，保留第一份最完整的）。 */
+export function initBackupKey() {
+  return LS_INIT_BACKUP_PREFIX + diceHistoryRoomId();
+}
+
+/** 内部 entry → token metadata（v2）。 */
+export function initMetaFromEntry(entry, updatedAt) {
+  return {
+    v: INIT_META_V,
+    d20: entry.d20 === null || entry.d20 === undefined ? null : clamp(n(entry.d20, 0), 0, 99),
+    bonus: clamp(n(entry.bonus, 0), INIT_MIN, INIT_MAX),
+    init: clamp(num(entry.init, 0), INIT_MIN, INIT_MAX),
+    tb: entry.tb === null || entry.tb === undefined ? null : clamp(num(entry.tb, 0.5), 0.001, 0.999),
+    hidden: !!entry.hidden,
+    ownerId: String(entry.ownerId == null ? "" : entry.ownerId),
+    updatedAt: n(updatedAt, Date.now())
+  };
+}
+
+/** 这个 metadata 是不是 v2 先攻条目（旧版数字 / {bonus,cardId} 都不算，不会被当成名单成员）。 */
+export function isInitMeta(m) {
+  return !!m && typeof m === "object" && m.v === INIT_META_V;
+}
+
+/** token metadata（v2）→ 内部 entry。名字 / owner 用 token 的**活值**（GM 用 Give Ownership 改过也跟得上）。 */
+function entryFromInitMeta(item, meta) {
+  const bonus = clamp(n(meta.bonus, 0), INIT_MIN, INIT_MAX);
+  const d20raw = num(meta.d20, null);
+  const d20 = d20raw === null ? null : clamp(Math.round(d20raw), 0, 99);
+  const initRaw = num(meta.init, null);
+  const init = initRaw === null ? clamp((d20 === null ? 0 : d20) + bonus, INIT_MIN, INIT_MAX) : clamp(initRaw, INIT_MIN, INIT_MAX);
+  const tbraw = num(meta.tb, null);
+  return {
+    tokenId: String(item && item.id ? item.id : ""),
+    name: String((item && item.name) || "未命名").trim().slice(0, INIT_NAME_MAX) || "未命名",
+    init: init,
+    bonus: bonus,
+    d20: d20,
+    tb: tbraw === null ? null : clamp(tbraw, 0.001, 0.999),
+    hidden: !!meta.hidden,
+    ownerId: String((item && item.createdUserId) || meta.ownerId || ""),
+    updatedAt: n(meta.updatedAt, 0)
+  };
+}
+
+/** 场景 items → 条目数组（只认 IMAGE + v2 元数据），按现有 sortEntries 排序、上限 40。 */
+export function entriesFromItems(items) {
+  const out = [];
+  const seen = Object.create(null);
+  for (const it of Array.isArray(items) ? items : []) {
+    if (!it || it.type !== "IMAGE" || !it.id) continue;
+    if (seen[it.id]) continue;
+    const m = it.metadata ? it.metadata[KEY_INIT] : null;
+    if (!isInitMeta(m)) continue;
+    seen[it.id] = true;
+    out.push(entryFromInitMeta(it, m));
+  }
+  return sortEntries(out).slice(0, INIT_MAX_ENTRIES);
+}
+
+/** 战斗态归一化（缺字段按 idle / 第 1 轮；surprise 只在 combat 阶段有意义）。 */
+export function combatFromRaw(raw) {
+  const phase = normalizePhase(raw && raw.phase);
+  return {
+    v: COMBAT_META_V,
+    phase: phase,
+    round: Math.max(1, n(raw && raw.round, 1)),
+    surprise: phase === PHASE_COMBAT ? !!(raw && raw.surprise) : false,
+    activeId: String(raw && raw.activeId ? raw.activeId : ""),
+    updatedAt: n(raw && raw.updatedAt, 0),
+    migratedAt: n(raw && raw.migratedAt, 0)
+  };
+}
+
+/** 读场景战斗态（scene metadata[KEY_COMBAT]）；读不到 → 默认 idle / 第 1 轮。 */
+export async function readCombatState() {
+  try {
+    let scene = {};
+    try { scene = (await OBR.scene.getMetadata()) || {}; } catch (eS) { scene = {}; }
+    return combatFromRaw(scene ? scene[KEY_COMBAT] : null);
+  } catch (e) {
+    return combatFromRaw(null);
+  }
+}
+
+/** 迁移前过渡读取：旧版「房间/场景整份名单」（按 updatedAt 取新；没有 entries 视为没有）。 */
+async function readLegacyInitiative() {
+  let room = {}, scene = {};
+  try { room = (await OBR.room.getMetadata()) || {}; } catch (eR) { room = {}; }
+  try { scene = (await OBR.scene.getMetadata()) || {}; } catch (eS) { scene = {}; }
+  const rawRoom = room ? room[KEY_INITIATIVE] : null;
+  const rawScene = scene ? scene[KEY_INITIATIVE] : null;
+  const atR = rawRoom && typeof rawRoom.updatedAt === "number" ? rawRoom.updatedAt : -1;
+  const atS = rawScene && typeof rawScene.updatedAt === "number" ? rawScene.updatedAt : -1;
+  const raw = atS > atR ? rawScene : rawRoom;
+  if (!raw || !Array.isArray(raw.entries) || !raw.entries.length) return null;
+  return { raw: raw, room: rawRoom, scene: rawScene };
+}
+
+/** token 元数据 + 场景战斗态 → 内部 state（activeId 失效由 normalizeInitiative 回退第一张）。 */
+function stateFromStorage(entries, combat) {
+  const st = normalizeInitiative({
+    v: 1,
+    updatedAt: combat.updatedAt,
+    phase: combat.phase,
+    round: combat.round,
+    surprise: combat.surprise,
+    activeId: combat.activeId,
+    entries: entries
+  });
+  st.entries = sortEntries(st.entries);
+  return st;
+}
+
+/** 迁移前过渡：旧整份名单 + 场景战斗态（若写过）。只读展示，任何写入都会按新存储落盘。 */
+function stateFromLegacy(raw, combat) {
+  const merged = Object.assign({}, raw);
+  if (combatHasData(combat)) {
+    merged.phase = combat.phase;
+    merged.round = combat.round;
+    merged.surprise = combat.surprise;
+    if (combat.activeId) merged.activeId = combat.activeId;
+    if (n(combat.updatedAt, 0) > n(raw.updatedAt, 0)) merged.updatedAt = combat.updatedAt;
+  }
+  const st = normalizeInitiative(merged);
+  st.entries = sortEntries(st.entries);
+  st.legacy = true;
+  return st;
+}
+
+function combatHasData(c) {
+  return !!(c && (c.migratedAt > 0 || c.updatedAt > 0 || c.activeId || c.phase !== PHASE_IDLE || c.round > 1 || c.surprise));
+}
 
 function readLocalFallback() {
   try {
@@ -661,7 +826,7 @@ function clearLocalFallback() {
   try { localStorage.removeItem(LS_INIT_FALLBACK); } catch (e) { /* 忽略 */ }
 }
 
-/** 把状态暂存到本机（房间数据写不进去时的兜底）。返回是否成功。 */
+/** 把状态暂存到本机（新存储完全写不进去时的兜底）。返回是否成功。 */
 export function stashInitiative(state) {
   try {
     const st = sortState(state);
@@ -672,65 +837,301 @@ export function stashInitiative(state) {
   }
 }
 
-/** 读房间数据；房间数据里还没有时退回本机降级副本。 */
+/**
+ * 读先攻（v2.5）。
+ *   ① 聚合所有 IMAGE token 的 v2 init 元数据 → entries；战斗态读 scene metadata[KEY_COMBAT]；
+ *   ② 一条 v2 都没有时才回退读旧房间/场景整份名单（只读过渡，供迁移前 / 迁移失败的场合）；
+ *   ③ 再没有就退回本机降级副本（.local = true），最后才是空 idle。
+ * GM 在这里顺手做一次迁移（幂等；后台 boot 也会做）。
+ */
 export async function readInitiative() {
   try {
-    let room = {}, scene = {};
-    try { room = (await OBR.room.getMetadata()) || {}; } catch (eR) { room = {}; }
-    try { scene = (await OBR.scene.getMetadata()) || {}; } catch (eS) { scene = {}; }
-    const rawRoom = room ? room[KEY_INITIATIVE] : null;
-    const rawScene = scene ? scene[KEY_INITIATIVE] : null;
-    const atR = rawRoom && typeof rawRoom.updatedAt === "number" ? rawRoom.updatedAt : -1;
-    const atS = rawScene && typeof rawScene.updatedAt === "number" ? rawScene.updatedAt : -1;
-    const raw = atS > atR ? rawScene : rawRoom; /* v2.4.37：场景兜底写入后读取端也要看 scene */
-    if (raw) return sortState(raw);
-    /* 房间数据里还没有：可能是上一次写失败留在了本机，先把它显示出来（并等着下次写入搬回房间）。 */
-    const stashed = readLocalFallback();
-    if (stashed) { stashed.local = true; return stashed; }
-    return normalizeInitiative(null);
+    let items = [];
+    try { items = await OBR.scene.items.getItems(); } catch (eItems) { items = []; }
+    let entries = entriesFromItems(items);
+    let combat = await readCombatState();
+    if (!entries.length) {
+      const legacy = await readLegacyInitiative();
+      if (legacy) {
+        let role = "";
+        try { role = await OBR.player.getRole(); } catch (eRole) { role = ""; }
+        if (role === "GM" && !combat.migratedAt) {
+          const mig = await migrateLegacyInitiative(legacy.raw, { room: legacy.room, scene: legacy.scene, items: items, combat: combat });
+          if (mig && mig.ok) {
+            try { items = await OBR.scene.items.getItems(); } catch (e2) { items = []; }
+            entries = entriesFromItems(items);
+            combat = await readCombatState();
+          }
+        }
+        if (!entries.length) return stateFromLegacy(legacy.raw, combat);
+      }
+      /* 新存储里没有名单：可能是上一次写失败留在了本机，先把它显示出来（等下次写入成功再并回）。 */
+      const stashed = readLocalFallback();
+      if (stashed) { stashed.local = true; return stashed; }
+      return stateFromStorage([], combat);
+    }
+    return stateFromStorage(entries, combat);
   } catch (e) {
     console.error("[4enext] 读取先攻失败", e);
     const stashed = readLocalFallback();
     if (stashed) stashed.local = true;
-    return stashed || normalizeInitiative(null);
+    return stashed || stateFromStorage([], combatFromRaw(null));
   }
 }
 
+function errMsg(e) {
+  return e && e.message ? e.message : String(e);
+}
+
+function sameNullable(a, b) {
+  const na = a === null || a === undefined ? null : a;
+  const nb = b === null || b === undefined ? null : b;
+  return na === nb;
+}
+
+/** 元数据是否与目标一致（忽略 updatedAt —— 不能每次写都刷新全部 token）。 */
+function initMetaEqual(cur, want) {
+  if (!isInitMeta(cur)) return false;
+  return sameNullable(cur.d20, want.d20) && n(cur.bonus, 0) === n(want.bonus, 0) &&
+    num(cur.init, 0) === num(want.init, 0) && sameNullable(cur.tb, want.tb) &&
+    !!cur.hidden === !!want.hidden && String(cur.ownerId || "") === String(want.ownerId || "");
+}
+
+function combatEqual(cur, want) {
+  return cur.phase === want.phase && n(cur.round, 1) === n(want.round, 1) &&
+    !!cur.surprise === !!want.surprise && String(cur.activeId || "") === String(want.activeId || "");
+}
+
 /**
- * 写房间数据（通常只有 GM 能成功）。
- * 成功 → 清掉本机降级副本；失败 → 暂存本机 + **ERROR** 通知，返回的状态带 .local = true
- * （调用方据此在窗口里提示「只记在本机」）。**不抛错**，免得按钮变成点了没反应。
- * v1.7.15：写之前先过体积预算 —— 房间数据超 14 KB 时**根本不写**，直接弹 ROOM_FULL_MESSAGE
- * 并降级本机（这正是「加入先攻点不动」的根因：以前 setMetadata 被 16 kB 上限拒掉）。
+ * 一次差异写：只 update 真正变了的 token、删掉已移出名单的 token 元数据、combat 变了才写 scene。
+ * 两客户端同时改不同 token 时各写各的（这是 per-token 存储的主要收益）；同一 token 并发仍是后写覆盖。
+ */
+async function persistInitiativeOnce(next, items) {
+  const byId = Object.create(null);
+  for (const it of Array.isArray(items) ? items : []) {
+    if (it && it.id && it.type === "IMAGE") byId[String(it.id)] = it;
+  }
+  const want = Object.create(null);
+  for (const e of next.entries) {
+    if (!e || !e.tokenId || !byId[e.tokenId]) continue; /* token 不在当前场景（旧名单过渡 / 换场景）：没法写 */
+    want[e.tokenId] = initMetaFromEntry(e, next.updatedAt);
+  }
+  const upserts = [];
+  for (const id of Object.keys(want)) {
+    const cur = byId[id].metadata ? byId[id].metadata[KEY_INIT] : null;
+    if (!initMetaEqual(cur, want[id])) upserts.push(id);
+  }
+  const deletes = [];
+  for (const id of Object.keys(byId)) {
+    const cur = byId[id].metadata ? byId[id].metadata[KEY_INIT] : null;
+    if (isInitMeta(cur) && !want[id]) deletes.push(id);
+  }
+  let entriesOk = true, tokenError = null;
+  const changed = upserts.concat(deletes);
+  if (changed.length) {
+    try {
+      await OBR.scene.items.updateItems(changed, function (drafts) {
+        for (const d of drafts) {
+          if (!d || !d.id) continue;
+          if (!d.metadata || typeof d.metadata !== "object") d.metadata = {};
+          const id = String(d.id);
+          if (want[id]) d.metadata[KEY_INIT] = want[id];
+          else delete d.metadata[KEY_INIT];
+        }
+      });
+    } catch (eTok) {
+      entriesOk = false;
+      tokenError = eTok;
+    }
+  }
+  /* 战斗态：只在 phase / round / surprise / activeId 真的变了才写 scene。
+     玩家改自己加值时不会碰 scene —— 也就不会因为「玩家没有场景写权限」误报失败。 */
+  const curCombat = await readCombatState();
+  const nextCombat = {
+    v: COMBAT_META_V,
+    phase: next.phase,
+    round: next.round,
+    surprise: next.surprise,
+    activeId: next.activeId,
+    updatedAt: next.updatedAt,
+    migratedAt: curCombat.migratedAt
+  };
+  let combatOk = true, combatError = null;
+  if (!combatEqual(curCombat, nextCombat)) {
+    try {
+      await OBR.scene.setMetadata({ [KEY_COMBAT]: nextCombat });
+    } catch (eCombat) {
+      combatOk = false;
+      combatError = eCombat;
+    }
+  }
+  return {
+    entriesOk: entriesOk,
+    combatOk: combatOk,
+    tokenError: tokenError,
+    combatError: combatError,
+    wrote: changed.length,
+    skipped: next.entries.length - Object.keys(want).length
+  };
+}
+
+/**
+ * 写先攻（v2.5：差异写 token metadata + 场景 combat）。
+ * 成功 → 清掉本机降级副本；token 元数据一条都写不进 → 暂存本机 + **ERROR** 通知，返回状态带 .local = true
+ * （调用方据此提示「只记在本机」）。**不抛错**，免得按钮点了没反应。
+ * GM：写所有 token + scene；玩家：只写自己创建的 token（diff 写只会碰真正变化的 token）。
+ * 场景 combat 写不进但 token 写成功：名单已共享，只 WARNING（GM）—— 读取端 activeId 失效会回退第一张。
  */
 export async function writeInitiative(state) {
   const next = sortState(state);
   next.updatedAt = Date.now();
-  const res = await writeRoomKey(KEY_INITIATIVE, next);
-  if (res.ok) {
+  let role = "";
+  try { role = await OBR.player.getRole(); } catch (eRole) { role = ""; }
+  let items = null;
+  try { items = await OBR.scene.items.getItems(); } catch (eItems) { items = null; }
+  let res = items ? await persistInitiativeOnce(next, items) : null;
+  if (res && !res.entriesOk) {
+    /* 并发：token 刚好被删 / 换场景 → 重读一次再写；仍失败才降级本机。 */
+    try { items = await OBR.scene.items.getItems(); } catch (eItems2) { items = null; }
+    if (items) res = await persistInitiativeOnce(next, items);
+  }
+  if (res && res.entriesOk) {
     clearLocalFallback();
+    if (!res.combatOk && role === "GM") {
+      notify("先攻条目已保存，但战斗状态（场景数据）没写进去：" + errMsg(res.combatError) +
+        "。回合指针可能不同步，请检查场景写权限", "WARNING");
+    }
+    if (res.skipped > 0) {
+      console.warn("[4enext] 先攻写入：有 " + res.skipped + " 条旧名单条目的 token 不在当前场景，没有落盘（迁移前过渡）");
+    }
     return next;
   }
-  const err = res.reason === "full" ? "房间数据已满（16KB）" : (res.error && res.error.message ? res.error.message : String(res.error));
-  console.error("[4enext] 写先攻失败，已降级到本机", res.reason, res.error);
+  const err = res && res.tokenError ? errMsg(res.tokenError) : "场景 items 读不到";
+  console.error("[4enext] 写先攻失败，已降级到本机", err);
   const ok = stashInitiative(next);
   try {
-    if (res.reason === "full") {
-      const oursKb = typeof res.ours === "number" ? (res.ours / 1024).toFixed(1) : "?";
-      const otherKb = typeof res.other === "number" ? (res.other / 1024).toFixed(1) : "?";
-      notify("房间数据已满（本插件 " + oursKb + " KB，其它插件 " + otherKb + " KB）：已把先攻/骰子记录暂存本机，建议关闭其它写房间数据的插件或清理", "ERROR");
-    } else {
-      notify("先攻没能写进房间数据（" + err + "）：" + (ok ? "已暂存在本机，只影响你这台机器" : "本机也存不下") +
-        "。先攻最多 " + INIT_MAX_ENTRIES + " 条。", "ERROR");
-    }
+    notify("先攻没能写进 token / 场景数据（" + err + "）：" + (ok ? "已暂存在本机，只影响你这台机器" : "本机也存不下") +
+      (role === "GM" ? "" : "；只有城主能改别人的 token") + "。", "ERROR");
   } catch (e2) { /* 忽略 */ }
   next.local = true;
   return next;
 }
 
+/* ---------------------------------------------------------------------------
+ * 迁移：旧「房间/场景整份名单」→ 每 token 一条 + scene combat（v2.5，只做一次）
+ * ------------------------------------------------------------------------- */
+
+function backupLegacyOnce(roomRaw, sceneRaw) {
+  try {
+    const key = initBackupKey();
+    if (localStorage.getItem(key)) return true; /* 第一次那份最完整，别被后续覆盖 */
+    localStorage.setItem(key, JSON.stringify({ v: 1, at: Date.now(), room: roomRaw || null, scene: sceneRaw || null }));
+    return true;
+  } catch (e) {
+    console.error("[4enext] 备份旧先攻名单失败（不影响迁移）", e);
+    return false;
+  }
+}
+
+/**
+ * 把旧整份名单迁到 token metadata / 场景 combat，并在 localStorage 备份后清空旧房间 / 场景键。
+ * 幂等：只 GM 执行；已迁移（combat.migratedAt）或旧名单为空时直接 skipped。失败**保留旧数据**并 WARNING。
+ * 返回 { ok, migrated, skipped, reason }。
+ */
+export async function migrateLegacyInitiative(rawArg, opts) {
+  opts = opts || {};
+  let raw = rawArg || null;
+  let roomRaw = opts.room || null;
+  let sceneRaw = opts.scene || null;
+  if (!raw) {
+    const found = await readLegacyInitiative();
+    if (!found) return { ok: false, skipped: true, migrated: 0, reason: "empty" };
+    raw = found.raw;
+    roomRaw = found.room;
+    sceneRaw = found.scene;
+  }
+  let role = "";
+  try { role = await OBR.player.getRole(); } catch (eRole) { role = ""; }
+  if (role !== "GM") return { ok: false, skipped: true, migrated: 0, reason: "role" };
+  const legacyState = normalizeInitiative(raw);
+  if (!legacyState.entries.length) return { ok: false, skipped: true, migrated: 0, reason: "empty" };
+  let items = opts.items;
+  if (!items) {
+    try { items = await OBR.scene.items.getItems(); } catch (eItems) { items = []; }
+  }
+  const byId = Object.create(null);
+  for (const it of Array.isArray(items) ? items : []) {
+    if (it && it.type === "IMAGE" && it.id) byId[String(it.id)] = it;
+  }
+  backupLegacyOnce(roomRaw, sceneRaw);
+  const want = Object.create(null);
+  let skipped = 0;
+  const stamp = legacyState.updatedAt > 0 ? legacyState.updatedAt : Date.now();
+  for (const e of legacyState.entries) {
+    if (!byId[e.tokenId]) { skipped++; continue; } /* 那枚 token 不在当前场景：留在本机备份里 */
+    want[e.tokenId] = initMetaFromEntry(e, stamp);
+  }
+  const ids = Object.keys(want);
+  if (!ids.length) {
+    notify("先攻数据迁移：旧名单里的 token 都不在当前场景，已备份到本机（" + initBackupKey() + "），旧名单保留", "WARNING");
+    return { ok: false, migrated: 0, skipped: skipped, reason: "no-token" };
+  }
+  try {
+    await OBR.scene.items.updateItems(ids, function (drafts) {
+      for (const d of drafts) {
+        if (!d || !d.id) continue;
+        const meta = want[String(d.id)];
+        if (!meta) continue;
+        if (!d.metadata || typeof d.metadata !== "object") d.metadata = {};
+        d.metadata[KEY_INIT] = meta;
+      }
+    });
+  } catch (eTok) {
+    notify("先攻数据迁移失败（token 元数据写不进去，旧名单保留未动）：" + errMsg(eTok), "WARNING");
+    return { ok: false, migrated: 0, skipped: skipped, reason: "token-write", error: eTok };
+  }
+  const migratedAt = Date.now();
+  try {
+    await OBR.scene.setMetadata({
+      [KEY_COMBAT]: {
+        v: COMBAT_META_V,
+        phase: legacyState.phase,
+        round: legacyState.round,
+        surprise: legacyState.surprise,
+        activeId: legacyState.activeId,
+        updatedAt: migratedAt,
+        migratedAt: migratedAt
+      }
+    });
+  } catch (eCombat) {
+    /* token 已写进去，但战斗态没写成：不清旧名单，下次启动重试（migratedAt 也没写） */
+    notify("先攻数据迁移失败（场景战斗状态写不进去，旧名单保留未动）：" + errMsg(eCombat), "WARNING");
+    return { ok: false, migrated: ids.length, skipped: skipped, reason: "combat-write", error: eCombat };
+  }
+  /* 迁移成功 → 旧房间 / 场景名单清成空（已备份；清空失败只提示，下次启动再试）。 */
+  let cleared = true;
+  try {
+    await OBR.room.setMetadata({ [KEY_INITIATIVE]: emptyLegacyInitiative() });
+  } catch (eClear) {
+    cleared = false;
+    console.warn("[4enext] 清理旧房间先攻名单失败", eClear);
+  }
+  if (sceneRaw) {
+    try { await OBR.scene.setMetadata({ [KEY_INITIATIVE]: emptyLegacyInitiative() }); }
+    catch (eClear2) { /* 场景里那份只是兜底副本，token 已是真源，清不掉不影响读取 */ }
+  }
+  if (!cleared) notify("先攻已迁移到 token metadata，但旧房间名单没清掉（下次启动会再试）", "WARNING");
+  console.info("[4enext] 先攻迁移完成：token " + ids.length + " 条" +
+    (skipped ? "，跳过 " + skipped + " 条（不在当前场景）" : "") +
+    "；旧数据备份在 localStorage[" + initBackupKey() + "]");
+  return { ok: true, migrated: ids.length, skipped: skipped };
+}
+
 /**
  * 把「已绑定角色卡、但 init 元数据缺失或过期」的 token 补一遍。
  * v1.2.2 升级上来的老 token 没有 init；重新导入同名卡后加值也可能变。
+ * v2.5：v2 条目只更新加值（并重算 init = d20+加值），**不碰** d20 / tb / hidden / ownerId；
+ * 旧版加值缓存（{bonus,cardId}）仍按老形状补写（后台右键「加入先攻」靠它取卡里的加值）。
  * 只有 GM 能批量改别人的 token，所以调用方先判 role。
  */
 export async function syncInitBonuses(cards) {
@@ -752,8 +1153,21 @@ export async function syncInitBonuses(cards) {
     let bonus = 0;
     try { bonus = initiativeBonus(card.char); } catch (e) { continue; }
     const cur = it.metadata[KEY_INIT];
-    if (cur && typeof cur === "object" && cur.bonus === bonus && cur.cardId === cardId) continue;
-    want[it.id] = { bonus: bonus, cardId: cardId, updatedAt: Date.now() };
+    if (cur && typeof cur === "object") {
+      const v2 = cur.v === INIT_META_V;
+      if (cur.bonus === bonus && (v2 || cur.cardId === cardId)) continue;
+      if (v2) {
+        const meta = Object.assign({}, cur, { bonus: bonus, updatedAt: Date.now() });
+        if (cur.d20 !== null && cur.d20 !== undefined && isFinite(Number(cur.d20))) {
+          meta.init = clamp(Math.round(Number(cur.d20)) + bonus, INIT_MIN, INIT_MAX);
+        }
+        want[it.id] = meta;
+      } else {
+        want[it.id] = { bonus: bonus, cardId: cardId, updatedAt: Date.now() };
+      }
+    } else {
+      want[it.id] = { bonus: bonus, cardId: cardId, updatedAt: Date.now() };
+    }
   }
   const ids = Object.keys(want);
   if (!ids.length) return 0;
@@ -802,8 +1216,8 @@ export function tokenInfoMap(items) {
 /** v1.7.10：卡片下方只留**一枚**居中 d20 —— 4E 没有优势 / 劣势（删掉 − / ＋ 两枚）。
  *  几何照抄 Full Suite：.roll-buttons { top:100%; margin-top:-8 }，按钮上沿压在卡片下沿 8px。 */
 function stripRollButtons(e, isGM, phase, opts) {
-  /* v2.4.37（照 Full Suite InitiativeItem）：准备阶段 GM 或「自己的条目」都能掷；
-   * 战斗阶段只有 GM。玩家掷骰直接写房间数据（OBR 允许），不再走 GM 代写通道。 */
+  /* v2.5.0（照 Full Suite InitiativeItem）：准备阶段 GM 或「自己的条目」都能掷；
+   * 战斗阶段只有 GM。玩家掷骰直接写**自己 token 的 metadata**（OBR 允许），不再走 GM 代写通道。 */
   const canRoll = isGM
     ? (phase === PHASE_PREPARING || phase === PHASE_COMBAT)
     : (phase === PHASE_PREPARING && canEditBonus(e, opts || {}));
@@ -818,7 +1232,7 @@ function stripRollButtons(e, isGM, phase, opts) {
  * v1.7.10：卡片左上角的先攻加值 —— **可编辑输入框**（与状态行「加值」共用 onBonusCommit）。
  *   · 有绑定角色卡 / 无卡都显示输入框：值就是 entries[].bonus（有卡在加入时已自动填卡值，无卡默认 0）；
  *   · 只有 GM 或「自己的 token」才渲染 input，别人的条目是只读数字（权限见 canEditBonus）；
- *   · 回车 / 失焦保存，页面再按合计重排（不进角色卡，只写房间数据 entries[].bonus）。
+ *   · 回车 / 失焦保存，页面再按合计重排（不进角色卡，只写 token metadata 的 bonus / init）。
  */
 function stripBonusField(e, opts) {
   if (!canEditBonus(e, opts)) {
@@ -842,7 +1256,7 @@ function stripRollField(e, st, opts, total) {
   const editable = rolled &&
     (st.phase === PHASE_COMBAT || st.phase === PHASE_PREPARING) &&
     canEditBonus(e, opts);
-  /* v2.4.37：小字不再显示 (d20+加值) 公式，改为直接显示合计（解决「7+6」不好读）。 */
+  /* v2.5.0：小字不再显示 (d20+加值) 公式，改为直接显示合计（解决「7+6」不好读）。 */
   if (!editable) {
     return "<b>" + esc(total) + "</b>";
   }

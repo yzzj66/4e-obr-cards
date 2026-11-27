@@ -1,7 +1,7 @@
 # 4eNEXT to owlbear · Owlbear Rodeo 插件
 
 > 基于 4E NEXT 的 4E 跑团适配 mod：在枭熊里看角色卡速览、绑定 token、先攻条、骰子与血条。
-> **当前版本 v2.4.37** · 纯静态（无需 npm / 无需构建）· 零服务器。
+> **当前版本 v2.5.0** · 纯静态（无需 npm / 无需构建）· 零服务器。
 > 历史更新记录见 [CHANGELOG.md](CHANGELOG.md)。
 
 ## ⭐ 安装地址（复制这一行）
@@ -244,13 +244,15 @@ Netlify / Vercel / Cloudflare Pages / 自己的 nginx 都行：把目录原样�
 | Token 元数据 `item.metadata` | `com.4enext-owlbear/hp` | `{ cur, max, temp, surges, updatedAt }`（v1.2.0，每枚 token 独立）；**v1.6.0 新增** `surgesMax` / `defenses: { ac, fort, reflex, will }` / `boss: boolean \| { enabled, segments, phase, exact, order }` / `locked`（默认 true） |
 | Token 元数据 `item.metadata` | `com.4enext-owlbear/hp-bar/enabled` | v1.6.0：血条组件开关。`undefined` = 老 token 照旧画；`true` 画；`false` 不画（右键「移除血条组件」写 `false`，**不 delete**） |
 | 场景元数据 `OBR.scene.metadata` | `com.4enext-owlbear/settings.playerThreshold` | v1.6.0：玩家端量化阈值（百分比，缺省 25；只影响本机画法，不是加密） |
-| Token 元数据 `item.metadata` | `com.4enext-owlbear/init` | `{ bonus, cardId, updatedAt }`（v1.3.0：先攻加值，绑定角色卡时写入） |
-| Token 元数据 `item.metadata` | `com.4enext-owlbear/in-init` | v1.7.3：这枚 token 在不在先攻名单里（`true` / `false`）。右键菜单的 filter 只能读 item 字段（`ContextMenuIconFilter` 没有 `none`），靠它区分「移出先攻」与「加入先攻」；由后台 `syncInitFlags()` 维护，写 `false` **不 delete** |
-| 房间数据 `OBR.room.metadata` | `com.4enext-owlbear/initiative` | `{ v, updatedAt, phase, round, surprise, activeId, entries: [{ tokenId, name, bonus, d20, init, tb, hidden, ownerId, updatedAt }] }`（v1.3.0 起；v1.4.0 新增 `phase` / `surprise` / `d20` / `tb`，**最多 40 条**） |
+| Token 元数据 `item.metadata` | `com.4enext-owlbear/init` | v2.5：这枚 token 在自己先攻名单里的那一条 = `{ v:2, d20, bonus, init, tb, hidden, ownerId, updatedAt }`（`init` = 合计，拖拽排序会写小数中点；没有 v:2 的旧值是 v1.3 的加值缓存 `{ bonus, cardId, updatedAt }` / 数字，只当加值读、不算名单成员）。读写见 `assets/initiative.js` 的 `entriesFromItems` / `writeInitiative` |
+| 场景元数据 `OBR.scene.metadata` | `com.4enext-owlbear/combat` | v2.5：战斗态 `{ v:1, phase, round, surprise, activeId, updatedAt, migratedAt? }`（`migratedAt` = 旧名单已迁移的一次性标记）。`activeId` 失效时读取端回退第一张；玩家写不进场景时回合推进仍走 CH_INIT_REQUEST 请求城主 |
+| 房间/场景旧键 `OBR.room/scene.metadata` | `com.4enext-owlbear/initiative` | **v1.3 ~ v2.4 的旧「整份先攻名单」**：`{ v, updatedAt, phase, round, surprise, activeId, entries: [...] }`。v2.5 起只用于**迁移前只读回退**；GM 首次启动 / 首次读先攻时迁移到 token metadata + scene combat，迁移前整份备份到 `localStorage["4enext/init-backup/<roomId>"]`，迁完把旧键清成空名单 |
+| Token 元数据 `item.metadata` | `com.4enext-owlbear/in-init` | v1.7.3 的右键菜单镜像旗标（`true` / `false`）；**v2.5 起不再写**（菜单 filter 直接按 `metadata[com.4enext-owlbear/init].v === 2` 判断），只留常量做旧存档兼容 |
 | 浏览器 `localStorage` | `4enext/info-pos` | `{ v: 1, pos: { "<tokenId>": { left, top } } }`（v1.2.2：速览弹窗位置，按 token 记，最多 40 枚；只在本机） |
 | 浏览器 `localStorage` | `4enext/win-pos` | `{ v: 1, pos: { "<窗口名（panel / initiative / dice / settings）>": { left, top } } }`（v1.3.1：独立窗口各自的位置；v1.3.2 加了 settings；只在本机） |
 | 浏览器 `localStorage` | `4enext/state/<cardId>` | 追踪降级数据：房间数据写不进去时，威能 / 装备「已用」等只记在这台机器上（只在本机） |
-| 浏览器 `localStorage` | `4enext/state/initiative` | 先攻降级副本：房间数据写不进去（如 40 条上限 / 数据满）时先记在这台机器上（只在本机） |
+| 浏览器 `localStorage` | `4enext/state/initiative` | 先攻降级副本：v2.5 起 token metadata / 场景 combat 完全写不进去时先记在这台机器上（只在本机） |
+| 浏览器 `localStorage` | `4enext/init-backup/<roomId>` | v2.5：旧「整份先攻名单」迁移前的完整备份（`{ v, at, room, scene }`，只写第一份最完整的；迁移成功后旧房间键清空） |
 | 浏览器 `localStorage` | `4enext/strip-pos` | `{ v: 1, dx, dy }`：先攻条相对屏幕中线的偏移（v1.4.0；只在本机） |
 | 浏览器 `localStorage` | `4enext/strip-collapsed` | 先攻条是否折叠成 120×40 药丸（v1.4.0；只在本机） |
 | 浏览器 `localStorage` | `4enext/strip-autostart` | v1.7.3：进入房间是否自动显示先攻条（`"0"` = 不自动显示；缺省 = 开；只在本机，设置窗口「先攻」栏改它） |
@@ -415,12 +417,12 @@ dev/                   开发期工具（普通用户用不到）
    改 token 血量需要是**城主**或**这枚 token 的创建者**，否则点了会弹 ERROR 说明原因。
    细节见 [`docs/hp-bar-and-tracking.md`](docs/hp-bar-and-tracking.md)。
 4. **右键菜单只对 IMAGE token 出现**，且只在**单个**选中时出现（多选不显示）；非 GM 看不到这个菜单项。
-5. **先攻条（v1.4.0）**：横向条 + 卡片 + 拖拽排序都有了，但**没有镜头跟随**（轮到谁不会自动把镜头移过去）；
-   掷骰按钮只给 GM（房间数据只有 GM 能写，准备阶段由 GM 代掷）。玩家「结束我的回合」需要 **GM 客户端在线**
+5. **先攻条（v1.4.0，v2.5 存储改造）**：横向条 + 卡片 + 拖拽排序都有了，但**没有镜头跟随**（轮到谁不会自动把镜头移过去）；
+   掷骰按钮只给 GM（战斗阶段只有 GM 能重掷；准备阶段玩家可掷自己的 token）。玩家「结束我的回合」需要 **GM 客户端在线**
    （由 GM 的 background 落笔），GM 不在时请求不生效（按钮会给提示）。隐形**只隐藏先攻列表里的名字 / 点数**，
-   不动地图上的 token；房间数据对全桌可读，开发者工具仍能看到隐形条目的原始数据（v1.3.0 起的限制）。
-   先攻条目上限 **40**，写不进房间数据时会降级到本机并提示。
-   细节见 [`docs/NOTES.md`](docs/NOTES.md)、[`docs/NOTES.md`](docs/NOTES.md)。
+   不动地图上的 token；先攻数据 v2.5 起存在**每枚 token 的 metadata** 里（全桌可读，开发者工具仍能看到隐形条目的原始数据）。
+   先攻条目上限 **40**；token / 场景 metadata 都写不进去时会降级到本机并提示。
+   细节见 [`docs/NOTES.md`](docs/NOTES.md)。
 6. **骰子（v1.5.0 / v1.7.0）不做判定**：没有 TN 输入框，不显示命中 / 未命中、豁免成功 / 失败，只显示每颗骰子的点数与总点数；
    重击只对平铺伤害骰生效（`adv(...)` / `max(...)` 等包裹会退化为普通投掷并提示）；
    记录由城主客户端落笔，城主不在线时本次结果只在本机（暂存最多 20 条，不会自动补交）；记录窗口只是把同一份

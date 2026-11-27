@@ -58,7 +58,7 @@ var TOOL_SETTINGS_ID = NS + "/settings-tool";
 var CH_HELLO = NS + "/diag-hello";
 var CH_PING = NS + "/diag-ping";
 var CH_PONG = NS + "/diag-pong";
-var PLUGIN_VERSION = "2.4.37";
+var PLUGIN_VERSION = "2.5.0";
 var localStorageQuotaWarned = false;
 function safeLocalSet(key, value) {
   try { localStorage.setItem(key, value); return true; } catch (e) {
@@ -134,7 +134,7 @@ async function sceneMetaGet() {
 function roomQuotaError(e) {
   return /quota|too large|exceed.{0,30}(size|limit)|metadata.{0,30}(size|limit)|16\s*k/i.test(errText(e));
 }
-/** v2.4.37：整包字节超 15500 或房间 quota 报错 → 写场景 metadata；场景也失败 → 本机兜底（由调用方做）。 */
+/** v2.5.0：整包字节超 15500 或房间 quota 报错 → 写场景 metadata；场景也失败 → 本机兜底（由调用方做）。 */
 async function roomWriteGuarded(key, value) {
   var meta = {};
   try { meta = (await OBR.room.getMetadata()) || {}; } catch (e) { meta = {}; }
@@ -248,14 +248,23 @@ var BAR_Z = {
   "bar-text": 30000
 };
 
+/* v2.5（先攻 per-token 存储，照 Full Suite）：
+ *   token.metadata[KEY_INIT] = { v:2, d20, bonus, init, tb, hidden, ownerId, updatedAt }  ← 一条先攻条目
+ *   scene.metadata[KEY_COMBAT] = { v:1, phase, round, surprise, activeId, updatedAt, migratedAt? } ← 战斗态
+ *   KEY_INITIATIVE = v1.3 ~ v2.4 的旧整份名单（房间或场景），只读迁移，迁完清空。
+ *   KEY_IN_INIT = v1.7.3 的右键菜单镜像旗标；v2.5 起菜单直接按 token metadata 的 v:2 判断，**不再写**。 */
 var KEY_INIT = NS + "/init";
+var INIT_META_V = 2;
+var KEY_COMBAT = NS + "/combat";
+var COMBAT_META_V = 1;
+var LS_INIT_BACKUP_PREFIX = "4enext/init-backup/";
 
 var INIT_MENU_ADD = NS + "/init-add";
 var INIT_MENU_ADD_HIDDEN = NS + "/init-add-hidden";
 var INIT_MENU_REMOVE = NS + "/init-remove";
 var KEY_INITIATIVE = NS + "/initiative";
 var CH_INIT_REQUEST = NS + "/init-request";
-/* v2.4.37：玩家右键「加入先攻」→ 请求 GM 代写（房间数据只有 GM 能写）。 */
+/* v2.5.0：玩家右键「加入先攻」→ 请求 GM 代写（房间数据只有 GM 能写）。 */
 var CH_INIT_JOIN = NS + "/init-join";
 var CH_INIT_JOIN_ACK = NS + "/init-join-ack";
 var initJoinLastAt = 0;
@@ -265,8 +274,8 @@ var BUTTON_SIZE = 64;
 var RIGHT_OFFSET = 12;
 var BOTTOM_OFFSET = 92;
 
-/* v2.4.37：紧凑模式 400；右键「速览」的完整模式仍用老的 660，不能挤成一条。 */
-var INFO_W_COMPACT = 460; /* v2.4.37：左右各放宽 30，保证所有行单行且左右对齐 */
+/* v2.5.0：紧凑模式 400；右键「速览」的完整模式仍用老的 660，不能挤成一条。 */
+var INFO_W_COMPACT = 460; /* v2.5.0：左右各放宽 30，保证所有行单行且左右对齐 */
 var INFO_W_FULL = 660;
 var INFO_W = 460; /* 兼容旧引用；完整模式用 INFO_W_FULL */
 var INFO_H = 700;
@@ -281,7 +290,7 @@ var CH_INFO_DRAG = NS + "/info-drag";
 var CH_INFO_SIZE = NS + "/info-size";
 var CH_DICE_ROLL = NS + "/dice-roll";
 var CH_DICE_CLEAR = NS + "/dice-clear";
-var diceFxOpen = {}; /* rollId -> { id, timer } —— v2.4.37 照 Full Suite：不再排队/计数，每投直接开一个唯一 modal */
+var diceFxOpen = {}; /* rollId -> { id, timer } —— v2.5.0 照 Full Suite：不再排队/计数，每投直接开一个唯一 modal */
 var diceFxSeen = {};
 var DICE_ROLL_MIN_MS = 800;
 var DICE_ROLL_MAX_BYTES = 6144;
@@ -343,9 +352,9 @@ var CH_DICE_HIST_STATE = NS + "/dice-hist-state";
 var CH_HP_EDIT_TARGET = NS + "/hp-edit-target";
 var CH_HP_EDIT_READY = NS + "/hp-edit-ready";
 var CH_HP_EDIT_SAVED = NS + "/hp-edit-saved";
-/* v2.4.37：页面切换/载入完成回 ack（单窗换目标确认；600ms 无 ack 兜底重开一次）。 */
+/* v2.5.0：页面切换/载入完成回 ack（单窗换目标确认；600ms 无 ack 兜底重开一次）。 */
 var CH_HP_EDIT_ACK = NS + "/hp-edit-ack";
-/* v2.4.37：血条编辑窗「重绘」按钮 → 后台强制重算这张 token 的血条环 / 四防盾 / 资源徽记。 */
+/* v2.5.0：血条编辑窗「重绘」按钮 → 后台强制重算这张 token 的血条环 / 四防盾 / 资源徽记。 */
 var CH_HP_REPAINT = NS + "/hp-repaint";
 var CH_HPEDIT_LOG = NS + "/hpedit-log";
 /* v1.8.9：信息窗单次挂载 —— 目标租约（换 token 只广播 target，不重开 popover）+ ready 握手。 */
@@ -391,7 +400,7 @@ var CH_ROLL = NS + "/roll";
 var CH_ROLL_CLEAR = NS + "/roll-clear";
 var CH_ROLL_SAVED = NS + "/roll-saved";
 var KEY_ROLLS = NS + "/rolls";
-var ROLL_MAX_ROWS = 100; /* v2.4.37：对齐 Full Suite DICE_HISTORY_LIMIT=100 */
+var ROLL_MAX_ROWS = 100; /* v2.5.0：对齐 Full Suite DICE_HISTORY_LIMIT=100 */
 var ROLL_MAX_DICE = 30;
 var ROLL_LABEL_MAX = 40;
 var ROLL_EXPR_MAX = 200;
@@ -432,7 +441,7 @@ var URL_SETTINGS = pageUrl("settings.html");
 var URL_BIND = pageUrl("bind.html");
 var URL_BUTTON = pageUrl("button.html");
 
-/* v2.4.37：传送门（核心）。 */
+/* v2.5.0：传送门（核心）。 */
 var KEY_PORTAL = NS + "/portal";
 var TOOL_PORTAL_ID = NS + "/portal-tool";
 var TOOL_PORTAL_MODE_ID = NS + "/portal-mode";
@@ -664,7 +673,7 @@ function winPopoverOptions(def, pos, size, url) {
   };
 }
 
-/** v2.4.37：窗口页 HTML 自身也带缓存，打开 URL 统一补 ?v=<PLUGIN_VERSION>（已有 v= 不重复）。 */
+/** v2.5.0：窗口页 HTML 自身也带缓存，打开 URL 统一补 ?v=<PLUGIN_VERSION>（已有 v= 不重复）。 */
 function withWindowVersion(url) {
   var u = String(url || "");
   if (/[?&]v=[^&]*/.test(u)) return u;
@@ -689,7 +698,7 @@ async function openDiceFx(payload) {
   setTimeout(function () { delete diceFxSeen[payload.id]; }, 5000);
   return runDiceFx(payload);
 }
-/* v2.4.37（照 Full Suite dice/index.ts）：**不排队、不计数**，每次投掷直接开唯一 id 的 modal，
+/* v2.5.0（照 Full Suite dice/index.ts）：**不排队、不计数**，每次投掷直接开唯一 id 的 modal，
  * 由 effect 页自己关；这里只保留 6s 兜底 close，避免页面异常时留下透明层。
  * 旧实现「队列上限 2 + 3200ms 定时器 + active 计数」在高频投掷时会让动画排队/丢失。 */
 async function runDiceFx(payload) {
@@ -749,7 +758,7 @@ async function onWinResize(ev) {
   var w = Math.max(minW, Math.min(maxW, Math.round(Number(d.w) || def.width)));
   var h = Math.max(minH, Math.min(maxH, Math.round(Number(d.h) || def.height)));
   if (name === "hpEdit") {
-    /* v2.4.37：血条编辑窗高度固定（内容只有 126px），拉高只会露出黑色空底。 */
+    /* v2.5.0：血条编辑窗高度固定（内容只有 126px），拉高只会露出黑色空底。 */
     h = HPE_H;
     w = Math.max(400, Math.min(560, w));
   }
@@ -770,7 +779,7 @@ async function onWinResize(ev) {
 async function openWin(name, urlOverride) {
   var def = winDef(name);
   if (!def) throw new Error("未知窗口：" + name);
-  /* v2.4.37：内存状态可能过期（iframe 已关但 winOpen 还在）。先探测真实 popover。 */
+  /* v2.5.0：内存状态可能过期（iframe 已关但 winOpen 还在）。先探测真实 popover。 */
   if (winOpen[name]) {
     var alive = true;
     if (OBR.popover && typeof OBR.popover.getWidth === "function") {
@@ -788,7 +797,7 @@ async function openWin(name, urlOverride) {
   var size = winSize(def, vp);
   var mem = readWinSize(name);
   if (name === "hpEdit") {
-    /* v2.4.37：血条窗高度固定，历史被拉高的尺寸不再沿用（否则一打开就是大片黑底）。 */
+    /* v2.5.0：血条窗高度固定，历史被拉高的尺寸不再沿用（否则一打开就是大片黑底）。 */
     mem = null;
     try { localStorage.removeItem("4enext/win-size/hpEdit"); } catch (eClr) { /* 忽略 */ }
   }
@@ -866,7 +875,7 @@ function onWinClose(ev) {
     pageLog("info", "CH_WIN_CLOSE data=" + JSON.stringify(data) + " from=" +
       (ev && (ev.playerId || ev.connectionId || "?")) + " winOpen=" + Object.keys(winOpen).join(","));
   } catch (eLog) { /* 忽略 */ }
-  /* v2.4.37：刚打开 1.5s 内忽略关闭广播（旧 iframe / launcher 收尾误发）；只有页面 ✕ 也在这之后才有效。 */
+  /* v2.5.0：刚打开 1.5s 内忽略关闭广播（旧 iframe / launcher 收尾误发）；只有页面 ✕ 也在这之后才有效。 */
   var age = winOpenedAt[data.name] ? Date.now() - winOpenedAt[data.name] : Infinity;
   if (age < 1500) {
     pageLog("info", "win close ignore（刚打开）name=" + data.name + " age=" + age);
@@ -958,7 +967,7 @@ function endWinDrag(name) {
   st.drag = null;
 }
 
-/* v2.4.37：拖动改用「start 时最新视口 + 本轮 base/size」模型（照 Full Suite panelDrag/panelLayout）。
+/* v2.5.0：拖动改用「start 时最新视口 + 本轮 base/size」模型（照 Full Suite panelDrag/panelLayout）。
  * 旧实现用 st.geom.vp（打开窗口时的快照）clamp，视口变大后向下拖会卡在旧下限。 */
 async function beginWinDrag(name, st) {
   var vp = await infoViewport();
@@ -1307,7 +1316,7 @@ function publishHpEditTarget(itemId, pending) {
   return sendHello(CH_HP_EDIT_TARGET, hpEditTarget);
 }
 
-/* v2.4.37：单窗常驻的 ack 等待（照 info 的 700ms 模式，这里 600ms）。
+/* v2.5.0：单窗常驻的 ack 等待（照 info 的 700ms 模式，这里 600ms）。
  * 页面收到 target → commit 未保存输入 → load → 回 CH_HP_EDIT_ACK {session,version,itemId}。 */
 var hpEditAckWait = null;
 function waitHpEditAck(session, version, itemId, ms) {
@@ -1346,7 +1355,7 @@ async function openHpEdit(itemId) {
   hpAutoPopped[itemId] = true;
   if (winOpen["hpEdit"] && hpEditTarget.itemId === itemId && !hpEditTarget.pending) return true;
   if (!hpEditSession) hpEditSession = newHpEditSession();
-  /* v2.4.37：窗口已挂载 → 不重开 iframe；广播 target 换目标，等页面 ack；600ms 没 ack 兜底重开一次。 */
+  /* v2.5.0：窗口已挂载 → 不重开 iframe；广播 target 换目标，等页面 ack；600ms 没 ack 兜底重开一次。 */
   if (winOpen["hpEdit"]) {
     var expectVersion = hpEditTarget.version + 1;
     var ackP = waitHpEditAck(hpEditSession, expectVersion, itemId, 600);
@@ -1392,12 +1401,12 @@ function onHpEditSaved(ev) {
   stepOk("血条编辑窗已保存：" + itemId);
 }
 
-/* v2.4.37：编辑窗「钉住」偏好（默认关）——钉住后选中变化 / 取消选中不自动关窗。 */
+/* v2.5.0：编辑窗「钉住」偏好（默认关）——钉住后选中变化 / 取消选中不自动关窗。 */
 function hpEditPinned() {
   try { return localStorage.getItem("4enext/hp-edit/pinned") === "1"; } catch (e) { return false; }
 }
 
-/* v2.4.37：编辑窗「重绘」→ 丢掉这张 token 的血条缓存，下一次 scheduleBars 强制重建（环 / 盾 / 徽记）。 */
+/* v2.5.0：编辑窗「重绘」→ 丢掉这张 token 的血条缓存，下一次 scheduleBars 强制重建（环 / 盾 / 徽记）。 */
 function onHpRepaint(ev) {
   var data = ev && ev.data !== undefined ? ev.data : ev;
   var itemId = data && typeof data.itemId === "string" ? data.itemId : "";
@@ -1807,7 +1816,7 @@ async function closeButton() {
   buttonOpen = false;
 }
 
-/* v2.4.37：移植 Full Suite viewportAnchor —— OBR SDK **没有 viewport.onChange**，
+/* v2.5.0：移植 Full Suite viewportAnchor —— OBR SDK **没有 viewport.onChange**，
  * 所以用后台 500ms 轮询 getWidth/getHeight；变化时回调（按钮重锚 + 窗口 reclamp）。
  * 只在有监听者时跑；读失败退避 2s；首读只记 baseline 不触发。 */
 var vpAnchorTimer = null;
@@ -1831,7 +1840,7 @@ async function readViewportSize() {
 }
 
 async function pollViewportAnchor() {
-  if (typeof document !== "undefined" && document.hidden) return false; /* v2.4.37：后台标签页跳过 */
+  if (typeof document !== "undefined" && document.hidden) return false; /* v2.5.0：后台标签页跳过 */
   if (vpAnchorBusy) return false;
   if (!vpAnchorListeners.length) {
     if (vpAnchorTimer) { clearInterval(vpAnchorTimer); vpAnchorTimer = null; }
@@ -1960,9 +1969,9 @@ async function registerTools() {
       return false;
     }
   });
-  /* v2.4.37：传送门工具（GM 拖动画圆；玩家点工具给提示，不进入绘制模式）。 */
+  /* v2.5.0：传送门工具（GM 拖动画圆；玩家点工具给提示，不进入绘制模式）。 */
   await registerPortalTool();
-  /* v2.4.37：骰子工具按钮 → 普通可拖动窗口（替代已删除的 manifest action / launcher）。 */
+  /* v2.5.0：骰子工具按钮 → 普通可拖动窗口（替代已删除的 manifest action / launcher）。 */
   await registerOneTool({
     id: TOOL_DICE_ID,
     icons: [{ icon: TOOL_DICE_ICON_URL, label: "4eNEXT to owlbear：骰子" }],
@@ -1983,27 +1992,19 @@ async function createContextMenu(def) {
   }
 }
 
+/* v2.5：右键菜单互斥不再靠 token 上的 in-init 镜像旗标 —— 直接按 token metadata[KEY_INIT] 判断：
+ *   · 在名单里   = 有 v2 元数据（宿主 filter 支持嵌套 key 路径：["metadata", KEY_INIT, "v"] === 2）；
+ *   · 不在名单   = 没有 v2 条目（旧版加值缓存是数字 / {bonus,cardId}，它的 v 不是 2 → 仍显示「加入先攻」）。
+ * 这样加入 / 移出 / 清理 / 别端改完名单，菜单在宿主下一次求值时自动跟着变，不需要任何镜像写入。
+ * KEY_IN_INIT 只保留常量做旧存档说明，运行代码**不再读写**（旧 true/false 残留不影响判断）。 */
 var KEY_IN_INIT = NS + "/in-init";
 
-var initFlagBusy = false;
-var initFlagAgain = false;
-var initFlagTimer = null;
-
-/* ---- 5. 先攻菜单互斥：in-init 镜像 + token 删除自动清理 ---- */
-function initEntryIdsOf(state) {
-  var out = [];
-  var list = state && Array.isArray(state.entries) ? state.entries : [];
-  for (var i = 0; i < list.length; i++) {
-    if (list[i] && list[i].tokenId) out.push(String(list[i].tokenId));
-  }
-  return out;
-}
-
+/* ---- 5. 先攻菜单互斥（按 token metadata[KEY_INIT].v === 2）+ token 删除自动清理 ---- */
 function initMenuFilter(mode, gmOnly) {
   var filter = { every: [{ key: "type", value: "IMAGE" }], max: 1 };
   if (gmOnly !== false) filter.roles = ["GM"];
-  if (mode === "in") filter.every.push({ key: ["metadata", KEY_IN_INIT], value: true });
-  else filter.every.push({ key: ["metadata", KEY_IN_INIT], operator: "!=", value: true });
+  if (mode === "in") filter.every.push({ key: ["metadata", KEY_INIT, "v"], value: INIT_META_V });
+  else filter.every.push({ key: ["metadata", KEY_INIT, "v"], operator: "!=", value: INIT_META_V });
   return filter;
 }
 
@@ -2023,70 +2024,6 @@ async function registerInitMenus() {
     icons: [{ icon: ICON_URL, label: "移出先攻", filter: initMenuFilter("in", true) }],
     onClick: function (context) { return onInitRemoveClick(context); }
   });
-}
-
-async function initWantIds(ids) {
-  var want = {};
-  /* v2.4.37：房间先攻 entries 是唯一真源；忽略调用方传入的临时 ids，避免"房间没写进去却打了标记"。 */
-  var state = await initRead();
-  var list = initEntryIdsOf(state);
-  for (var i = 0; i < list.length; i++) if (list[i]) want[String(list[i])] = true;
-  return want;
-}
-
-async function syncInitFlags(ids) {
-  if (initFlagBusy) { initFlagAgain = true; return 0; }
-  initFlagBusy = true;
-  try {
-    var role = "";
-    try { role = await OBR.player.getRole(); } catch (e) { role = ""; }
-    if (role !== "GM") return 0;
-    var want = await initWantIds(ids);
-    var items = [];
-    try { items = await OBR.scene.items.getItems(); } catch (e2) { return 0; }
-    var update = [];
-    for (var i = 0; i < items.length; i++) {
-      var it = items[i];
-      if (!it || it.type !== "IMAGE" || !it.id) continue;
-      var cur = it.metadata ? it.metadata[KEY_IN_INIT] : null;
-      var should = !!want[String(it.id)];
-      if (should ? cur !== true : cur === true) update.push(it.id);
-    }
-    if (!update.length) return 0;
-    await OBR.scene.items.updateItems(update, function (drafts) {
-      for (var j = 0; j < drafts.length; j++) {
-        var d = drafts[j];
-        if (!d.metadata || typeof d.metadata !== "object") d.metadata = {};
-        d.metadata[KEY_IN_INIT] = !!want[String(d.id)];
-      }
-    });
-    stepOk("先攻菜单标记已同步（" + update.length + " 枚 token）");
-    return update.length;
-  } catch (e) {
-    pageLog("err", "同步先攻菜单标记失败：" + errText(e));
-    return 0;
-  } finally {
-    initFlagBusy = false;
-    if (initFlagAgain) { initFlagAgain = false; scheduleInitFlagSync(); }
-  }
-}
-
-function scheduleInitFlagSync() {
-  if (initFlagTimer) return;
-  initFlagTimer = setTimeout(function () {
-    initFlagTimer = null;
-    void syncInitFlags();
-  }, 300);
-}
-
-var initSeenUpdatedAt = -1;
-function onRoomMetaChanged(meta) {
-  if (!meta || typeof meta !== "object") { scheduleInitFlagSync(); return; }
-  var raw = meta[KEY_INITIATIVE];
-  var at = raw && typeof raw.updatedAt === "number" && isFinite(raw.updatedAt) ? raw.updatedAt : 0;
-  if (at === initSeenUpdatedAt) return;
-  initSeenUpdatedAt = at;
-  scheduleInitFlagSync();
 }
 
 async function writeHpBarFlag(context, on) {
@@ -2224,7 +2161,7 @@ async function registerContextMenu() {
     onClick: function (context) { return onHpBarEdit(context); }
   });
 
-  /* v2.4.37：速览右键入口（GM / 玩家都可；单枚 IMAGE）。 */
+  /* v2.5.0：速览右键入口（GM / 玩家都可；单枚 IMAGE）。 */
   await createContextMenu({
     id: NS + "/glance-menu",
     icons: [{
@@ -2235,7 +2172,7 @@ async function registerContextMenu() {
     onClick: function () { void openGlance("右键「速览」"); }
   });
 
-  /* v2.4.37：GM 右键 → 编辑传送门。filter 不能按 metadata 值相等（值对象，永远不匹配），
+  /* v2.5.0：GM 右键 → 编辑传送门。filter 不能按 metadata 值相等（值对象，永远不匹配），
    * 只在 onClick 里检查 metadata[KEY_PORTAL]；正常路径还有「GM 选中单枚门自动弹编辑窗」。 */
   await createContextMenu({
     id: NS + "/portal-edit",
@@ -2267,7 +2204,7 @@ var infoCardId = null;
  * 不 reload iframe。session 内的 version 必须严格递增；页面 READY 时后台重发当前 target（防丢首条）。 */
 var infoSession = "";
 var infoTarget = { session: "", version: 0, itemId: null, cardId: null };
-var infoMode = "compact"; /* v2.4.37：compact=点token自动弹；full=右键/工具栏速览 */
+var infoMode = "compact"; /* v2.5.0：compact=点token自动弹；full=右键/工具栏速览 */
 var infoAckRetries = 0;
 /* v1.9.0：target 广播后的 ack 兜底 —— 700ms 没收到页面 ack 就关闭重开一次（只记日志、不弹通知）。 */
 var infoAckTimer = null;
@@ -2309,7 +2246,7 @@ function publishInfoTarget(itemId, cardId, expectAck) {
       var pend = infoAckPending;
       infoAckPending = null;
       if (!pend || !infoOpen) return;
-      /* v2.4.37：最多兜底重开 2 次，避免页面加载失败时无限开关把宿主拖到卡死。 */
+      /* v2.5.0：最多兜底重开 2 次，避免页面加载失败时无限开关把宿主拖到卡死。 */
       if (infoAckRetries >= 2) {
         pageLog("err", "速览 target 连续 " + infoAckRetries + " 次无 ack，已停止兜底重开（页面可能加载失败）");
         return;
@@ -2455,7 +2392,7 @@ async function anchorOf(itemId) {
   }
 }
 
-/* v2.4.37：最近一次成功读到的视口尺寸（轮询 / infoViewport 都更新），供拖动 start / clamp 参考。 */
+/* v2.5.0：最近一次成功读到的视口尺寸（轮询 / infoViewport 都更新），供拖动 start / clamp 参考。 */
 var lastVp = { width: 0, height: 0 };
 async function infoViewport() {
   var vp = { width: 0, height: 0 };
@@ -2476,7 +2413,7 @@ async function infoViewport() {
 /* ---- 6. 速览弹窗 /info：尺寸 / 位置记忆 / 拖动 ---- */
 function infoSize(vp, mode) {
   var wantW = mode === "full" ? INFO_W_FULL : INFO_W_COMPACT;
-  /* v2.4.37：初始高度只给骨架大小（compact 200 / full 420），页面渲染后自己 setHeight 长高；
+  /* v2.5.0：初始高度只给骨架大小（compact 200 / full 420），页面渲染后自己 setHeight 长高；
    * 以前一上来 700，页面若加载慢/失败就是一大片「加载中…」空窗。 */
   var initH = mode === "full" ? 420 : 200;
   var availH = (vp.height || 760) - 40;
@@ -2586,7 +2523,7 @@ async function infoAutoPos(itemId, size, vp) {
 }
 
 var INFO_MODE_AUTO = "compact";
-/* v2.4.37：页面自动收高后同步给后台，拖动/重开用真实高度，否则会弹回 700 空窗。 */
+/* v2.5.0：页面自动收高后同步给后台，拖动/重开用真实高度，否则会弹回 700 空窗。 */
 function onInfoSize(ev) {
   var d = ev && ev.data !== undefined ? ev.data : ev;
   if (!d || !infoGeom) return;
@@ -2598,7 +2535,7 @@ function onInfoSize(ev) {
 
 async function openInfo(itemId, cardId, mode) {
   var wantMode = mode === "full" ? "full" : INFO_MODE_AUTO;
-  /* v2.4.37 bugfix：复用单窗时必须确认**模式一致**。旧代码直接复用紧凑窗当完整窗用，
+  /* v2.5.0 bugfix：复用单窗时必须确认**模式一致**。旧代码直接复用紧凑窗当完整窗用，
    * 右键「速览」会把完整界面挤进 400px；反过来完整窗开着时点 token 也不会回到紧凑。 */
   if (infoOpen && infoMode !== wantMode) {
     await closeInfo();
@@ -2737,7 +2674,7 @@ async function resetInfoToToken() {
   var itemId = infoItemId;
   var cardId = infoCardId;
   var vp = await infoViewport();
-  /* v2.4.37 bugfix：重锚必须用**当前窗口真实尺寸**（紧凑 400 或完整 660、以及自动收高后的高度），
+  /* v2.5.0 bugfix：重锚必须用**当前窗口真实尺寸**（紧凑 400 或完整 660、以及自动收高后的高度），
    * 旧代码用 infoSize(vp) 默认 compact+700，点了「回到 token 上方」会弹回大空窗。 */
   var size = infoGeom
     ? { width: infoGeom.width, height: infoGeom.height }
@@ -2860,7 +2797,7 @@ async function openGlance(where) {
     return false;
   }
   try {
-    /* v2.4.37：已经是「完整模式 + 同一枚 token」→ 直接复用，不再关掉重开（省一次 iframe 加载）。 */
+    /* v2.5.0：已经是「完整模式 + 同一枚 token」→ 直接复用，不再关掉重开（省一次 iframe 加载）。 */
     if (infoOpen && infoMode === "full" && infoItemId === bind.itemId && infoCardId === bind.cardId) {
       stepOk(label + "：完整速览已打开（复用）");
       return true;
@@ -2895,7 +2832,7 @@ async function refreshInfo() {
     pageLog("info", "选中变化 → " + (selId || "无") + "（自动弹窗记录已重置）");
   }
   if (!item) {
-    /* v2.4.37：点地图 / 取消选中 → 速览保持当前内容，不关窗；只关自动打开的血条编辑窗（钉住则保留）。 */
+    /* v2.5.0：点地图 / 取消选中 → 速览保持当前内容，不关窗；只关自动打开的血条编辑窗（钉住则保留）。 */
     if (winOpen["hpEdit"] && !hpEditPinned()) await closeWin("hpEdit");
     if (infoOpen) pageLog("info", "info keep（取消选中）");
     return;
@@ -2906,7 +2843,7 @@ async function refreshInfo() {
 
   var cardId = await boundCardId(item);
   if (cardId) {
-    /* v2.4.37：选了绑定卡的 token → 速览接管；未钉住时关掉血条编辑窗（钉住则保持当前 token）。 */
+    /* v2.5.0：选了绑定卡的 token → 速览接管；未钉住时关掉血条编辑窗（钉住则保持当前 token）。 */
     if (winOpen["hpEdit"] && !hpEditPinned() && hpEditTarget.itemId !== item.id) {
       await closeWin("hpEdit");
     }
@@ -2928,9 +2865,9 @@ async function refreshInfo() {
     return;
   }
 
-  /* v2.4.37：选中非绑卡 token / 多选 → 速览保持当前内容，不关闭。 */
+  /* v2.5.0：选中非绑卡 token / 多选 → 速览保持当前内容，不关闭。 */
   if (infoOpen) pageLog("info", "info keep（选中无卡）");
-  /* v2.4.37：非 GM 不再自动弹血条编辑窗；locked/hide 对非 GM 一律不弹。 */
+  /* v2.5.0：非 GM 不再自动弹血条编辑窗；locked/hide 对非 GM 一律不弹。 */
   var hpRole = "";
   var hpPid = "";
   try { hpRole = await OBR.player.getRole(); } catch (eRole) { hpRole = ""; }
@@ -2951,7 +2888,7 @@ async function refreshInfo() {
     pageLog("info", "hpEdit skip（非GM/非owner）token=" + item.id);
     return;
   }
-  /* v2.4.37：钉住时保持当前编辑的 token，不换 target。 */
+  /* v2.5.0：钉住时保持当前编辑的 token，不换 target。 */
   if (hpEditPinned() && winOpen["hpEdit"]) return;
   if (!hasHpBarData(item)) {
     if (winOpen["hpEdit"] && hpEditTarget.itemId !== item.id) await closeWin("hpEdit");
@@ -3086,7 +3023,7 @@ async function sceneDpi() {
   return cachedDpi;
 }
 
-/* v2.4.37：用户样板布局 —— 底部比例横条 + 左侧三圆（强/反/意）+ 右下 AC 盾，不再用环形。
+/* v2.5.0：用户样板布局 —— 底部比例横条 + 左侧三圆（强/反/意）+ 右下 AC 盾，不再用环形。
  * 坐标全部相对 token 包围盒（宽 64%、高 10% 短边），s = min(w,h)/dpi 沿用旧缩放。 */
 
 /** 圆角矩形多边形（以中心为原点，24 段近似；血条 / 填充都用它）。 */
@@ -3366,7 +3303,7 @@ function buildBarItems(tokenId, L) {
   var bar = L.bar;
   var i;
 
-  /* v2.4.37 底部圆角横条：深红轨道 + 按 cur/max 比例的左→右填充。 */
+  /* v2.5.0 底部圆角横条：深红轨道 + 按 cur/max 比例的左→右填充。 */
   items.push(barCurveItem(tokenId, "bar-bg",
     roundedRectPoints(bar.width, bar.height, bar.radius, 24), bar.cx, bar.cy,
     { fill: bar.track, fillOpacity: bar.trackOpacity }));
@@ -3548,7 +3485,7 @@ async function syncBars() {
     for (var i = 0; i < items.length; i++) {
       var it = items[i];
       if (it.type !== "IMAGE") continue;
-      if (it.visible === false) continue; /* v2.4.37：隐藏 token 不画血条 */
+      if (it.visible === false) continue; /* v2.5.0：隐藏 token 不画血条 */
 
       if (!hpBarEnabled(it)) continue;
       var hp = readHpMeta(it);
@@ -3676,7 +3613,9 @@ function initNorm(raw) {
 
       init: initClamp(initNum(e.init, 0), -99, 999),
       bonus: initClamp(initInt(e.bonus, 0), -99, 999),
-      d20: d20raw === null ? null : initClamp(Math.round(d20raw), 1, 20),
+      /* v2.5：d20 手填范围与页面 normalizeInitiative 一致（0~99；正常投骰仍是 1~20），
+       * 否则后台读到玩家手填的 0 / 99 会被夹回 1 / 20，名单数字对不上。 */
+      d20: d20raw === null ? null : initClamp(Math.round(d20raw), 0, 99),
       tb: tbraw === null ? null : initClamp(tbraw, 0.001, 0.999),
       hidden: !!e.hidden,
       ownerId: String(e.ownerId == null ? "" : e.ownerId),
@@ -3722,76 +3661,420 @@ function initLocalFallback() {
   }
 }
 
-async function initRead() {
+/* ---- 8b. v2.5 存储层：每 token 一条 init 元数据 + 场景 combat（与 assets/initiative.js 同口径） ----
+ * token.metadata[KEY_INIT] = { v:2, d20, bonus, init, tb, hidden, ownerId, updatedAt }
+ *   （init = 合计；拖拽排序的中点是小数，必须原样落盘，否则一刷新顺序回退）
+ * scene.metadata[KEY_COMBAT] = { v:1, phase, round, surprise, activeId, updatedAt, migratedAt? }
+ * 旧整份名单 KEY_INITIATIVE 只读回退；GM 启动迁移后清空（本机备份 4enext/init-backup/<roomId>）。 */
+
+function initCombatNorm(raw) {
+  var phase = initPhase(raw && raw.phase);
+  return {
+    v: COMBAT_META_V,
+    phase: phase,
+    round: Math.max(1, initInt(raw && raw.round, 1)),
+    surprise: phase === "combat" ? !!(raw && raw.surprise) : false,
+    activeId: String(raw && raw.activeId ? raw.activeId : ""),
+    updatedAt: initInt(raw && raw.updatedAt, 0),
+    migratedAt: initInt(raw && raw.migratedAt, 0)
+  };
+}
+
+async function initReadCombat() {
   try {
-    var room = {};
     var scene = {};
-    try { room = (await OBR.room.getMetadata()) || {}; } catch (eR) { room = {}; }
     try { scene = (await OBR.scene.getMetadata()) || {}; } catch (eS) { scene = {}; }
-    var rawRoom = room ? room[KEY_INITIATIVE] : null;
-    var rawScene = scene ? scene[KEY_INITIATIVE] : null;
-    var atRoom = rawRoom && typeof rawRoom.updatedAt === "number" ? rawRoom.updatedAt : -1;
-    var atScene = rawScene && typeof rawScene.updatedAt === "number" ? rawScene.updatedAt : -1;
-    var raw = atScene > atRoom ? rawScene : rawRoom; /* v2.4.37：取 updatedAt 较新者，scene 优先于旧 room */
-    if (raw) {
-      var st = initNorm(raw);
-      st.entries = initSortEntries(st.entries);
-      return st;
-    }
-    return initLocalFallback() || initNorm(null);
+    return initCombatNorm(scene ? scene[KEY_COMBAT] : null);
   } catch (e) {
-    pageLog("err", "读取先攻失败：" + errText(e));
-    return initLocalFallback() || initNorm(null);
+    return initCombatNorm(null);
   }
 }
 
-async function initWrite(state) {
-  var baseAt = state && typeof state.updatedAt === "number" ? state.updatedAt : 0;
-  var latest = await initRead();
-  if (latest && latest.updatedAt > baseAt) {
-    notify("其他人刚修改先攻，已刷新", "WARNING");
-    pageLog("info", "init write conflict → reload latest updatedAt=" + latest.updatedAt);
-    return latest;
+/** 内部 entry → token 元数据（v2）。 */
+function initMetaFromEntry(entry, updatedAt) {
+  return {
+    v: INIT_META_V,
+    d20: entry.d20 === null || entry.d20 === undefined ? null : initClamp(initInt(entry.d20, 0), 0, 99),
+    bonus: initClamp(initInt(entry.bonus, 0), -99, 999),
+    init: initClamp(initNum(entry.init, 0), -99, 999),
+    tb: entry.tb === null || entry.tb === undefined ? null : initClamp(initNum(entry.tb, 0.5), 0.001, 0.999),
+    hidden: !!entry.hidden,
+    ownerId: String(entry.ownerId == null ? "" : entry.ownerId),
+    updatedAt: initInt(updatedAt, Date.now())
+  };
+}
+
+function initEntryFromMeta(item, meta) {
+  var bonus = initClamp(initInt(meta.bonus, 0), -99, 999);
+  var d20raw = initNum(meta.d20, null);
+  var d20 = d20raw === null ? null : initClamp(Math.round(d20raw), 0, 99);
+  var initRaw = initNum(meta.init, null);
+  var init = initRaw === null ? initClamp((d20 === null ? 0 : d20) + bonus, -99, 999) : initClamp(initRaw, -99, 999);
+  var tbraw = initNum(meta.tb, null);
+  return {
+    tokenId: String(item && item.id ? item.id : ""),
+    name: String((item && item.name) || "未命名").trim().slice(0, 40) || "未命名",
+    init: init,
+    bonus: bonus,
+    d20: d20,
+    tb: tbraw === null ? null : initClamp(tbraw, 0.001, 0.999),
+    hidden: !!meta.hidden,
+    ownerId: String((item && item.createdUserId) || meta.ownerId || ""),
+    updatedAt: initInt(meta.updatedAt, 0)
+  };
+}
+
+/** 场景 items → 条目数组（只认 IMAGE + v2 元数据），按 initSortEntries 排序、上限 40。 */
+function initEntriesFromItems(items) {
+  var out = [];
+  var seen = {};
+  for (var i = 0; i < (items || []).length; i++) {
+    var it = items[i];
+    if (!it || it.type !== "IMAGE" || !it.id) continue;
+    if (seen[String(it.id)]) continue;
+    var m = it.metadata ? it.metadata[KEY_INIT] : null;
+    if (!m || typeof m !== "object" || m.v !== INIT_META_V) continue;
+    seen[String(it.id)] = true;
+    out.push(initEntryFromMeta(it, m));
   }
+  out = initSortEntries(out);
+  return out.slice(0, INIT_MAX_ENTRIES);
+}
+
+/** 迁移前过渡：旧「房间/场景整份名单」按 updatedAt 取新（没有 entries 视为没有）。 */
+async function initReadLegacy() {
+  var room = {};
+  var scene = {};
+  try { room = (await OBR.room.getMetadata()) || {}; } catch (eR) { room = {}; }
+  try { scene = (await OBR.scene.getMetadata()) || {}; } catch (eS) { scene = {}; }
+  var rawRoom = room ? room[KEY_INITIATIVE] : null;
+  var rawScene = scene ? scene[KEY_INITIATIVE] : null;
+  var atRoom = rawRoom && typeof rawRoom.updatedAt === "number" ? rawRoom.updatedAt : -1;
+  var atScene = rawScene && typeof rawScene.updatedAt === "number" ? rawScene.updatedAt : -1;
+  var raw = atScene > atRoom ? rawScene : rawRoom;
+  if (!raw || !Array.isArray(raw.entries) || !raw.entries.length) return null;
+  return { raw: raw, room: rawRoom, scene: rawScene, store: atScene > atRoom ? "scene" : "room" };
+}
+
+function initCombatHasData(c) {
+  return !!(c && (c.migratedAt > 0 || c.updatedAt > 0 || c.activeId || c.phase !== "idle" || c.round > 1 || c.surprise));
+}
+
+/** token 元数据 + 场景战斗态 → 内部 state（activeId 失效回退第一张）。 */
+function initStateFromStorage(entries, combat) {
+  var st = initNorm({
+    v: 1,
+    updatedAt: combat.updatedAt,
+    phase: combat.phase,
+    round: combat.round,
+    surprise: combat.surprise,
+    activeId: combat.activeId,
+    entries: entries
+  });
+  st.entries = initSortEntries(st.entries);
+  return st;
+}
+
+/** 迁移前过渡：旧整份名单 + 场景战斗态（若写过）。 */
+function initStateFromLegacy(raw, combat) {
+  var merged = {};
+  for (var k in raw) if (Object.prototype.hasOwnProperty.call(raw, k)) merged[k] = raw[k];
+  if (initCombatHasData(combat)) {
+    merged.phase = combat.phase;
+    merged.round = combat.round;
+    merged.surprise = combat.surprise;
+    if (combat.activeId) merged.activeId = combat.activeId;
+    if (initInt(combat.updatedAt, 0) > initInt(raw.updatedAt, 0)) merged.updatedAt = combat.updatedAt;
+  }
+  var st = initNorm(merged);
+  st.entries = initSortEntries(st.entries);
+  st.legacy = true;
+  return st;
+}
+
+async function initRead() {
+  try {
+    var items = [];
+    try { items = await OBR.scene.items.getItems(); } catch (eItems) { items = []; }
+    var entries = initEntriesFromItems(items);
+    var combat = await initReadCombat();
+    if (!entries.length) {
+      var legacy = await initReadLegacy();
+      if (legacy) return initStateFromLegacy(legacy.raw, combat);
+      return initLocalFallback() || initStateFromStorage([], combat);
+    }
+    return initStateFromStorage(entries, combat);
+  } catch (e) {
+    pageLog("err", "读取先攻失败：" + errText(e));
+    return initLocalFallback() || initStateFromStorage([], initCombatNorm(null));
+  }
+}
+
+function initMetaEqual(cur, want) {
+  if (!cur || typeof cur !== "object" || cur.v !== INIT_META_V) return false;
+  var d20same = (cur.d20 === null || cur.d20 === undefined) ? (want.d20 === null || want.d20 === undefined) : cur.d20 === want.d20;
+  var tbsame = (cur.tb === null || cur.tb === undefined) ? (want.tb === null || want.tb === undefined) : cur.tb === want.tb;
+  return d20same && tbsame &&
+    initInt(cur.bonus, 0) === initInt(want.bonus, 0) &&
+    initNum(cur.init, 0) === initNum(want.init, 0) &&
+    !!cur.hidden === !!want.hidden &&
+    String(cur.ownerId || "") === String(want.ownerId || "");
+}
+
+function initCombatEqual(cur, want) {
+  return cur.phase === want.phase && initInt(cur.round, 1) === initInt(want.round, 1) &&
+    !!cur.surprise === !!want.surprise && String(cur.activeId || "") === String(want.activeId || "");
+}
+
+/**
+ * 一次差异写：只 update 真正变了的 token、删掉已移出名单的 token 元数据、combat 变了才写 scene。
+ * 两名客户端同时改不同 token 时各写各的；同一 token 并发仍是后写覆盖（风险见 docs/NOTES.md）。
+ */
+async function initPersistOnce(next, items) {
+  var byId = {};
+  for (var i = 0; i < (items || []).length; i++) {
+    var it = items[i];
+    if (it && it.id && it.type === "IMAGE") byId[String(it.id)] = it;
+  }
+  var want = {};
+  for (var j = 0; j < next.entries.length; j++) {
+    var e = next.entries[j];
+    if (!e || !e.tokenId || !byId[e.tokenId]) continue; /* token 不在当前场景：没法写 */
+    want[e.tokenId] = initMetaFromEntry(e, next.updatedAt);
+  }
+  var upserts = [];
+  for (var id in want) {
+    if (!Object.prototype.hasOwnProperty.call(want, id)) continue;
+    var cur = byId[id].metadata ? byId[id].metadata[KEY_INIT] : null;
+    if (!initMetaEqual(cur, want[id])) upserts.push(id);
+  }
+  var deletes = [];
+  for (var did in byId) {
+    if (!Object.prototype.hasOwnProperty.call(byId, did)) continue;
+    var cur2 = byId[did].metadata ? byId[did].metadata[KEY_INIT] : null;
+    if (cur2 && typeof cur2 === "object" && cur2.v === INIT_META_V && !want[did]) deletes.push(did);
+  }
+  var entriesOk = true;
+  var tokenError = null;
+  var changed = upserts.concat(deletes);
+  if (changed.length) {
+    try {
+      await OBR.scene.items.updateItems(changed, function (drafts) {
+        for (var d = 0; d < drafts.length; d++) {
+          var itd = drafts[d];
+          if (!itd || !itd.id) continue;
+          if (!itd.metadata || typeof itd.metadata !== "object") itd.metadata = {};
+          if (want[itd.id]) itd.metadata[KEY_INIT] = want[itd.id];
+          else delete itd.metadata[KEY_INIT];
+        }
+      });
+    } catch (eTok) {
+      entriesOk = false;
+      tokenError = eTok;
+    }
+  }
+  var curCombat = await initReadCombat();
+  var nextCombat = {
+    v: COMBAT_META_V,
+    phase: next.phase,
+    round: next.round,
+    surprise: next.surprise,
+    activeId: next.activeId,
+    updatedAt: next.updatedAt,
+    migratedAt: curCombat.migratedAt
+  };
+  var combatOk = true;
+  var combatError = null;
+  if (!initCombatEqual(curCombat, nextCombat)) {
+    try {
+      await OBR.scene.setMetadata({ [KEY_COMBAT]: nextCombat });
+    } catch (eCombat) {
+      combatOk = false;
+      combatError = eCombat;
+    }
+  }
+  return {
+    entriesOk: entriesOk, combatOk: combatOk, tokenError: tokenError, combatError: combatError,
+    wrote: changed.length, skipped: next.entries.length - Object.keys(want).length
+  };
+}
+
+/**
+ * 写先攻（v2.5：差异写 token metadata + 场景 combat）。
+ * 成功 → 清本机降级副本；一条 token 元数据都写不进 → 暂存本机 + **ERROR**（不静默），返回状态带 .local = true。
+ * 场景 combat 写不进但 token 写成功 → GM 弹 WARNING（名单已共享，回合指针读取端会回退第一张）。
+ */
+async function initWrite(state) {
   var next = initNorm(state);
   next.entries = initSortEntries(next.entries);
   next.updatedAt = Date.now();
-  pageLog("info", "init state entries=" + next.entries.length + " bytes=" + roomByteLen(JSON.stringify(next)));
-  next.store = "";
-  var res = await roomWriteGuarded(KEY_INITIATIVE, next);
-  if (res.ok) {
-    next.store = res.store || "room";
-    try { localStorage.removeItem(INIT_LS_FALLBACK); } catch (e2) {  }
+  var role = "";
+  try { role = await OBR.player.getRole(); } catch (eRole) { role = ""; }
+  var items = null;
+  try { items = await OBR.scene.items.getItems(); } catch (eItems) { items = null; }
+  var res = items ? await initPersistOnce(next, items) : null;
+  if (res && !res.entriesOk) {
+    try { items = await OBR.scene.items.getItems(); } catch (eItems2) { items = null; }
+    if (items) res = await initPersistOnce(next, items);
+  }
+  pageLog("info", "init write entries=" + next.entries.length + " changed=" + (res ? res.wrote : 0) +
+    " skipped=" + (res ? res.skipped : 0) + " combatOk=" + (res ? res.combatOk : false));
+  if (res && res.entriesOk) {
+    next.store = "token";
+    try { localStorage.removeItem(INIT_LS_FALLBACK); } catch (eClr) { /* 忽略 */ }
+    if (!res.combatOk && role === "GM") {
+      notify("先攻条目已保存，但战斗状态（场景数据）没写进去：" + errText(res.combatError) +
+        "。回合指针可能不同步", "WARNING");
+    }
+    if (res.skipped > 0) {
+      pageLog("warn", "先攻写入：有 " + res.skipped + " 条旧名单条目的 token 不在当前场景，没有落盘（迁移前过渡）");
+    }
     return next;
   }
-  var msg = res.reason === "full" ? "房间数据已满（16KB）" : errText(res.error);
+  var msg = res && res.tokenError ? errText(res.tokenError) : "场景 items 读不到";
   try {
     safeLocalSet(INIT_LS_FALLBACK, JSON.stringify({ v: 1, updatedAt: Date.now(), state: next }));
-  } catch (e3) {  }
-  if (res.reason === "full") {
-    var oursKb = res.ours != null ? (res.ours / 1024).toFixed(1) : "?";
-    var otherKb = res.other != null ? (res.other / 1024).toFixed(1) : "?";
-    notify("房间数据已满（本插件 " + oursKb + " KB，其它插件 " + otherKb + " KB）：已把先攻/骰子记录暂存本机，建议关闭其它写房间数据的插件或清理", "ERROR");
-  } else {
-    notify("先攻没能写进房间数据（" + msg + "）：已暂存在本机。先攻最多 " + INIT_MAX_ENTRIES + " 条。", "ERROR");
-  }
-  pageLog("err", "先攻写入失败（" + (res.reason || "error") + "，" + res.bytes + " 字符）：已暂存到本机");
+  } catch (e3) { /* 忽略 */ }
+  notify("先攻没能写进 token / 场景数据（" + msg + "）：已暂存在本机。", "ERROR");
+  pageLog("err", "先攻写入失败（" + msg + "）：已暂存到本机");
   next.local = true;
   return next;
 }
+
+/* ---- 8c. v2.5 迁移：旧整份名单 → token metadata + 场景 combat（GM 启动时做一次） ---- */
+var initMigrateBusy = false;
+
+function initRoomId() {
+  try { if (OBR.room && typeof OBR.room.id === "string" && OBR.room.id) return OBR.room.id; } catch (e) { /* 忽略 */ }
+  return "default";
+}
+function initBackupKey() { return LS_INIT_BACKUP_PREFIX + initRoomId(); }
+
+function initBackupLegacyOnce(roomRaw, sceneRaw) {
+  try {
+    var key = initBackupKey();
+    if (localStorage.getItem(key)) return true; /* 第一份最完整，别覆盖 */
+    safeLocalSet(key, JSON.stringify({ v: 1, at: Date.now(), room: roomRaw || null, scene: sceneRaw || null }));
+    return true;
+  } catch (e) {
+    pageLog("err", "备份旧先攻名单失败（不影响迁移）：" + errText(e));
+    return false;
+  }
+}
+
+function initEmptyLegacy() {
+  return { v: 1, updatedAt: Date.now(), phase: "idle", round: 1, surprise: false, activeId: "", entries: [] };
+}
+
+/**
+ * 迁移（只做一次）：旧 entries 逐条写进对应 token metadata + 写 combat scene metadata +
+ * localStorage 备份旧数据（4enext/init-backup/<roomId>）后清空旧房间 / 场景键。
+ * 失败保留旧数据并 NOTIFY WARNING（token 已写但 combat 没写成也不清旧键，下次启动重试）。
+ */
+async function migrateInitiativeFromLegacy() {
+  if (initMigrateBusy) return { ok: false, skipped: true, reason: "busy" };
+  initMigrateBusy = true;
+  try {
+    var role = "";
+    try { role = await OBR.player.getRole(); } catch (eRole) { role = ""; }
+    if (role !== "GM") return { ok: false, skipped: true, reason: "role" };
+    /* 场景没就绪时 items 读不到 → 「token 都不在当前场景」的误报，等 scene.onReadyChange 再来。 */
+    if (!(await sceneReady())) return { ok: false, skipped: true, reason: "scene" };
+    var legacy = await initReadLegacy();
+    if (!legacy) return { ok: false, skipped: true, reason: "empty" };
+    var combat = await initReadCombat();
+    if (combat.migratedAt) return { ok: false, skipped: true, reason: "migrated" };
+    var state = initNorm(legacy.raw);
+    if (!state.entries.length) return { ok: false, skipped: true, reason: "empty" };
+    var items = [];
+    try { items = await OBR.scene.items.getItems(); } catch (eItems) { items = []; }
+    var byId = {};
+    for (var i = 0; i < items.length; i++) {
+      if (items[i] && items[i].type === "IMAGE" && items[i].id) byId[String(items[i].id)] = items[i];
+    }
+    initBackupLegacyOnce(legacy.room, legacy.scene);
+    var want = {};
+    var skipped = 0;
+    var stamp = state.updatedAt > 0 ? state.updatedAt : Date.now();
+    for (var j = 0; j < state.entries.length; j++) {
+      var e = state.entries[j];
+      if (!byId[e.tokenId]) { skipped++; continue; } /* 不在当前场景：留在本机备份里 */
+      want[e.tokenId] = initMetaFromEntry(e, stamp);
+    }
+    var ids = Object.keys(want);
+    if (!ids.length) {
+      notify("先攻数据迁移：旧名单里的 token 都不在当前场景，已备份到本机（" + initBackupKey() + "），旧名单保留", "WARNING");
+      return { ok: false, migrated: 0, skipped: skipped, reason: "no-token" };
+    }
+    try {
+      await OBR.scene.items.updateItems(ids, function (drafts) {
+        for (var d = 0; d < drafts.length; d++) {
+          var itd = drafts[d];
+          if (!itd || !itd.id) continue;
+          var meta = want[itd.id];
+          if (!meta) continue;
+          if (!itd.metadata || typeof itd.metadata !== "object") itd.metadata = {};
+          itd.metadata[KEY_INIT] = meta;
+        }
+      });
+    } catch (eTok) {
+      notify("先攻数据迁移失败（token 元数据写不进去，旧名单保留未动）：" + errText(eTok), "WARNING");
+      pageLog("err", "先攻迁移：写 token 元数据失败 " + errText(eTok));
+      return { ok: false, migrated: 0, skipped: skipped, reason: "token-write", error: eTok };
+    }
+    var migratedAt = Date.now();
+    try {
+      await OBR.scene.setMetadata({
+        [KEY_COMBAT]: {
+          v: COMBAT_META_V, phase: state.phase, round: state.round, surprise: state.surprise,
+          activeId: state.activeId, updatedAt: migratedAt, migratedAt: migratedAt
+        }
+      });
+    } catch (eCombat) {
+      notify("先攻数据迁移失败（场景战斗状态写不进去，旧名单保留未动）：" + errText(eCombat), "WARNING");
+      pageLog("err", "先攻迁移：写场景 combat 失败 " + errText(eCombat));
+      return { ok: false, migrated: ids.length, skipped: skipped, reason: "combat-write", error: eCombat };
+    }
+    var cleared = true;
+    try {
+      await OBR.room.setMetadata({ [KEY_INITIATIVE]: initEmptyLegacy() });
+    } catch (eClear) {
+      cleared = false;
+      pageLog("err", "清理旧房间先攻名单失败：" + errText(eClear));
+    }
+    if (legacy.scene) {
+      try { await OBR.scene.setMetadata({ [KEY_INITIATIVE]: initEmptyLegacy() }); }
+      catch (eClear2) { /* 场景里那份只是兜底副本，token 已是真源 */ }
+    }
+    if (!cleared) notify("先攻已迁移到 token metadata，但旧房间名单没清掉（下次启动会再试）", "WARNING");
+    pageLog("info", "先攻迁移完成：token " + ids.length + " 条" +
+      (skipped ? "，跳过 " + skipped + " 条（不在当前场景）" : "") +
+      "；旧数据备份 localStorage[" + initBackupKey() + "]");
+    return { ok: true, migrated: ids.length, skipped: skipped };
+  } catch (eAll) {
+    notify("先攻数据迁移失败：" + errText(eAll), "WARNING");
+    pageLog("err", "先攻迁移异常：" + errText(eAll));
+    return { ok: false, reason: "error", error: eAll };
+  } finally {
+    initMigrateBusy = false;
+  }
+}
+
 function initRollD20() {
   return Math.floor(Math.random() * 20) + 1;
 }
 
 function initBonusOf(item) {
   var m = item && item.metadata ? item.metadata[KEY_INIT] : null;
+  /* v2.5 兼容：v1.2 时代 token 上是**一个数字**（先攻加值），按加值读。 */
+  if (typeof m === "number" && isFinite(m)) return initClamp(Math.round(m), -99, 999);
   if (m && typeof m === "object" && typeof m.bonus === "number" && isFinite(m.bonus)) {
     return initClamp(Math.round(m.bonus), -99, 999);
   }
   return 0;
 }
 
-/* v2.4.37：token 上「备团先攻预设」（血条编辑窗填写，合计值）；没有则 null。 */
+/* v2.5.0：token 上「备团先攻预设」（血条编辑窗填写，合计值）；没有则 null。 */
 var KEY_INIT_PRESET = NS + "/init-preset";
 function initPresetOf(item) {
   try {
@@ -3810,7 +4093,7 @@ async function initAdd(item, hidden) {
   var card = typeof cardId === "string" ? findCard(cards, cardId) : null;
   var name = String(item.name || (card && card.name) || "未命名").trim().slice(0, 40) || "未命名";
   var bonus = initBonusOf(item);
-  var preset = initPresetOf(item); /* v2.4.37：血条窗里存的备团**先攻加值** */
+  var preset = initPresetOf(item); /* v2.5.0：血条窗里存的备团**先攻加值** */
   if (preset != null) bonus = preset;
   var ownerId = String(item.createdUserId || "");
   var idx = -1;
@@ -3941,34 +4224,31 @@ async function pruneMissingInitEntries() {
     var role = "";
     try { role = await OBR.player.getRole(); } catch (e) { role = ""; }
     if (role !== "GM") return 0;
+    /* v2.5：条目就存在 token 元数据上 —— token 被删 = 条目自然消失，不需要再清整份名单。
+     * 这里只保留一件事：战斗态当前回合指针指向的 token 已失效时，写回第一张（游标顺移）。 */
     var state = await initRead();
     if (!state.entries.length) return 0;
     var items = [];
     try { items = await OBR.scene.items.getItems(); } catch (e2) { return 0; }
     var alive = {};
-    for (var i = 0; i < items.length; i++) {
-      if (items[i] && items[i].id) alive[String(items[i].id)] = true;
-    }
-    var missing = [];
-    for (var j = 0; j < state.entries.length; j++) {
-      var id = state.entries[j] && state.entries[j].tokenId;
-      if (id && !alive[id] && initKnownTokens[id]) missing.push(id);
-    }
+    for (var i = 0; i < items.length; i++) if (items[i] && items[i].id) alive[String(items[i].id)] = true;
     initKnownTokens = alive;
-    if (!missing.length) return 0;
+    if (state.phase !== "combat") return 0;
+    var combat = await initReadCombat();
+    var active = String(combat.activeId || "");
+    if (active && alive[active]) return 0;
     var next = state;
-    for (var k = 0; k < missing.length; k++) next = initRemove(next, missing[k]);
+    next.activeId = state.entries[0].tokenId;
+    next.updatedAt = Date.now();
     await initWrite(next);
-    stepOk("先攻自动清理：" + missing.join(" / "));
-
-    await syncInitFlags(initEntryIdsOf(next));
-    return missing.length;
+    stepOk("先攻当前回合清理：原 activeId 已失效 → 指向第一张");
+    return 1;
   } finally {
     initPruneBusy = false;
   }
 }
 
-/* v2.4.37：GM 收到玩家的「加入先攻」请求 —— 校验 token 归属后代写。 */
+/* v2.5.0：GM 收到玩家的「加入先攻」请求 —— 校验 token 归属后代写。 */
 async function onInitJoinRequest(ev) {
   try {
     var role = await OBR.player.getRole();
@@ -4000,7 +4280,6 @@ async function onInitJoinRequest(ev) {
       return;
     }
     initKnownTokens[String(itemId)] = true;
-    await syncInitFlags();
     sendInitJoinAck(sender, true, "已加入先攻：" + res.entry.name);
   } catch (e) {
     pageLog("err", "玩家请求加入先攻失败：" + errText(e));
@@ -4030,7 +4309,7 @@ async function onInitRemoveClick(context) {
   try {
     var role = await OBR.player.getRole();
     if (role !== "GM") {
-      notify("移出先攻需要城主权限（房间数据只有城主能写）", "WARNING");
+      notify("移出先攻需要城主权限（先攻条目存在 token 元数据上，只有城主能改别人的 token）", "WARNING");
       return;
     }
     var picked = context && context.items && context.items[0] ? context.items[0] : null;
@@ -4046,14 +4325,11 @@ async function onInitRemoveClick(context) {
     if (!entry) {
 
       notify("「" + (picked.name || picked.id) + "」已经不在先攻里了", "WARNING");
-      await syncInitFlags();
       return;
     }
     var next = initRemove(state, picked.id);
     await initWrite(next);
     stepOk("移出先攻：" + entry.name);
-
-    await syncInitFlags(initEntryIdsOf(next));
   } catch (e) {
     stepFail("移出先攻", e);
   }
@@ -4067,7 +4343,7 @@ async function onInitMenuClick(context, hidden) {
       notify("没有读到选中的 token，右键请对着一个图片 token 再试", "WARNING");
       return;
     }
-    /* v2.4.37（照 Full Suite）：玩家也能右键「加入先攻」→ 广播给 GM 代写；
+    /* v2.5.0（照 Full Suite）：玩家也能右键「加入先攻」→ 广播给 GM 代写；
      * 只允许自己的 token（GM 端会按 createdUserId 再校验一次）。隐形加入仍 GM 专属。 */
     if (role !== "GM") {
       if (hidden) {
@@ -4088,16 +4364,14 @@ async function onInitMenuClick(context, hidden) {
         return;
       }
       initJoinLastAt = nowJoin;
-      /* v2.4.37（对齐 Full Suite）：先**尝试玩家直接写**。Full Suite 不需要 GM 代步，
-       * 是因为它把先攻放在 token 元数据里；我们放房间/场景数据，OBR 允许就直接成功，
-       * 不允许（配额/权限）再退回「请求城主代写」。 */
+      /* v2.5.0（对齐 Full Suite）：先**尝试玩家直接写**。v2.5 起先攻就存在 token 元数据里
+       * （Full Suite 同款），OBR 允许玩家写自己的 token 就直接成功；不允许（权限）再退回「请求城主代写」。 */
       try {
         var freshP = null;
         try { freshP = (await OBR.scene.items.getItems([picked.id]))[0] || null; } catch (eFP) { freshP = null; }
         var resP = await initAdd(freshP || picked, false);
         if (resP && resP.persisted) {
           initKnownTokens[String(picked.id)] = true;
-          await syncInitFlags();
           pageLog("info", "玩家直接加入先攻成功 item=" + picked.id);
           return;
         }
@@ -4111,16 +4385,16 @@ async function onInitMenuClick(context, hidden) {
         notify("加入先攻的请求发送失败：" + errText(eJoin), "ERROR");
         return;
       }
-      /* v2.4.37：6 秒没收到 GM 回执 → 明确提示（GM 未更新插件 / 不在线 / 写入失败）。 */
+      /* v2.5.0：6 秒没收到 GM 回执 → 明确提示（GM 未更新插件 / 不在线 / 写入失败）。 */
       if (initJoinTimer) clearTimeout(initJoinTimer);
       initJoinTimer = setTimeout(function () {
         initJoinTimer = null;
-        notify("加入先攻：城主没有响应（GM 可能不在线或插件未更新到 2.4.37）", "WARNING");
+        notify("加入先攻：城主没有响应（GM 可能不在线或插件未更新到 2.5.0）", "WARNING");
       }, 6000);
       return;
     }
 
-    /* v2.4.37：GM 点「加入先攻」时，token 已经在先攻里就明确提示 ——
+    /* v2.5.0：GM 点「加入先攻」时，token 已经在先攻里就明确提示 ——
      * 旧代码会静默更新同一条（条上没变化），看起来就是「点了没反应」。 */
     try {
       var st0 = await initRead();
@@ -4144,12 +4418,11 @@ async function onInitMenuClick(context, hidden) {
       "（先攻 " + Math.round(res.entry.init) + "）");
 
     if (!res.persisted) {
-      /* 房间 / 场景都没写成功：先攻只落本机，别人看不到 —— 必须明确告诉用户。 */
-      notify("先攻只写到了本机（房间+场景数据都写不进去，可能已满）：其他人看不到这次加入", "WARNING");
-      await syncInitFlags();
+      /* token 元数据没写成功：先攻只落本机，别人看不到 —— 必须明确告诉用户。 */
+      notify("先攻只写到了本机（token 元数据写不进去，可能没有权限）：其他人看不到这次加入", "WARNING");
       return;
     }
-    /* v2.4.37：写回后再核对一次，防止「函数返回成功但实际没进列表」的静默失败。 */
+    /* v2.5.0：写回后再核对一次，防止「函数返回成功但实际没进列表」的静默失败。 */
     try {
       var verify = await initRead();
       var inList = false;
@@ -4157,7 +4430,6 @@ async function onInitMenuClick(context, hidden) {
       if (!inList) notify("加入先攻没有生效：请再点一次，仍不行把控制台 [4enext] 日志发给作者", "WARNING");
     } catch (eVerify) { /* 忽略 */ }
     initKnownTokens[String(picked.id)] = true;
-    await syncInitFlags();
 
     if (!stripOpen) void openStripOrNotify("右键加入先攻");
   } catch (e) {
@@ -4448,7 +4720,7 @@ async function onRollClear() {
 }
 
 /* =====================================================================
- * v2.4.37：传送门（核心）
+ * v2.5.0：传送门（核心）
  *   GM 拖动画圆建门 → 同 tag 互联；玩家拖动自己 token 进门 → 目的地选择 →
  *   六边形螺旋落点 + 原生 WALL 避让；传送后 700ms 抑制重复触发。
  * 数据：metadata com.4enext-owlbear/portal = { name, tag, radius, showName, visible, locked }
@@ -4630,7 +4902,7 @@ var portalRadiusInflight = {};
 var portalTeleportLanded = {};
 var portalWritingIds = {};
 var portalSkipLogAt = 0;
-/** v2.4.37：GM 拖缩放手柄 → 把 item.scale 反算回 metadata.radius（只 GM 写，inflight 防自触发循环）。 */
+/** v2.5.0：GM 拖缩放手柄 → 把 item.scale 反算回 metadata.radius（只 GM 写，inflight 防自触发循环）。 */
 async function portalScaleRadiusSync(all) {
   var role = "";
   try { role = await OBR.player.getRole(); } catch (e) { role = ""; }
@@ -4668,7 +4940,7 @@ async function portalScaleRadiusSync(all) {
   return wrote;
 }
 
-/** v2.4.37 诊断：对比已知传送门 id 集合，打印 added / removed / hidden，区分「被删」还是「没画出来」。 */
+/** v2.5.0 诊断：对比已知传送门 id 集合，打印 added / removed / hidden，区分「被删」还是「没画出来」。 */
 function portalLifecycleSync(all) {
   var current = {};
   var count = 0;
@@ -4966,7 +5238,7 @@ async function registerPortalTool() {
     catch (e3) { pageLog("err", "传送门 mode 创建失败（重试后）：" + errText(e3)); return; }
   }
 
-  /* v2.4.37：成对创建 mode（tool 下第二个 mode）。 */
+  /* v2.5.0：成对创建 mode（tool 下第二个 mode）。 */
   try {
     await OBR.tool.createMode({
       id: TOOL_PORTAL_PAIR_MODE_ID,
@@ -5020,7 +5292,7 @@ async function syncPortalEditFromSelection() {
   var sel = [];
   try { sel = (await OBR.player.getSelection()) || []; } catch (e2) { sel = []; }
 
-  /* v2.4.37 修复：打开 popover 后选区会变成「无」（焦点变化），不能当成取消选中去关窗，
+  /* v2.5.0 修复：打开 popover 后选区会变成「无」（焦点变化），不能当成取消选中去关窗，
    * 否则用户看到一闪。空选中 / 多选 / 选中非门 → 都保持现有编辑窗。 */
   if (sel.length === 0) {
     if (portalEditItemId) pageLog("info", "传送门 编辑窗保持（选中 0 项）");
@@ -5064,7 +5336,7 @@ async function onPortalEditClosed(ev) {
 async function openPortalEdit(itemId) {
   if (!itemId) return false;
   try {
-    /* v2.4.37：编辑窗接进通用窗口框架（可拖动 / 位置记忆 / 视口 reclamp）。
+    /* v2.5.0：编辑窗接进通用窗口框架（可拖动 / 位置记忆 / 视口 reclamp）。
      * URL 带 ?item=<id>；同一 popover id 重复打开会原地更新，不会重开。 */
     await openWin("portalEdit", URL_PORTAL_EDIT + "?item=" + encodeURIComponent(itemId));
     return true;
@@ -5087,7 +5359,7 @@ async function onPortalSave(ev) {
       for (var i = 0; i < drafts.length; i++) {
         if (!drafts[i].metadata || typeof drafts[i].metadata !== "object") drafts[i].metadata = {};
         var oldMeta = drafts[i].metadata[KEY_PORTAL] ? portalMeta(drafts[i].metadata[KEY_PORTAL]) : null;
-        /* v2.4.37：半径不再由表单决定 —— 以当前 item.scale 反算（scale 缺失才退回旧 metadata.radius）。 */
+        /* v2.5.0：半径不再由表单决定 —— 以当前 item.scale 反算（scale 缺失才退回旧 metadata.radius）。 */
         var r = drafts[i].scale
           ? portalRadiusFromScale(drafts[i].scale, saveDpi)
           : (oldMeta ? oldMeta.radius : meta.radius);
@@ -5104,7 +5376,7 @@ async function onPortalSave(ev) {
     notify("保存传送门失败：" + errText(e3), "ERROR");
   }
 }
-/** v2.4.37：传送时临时绕过 Dynamic Fog / Smoke 等插件的穿墙校验：
+/** v2.5.0：传送时临时绕过 Dynamic Fog / Smoke 等插件的穿墙校验：
  * 快照并剥离 token 上的雾效 metadata、隐藏 token 与其 attachment，写位置后逐字恢复。失败不阻塞传送。 */
 function portalFogMetaKey(key, val) {
   var k = String(key || "").toLowerCase();
@@ -5237,7 +5509,7 @@ async function onPortalTeleport(ev) {
     if (!dest) return;
     var tokens = all.filter(function (it) { return tokenIds.indexOf(it.id) >= 0; });
     if (!tokens.length) return;
-    /* v2.4.37：传送显式授权 —— 仅 GM 或所有目标 token 的创建者。 */
+    /* v2.5.0：传送显式授权 —— 仅 GM 或所有目标 token 的创建者。 */
     var teleRole = "";
     var telePid = "";
     try { teleRole = await OBR.player.getRole(); } catch (eRole) { teleRole = ""; }
@@ -5303,8 +5575,8 @@ async function onPortalItemsChange() {
     void portalDetectDragEnd();
   }, 200);
 }
-/** v2.4.37：目的地选择窗接进通用窗口框架（可拖动 / 位置记忆 / reclamp）。 */
-/* ---------- v2.4.37：隐形门 GM ghost ---------- */
+/** v2.5.0：目的地选择窗接进通用窗口框架（可拖动 / 位置记忆 / reclamp）。 */
+/* ---------- v2.5.0：隐形门 GM ghost ---------- */
 var portalGhostSig = "";
 async function portalGhostSync(all) {
   var role = "";
@@ -5361,7 +5633,7 @@ async function portalGhostSync(all) {
   return ghosts.length;
 }
 
-/* ---------- v2.4.37：成对创建（第二个 mode） ---------- */
+/* ---------- v2.5.0：成对创建（第二个 mode） ---------- */
 var portalPairFirst = null;
 var portalPairPreviewId = null;
 var portalPairLineId = null;
@@ -5579,7 +5851,8 @@ async function boot() {
   markDiceClosed(false);
   await refreshInitKnownTokens();
 
-  await syncInitFlags();
+  /* v2.5：GM 启动时把旧「房间/场景整份先攻名单」迁到 token metadata + 场景 combat（只做一次）。 */
+  await attempt("迁移旧先攻名单到 token metadata（GM）", migrateInitiativeFromLegacy);
   /* v1.9.2：延迟 800ms 自动开骰子记录窗口（别和 1.5s 的静态资源预热抢）。 */
   setTimeout(function () { void maybeAutoOpenDiceHistory(); }, 800);
   setTimeout(function () { void maybeAutoOpenDice(); }, 900);
@@ -5591,7 +5864,7 @@ async function boot() {
 
       void refreshInitKnownTokens();
       if (ready !== false) {
-        void syncInitFlags();
+        void migrateInitiativeFromLegacy();
         void maybeAutoOpenStrip("进入房间自动显示先攻条");
         setTimeout(function () { void maybeAutoOpenDiceHistory(); }, 800);
         setTimeout(function () { void maybeAutoOpenDice("进入房间自动打开骰子（换场景）"); }, 900);
@@ -5618,16 +5891,15 @@ async function boot() {
   });
   await attempt("订阅 room.onMetadataChange", function () {
     OBR.room.onMetadataChange(function (meta) {
+      void meta;
       scheduleRefresh();
-
-      onRoomMetaChanged(meta);
     });
   });
   await attempt("订阅 scene.onMetadataChange（场景兜底存储）", function () {
     if (!OBR.scene || typeof OBR.scene.onMetadataChange !== "function") return;
     OBR.scene.onMetadataChange(function (meta) {
+      void meta;
       scheduleRefresh();
-      onRoomMetaChanged(meta);
       scheduleBars();
     });
   });
@@ -5733,7 +6005,7 @@ async function boot() {
   await attempt("订阅 " + CH_INFO_ACK + "（速览页刷新 ack）", function () {
     OBR.broadcast.onMessage(CH_INFO_ACK, onInfoAck);
   });
-  /* v2.4.37：OBR SDK 没有 viewport.onChange → 安装 500ms 轮询重锚。
+  /* v2.5.0：OBR SDK 没有 viewport.onChange → 安装 500ms 轮询重锚。
    * 视口变化时：按钮重新 open 到右下角（同 id+url），各窗口 / 先攻条用新 vp reclamp。 */
   await attempt("重建传送门 ghost（启动）", async function () {
     try {
@@ -5762,7 +6034,7 @@ async function boot() {
     return true;
   });
 
-  /* v2.4.37：传送门频道 + 拖动进门侦测。 */
+  /* v2.5.0：传送门频道 + 拖动进门侦测。 */
   await attempt("订阅 " + CH_OPEN_SETTINGS + "（浮动按钮 → 设置）", function () {
     OBR.broadcast.onMessage(CH_OPEN_SETTINGS, function () { void openWinOrNotify("settings", "右下角设置按钮"); });
   });

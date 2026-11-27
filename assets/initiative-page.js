@@ -18,7 +18,7 @@ import {
 } from "./common.js";
 import { createWindow, feedback, closeSelf, safeInit } from "./window.js";
 import {
-  INIT_MAX_ENTRIES, LS_STRIP_COLLAPSED, advanceInitiative, bonusOfItem, canEditBonus, clearInitiative,
+  LS_STRIP_COLLAPSED, advanceInitiative, bonusOfItem, canEditBonus, clearInitiative,
   currentEntry, endCombat, moveEntry, normalizeInitiative, readInitiative, removeEntry, renderInitiativeHTML,
   renderStripHTML, reorderEntry, rerollAll, rerollEntry, setActiveEntry, setEntryBonus, setEntryRoll,
   startCombat, startPreparation, startSurprise, stripSizeFor, syncInitBonuses, tokenInfoMap,
@@ -54,7 +54,7 @@ let confirmTimer = 0;
 let suppressClick = false;
 let lastActiveId = "";
 let lastSize = { w: 0, h: 0 };
-/** 「只记在本机」的提示只弹一次，别每次房间数据变化都刷屏。 */
+/** 「只记在本机」的提示只弹一次，别每次 metadata 变化都刷屏。 */
 let localWarned = false;
 
 function msgOf(e) {
@@ -201,7 +201,7 @@ async function loadInit(withItems) {
     initiative = await readInitiative();
     if (initiative.local && !localWarned) {
       localWarned = true;
-      feedback("先攻目前只记在本机（房间数据写不进去，通常是超过 " + INIT_MAX_ENTRIES + " 条或城主没有写权限）", "WARNING");
+      feedback("先攻目前只记在本机（token / 场景数据写不进去，通常是城主没有写权限，或本机缓存了上一次的降级副本）", "WARNING");
     }
   } catch (e) {
     feedback("读取先攻失败：" + msgOf(e), "ERROR");
@@ -251,11 +251,11 @@ async function pumpSaveQueue() {
         initiative = written;
         render();
         if (written.local) {
-          feedback("先攻没能写进房间数据：已暂存在本机（先攻最多 " + INIT_MAX_ENTRIES + " 条）", "WARNING");
+          feedback("先攻没能写进 token / 场景数据：已暂存在本机", "WARNING");
         }
       } catch (e) {
         console.error("[4enext] 写先攻失败", e);
-        feedback("写不进房间数据：先攻通常只有城主能改（" + msgOf(e) + "）", "ERROR");
+        feedback("写不进 token / 场景数据：先攻通常只有城主能改（" + msgOf(e) + "）", "ERROR");
       } finally {
         item.done();
       }
@@ -344,7 +344,7 @@ async function onRoll(mode, tokenId) {
     feedback("这枚 token 已经不在先攻列表里了", "WARNING");
     return;
   }
-  /* v2.4.37（照 Full Suite）：准备阶段玩家可以掷自己的条目；战斗阶段只有 GM 能重掷。 */
+  /* v2.5.0（照 Full Suite）：准备阶段玩家可以掷自己的条目；战斗阶段只有 GM 能重掷。 */
   const allowed = myRole === "GM" ||
     (initiative.phase === "preparing" && canEditBonus(entry, { role: myRole, playerId: playerId, items: itemsMap }));
   if (!allowed) {
@@ -354,7 +354,7 @@ async function onRoll(mode, tokenId) {
   /* v1.8.0：传函数，连点 d20 时每次都在最新的 state 上重掷（不会两次都基于同一个旧 state）。 */
   await saveInit(function (st) { return rerollEntry(st, tokenId, undefined, "normal"); },
     "「" + entry.name + "」重新掷先攻");
-  /* v2.4.37（对齐 Full Suite）：先攻掷骰也走 broadcastDiceRoll —— 全桌看到骰子动画 + 骰子记录。
+  /* v2.5.0（对齐 Full Suite）：先攻掷骰也走 broadcastDiceRoll —— 全桌看到骰子动画 + 骰子记录。
    * 之前只改先攻条数字，没有动画/记录。 */
   try {
     const done = initiative.entries.filter(function (e) { return e.tokenId === tokenId; })[0];
@@ -399,11 +399,11 @@ function parseBonusText(raw) {
 /**
  * 保存一条的先攻加值。卡片左上角（data-bonus-input）与状态行（data-bonus-row）都走这里：
  *   权限 → canEditBonus（GM 任意 / 玩家只自己 token）；写 entries[].bonus 并立即重排。
- * 输入没变 / 不合法 → 只是把输入框恢复成当前值，不写房间数据。
+ * 输入没变 / 不合法 → 只是把输入框恢复成当前值，不写 token metadata。
  */
 async function commitBonus(el) {
   if (!el) return;
-  /* 回车会先 commit 再 blur → focusout 会再进来一次；写过一次就直接忽略（避免重复写房间数据）。 */
+  /* 回车会先 commit 再 blur → focusout 会再进来一次；写过一次就直接忽略（避免重复写 token metadata）。 */
   if (el.dataset && el.dataset.bonusCommitted === "1") return;
   const tokenId = el.getAttribute("data-bonus-input") || el.getAttribute("data-bonus-row") || "";
   const entry = entryOf(tokenId);
@@ -478,7 +478,7 @@ async function onCardClick(tokenId) {
   }
   /* 非战斗 / 玩家：把选中切到这枚 token（地图高亮照旧），但**不弹速览**。
    * v1.8.2：先广播 CH_GLANCE_SUPPRESS 再 select —— 后台 refreshInfo 收到抑制信号，1.5s 内不弹窗。
-   * v2.4.37：**必须 await 抑制广播送达后再 select**。之前 `void sendMessage` 直接 select，
+   * v2.5.0：**必须 await 抑制广播送达后再 select**。之前 `void sendMessage` 直接 select，
    * 真机上偶尔 select 引发的 refreshInfo 比抑制消息先到 → 速览弹一次（竞态）。 */
   try {
     await OBR.broadcast.sendMessage(CH_GLANCE_SUPPRESS, { tokenId: tokenId, at: Date.now() }, { destination: "LOCAL" });
@@ -488,7 +488,7 @@ async function onCardClick(tokenId) {
   } catch (e2) { /* 忽略 */ }
 }
 
-/** 玩家「结束我的回合」：只发广播，**不写房间数据**（规格 §5）。 */
+/** 玩家「结束我的回合」：只发广播，**不写 token / scene metadata**（规格 §5）。 */
 async function requestEndTurn() {
   const active = currentEntry(initiative);
   if (!active) {

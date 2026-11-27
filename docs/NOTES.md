@@ -17,13 +17,57 @@ dev/      开发自测脚本（不上传也能跑，node dev/selftest.mjs）
 ## 改代码的注意事项
 
 1. **改了 `assets/background.core.js` 必须重建 bundle**：`node dev/build-background.mjs`，否则后台不生效。
-2. 改完跑 `node dev/selftest.mjs`（**8 条自测**：check / test-background / test-initiative / test-track / test-dice / test-geometry / test-import / test-glance2）。
+2. 改完跑 `node dev/selftest.mjs`（**10 条自测**：check / test-background / test-initiative / test-track / test-dice /
+   test-geometry / test-import / test-glance2 / test-portal / check-syntax）。
    `dev/check.mjs` 会额外 spawn `dev/test-info-click.mjs`（v1.7.13）与 `dev/test-cards.mjs`（v1.7.15），
-   所以「8 条命令」仍然覆盖点击链路与角色卡双写存储。
+   所以「10 条命令」仍然覆盖点击链路与角色卡双写存储。
 3. **manifest.json 的 `description` ≤ 128 字符**（Owlbear 会校验，超了直接拒绝加载）。
 4. **manifest 不要加 `action` 字段**（真机验证过：加了反而加载失败）。
 5. GitHub Pages 必须在仓库根放 **`.nojekyll`**，否则 `{{...}}` 模板语法会让构建失败、线上一直是旧版本。
-6. 数据键名不要改（`com.4enext-owlbear/hp`、`/state/<cardId>`、`/cardId`、`/initiative` 等），改了旧存档会丢。
+6. 数据键名不要改（`com.4enext-owlbear/hp`、`/state/<cardId>`、`/cardId` 等），改了旧存档会丢。
+   先攻 v2.5 起改存 `token.metadata["com.4enext-owlbear/init"]`（每 token 一条 v2 条目）+
+   `scene.metadata["com.4enext-owlbear/combat"]`（战斗态）；旧键 `room/scene.metadata[…/initiative]`
+   只用于迁移前只读回退 / 迁移，不要往它写新名单（详见下面「先攻存储」）。
+
+## 先攻存储（v2.5：per-token init + scene combat）
+
+> 改 `assets/initiative.js` / `initiative-page.js` / `background.core.js` 的先攻段之前必读。
+> 参考实现：[FullPeople/obr-suite](https://github.com/FullPeople/obr-suite) 的
+> `src/modules/initiative/utils/metadata.ts`（per-item `com.obr-suite/init` + scene `combat`）。
+
+**存哪儿**（内部 state 形状 `{ phase, round, surprise, activeId, entries[] }` 不变，只换落盘位置）：
+
+| 数据 | 位置 | 形状 |
+|---|---|---|
+| 一条先攻条目 | `token.metadata["com.4enext-owlbear/init"]` | `{ v:2, d20, bonus, init, tb, hidden, ownerId, updatedAt }` |
+| 战斗态 | `scene.metadata["com.4enext-owlbear/combat"]` | `{ v:1, phase, round, surprise, activeId, updatedAt, migratedAt? }` |
+| 旧整份名单（只读过渡） | `room/scene.metadata["com.4enext-owlbear/initiative"]` | v1.3 ~ v2.4 的 `{ v, updatedAt, phase, …, entries:[…] }` |
+| 迁移前备份 | `localStorage["4enext/init-backup/<roomId>"]` | `{ v:1, at, room, scene }`（只写第一份最完整的） |
+
+- `init` = **合计**（正常掷骰 = d20 + bonus）。拖拽排序写的是两张卡的中点（可能是小数），
+  **必须原样落盘**；读的时候不要改成 `d20 + bonus`，否则刷新后顺序回退（这是和 Full Suite 只存原始
+  `count` 的唯一差别）。
+- 只有 `metadata[…/init].v === 2` 才算名单成员：v1.3 的加值缓存是 `{ bonus, cardId }`、更老是数字，
+  它们只当「先攻加值」读（`bonusOfItem` / 后台 `initBonusOf`），**不会**把绑了卡但没加入先攻的 token 误加进名单。
+  绑定角色卡（`bindToken` / `propagateCardStats`）碰到 v2 条目时只更新 `bonus`，不碰 d20 / tb / hidden / ownerId。
+- 读写：页面 `initiative.js` 的 `readInitiative / writeInitiative`，后台 `initRead / initWrite`
+  （两份同算法，经典脚本不能 import）。**差异写**：只 `updateItems` 本页真正变了的 token、
+  删掉已移出名单的 v2 元数据；`combat` 没变不写 scene。两名客户端改不同 token 各写各的；
+  **同一枚 token 并发仍是后写覆盖**（已知风险，先攻是低冲突数据，可接受）。
+- 权限：GM 写所有 token + scene；玩家写**自己创建的 token**（OBR 允许），scene 写不进（玩家常见）时
+  `writeInitiative` 仍返回成功（不误报 `.local`），`activeId` 由读取端失效回退第一张；
+  玩家「结束我的回合」仍走 `CH_INIT_REQUEST` 请城主落笔；玩家右键「加入先攻」若 token 元数据写不进，
+  后台退回 `CH_INIT_JOIN` 请求 GM 代写（原有四道校验不变）。
+- 右键菜单互斥：`initMenuFilter` 按 `metadata[…/init].v === 2` 判断（宿主 filter 支持嵌套 key 路径），
+  **不再维护 `in-init` 镜像旗标**（旧旗标只留常量兼容，不再写）。
+- 迁移（只做一次）：GM 启动（`boot`）/ 进场景 ready / 首次读先攻（页面 `readInitiative`）时，若旧整份名单存在
+  且 `combat.migratedAt` 为空 → 旧 entries 逐条写进对应 token metadata + 写 scene combat（带 `migratedAt`）+
+  本机备份后把旧房间 / 场景键清成空名单。**任一步失败保留旧数据并 WARNING**，下次启动重试；
+  旧名单里「token 不在当前场景」的条目会跳过（留在本机备份 `4enext/init-backup/<roomId>` 里），
+  这是跨场景名单迁移的已知限制。
+- 自测：`dev/test-initiative.mjs` 覆盖「旧名单迁移（页面 + 后台）/ token 元数据读回 / 拖拽中点落盘 /
+  差异写 / 玩家只写自己 token / scene combat 读写 / activeId 失效回退 / 旧数字与旧对象兼容」；
+  `dev/check.mjs` 静态对比两边键名 / 结构 / 不再写 in-init / 迁移与差异写接线。改完跑 `node dev/selftest.mjs`。
 
 ## 关键常量在哪
 

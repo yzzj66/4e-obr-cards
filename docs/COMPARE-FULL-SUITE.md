@@ -49,6 +49,12 @@
 
 ### 1.3 先攻条
 
+> **v2.5 更新**：本节的「数据存哪儿 / 加值 / 加入移除 / 回合推进」四行记录的是**v2.4 及以前**的
+> 房间整份名单方案。v2.5 已按 Full Suite 的思路迁移成 **per-token**：每条先攻存
+> `token.metadata["com.4enext-owlbear/init"]`（v2 结构，见 `initiative.js` 顶部注释）、战斗态存
+> `scene.metadata["com.4enext-owlbear/combat"]`；旧房间名单只用于迁移前只读回退，GM 启动 / 首次读时
+> 迁移并本机备份后清空。维护口径见 [`NOTES.md`](NOTES.md) 的「先攻存储（v2.5）」一节。
+
 | 功能点 | Full Suite 做法 | 本插件做法 | 判定 | 差异原因 |
 |---|---|---|---|---|
 | 数据存哪儿 | **每个 CHARACTER token 的 `item.metadata["com.initiative-tracker/data"]`**（count=d20 原值 / active / rolled / tiebreak / ownerId / invisible，`initiative/utils/constants.ts:1-16`、`types.ts:1-14`）；战斗态 `{inCombat,preparing,round}` 在**场景 metadata**（`utils/metadata.ts:125-139`） | **房间数据一份**：`room.metadata["com.4enext-owlbear/initiative"] = { v, updatedAt, phase, round, surprise, activeId, entries:[{tokenId,name,bonus,d20,init,tb,hidden,ownerId,updatedAt}] }`（`initiative.js:1-40` 注释、`:163-199` 归一化）；上限 **40 条**（`initiative.js:44`） | ❌ | **零服务器 + 全桌共享**只有房间数据一条路；per-token 方案需要每个客户端都有写 token 权限（玩家默认没有）。代价是 40 条上限（见 §5） |
@@ -131,7 +137,10 @@
 ## 4. 已知限制与后续建议
 
 1. **双写存储：完整卡只跟当前场景**：v1.8.0 起角色卡**双写** —— 房间数据里是**精简名单副本**（`packCard` 短键，跨场景 / 玩家侧可见、用于绑定与速览），当前场景的隐藏 item 里是**完整卡**（`cards-scene.js`，字段不丢但**跟当前场景走**）。换场景 / 新建场景后完整数据看不到（房间名单仍在，绑定 / 速览仍可用），要完整字段需重新导入（或等后续做「跨场景卡库同步」）。**建议**：README 已写明；后续可在设置页加「把场景卡搬回房间」入口（当前只有 `clearSceneCards`，`cards-scene.js:169-178`）。
-2. **先攻存房间数据、40 条上限**（`initiative.js:44`）：好处是全桌共享、玩家不需要 token 写权限；坏处是超过 40 条要删条目，且换场景名单不跟随 token。**迁移成本**：改成 per-token 需要玩家能写 token（做不到）+ 场景战斗态迁移，收益不抵成本；**建议维持现状**并把上限写进 README。
+2. **先攻存房间数据、40 条上限**（`initiative.js:44`）：~~建议维持现状~~ → **v2.5 已改**：迁移成
+   per-token init + scene combat（顺序：先上线兼容读取 / GM 启动迁移 / 旧键只读回退，失败保留旧数据并 WARNING）。
+   不再占房间 16 KB；40 条保留为内部结构上限。旧方案「换场景名单不跟随 token」的问题随之消失
+   （名单跟 token 走，跨场景按当前场景的 token 显示）。见 §1.3 顶部的 v2.5 更新与 `docs/NOTES.md`。
 3. **骰子历史只有 GM 能落库**（`background.core.js:3315-3322` 只处理 GM）：GM 不在线时「本次结果只在本机」（README:72 已写）。属零服务器架构的固有限制。
 4. **房间数据总量**：房间名单副本 + 先攻 + 骰子历史共用 14 KB 预算（`common.js:280-320`）。**双写后卡多不会再「丢卡」**：完整卡在场景 item 里、读时按 id 取并集，房间名单写不进时仍能从场景读到；但名单副本仍占预算，满桌很多卡时先攻 / 骰子历史会更早触发降级。**建议**：后续可把骰子历史改成「只存最近 8 条」或落本机 + 广播。
 5. **与上游 Bubbles 插件同装**：两套血条会同时画（本插件不读写上游 key，见 §1.2）。**建议**：README 提示「二选一」。
