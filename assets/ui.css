@@ -177,13 +177,14 @@ button, input, textarea, select {
 .sel-token b { color: var(--text); }
 
 /* ---------- info 速览弹窗 ---------- */
-body.info-body { padding: 6px; }
+/* v2.4.10（照 Full Suite）：单层底 —— 页面透明、无 6px 暗圈，只留 .pop 一层。 */
+body.info-body { padding: 0; background: transparent; }
 .pop {
   background: #10161d;
   border: 1px solid #2b3746;
   border-radius: 14px;
   box-shadow: 0 12px 34px rgba(0, 0, 0, .55);
-  height: calc(100vh - 12px); max-height: calc(100vh - 12px); min-height: 0;
+  height: 100vh; max-height: 100vh; min-height: 0; border-radius: 12px;
   display: flex; flex-direction: column; overflow: hidden;
 }
 .pop-head {
@@ -1206,8 +1207,9 @@ body.fx-page {
 /* v2.4.7：照 Full Suite hp-bar 的药丸布局（344×106，四行不滚）
  * 行1 名称 + ⣿ 拖动柄 + 钉住 / 锁定 / 重绘 / ✕；行2 生命药丸（--hp-ratio 填充）+ 临时生命；
  * 行3 四防四个小输入；行4 状态行。回复力字段已去掉（surges 数据只读不写）。 */
-body.hpe-page { padding: 5px; overflow: hidden; height: 100vh; }
-.hpe { height: calc(100vh - 10px); max-height: calc(100vh - 10px); }
+/* v2.4.9（照 Full Suite hp-bar.html）：单层底 —— 页面透明，只留 .win 一层，不再有外层 5px 暗圈。 */
+body.hpe-page { padding: 0; background: transparent; overflow: hidden; height: 100vh; }
+.hpe { height: 100vh; max-height: 100vh; border-radius: 12px; }
 .hpe-head { padding: 1px 7px; gap: 5px; min-height: 24px; }
 .hpe-grip { flex: 0 0 auto; font-size: 12px; line-height: 1; color: #7b8a99; cursor: grab; letter-spacing: 0; }
 .hpe-title {
@@ -1256,7 +1258,9 @@ body:not(.hpe-readonly) .hpe-pill:hover { border-color: #3f566f; background: #12
 .hpe-hp-temp-note { position: relative; z-index: 1; font-size: 10px; color: #58a6ff; white-space: nowrap; }
 #hpe-cur { color: var(--hp-color, var(--text)); background: #0b0f14; }
 #hpe-max { color: var(--muted); background: #0b0f14; }
-.hpe-temp-pill { flex: 0 0 104px; justify-content: center; cursor: text; margin-left: auto; }
+.hpe-init-pill { flex: 0 0 92px; justify-content: center; cursor: text; margin-left: auto; }
+#hpe-init { flex: 1 1 auto; min-width: 30px; font-size: 13px; font-weight: 700; }
+.hpe-temp-pill { flex: 0 0 104px; justify-content: center; cursor: text; } /* v2.4.9：临时生命左移，右侧让给先攻 */
 .hpe-temp-pill .hpe-unit { margin-right: 1px; }
 .hpe-num {
   position: relative; z-index: 1; min-width: 0; height: 20px; padding: 0 3px;

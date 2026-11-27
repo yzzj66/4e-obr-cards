@@ -682,7 +682,7 @@ export async function readInitiative() {
     const rawScene = scene ? scene[KEY_INITIATIVE] : null;
     const atR = rawRoom && typeof rawRoom.updatedAt === "number" ? rawRoom.updatedAt : -1;
     const atS = rawScene && typeof rawScene.updatedAt === "number" ? rawScene.updatedAt : -1;
-    const raw = atS > atR ? rawScene : rawRoom; /* v2.4.8：场景兜底写入后读取端也要看 scene */
+    const raw = atS > atR ? rawScene : rawRoom; /* v2.4.12：场景兜底写入后读取端也要看 scene */
     if (raw) return sortState(raw);
     /* 房间数据里还没有：可能是上一次写失败留在了本机，先把它显示出来（并等着下次写入搬回房间）。 */
     const stashed = readLocalFallback();
@@ -801,8 +801,13 @@ export function tokenInfoMap(items) {
 
 /** v1.7.10：卡片下方只留**一枚**居中 d20 —— 4E 没有优势 / 劣势（删掉 − / ＋ 两枚）。
  *  几何照抄 Full Suite：.roll-buttons { top:100%; margin-top:-8 }，按钮上沿压在卡片下沿 8px。 */
-function stripRollButtons(e, isGM, phase) {
-  if (!isGM || (phase !== PHASE_PREPARING && phase !== PHASE_COMBAT)) return "";
+function stripRollButtons(e, isGM, phase, opts) {
+  /* v2.4.12（照 Full Suite InitiativeItem）：准备阶段 GM 或「自己的条目」都能掷；
+   * 战斗阶段只有 GM。玩家掷骰直接写房间数据（OBR 允许），不再走 GM 代写通道。 */
+  const canRoll = isGM
+    ? (phase === PHASE_PREPARING || phase === PHASE_COMBAT)
+    : (phase === PHASE_PREPARING && canEditBonus(e, opts || {}));
+  if (!canRoll) return "";
   return '<div class="roll-buttons">' +
     '<button class="roll-btn normal" data-roll="normal" data-token="' + esc(e.tokenId) +
     '" title="掷先攻 d20 · 先攻 ' + esc(signed(e.bonus)) + '">d20</button>' +
@@ -837,7 +842,7 @@ function stripRollField(e, st, opts, total) {
   const editable = rolled &&
     (st.phase === PHASE_COMBAT || st.phase === PHASE_PREPARING) &&
     canEditBonus(e, opts);
-  /* v2.4.8：小字不再显示 (d20+加值) 公式，改为直接显示合计（解决「7+6」不好读）。 */
+  /* v2.4.12：小字不再显示 (d20+加值) 公式，改为直接显示合计（解决「7+6」不好读）。 */
   if (!editable) {
     return "<b>" + esc(total) + "</b>";
   }
@@ -887,7 +892,7 @@ function stripCard(e, st, opts) {
     '<div class="item-img">' + img + "</div>" +
     hpTrack +
     '<div class="item-count">' + stripRollField(e, st, opts, total) + "</div>" +
-    stripRollButtons(e, isGM, st.phase) +
+    stripRollButtons(e, isGM, st.phase, opts) +
     /* v1.7.3：GM 的卡片上放一个 ✕ —— 不用开列表窗口，点一下就把这枚 token 移出先攻。
        玩家没有（房间数据只有城主能写）。 */
     (isGM ? '<button class="item-del" data-strip-act="remove" data-token="' + esc(e.tokenId) +

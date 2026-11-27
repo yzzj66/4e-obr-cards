@@ -150,6 +150,30 @@
 .gl4-empty { color: var(--gl4-muted); font-size: 12.5px; margin: 0; }
 .gl4-note { color: var(--gl4-muted); font-size: 11px; line-height: 1.5; margin: 2px 2px 0; opacity: .85; }
 
+/* v2.4.9（照 Full Suite 信息页）：速览紧凑模式只保留 生命/四防/六维/攻击与伤害，
+ * 威能 / 技能 / 装备三块不再渲染到首屏（数据仍在，只是不显示）。 */
+.gl4-compact .gl4-card.gl4-skills,
+.gl4-compact .gl4-card.gl4-powers,
+.gl4-compact .gl4-card.gl4-items,
+.gl4-compact .gl4-card.gl4-abis,
+.gl4-compact .gl4-rest { display: none !important; }
+
+/* v2.4.10：紧凑速览（info 小窗）——顶部属性平铺、四防平铺、临时生命并入 HP 行。 */
+.gl4-compact .gl4-quick.flat { gap: 14px; flex-wrap: wrap; }
+.gl4-compact .gl4-quick.flat .gl4-q { border: 0; background: none; padding: 0; min-width: 0; gap: 4px; }
+.gl4-compact .gl4-quick.flat .gl4-q i { font-size: 10.5px; }
+.gl4-compact .gl4-quick.flat .gl4-q b { font-size: 13px; }
+.gl4-compact .gl4-hp-temp { display: inline-flex; align-items: center; gap: 4px; margin-left: 8px; font-size: 11px; color: var(--gl4-muted); }
+.gl4-compact .gl4-hp-temp i { font-style: normal; }
+.gl4-compact .gl4-hp-temp .gl4-num { width: 54px; height: 22px; text-align: center; border: 1px solid var(--gl4-line); border-radius: 6px; background: #0d141b; color: var(--gl4-text); font-size: 12px; }
+.gl4-compact .gl4-card.gl4-defs { display: flex; flex-wrap: wrap; gap: 16px; align-items: baseline; border: 0; background: none; padding: 2px 2px 0; }
+.gl4-compact .gl4-card.gl4-defs .gl4-def { display: inline-flex; align-items: baseline; gap: 5px; border: 0; background: none; padding: 0; }
+.gl4-compact .gl4-card.gl4-defs .gl4-def-name { font-size: 11px; color: var(--gl4-muted); }
+.gl4-compact .gl4-card.gl4-defs .gl4-def-val { font-size: 18px; font-weight: 800; }
+
+.gl4-compact .gl4-atks .gl4-h { font-size: 12px; margin: 0 0 2px; }
+.gl4-compact .gl4-atks .gl4-atk-row { padding: 3px 0; }
+
 /* 紧凑模式：给 info 小弹窗用 */
 .gl4-compact { gap: 7px; font-size: 13px; }
 .gl4-compact .gl4-name { font-size: 18px; }
@@ -409,3 +433,26 @@ body.info-body button,
 body.info-body input {
   pointer-events: auto !important;
 }
+
+/* v2.4.11：去掉浅色卡片底，数据少框也变小；左右居中；防御/攻击的临时加值保留。 */
+.gl4-compact { gap: 5px; }
+.gl4-compact .gl4-card { background: transparent !important; border: 0 !important; box-shadow: none !important; padding: 2px 0; border-radius: 0 !important; }
+.gl4-compact .gl4-card.gl4-atks { border-top: 1px solid var(--gl4-line) !important; padding-top: 5px; }
+.gl4-compact .gl4-card.gl4-defs { padding: 0; }
+.gl4-compact .gl4-head { align-items: center; }
+.gl4-compact .gl4-head-right { align-items: center; gap: 6px; }
+.gl4-compact .gl4-def { align-items: center; }
+.gl4-compact .gl4-def-temp { display: inline-flex; align-items: center; gap: 1px; margin-left: 3px; }
+.gl4-compact .gl4-def-temp .gl4-step { width: 16px; height: 16px; font-size: 11px; }
+.gl4-compact .gl4-def-temp em { font-size: 10.5px; min-width: 12px; text-align: center; }
+.gl4-compact .gl4-atk-temp { display: flex; gap: 8px; flex-wrap: wrap; padding: 2px 0 4px; }
+.gl4-compact .gl4-atk-temp .gl4-ctl { padding: 0; }
+
+/* v2.4.12：血怒 / 回复值 / 行动点 / 里程碑 同一水平线（基线对齐问题）。 */
+.gl4-tags { align-items: center; }
+.gl4-tags > span { display: inline-flex; align-items: center; line-height: 1.15; }
+.gl4-tags .gl4-counter { display: inline-flex; align-items: center; gap: 2px; vertical-align: middle; }
+.gl4-tags .gl4-resline { align-items: center; }
+.gl4-compact .gl4-tags { align-items: center; gap: 12px; }
+.gl4-compact .gl4-tags .gl4-counter i { line-height: 1.1; }
+.gl4-compact .gl4-tags .gl4-counter b { line-height: 1.1; }

@@ -1,4 +1,4 @@
-// v2.4.8：传送目的地选择（玩家 / GM）。列表 = 同 tag 的其它传送门；点选后广播 CH_PORTAL_TELEPORT。
+// v2.4.12：传送目的地选择（玩家 / GM）。列表 = 同 tag 的其它传送门；点选后广播 CH_PORTAL_TELEPORT。
 import OBR from "../vendor/obr-sdk.js";
 import { CH_PORTAL_TELEPORT, ID_PORTAL_DEST, KEY_PORTAL, onReady } from "./common.js";
 import { closeSelf, createWindow } from "./window.js";
@@ -10,7 +10,7 @@ var listEl = document.getElementById("pd-list");
 var closeEl = document.getElementById("pd-close");
 var portals = [];
 
-/* v2.4.8：标准窗口页（拖动标题栏 / 位置记忆 / reclamp 走 assets/window.js）。 */
+/* v2.4.12：标准窗口页（拖动标题栏 / 位置记忆 / reclamp 走 assets/window.js）。 */
 var win = createWindow({ name: "portalDest", head: document.getElementById("head") });
 
 function closePortalDest() {
