@@ -326,18 +326,18 @@ if (seeded3 === false && !item.metadata[T.KEY_HP])
 else bad("syncTokenStats 给移除血条组件的 token 又写了 HP：" + JSON.stringify(item.metadata));
 
 /* ---------------------------------------------------------------------------
- * 15. v2.4.24：四防临时值不被 syncTokenStats 回写（combineDefenses + ctx.defTemp）
+ * 15. v2.4.25：四防临时值不被 syncTokenStats 回写（combineDefenses + ctx.defTemp）
  * ------------------------------------------------------------------------- */
 console.log("== 15 四防临时值联动不被 syncTokenStats 回写");
 {
   const comb = C.combineDefenses({ ac: 18, fort: 17, reflex: 16 }, { ac: 0, fort: 2, ref: 1, will: 0 });
   if (comb && comb.ac === 18 && comb.fort === 19 && comb.reflex === 17 && !("will" in comb))
-    ok("v2.4.24：combineDefenses ← ref→reflex、卡片基础 + 临时值、卡片没有的项不返回（保留 token 原值）");
-  else bad("v2.4.24：combineDefenses 合并不对：" + JSON.stringify(comb));
+    ok("v2.4.25：combineDefenses ← ref→reflex、卡片基础 + 临时值、卡片没有的项不返回（保留 token 原值）");
+  else bad("v2.4.25：combineDefenses 合并不对：" + JSON.stringify(comb));
   const comb2 = C.combineDefenses({ ac: 10, fort: 5 }, { fort: -3.6, ac: 2.4 });
   if (comb2 && comb2.ac === 12 && comb2.fort === 1)
-    ok("v2.4.24：combineDefenses 先 round 再加、结果 clamp 到 ≥0（10+2.4→12、5-3.6→1）");
-  else bad("v2.4.24：combineDefenses round / clamp 不对：" + JSON.stringify(comb2));
+    ok("v2.4.25：combineDefenses 先 round 再加、结果 clamp 到 ≥0（10+2.4→12、5-3.6→1）");
+  else bad("v2.4.25：combineDefenses round / clamp 不对：" + JSON.stringify(comb2));
 
   const baseDef = { ac: 18, fort: 17, reflex: 16 };
   item.metadata = { [T.KEY_HP]: { cur: 10, max: 20, surges: 4, surgesMax: 4, defenses: { ac: 18, fort: 19, reflex: 17 } } };
@@ -347,18 +347,18 @@ console.log("== 15 四防临时值联动不被 syncTokenStats 回写");
     defTemp: { ac: 0, fort: 2, ref: 1, will: 0 }
   });
   if (noisy === false && item.metadata[T.KEY_HP].defenses.fort === 19)
-    ok("v2.4.24：token 已是 base+temp、defTemp 也带同样临时值 → syncTokenStats 返回 false 且不写（旧逻辑会回写 base）");
-  else bad("v2.4.24：token=base+temp 仍被回写：" + JSON.stringify({ noisy, def: item.metadata[T.KEY_HP].defenses }));
+    ok("v2.4.25：token 已是 base+temp、defTemp 也带同样临时值 → syncTokenStats 返回 false 且不写（旧逻辑会回写 base）");
+  else bad("v2.4.25：token=base+temp 仍被回写：" + JSON.stringify({ noisy, def: item.metadata[T.KEY_HP].defenses }));
   const zeroed = await T.syncTokenStats(item.id, T.hpView(item.metadata[T.KEY_HP], { maxHp: 20, surges: 4 }), {
     maxHp: 20, surgesMax: 4, defenses: [{ key: "ac", value: 18 }, { key: "fort", value: 17 }, { key: "ref", value: 16 }],
     defTemp: { ac: 0, fort: 0, ref: 0, will: 0 }
   });
   if (zeroed === true && item.metadata[T.KEY_HP].defenses.fort === 17 && item.metadata[T.KEY_HP].defenses.reflex === 16)
-    ok("v2.4.24：临时值清零后 token 仍是 base+temp → syncTokenStats 正确写回 base（短/长休还原路径）");
-  else bad("v2.4.24：清零后没有写回 base：" + JSON.stringify({ zeroed, def: item.metadata[T.KEY_HP].defenses }));
+    ok("v2.4.25：临时值清零后 token 仍是 base+temp → syncTokenStats 正确写回 base（短/长休还原路径）");
+  else bad("v2.4.25：清零后没有写回 base：" + JSON.stringify({ zeroed, def: item.metadata[T.KEY_HP].defenses }));
 }
 
-/* ---- v2.4.24：血条显示策略 / 量化 ---- */
+/* ---- v2.4.25：血条显示策略 / 量化 ---- */
 {
   const modes = [
     T.computeViewMode({ role: "GM", locked: true, hide: false, phase: "idle" }),
@@ -369,16 +369,16 @@ console.log("== 15 四防临时值联动不被 syncTokenStats 回写");
     T.computeViewMode({ role: "PLAYER", locked: true, hide: true, phase: "combat" })
   ];
   if (modes.join(",") === "full,full,silhouette,hidden,full,hidden")
-    ok("v2.4.24：computeViewMode GM/owner→full，locked+战斗→silhouette，locked+空闲→hidden，unlocked→full，hide→hidden");
-  else bad("v2.4.24：computeViewMode 不对：" + modes.join(","));
+    ok("v2.4.25：computeViewMode GM/owner→full，locked+战斗→silhouette，locked+空闲→hidden，unlocked→full，hide→hidden");
+  else bad("v2.4.25：computeViewMode 不对：" + modes.join(","));
   if (T.quantiseRatio(0.32) === 0.5 && T.quantiseRatio(0.1) === 0.25 && T.quantiseRatio(0) === 0 && T.quantiseRatio(1) === 1)
-    ok("v2.4.24：quantiseRatio 25% 步进（0.32→0.5 / 0.1→0.25 / 0→0）");
-  else bad("v2.4.24：quantiseRatio 不对");
+    ok("v2.4.25：quantiseRatio 25% 步进（0.32→0.5 / 0.1→0.25 / 0→0）");
+  else bad("v2.4.25：quantiseRatio 不对");
   const core = fs.readFileSync(path.join(ROOT, "assets", "background.core.js"), "utf8");
   if (core.indexOf("it.visible === false") >= 0 && core.indexOf("hide: m.hide === true") >= 0 &&
     core.indexOf("quantiseBarRatio") >= 0)
-    ok("v2.4.24：地图血条跳过不可见 token / 支持 hide / silhouette 量化");
-  else bad("v2.4.24：地图血条可见性/hide/量化缺失");
+    ok("v2.4.25：地图血条跳过不可见 token / 支持 hide / silhouette 量化");
+  else bad("v2.4.25：地图血条可见性/hide/量化缺失");
 }
 
 console.log(fail ? "\n" + fail + " 个问题" : "\n全部通过");
