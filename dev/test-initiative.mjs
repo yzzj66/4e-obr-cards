@@ -142,7 +142,7 @@ const OBR = {
   }
 };
 
-/* v2.4.31：场景 metadata 兜底 */
+/* v2.4.32：场景 metadata 兜底 */
 OBR.scene.getMetadata = async () => sceneMeta;
 OBR.scene.setMetadata = async (update) => { Object.assign(sceneMeta, update); };
 
@@ -425,10 +425,10 @@ for (const label of ["绑定 4E NEXT 角色卡", "加入先攻", "隐形加入�
 }
 const addMenu = createdMenus.filter((m) => m.icons && m.icons[0] && m.icons[0].label === "加入先攻")[0];
 const hiddenMenu = createdMenus.filter((m) => m.icons && m.icons[0] && m.icons[0].label === "隐形加入先攻")[0];
-if (addMenu && hiddenMenu && addMenu.icons[0].filter.roles.indexOf("GM") >= 0 &&
+if (addMenu && hiddenMenu && !addMenu.icons[0].filter.roles &&
   hiddenMenu.icons[0].filter.roles.indexOf("GM") >= 0 &&
   addMenu.icons[0].filter.every[0].value === "IMAGE") {
-  ok("两项都只对单个 IMAGE token + GM 出现");
+  ok("「加入先攻」对玩家开放（无 roles 限制）；「隐形加入先攻」仍 GM 专属；都要求单个 IMAGE token");
 } else bad("两项右键的 filter 不对");
 
 roomMeta[KEY_INITIATIVE] = null;
@@ -1010,9 +1010,9 @@ const inInitCond = (m) => {
   if (addC && addC.operator === "!=" && addC.value === true && rmC && rmC.value === true && !rmC.operator)
     ok("菜单 filter 互斥：加入两项要求 in-init「!= true」，移出要求 in-init「== true」（同一枚 token 只出现一种）");
   else bad("菜单 filter 不是按 in-init 互斥：" + JSON.stringify({ addC, rmC }));
-  if (addM && addM.icons[0].filter.roles.indexOf("GM") >= 0 && addM.icons[0].filter.max === 1 &&
-    addM.icons[0].filter.every[0].value === "IMAGE")
-    ok("三项仍只对 GM + 单个 IMAGE token 出现");
+  if (addM && !addM.icons[0].filter.roles && hidM.icons[0].filter.roles.indexOf("GM") >= 0 &&
+    addM.icons[0].filter.max === 1 && addM.icons[0].filter.every[0].value === "IMAGE")
+    ok("「加入先攻」对玩家开放（无 roles），隐形/移出仍 GM，都限定单个 IMAGE token");
   else bad("右键三项的 GM / IMAGE / max 条件不对");
 }
 
@@ -1359,8 +1359,8 @@ console.log("== v1.7.10 先攻加值可编辑 + 无卡 token 加入先攻");
 
 console.log("== 静态检查");
 const man = JSON.parse(fs.readFileSync(path.join(ROOT, "manifest.json"), "utf8"));
-if (!man.action) man.action = { icon: "https://example.invalid/icon.svg", popover: "https://example.invalid/dice.html?v=2.4.31" };
-if (man.name === "4eNEXT to owlbear" && man.version === "2.4.31") ok("manifest 名称 / 版本 = 4eNEXT to owlbear 2.4.31");
+if (!man.action) man.action = { icon: "https://example.invalid/icon.svg", popover: "https://example.invalid/dice.html?v=2.4.32" };
+if (man.name === "4eNEXT to owlbear" && man.version === "2.4.32") ok("manifest 名称 / 版本 = 4eNEXT to owlbear 2.4.32");
 else bad("manifest 名称 / 版本不对：" + man.name + " " + man.version);
 if (man.action && /^https:\/\//.test(man.action.popover) && /\/dice(?:-entry)?\.html(?:\?v=[0-9.]+)?$/.test(man.action.popover))
   ok("manifest.action = 骰子入口 launcher（dice-entry.html，绝对 URL）");
@@ -1416,11 +1416,11 @@ if (initPageSrc.indexOf("CH_GLANCE_SUPPRESS") >= 0 &&
   initPageSrc.indexOf("sendMessage(CH_GLANCE_SUPPRESS") < initPageSrc.indexOf("OBR.player.select"))
   ok("点先攻条卡片：先广播 CH_GLANCE_SUPPRESS 再 OBR.player.select（地图高亮保留、不再弹速览）");
 else bad("点卡片没有先广播 CH_GLANCE_SUPPRESS / 顺序不对（速览还是会弹）");
-/* v2.4.31：动态顺序断言 —— 抑制广播的 promise resolve 之前，player.select 绝不能被调用。 */
+/* v2.4.32：动态顺序断言 —— 抑制广播的 promise resolve 之前，player.select 绝不能被调用。 */
 {
   const start = initPageSrc.indexOf("async function onCardClick(tokenId) {");
   const end = initPageSrc.indexOf("\n\n/** 玩家「结束我的回合」", start);
-  if (start < 0 || end < 0) bad("v2.4.31：抽不出 onCardClick()（页面结构变了）");
+  if (start < 0 || end < 0) bad("v2.4.32：抽不出 onCardClick()（页面结构变了）");
   else {
     const snippet = initPageSrc.slice(start, end);
     const order = [];
@@ -1446,8 +1446,8 @@ else bad("点卡片没有先广播 CH_GLANCE_SUPPRESS / 顺序不对（速览还
     if (release) release();
     await pending;
     if (before === "send" && order.join(",") === "send,select")
-      ok("v2.4.31：先 await 抑制广播送达，再 player.select（旧写法会在广播 resolve 前就 select → 偶发弹速览）");
-    else bad("v2.4.31：抑制广播未 await 就 select（顺序 " + before + " → " + order.join(",") + "）");
+      ok("v2.4.32：先 await 抑制广播送达，再 player.select（旧写法会在广播 resolve 前就 select → 偶发弹速览）");
+    else bad("v2.4.32：抑制广播未 await 就 select（顺序 " + before + " → " + order.join(",") + "）");
   }
 }
 
@@ -1476,53 +1476,53 @@ else bad("「结束我的回合」没有标 data-bg（后台离线时不会被�
 if (winGmHtml.indexOf("data-bg-soft") >= 0) ok("GM 的回合按钮带 data-bg-soft（后台离线只弱化外观）");
 else bad("GM 的回合按钮没有标 data-bg-soft");
 
-/* ---- v2.4.31：房间 16KB 治理 / 先攻真源 ---- */
+/* ---- v2.4.32：房间 16KB 治理 / 先攻真源 ---- */
 {
   const coreSrc = fs.readFileSync(path.join(ROOT, "assets", "background.core.js"), "utf8");
   if (api.roomWriteGuarded && api.roomAuditLog && coreSrc.indexOf("room meta total=") >= 0 &&
     coreSrc.indexOf("other=") >= 0 && coreSrc.indexOf("top=") >= 0 && coreSrc.indexOf("ROOM_WRITE_LIMIT = 15500") >= 0 && coreSrc.indexOf("TextEncoder") >= 0)
-    ok("v2.4.31：房间写入按整包 + UTF-8 字节计算（16KB-512），体检含 ours/other/top");
-  else bad("v2.4.31：整包预算 / 体检日志缺失");
-  if (!api.roomWriteGuarded) bad("v2.4.31：roomWriteGuarded 未暴露");
+    ok("v2.4.32：房间写入按整包 + UTF-8 字节计算（16KB-512），体检含 ours/other/top");
+  else bad("v2.4.32：整包预算 / 体检日志缺失");
+  if (!api.roomWriteGuarded) bad("v2.4.32：roomWriteGuarded 未暴露");
   else {
     roomMeta = { [KEY_CARDS]: { v: 1, cards: [] }, ["com.other-plugin/blob"]: { blob: "x".repeat(20 * 1024) } };
     const res = await api.roomWriteGuarded(KEY_INITIATIVE, I.normalizeInitiative(null));
     if (res.ok && res.store === "scene" && res.other > 15 * 1024 && sceneMeta[KEY_INITIATIVE])
-      ok("v2.4.31：其它插件占满整包时本插件改写场景，并回报 ours/other");
-    else bad("v2.4.31：整包超限未回退场景：" + JSON.stringify({ ok: res.ok, store: res.store, other: res.other }));
+      ok("v2.4.32：其它插件占满整包时本插件改写场景，并回报 ours/other");
+    else bad("v2.4.32：整包超限未回退场景：" + JSON.stringify({ ok: res.ok, store: res.store, other: res.other }));
     roomMeta = { [KEY_ROLLS]: { v: 1, seq: 1, rows: [{ x: "r".repeat(100) }] }, ["com.other-plugin/blob"]: { blob: "x".repeat(16 * 1024) } };
     const big = api.initNorm({ entries: [{ tokenId: "t1", name: "名字".repeat(10), init: 1, bonus: 0 }] });
     const res2 = await api.roomWriteGuarded(KEY_INITIATIVE, big);
     if (res2.ok && res2.store === "scene" && sceneMeta[KEY_INITIATIVE])
-      ok("v2.4.31：接近/超过上限时改写场景 metadata（不再挤房间）");
-    else bad("v2.4.31：超限未回退场景：" + JSON.stringify({ ok: res2.ok, reason: res2.reason, store: res2.store }));
+      ok("v2.4.32：接近/超过上限时改写场景 metadata（不再挤房间）");
+    else bad("v2.4.32：超限未回退场景：" + JSON.stringify({ ok: res2.ok, reason: res2.reason, store: res2.store }));
   }
   const initAddSrc = coreSrc.slice(coreSrc.indexOf("async function initAdd"), coreSrc.indexOf("function initRemove"));
   if (initAddSrc.indexOf('persisted: !next.local') >= 0 && coreSrc.indexOf("if (!res.persisted)") >= 0 &&
     coreSrc.indexOf("await syncInitFlags();") >= 0)
-    ok("v2.4.31：先攻以房间状态为真源，写失败不打 token 标记");
-  else bad("v2.4.31：initAdd 失败仍可能打 token 标记");
+    ok("v2.4.32：先攻以房间状态为真源，写失败不打 token 标记");
+  else bad("v2.4.32：initAdd 失败仍可能打 token 标记");
   if (coreSrc.indexOf("房间先攻 entries 是唯一真源") >= 0 &&
     coreSrc.indexOf("function initWantIds") >= 0 &&
     coreSrc.slice(coreSrc.indexOf("function initWantIds"), coreSrc.indexOf("async function syncInitFlags")).indexOf("Array.isArray(ids)") < 0)
-    ok("v2.4.31：syncInitFlags 只按房间 entries 反推，忽略调用方临时 ids");
-  else bad("v2.4.31：syncInitFlags 仍可能被临时 ids 污染");
+    ok("v2.4.32：syncInitFlags 只按房间 entries 反推，忽略调用方临时 ids");
+  else bad("v2.4.32：syncInitFlags 仍可能被临时 ids 污染");
   if (coreSrc.indexOf("房间数据已满（本插件 ") >= 0 && coreSrc.indexOf("其它插件 ") >= 0)
-    ok("v2.4.31：写满通知含本插件 / 其它插件占用");
-  else bad("v2.4.31：写满通知文案缺失");
+    ok("v2.4.32：写满通知含本插件 / 其它插件占用");
+  else bad("v2.4.32：写满通知文案缺失");
 }
 
-/* ---- v2.4.31 场景兜底 / updatedAt 取新 ---- */
+/* ---- v2.4.32 场景兜底 / updatedAt 取新 ---- */
 {
-  if (!api.initRead || !api.roomWriteGuarded) bad("v2.4.31：initRead/roomWriteGuarded 未暴露");
+  if (!api.initRead || !api.roomWriteGuarded) bad("v2.4.32：initRead/roomWriteGuarded 未暴露");
   else {
     const st = I.normalizeInitiative({ updatedAt: 5, entries: [{ tokenId: "t1", name: "A", init: 5, bonus: 0 }] });
     roomMeta = { ["com.other-plugin/blob"]: { blob: "x".repeat(20 * 1024) } };
     sceneMeta = {};
     const res = await api.roomWriteGuarded(KEY_INITIATIVE, st);
     if (res.ok && res.store === "scene" && sceneMeta[KEY_INITIATIVE] && !roomMeta[KEY_INITIATIVE])
-      ok("v2.4.31：整包 >15500B → 写场景 metadata 而非房间");
-    else bad("v2.4.31：整包超限未回退场景：" + JSON.stringify({ ok: res.ok, store: res.store }));
+      ok("v2.4.32：整包 >15500B → 写场景 metadata 而非房间");
+    else bad("v2.4.32：整包超限未回退场景：" + JSON.stringify({ ok: res.ok, store: res.store }));
     /* 房间抛 quota → 回退场景 */
     roomMeta = {}; sceneMeta = {};
     const oldSet = OBR.room.setMetadata;
@@ -1530,8 +1530,8 @@ else bad("GM 的回合按钮没有标 data-bg-soft");
     const res2 = await api.roomWriteGuarded(KEY_INITIATIVE, st);
     OBR.room.setMetadata = oldSet;
     if (res2.ok && res2.store === "scene" && sceneMeta[KEY_INITIATIVE])
-      ok("v2.4.31：房间 quota 报错 → 回退场景 metadata");
-    else bad("v2.4.31：quota 未回退场景：" + JSON.stringify({ ok: res2.ok, store: res2.store }));
+      ok("v2.4.32：房间 quota 报错 → 回退场景 metadata");
+    else bad("v2.4.32：quota 未回退场景：" + JSON.stringify({ ok: res2.ok, store: res2.store }));
     /* 场景也失败 → local 兜底 */
     roomMeta = {}; sceneMeta = {};
     const oldSetR = OBR.room.setMetadata;
@@ -1541,50 +1541,50 @@ else bad("GM 的回合按钮没有标 data-bg-soft");
     const res3 = await api.roomWriteGuarded(KEY_INITIATIVE, st);
     OBR.room.setMetadata = oldSetR; OBR.scene.setMetadata = oldSetS;
     if (!res3.ok && res3.store === "local" && res3.reason === "full")
-      ok("v2.4.31：场景也失败 → 返回 local（调用方本机兜底 + 通知）");
-    else bad("v2.4.31：场景失败未降级 local：" + JSON.stringify({ ok: res3.ok, store: res3.store }));
+      ok("v2.4.32：场景也失败 → 返回 local（调用方本机兜底 + 通知）");
+    else bad("v2.4.32：场景失败未降级 local：" + JSON.stringify({ ok: res3.ok, store: res3.store }));
     /* updatedAt 取较新：room 旧 / scene 新 */
     roomMeta = { [KEY_INITIATIVE]: { updatedAt: 10, entries: [{ tokenId: "room", name: "旧", init: 1, bonus: 0 }] } };
     sceneMeta = { [KEY_INITIATIVE]: { updatedAt: 20, entries: [{ tokenId: "scene", name: "新", init: 2, bonus: 0 }] } };
     const read = await api.initRead();
     if (read.entries.length === 1 && read.entries[0].tokenId === "scene")
-      ok("v2.4.31：initRead 读取 scene/room 中 updatedAt 较新者");
-    else bad("v2.4.31：initRead 未取较新：" + JSON.stringify(read.entries));
+      ok("v2.4.32：initRead 读取 scene/room 中 updatedAt 较新者");
+    else bad("v2.4.32：initRead 未取较新：" + JSON.stringify(read.entries));
     if (fs.readFileSync(path.join(ROOT, "assets", "background.core.js"), "utf8").indexOf("room bytes total=") >= 0)
-      ok("v2.4.31：写前日志 room bytes total=… key=… → room|scene|local");
-    else bad("v2.4.31：缺少 room bytes 日志");
+      ok("v2.4.32：写前日志 room bytes total=… key=… → room|scene|local");
+    else bad("v2.4.32：缺少 room bytes 日志");
   }
 }
 
-/* ---- v2.4.31 场景兜底读取 / 订阅 ---- */
+/* ---- v2.4.32 场景兜底读取 / 订阅 ---- */
 {
   const bg = fs.readFileSync(path.join(ROOT, "assets", "background.core.js"), "utf8");
   const initJs = fs.readFileSync(path.join(ROOT, "assets", "initiative.js"), "utf8");
   const initPage = fs.readFileSync(path.join(ROOT, "assets", "initiative-page.js"), "utf8");
   if (bg.indexOf("OBR.scene.getMetadata") >= 0 && bg.indexOf("scene.onMetadataChange（场景兜底存储）") >= 0 &&
     initJs.indexOf("OBR.scene.getMetadata") >= 0 && initPage.indexOf("OBR.scene.onMetadataChange") >= 0)
-    ok("v2.4.31：先攻读取 scene+room 取新，并订阅 scene.onMetadataChange");
-  else bad("v2.4.31：先攻场景兜底读取/订阅缺失");
+    ok("v2.4.32：先攻读取 scene+room 取新，并订阅 scene.onMetadataChange");
+  else bad("v2.4.32：先攻场景兜底读取/订阅缺失");
   if (api.initRead) {
     roomMeta = { [KEY_INITIATIVE]: { updatedAt: 10, entries: [{ tokenId: "room", name: "旧", init: 1, bonus: 0 }] } };
     sceneMeta = { [KEY_INITIATIVE]: { updatedAt: 20, entries: [{ tokenId: "scene", name: "新", init: 2, bonus: 0 }] } };
     const st = await api.initRead();
-    if (st.entries[0] && st.entries[0].tokenId === "scene") ok("v2.4.31：先攻 room 旧 / scene 新 → 读 scene");
-    else bad("v2.4.31：先攻双源取新失败");
+    if (st.entries[0] && st.entries[0].tokenId === "scene") ok("v2.4.32：先攻 room 旧 / scene 新 → 读 scene");
+    else bad("v2.4.32：先攻双源取新失败");
     sceneMeta = { [KEY_INITIATIVE]: { updatedAt: 5, entries: [{ tokenId: "scene", name: "旧", init: 1, bonus: 0 }] } };
     roomMeta = { [KEY_INITIATIVE]: { updatedAt: 30, entries: [{ tokenId: "room", name: "新", init: 2, bonus: 0 }] } };
     const st2 = await api.initRead();
-    if (st2.entries[0] && st2.entries[0].tokenId === "room") ok("v2.4.31：scene 旧 / room 新 → 读 room");
-    else bad("v2.4.31：先攻 room 新时未读 room");
+    if (st2.entries[0] && st2.entries[0].tokenId === "room") ok("v2.4.32：scene 旧 / room 新 → 读 room");
+    else bad("v2.4.32：先攻 room 新时未读 room");
   }
 }
 
-/* ---- v2.4.31：init 并发写保护 ---- */
+/* ---- v2.4.32：init 并发写保护 ---- */
 {
   const bg = fs.readFileSync(path.join(ROOT, "assets", "background.core.js"), "utf8");
   if (bg.indexOf("init write conflict") >= 0 && bg.indexOf("其他人刚修改先攻，已刷新") >= 0)
-    ok("v2.4.31：先攻写前比较 updatedAt，冲突重读并提示");
-  else bad("v2.4.31：先攻并发保护缺失");
+    ok("v2.4.32：先攻写前比较 updatedAt，冲突重读并提示");
+  else bad("v2.4.32：先攻并发保护缺失");
 }
 
 console.log(fail ? "\n" + fail + " 个问题" : "\n全部通过");

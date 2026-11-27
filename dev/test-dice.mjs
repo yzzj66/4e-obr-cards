@@ -303,7 +303,7 @@ const dmgItem = presets.groups[1].items[0];
 if (dmgItem && dmgItem.expr === P.withModifier(g.damages[0].dice || "1d8", g.damages[0].total))
   ok("伤害预设 = 武器骰 + glance.damages[0].total（" + g.damages[0].total + "）");
 else bad("伤害预设不对：" + JSON.stringify(dmgItem));
-/* v2.4.31：loadState 返回 {state, scope} —— tempsFromLoaded 必须剥一层，否则联动恒为 0 */
+/* v2.4.32：loadState 返回 {state, scope} —— tempsFromLoaded 必须剥一层，否则联动恒为 0 */
 {
   const loaded = { state: { atkTemp: 2, dmgTemp: 3 }, scope: "room" };
   const temps = P.tempsFromLoaded(loaded);
@@ -313,12 +313,12 @@ else bad("伤害预设不对：" + JSON.stringify(dmgItem));
   if (temps.atkTemp === 2 && temps.dmgTemp === 3 &&
     a.label.indexOf("（临时 +2）") >= 0 && a.expr === P.withModifier("1d20", g.attacks[0].total + 2) &&
     dd.label.indexOf("（临时 +3）") >= 0) {
-    ok("v2.4.31：tempsFromLoaded({state:{atkTemp:2,dmgTemp:3}}) → 攻击「临时 +2」、伤害「临时 +3」，数值同步 +2/+3");
-  } else bad("v2.4.31：tempsFromLoaded 没有正确剥离 state：" + JSON.stringify({ temps, a, dd }));
+    ok("v2.4.32：tempsFromLoaded({state:{atkTemp:2,dmgTemp:3}}) → 攻击「临时 +2」、伤害「临时 +3」，数值同步 +2/+3");
+  } else bad("v2.4.32：tempsFromLoaded 没有正确剥离 state：" + JSON.stringify({ temps, a, dd }));
   const wrongShape = P.tempsFromLoaded({ atkTemp: 2, dmgTemp: 3 });
   if (wrongShape.atkTemp === 0 && wrongShape.dmgTemp === 0)
-    ok("v2.4.31：未包 state 的旧错误形状 = 0（防止再直接读 loadState 返回值）");
-  else bad("v2.4.31：tempsFromLoaded 把未包 state 的对象也当状态了：" + JSON.stringify(wrongShape));
+    ok("v2.4.32：未包 state 的旧错误形状 = 0（防止再直接读 loadState 返回值）");
+  else bad("v2.4.32：tempsFromLoaded 把未包 state 的对象也当状态了：" + JSON.stringify(wrongShape));
 }
 
 
@@ -330,21 +330,21 @@ else bad("伤害预设不对：" + JSON.stringify(dmgItem));
   const wantAtk = P.withModifier("1d20", g2.attacks[0].total + 2);
   const wantDmg = P.withModifier(g2.damages[0].dice || "1d8", g2.damages[0].total + 3);
   if (pAtk.expr === wantAtk && pAtk.label.indexOf("（临时 +2）") >= 0)
-    ok("v2.4.31：atkTemp +2 → 攻击 expr " + pAtk.expr + "，标签「" + pAtk.label + "」");
-  else bad("v2.4.31：atkTemp 没有进攻击预设：" + JSON.stringify(pAtk));
+    ok("v2.4.32：atkTemp +2 → 攻击 expr " + pAtk.expr + "，标签「" + pAtk.label + "」");
+  else bad("v2.4.32：atkTemp 没有进攻击预设：" + JSON.stringify(pAtk));
   if (pDmg.expr === wantDmg && pDmg.label.indexOf("（临时 +3）") >= 0)
-    ok("v2.4.31：dmgTemp +3 → 伤害 expr " + pDmg.expr + "，标签带「（临时 +3）」");
-  else bad("v2.4.31：dmgTemp 没有进伤害预设：" + JSON.stringify(pDmg));
+    ok("v2.4.32：dmgTemp +3 → 伤害 expr " + pDmg.expr + "，标签带「（临时 +3）」");
+  else bad("v2.4.32：dmgTemp 没有进伤害预设：" + JSON.stringify(pDmg));
   const zero = P.presetsFor(CHAR, undefined, { atkTemp: 0, dmgTemp: 0 });
   if (JSON.stringify(zero) === JSON.stringify(P.presetsFor(CHAR)))
-    ok("v2.4.31：临时值为 0 时输出与旧调用完全一致（兼容）");
-  else bad("v2.4.31：临时值 0 时输出变了");
+    ok("v2.4.32：临时值为 0 时输出与旧调用完全一致（兼容）");
+  else bad("v2.4.32：临时值 0 时输出变了");
   const neg = P.presetsFor(CHAR, undefined, { atkTemp: -3, dmgTemp: -2 });
   if (neg.groups[0].items[0].expr === P.withModifier("1d20", g2.attacks[0].total - 3) &&
     neg.groups[0].items[0].label.indexOf("（临时 -3）") >= 0 &&
     neg.groups[1].items[0].label.indexOf("（临时 -2）") >= 0)
-    ok("v2.4.31：负临时值（-3 / -2）同样先加 total、标签写「临时 -3」");
-  else bad("v2.4.31：负临时值处理不对：" + JSON.stringify(neg.groups[0].items[0]));
+    ok("v2.4.32：负临时值（-3 / -2）同样先加 total、标签写「临时 -3」");
+  else bad("v2.4.32：负临时值处理不对：" + JSON.stringify(neg.groups[0].items[0]));
 }
 const skillItems = presets.groups[2].items;
 const skillHit = skillItems.filter((s) => s.name === "侦查")[0];
@@ -672,7 +672,7 @@ else {
       } else bad("投掷广播不对：" + JSON.stringify(sent));
       if (domMap.result.innerHTML.indexOf("res-total") >= 0) ok("结果面板画出了总点数");
       else bad("结果面板没有渲染");
-      /* v2.4.31：动画改由各客户端后台收到 CH_DICE_ROLL 打开；页面只负责广播。 */
+      /* v2.4.32：动画改由各客户端后台收到 CH_DICE_ROLL 打开；页面只负责广播。 */
       const fx = sentFx[0] || null;
       if (fx && fx.v === 1 && fx.id === fx.rollId && fx.anchor !== undefined &&
         Array.isArray(fx.dice) && fx.dice.length === 2 && fx.dice.every((d) => d.type === "d6") &&
@@ -1049,7 +1049,7 @@ globalThis.cancelAnimationFrame = savedTimers.caf;
 // 顺带确认「不启动浏览器」：本测试只用纯函数 + 假 OBR + 假 DOM，没有任何 GUI
 console.log("\n  info 未启动浏览器（沙箱环境禁止），以上全部为纯函数 / 假 OBR / 假 DOM 断言");
 
-/* ---- v2.4.31 骰子动画 SVG / 多端同步 ---- */
+/* ---- v2.4.32 骰子动画 SVG / 多端同步 ---- */
 {
   const fx = fs.readFileSync(path.join(ROOT, "assets", "dice-fx.js"), "utf8");
   const eff = fs.readFileSync(path.join(ROOT, "assets", "effect-page.js"), "utf8");
@@ -1057,16 +1057,16 @@ console.log("\n  info 未启动浏览器（沙箱环境禁止），以上全部�
   const common = fs.readFileSync(path.join(ROOT, "assets", "common.js"), "utf8");
   if (fx.indexOf("export function diceSvg") >= 0 && ["d4","d6","d8","d10","d12","d20","d100"].every(t => fx.indexOf(t + ":") >= 0) &&
     eff.indexOf("diceSvg(d.type, d.value)") >= 0 && eff.indexOf("fx-shape") >= 0)
-    ok("v2.4.31：自绘 SVG 骰子 d4/d6/d8/d10/d12/d20/d100，动画页按类型渲染");
-  else bad("v2.4.31：SVG 骰子缺失/映射不对");
+    ok("v2.4.32：自绘 SVG 骰子 d4/d6/d8/d10/d12/d20/d100，动画页按类型渲染");
+  else bad("v2.4.32：SVG 骰子缺失/映射不对");
   if (common.indexOf("CH_DICE_ROLL") >= 0 && common.indexOf("CH_DICE_CLEAR") >= 0 &&
     page.indexOf("broadcast(CH_DICE_ROLL, fxMsg)") >= 0 && page.indexOf("seenFxRolls[d.id]") >= 0 &&
     page.indexOf("CH_DICE_CLEAR") >= 0)
-    ok("v2.4.31：投掷广播 CH_DICE_ROLL（含 anchor/rollId），按 rollId 去重；清场广播 CH_DICE_CLEAR");
-  else bad("v2.4.31：多端同步/去重缺失");
+    ok("v2.4.32：投掷广播 CH_DICE_ROLL（含 anchor/rollId），按 rollId 去重；清场广播 CH_DICE_CLEAR");
+  else bad("v2.4.32：多端同步/去重缺失");
 }
 
-/* ---- v2.4.31 阶段一：布局 / 节奏 / 队列 ---- */
+/* ---- v2.4.32 阶段一：布局 / 节奏 / 队列 ---- */
 {
   const FX = await import(pathToFileURL(path.join(tmp, "assets", "dice-fx.js")).href);
   const makes = (n) => Array.from({ length: n }, (_, i) => ({ type: i % 2 ? "d6" : "d20" }));
@@ -1078,23 +1078,23 @@ console.log("\n  info 未启动浏览器（沙箱环境禁止），以上全部�
   const maxBottom = (L) => Math.max(...L.slots.map((s) => Math.abs(s.oy) + s.size / 2));
   if (l1.slots.length === 1 && l5.slots.length === 5 && l10.slots.length === 10 && l20.slots.length === 20 &&
     maxRight(l10) <= 1280 * 0.5 && maxRight(l20) <= 1280 * 0.5 && l20.baseSize < l5.baseSize)
-    ok("v2.4.31：自适应布局 1/5/10/20 颗数量正确，尺寸随数量缩小且不超界");
-  else bad("v2.4.31：自适应布局不对");
+    ok("v2.4.32：自适应布局 1/5/10/20 颗数量正确，尺寸随数量缩小且不超界");
+  else bad("v2.4.32：自适应布局不对");
   const d1 = FX.diceFxDuration(1, "standard");
   const d10 = FX.diceFxDuration(10, "standard");
   const fast = FX.diceFxDuration(10, "fast");
   const off = FX.diceFxDuration(10, "off");
   if (d1 >= 1200 && d10 === 2700 && fast === 1620 && off === 500)
-    ok("v2.4.31：节奏 900+180n（1→1200 / 10→2700）；快速×0.6；关闭=500ms");
-  else bad("v2.4.31：节奏计算不对：" + JSON.stringify({ d1, d10, fast, off }));
+    ok("v2.4.32：节奏 900+180n（1→1200 / 10→2700）；快速×0.6；关闭=500ms");
+  else bad("v2.4.32：节奏计算不对：" + JSON.stringify({ d1, d10, fast, off }));
   const bg = fs.readFileSync(path.join(ROOT, "assets", "background.core.js"), "utf8");
   if (bg.indexOf("diceFxQueue") < 0 && bg.indexOf("DICE_FX_MAX") < 0 &&
     bg.indexOf("async function runDiceFx") >= 0 && bg.indexOf("OBR.modal.open({ id: id") >= 0)
-    ok("v2.4.31：后台每投直接开唯一 modal（不排队，照 Full Suite），避免高频丢动画");
-  else bad("v2.4.31：后台直开 modal 缺失");
+    ok("v2.4.32：后台每投直接开唯一 modal（不排队，照 Full Suite），避免高频丢动画");
+  else bad("v2.4.32：后台直开 modal 缺失");
 }
 
-/* ---- v2.4.31：重复按钮 ---- */
+/* ---- v2.4.32：重复按钮 ---- */
 {
   if (D.repeatExpr) {
     const w = D.repeatExpr("1d20 + 5", 2);
@@ -1105,80 +1105,80 @@ console.log("\n  info 未启动浏览器（沙箱环境禁止），以上全部�
     const empty = D.repeatExpr("   ", 2);
     if (w.ok && w.expr === "repeat(2, 1d20 + 5)" && r.ok && r.expr === "repeat(5, 1d6+2)" &&
       same.expr === "repeat(3, 1d6+2)" && lo.n === 1 && hi.n === 20 && !empty.ok)
-      ok("v2.4.31：repeat 包一层/替换 N/幂等/clamp 1–20/空表达式报错");
-    else bad("v2.4.31：repeatExpr 行为不对：" + JSON.stringify({ w, r, same, lo, hi, empty }));
-  } else bad("v2.4.31：repeatExpr 未导出");
+      ok("v2.4.32：repeat 包一层/替换 N/幂等/clamp 1–20/空表达式报错");
+    else bad("v2.4.32：repeatExpr 行为不对：" + JSON.stringify({ w, r, same, lo, hi, empty }));
+  } else bad("v2.4.32：repeatExpr 未导出");
   const html = fs.readFileSync(path.join(ROOT, "dice.html"), "utf8");
   const page = fs.readFileSync(path.join(ROOT, "assets", "dice-page.js"), "utf8");
   if (html.indexOf('id="repeat-n"') >= 0 && html.indexOf('id="repeat-apply"') >= 0 &&
     html.indexOf('data-repeat="2"') >= 0 && page.indexOf("repeat apply n=") >= 0)
-    ok("v2.4.31：面板有 #repeat-n / #repeat-apply / ×2×3×5，apply 有日志");
-  else bad("v2.4.31：repeat UI 缺失");
+    ok("v2.4.32：面板有 #repeat-n / #repeat-apply / ×2×3×5，apply 有日志");
+  else bad("v2.4.32：repeat UI 缺失");
   const parsed = D.rollParsed(D.parseExpr("repeat(3, 1d6+2)"), {});
   if (parsed && Array.isArray(parsed.rowStarts) && parsed.rowStarts.length === 3)
-    ok("v2.4.31：repeat(3,1d6+2) 产生 3 行 rowStarts");
-  else bad("v2.4.31：repeat rowStarts 不对：" + JSON.stringify(parsed && parsed.rowStarts));
+    ok("v2.4.32：repeat(3,1d6+2) 产生 3 行 rowStarts");
+  else bad("v2.4.32：repeat rowStarts 不对：" + JSON.stringify(parsed && parsed.rowStarts));
 }
 
-/* ---- v2.4.31 修正：repeat 顺序 / 历史换行分行 ---- */
+/* ---- v2.4.32 修正：repeat 顺序 / 历史换行分行 ---- */
 {
   const parsed = D.parseExpr("repeat(2, 1d20+5)");
   const text = D.formatExpr(parsed);
   const again = D.parseExpr(text);
   if (/^repeat\(2,/.test(text) && text.indexOf("1d20") > 0 && D.formatExpr(again) === text)
-    ok("v2.4.31：repeat 规范表达式顺序为 repeat(2, inner)，format→parse 往返一致");
-  else bad("v2.4.31：repeat 表达式顺序/往返不对：" + text);
+    ok("v2.4.32：repeat 规范表达式顺序为 repeat(2, inner)，format→parse 往返一致");
+  else bad("v2.4.32：repeat 表达式顺序/往返不对：" + text);
   const css = fs.readFileSync(path.join(ROOT, "assets", "ui.css"), "utf8");
   const page = fs.readFileSync(path.join(ROOT, "assets", "dice-page.js"), "utf8");
   if (page.indexOf("res-formula") < 0 && /res-rows \{[^}]*gap: 0/.test(css))
-    ok("v2.4.31：本次结果删除裸公式行，等式行紧凑（gap 0）");
-  else bad("v2.4.31：结果裸公式行/行距未清理");
+    ok("v2.4.32：本次结果删除裸公式行，等式行紧凑（gap 0）");
+  else bad("v2.4.32：结果裸公式行/行距未清理");
   const hist = fs.readFileSync(path.join(ROOT, "assets", "dice-history-page.js"), "utf8");
   if (css.indexOf("body.dh-page .hist-expr") < 0 && /body\.dh-page \.hist-line[^}]*line-height: 1\.25/.test(css) &&
     hist.indexOf("hist-chips") >= 0 && hist.indexOf("hist-rows") >= 0 && hist.indexOf("repeatRowLines(r)") >= 0)
-    ok("v2.4.31：历史不再有裸公式行；chip 行 + 逐行等式，允许换行");
-  else bad("v2.4.31：历史换行/分行渲染缺失");
+    ok("v2.4.32：历史不再有裸公式行；chip 行 + 逐行等式，允许换行");
+  else bad("v2.4.32：历史换行/分行渲染缺失");
 }
 
-/* ---- v2.4.31 逐行格式 ---- */
+/* ---- v2.4.32 逐行格式 ---- */
 {
   const mk = (expr, vals, mod) => ({ expression: expr, modifier: mod, rowStarts: vals.map((_, i) => i), dice: vals.map(v => ({ type: "d20", value: v })) });
   const lines = D.repeatRowLines ? D.repeatRowLines(mk("repeat(5, 1d20+5)", [3, 2, 12, 18, 10], 5)) : [];
   if (lines.length === 5 && lines[0] === "r1d20 + 5 = 3 + 5 = 8" && lines[1] === "r1d20 + 5 = 2 + 5 = 7" && lines[4] === "r1d20 + 5 = 10 + 5 = 15")
-    ok("v2.4.31：逐行格式 r1d20 = 骰面 + 修正 = 行总和（示例 3/2/12/18/10）");
-  else bad("v2.4.31：逐行格式不对：" + JSON.stringify(lines));
+    ok("v2.4.32：逐行格式 r1d20 = 骰面 + 修正 = 行总和（示例 3/2/12/18/10）");
+  else bad("v2.4.32：逐行格式不对：" + JSON.stringify(lines));
   const multi = D.repeatRowLines({ expression: "repeat(2, 2d6+1d20+5)", modifier: 5, rowStarts: [0, 3],
     dice: [{ type: "d6", value: 3 }, { type: "d6", value: 4 }, { type: "d20", value: 12 }, { type: "d6", value: 1 }, { type: "d6", value: 2 }, { type: "d20", value: 10 }] });
   if (multi.length === 2 && multi[0].indexOf("r2d6 + 1d20 + 5 = 3 + 4 + 12 + 5 = 24") >= 0)
-    ok("v2.4.31：多骰多修正行格式正确（2d6+1d20+5 = 3 + 4 + 12 + 5 = 24）");
-  else bad("v2.4.31：多骰行格式不对：" + JSON.stringify(multi));
+    ok("v2.4.32：多骰多修正行格式正确（2d6+1d20+5 = 3 + 4 + 12 + 5 = 24）");
+  else bad("v2.4.32：多骰行格式不对：" + JSON.stringify(multi));
   if (D.repeatRowLines({ expression: "1d20 + 5", rowStarts: [], dice: [{ type: "d20", value: 3 }] }).length === 0)
-    ok("v2.4.31：无 repeat 不产生 r 前缀行");
-  else bad("v2.4.31：无 repeat 仍生成 r 行");
+    ok("v2.4.32：无 repeat 不产生 r 前缀行");
+  else bad("v2.4.32：无 repeat 仍生成 r 行");
   const one = D.rollLine ? D.rollLine({ expression: "1d20+5", modifier: 5, total: 8, dice: [{ type: "d20", value: 3 }] }) : "";
   const many = D.rollLine ? D.rollLine({ expression: "2d6+1d20+5", modifier: 5, total: 24,
     dice: [{ type: "d6", value: 3 }, { type: "d6", value: 4 }, { type: "d20", value: 12 }] }) : "";
   if (one === "1d20 + 5 = 3 + 5 = 8" && many === "2d6 + 1d20 + 5 = 3 + 4 + 12 + 5 = 24" &&
     D.rollLine({ expression: "repeat(2,1d20)", dice: [{ type: "d20", value: 1 }], total: 1 }) === "")
-    ok("v2.4.31：普通单骰/多骰等式正确，repeat 不产生普通行");
-  else bad("v2.4.31：普通等式格式不对：" + JSON.stringify({ one, many }));
+    ok("v2.4.32：普通单骰/多骰等式正确，repeat 不产生普通行");
+  else bad("v2.4.32：普通等式格式不对：" + JSON.stringify({ one, many }));
   const hist = fs.readFileSync(path.join(ROOT, "assets", "dice-history-page.js"), "utf8");
   if (hist.indexOf("repeatRowLines(r)") >= 0 && hist.indexOf("rollLine(r)") >= 0 && hist.indexOf("hist-line") >= 0)
-    ok("v2.4.31：历史记录按逐行文本渲染");
-  else bad("v2.4.31：历史逐行渲染缺失");
+    ok("v2.4.32：历史记录按逐行文本渲染");
+  else bad("v2.4.32：历史逐行渲染缺失");
 }
 
-/* ---- v2.4.31：骰子广播限流与载荷校验 ---- */
+/* ---- v2.4.32：骰子广播限流与载荷校验 ---- */
 {
   const bg = fs.readFileSync(path.join(ROOT, "assets", "background.core.js"), "utf8");
   if (bg.indexOf("DICE_ROLL_MIN_MS = 800") >= 0 && bg.indexOf("DICE_ROLL_MAX_BYTES = 6144") >= 0 &&
     bg.indexOf("DICE_ROLL_MAX_DICE = 40") >= 0 && bg.indexOf("dice roll throttled") >= 0 &&
     bg.indexOf("function diceRollValid") >= 0 && bg.indexOf("dice roll rejected") >= 0)
-    ok("v2.4.31：CH_DICE_ROLL 800ms 限流 + 6KB/40 颗上限 + 非法 payload 拒绝");
-  else bad("v2.4.31：骰子广播限流/校验缺失");
+    ok("v2.4.32：CH_DICE_ROLL 800ms 限流 + 6KB/40 颗上限 + 非法 payload 拒绝");
+  else bad("v2.4.32：骰子广播限流/校验缺失");
 }
 
-/* ---- v2.4.31 投掷限制中文提示 ---- */
+/* ---- v2.4.32 投掷限制中文提示 ---- */
 {
   const page = fs.readFileSync(path.join(ROOT, "assets", "dice-page.js"), "utf8");
   const bg = fs.readFileSync(path.join(ROOT, "assets", "background.core.js"), "utf8");
@@ -1186,20 +1186,20 @@ console.log("\n  info 未启动浏览器（沙箱环境禁止），以上全部�
     page.indexOf("DICE_MSG_TOO_BIG") >= 0 && page.indexOf("lastRollSentAt") >= 0 &&
     page.indexOf("if ((payload.dice || []).length > DICE_ROLL_MAX_DICE)") >= 0 &&
     page.indexOf("rollBytes > DICE_ROLL_MAX_BYTES") >= 0)
-    ok("v2.4.31：面板 <0.8s / >40 颗 / >6KB 先校验并 flash，不广播");
-  else bad("v2.4.31：面板限流/上限校验缺失");
+    ok("v2.4.32：面板 <0.8s / >40 颗 / >6KB 先校验并 flash，不广播");
+  else bad("v2.4.32：面板限流/上限校验缺失");
   if (bg.indexOf("dice roll throttled") >= 0 && bg.indexOf("dice roll rejected reason=") >= 0 &&
     bg.indexOf("DICE_MSG_TOO_FAST") >= 0 && bg.indexOf("notify(reason === \"too-many\"") >= 0)
-    ok("v2.4.31：后台兜底：限流/拒绝时给本机发送者中文 WARNING");
-  else bad("v2.4.31：后台拒绝文案缺失");
+    ok("v2.4.32：后台兜底：限流/拒绝时给本机发送者中文 WARNING");
+  else bad("v2.4.32：后台拒绝文案缺失");
 }
 
-/* ---- v2.4.31 常驻限制提示 ---- */
+/* ---- v2.4.32 常驻限制提示 ---- */
 {
   const html = fs.readFileSync(path.join(ROOT, "dice.html"), "utf8");
   if (html.indexOf("单次最多 40 颗骰子；投掷间隔 0.8 秒") >= 0 && html.indexOf('class="sync-hint"') >= 0)
-    ok("v2.4.31：骰子面板常驻提示单次最多 40 颗 / 间隔 0.8 秒");
-  else bad("v2.4.31：全桌同步提示缺失");
+    ok("v2.4.32：骰子面板常驻提示单次最多 40 颗 / 间隔 0.8 秒");
+  else bad("v2.4.32：全桌同步提示缺失");
 }
 
 console.log(fail ? "\n" + fail + " 个问题" : "\n全部通过");
