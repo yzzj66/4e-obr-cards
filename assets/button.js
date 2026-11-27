@@ -1,4 +1,4 @@
-// 右下角浮动按钮（v2.4.18）：打开 4eNEXT to owlbear 设置窗口。
+// 右下角浮动按钮（v2.4.19）：打开 4eNEXT to owlbear 设置窗口。
 // 页面只负责发命令；后台已有 settings 窗口逻辑（WINS.settings / openWinOrNotify("settings")），不复制。
 import OBR from "../vendor/obr-sdk.js";
 import { CH_OPEN_SETTINGS } from "./common.js";
