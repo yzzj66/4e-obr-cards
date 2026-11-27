@@ -1,9 +1,9 @@
 {
   "name": "4eNEXT to owlbear",
-  "version": "2.4.26",
+  "version": "2.4.27",
   "manifest_version": 1,
   "author": "4E NEXT 玩家自制",
   "description": "基于4eNEXT的4e跑团适配mod",
-  "icon": "https://yzzj66.github.io/4e-obr-cards/icon.svg?v=2.4.26",
-  "background_url": "https://yzzj66.github.io/4e-obr-cards/background.html?v=2.4.26"
+  "icon": "https://yzzj66.github.io/4e-obr-cards/icon.svg?v=2.4.27",
+  "background_url": "https://yzzj66.github.io/4e-obr-cards/background.html?v=2.4.27"
 }

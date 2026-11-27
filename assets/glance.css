@@ -570,3 +570,7 @@ body.info-body input {
 .gl4-surgepips .gl4-pips.mid .gl4-pip { width: 10px; height: 10px; }
 .gl4-surgepips .gl4-pips.many { gap: 2px; }
 .gl4-surgepips .gl4-pips.many .gl4-pip { width: 9px; height: 9px; }
+
+/* v2.4.27：共享数据按钮挪到速览标题栏后，用标题栏的小尺寸。 */
+#head .gl4-share { font-size: 10px; padding: 2px 6px; min-height: 20px; gap: 2px; border-radius: 8px; }
+#head .gl4-share svg { width: 10px; height: 10px; }
