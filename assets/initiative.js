@@ -935,8 +935,21 @@ async function persistInitiativeOnce(next, items) {
           if (!d || !d.id) continue;
           if (!d.metadata || typeof d.metadata !== "object") d.metadata = {};
           const id = String(d.id);
-          if (want[id]) d.metadata[KEY_INIT] = want[id];
-          else delete d.metadata[KEY_INIT];
+          if (want[id]) {
+            d.metadata[KEY_INIT] = want[id];
+          } else {
+            const prevInit = d.metadata[KEY_INIT];
+            if (prevInit && typeof prevInit === "object" && prevInit.v === INIT_META_V) {
+              /* v2.5.8：移出时保留加值缓存（否则重新加入先攻会丢角色卡加值）。 */
+              d.metadata[KEY_INIT] = {
+                bonus: Math.round(Number(prevInit.bonus) || 0),
+                cardId: d.metadata[KEY_BIND] || "",
+                updatedAt: Date.now()
+              };
+            } else {
+              delete d.metadata[KEY_INIT];
+            }
+          }
         }
       });
     } catch (eTok) {
@@ -1216,7 +1229,7 @@ export function tokenInfoMap(items) {
 /** v1.7.10：卡片下方只留**一枚**居中 d20 —— 4E 没有优势 / 劣势（删掉 − / ＋ 两枚）。
  *  几何照抄 Full Suite：.roll-buttons { top:100%; margin-top:-8 }，按钮上沿压在卡片下沿 8px。 */
 function stripRollButtons(e, isGM, phase, opts) {
-  /* v2.5.7（照 Full Suite InitiativeItem）：准备阶段 GM 或「自己的条目」都能掷；
+  /* v2.5.8（照 Full Suite InitiativeItem）：准备阶段 GM 或「自己的条目」都能掷；
    * 战斗阶段只有 GM。玩家掷骰直接写**自己 token 的 metadata**（OBR 允许），不再走 GM 代写通道。 */
   const canRoll = isGM
     ? (phase === PHASE_PREPARING || phase === PHASE_COMBAT)
@@ -1256,7 +1269,7 @@ function stripRollField(e, st, opts, total) {
   const editable = rolled &&
     (st.phase === PHASE_COMBAT || st.phase === PHASE_PREPARING) &&
     canEditBonus(e, opts);
-  /* v2.5.7：小字不再显示 (d20+加值) 公式，改为直接显示合计（解决「7+6」不好读）。 */
+  /* v2.5.8：小字不再显示 (d20+加值) 公式，改为直接显示合计（解决「7+6」不好读）。 */
   if (!editable) {
     return "<b>" + esc(total) + "</b>";
   }

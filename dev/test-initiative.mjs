@@ -142,7 +142,7 @@ const OBR = {
   }
 };
 
-/* v2.5.7：场景 metadata 兜底 */
+/* v2.5.8：场景 metadata 兜底 */
 OBR.scene.getMetadata = async () => sceneMeta;
 OBR.scene.setMetadata = async (update) => { Object.assign(sceneMeta, update); };
 
@@ -1185,17 +1185,19 @@ const initCond = (m) => {
   const rmNotes = notifications.slice(noteBefore);
   if (!rmNotes.some((n) => /已移出先攻/.test(n.msg))) ok("移出后不弹「已移出先攻」（v1.7.8：成功类通知为 0）");
   else bad("移出后还在弹通知：" + JSON.stringify(rmNotes));
-  if (!itemById("tok-1").metadata[KEY_INIT])
-    ok("移出后 token 上的 v2 条目被删掉（菜单变回「加入先攻」）");
-  else bad("移出后 v2 条目还在：" + JSON.stringify(itemById("tok-1").metadata[KEY_INIT]));
+  const afterRmMeta = itemById("tok-1").metadata[KEY_INIT];
+  if (!afterRmMeta || !(afterRmMeta && afterRmMeta.v === 2))
+    ok("移出后 token 上的 v2 条目被删掉（保留加值缓存，菜单变回「加入先攻」）");
+  else bad("移出后 v2 条目还在：" + JSON.stringify(afterRmMeta));
 
   /* 过期点「移出先攻」（token 上本来就没有 v2 条目）→ 提示，不写任何东西 */
   clearInitStorage();
   const noteStale = notifications.length;
   await latestMenu(MENU_REMOVE).onClick({ items: [itemById("tok-1")] });
   await sleep(160);
+  const staleMeta = itemById("tok-1").metadata[KEY_INIT];
   if (notifications.slice(noteStale).some((n) => /已经不在先攻里/.test(n.msg)) &&
-    !itemById("tok-1").metadata[KEY_INIT])
+    (!staleMeta || !(staleMeta && staleMeta.v === 2)))
     ok(" token 不在名单里时点「移出先攻」→ 提示「已经不在先攻里了」且不写元数据");
   else bad("过期移出的处理不对：" + JSON.stringify(itemById("tok-1").metadata[KEY_INIT]));
 }
@@ -1510,8 +1512,8 @@ console.log("== v1.7.10 先攻加值可编辑 + 无卡 token 加入先攻");
 
 console.log("== 静态检查");
 const man = JSON.parse(fs.readFileSync(path.join(ROOT, "manifest.json"), "utf8"));
-if (!man.action) man.action = { icon: "https://example.invalid/icon.svg", popover: "https://example.invalid/dice.html?v=2.5.7" };
-if (man.name === "4eNEXT to owlbear" && man.version === "2.5.7") ok("manifest 名称 / 版本 = 4eNEXT to owlbear 2.5.7");
+if (!man.action) man.action = { icon: "https://example.invalid/icon.svg", popover: "https://example.invalid/dice.html?v=2.5.8" };
+if (man.name === "4eNEXT to owlbear" && man.version === "2.5.8") ok("manifest 名称 / 版本 = 4eNEXT to owlbear 2.5.8");
 else bad("manifest 名称 / 版本不对：" + man.name + " " + man.version);
 if (man.action && /^https:\/\//.test(man.action.popover) && /\/dice(?:-entry)?\.html(?:\?v=[0-9.]+)?$/.test(man.action.popover))
   ok("manifest.action = 骰子入口 launcher（dice-entry.html，绝对 URL）");
@@ -1568,11 +1570,11 @@ if (initPageSrc.indexOf("CH_GLANCE_SUPPRESS") >= 0 &&
   initPageSrc.indexOf("sendMessage(CH_GLANCE_SUPPRESS") < initPageSrc.indexOf("OBR.player.select"))
   ok("点先攻条卡片：先广播 CH_GLANCE_SUPPRESS 再 OBR.player.select（地图高亮保留、不再弹速览）");
 else bad("点卡片没有先广播 CH_GLANCE_SUPPRESS / 顺序不对（速览还是会弹）");
-/* v2.5.7：动态顺序断言 —— 抑制广播的 promise resolve 之前，player.select 绝不能被调用。 */
+/* v2.5.8：动态顺序断言 —— 抑制广播的 promise resolve 之前，player.select 绝不能被调用。 */
 {
   const start = initPageSrc.indexOf("async function onCardClick(tokenId) {");
   const end = initPageSrc.indexOf("\n\n/** 玩家「结束我的回合」", start);
-  if (start < 0 || end < 0) bad("v2.5.7：抽不出 onCardClick()（页面结构变了）");
+  if (start < 0 || end < 0) bad("v2.5.8：抽不出 onCardClick()（页面结构变了）");
   else {
     const snippet = initPageSrc.slice(start, end);
     const order = [];
@@ -1598,8 +1600,8 @@ else bad("点卡片没有先广播 CH_GLANCE_SUPPRESS / 顺序不对（速览还
     if (release) release();
     await pending;
     if (before === "send" && order.join(",") === "send,select")
-      ok("v2.5.7：先 await 抑制广播送达，再 player.select（旧写法会在广播 resolve 前就 select → 偶发弹速览）");
-    else bad("v2.5.7：抑制广播未 await 就 select（顺序 " + before + " → " + order.join(",") + "）");
+      ok("v2.5.8：先 await 抑制广播送达，再 player.select（旧写法会在广播 resolve 前就 select → 偶发弹速览）");
+    else bad("v2.5.8：抑制广播未 await 就 select（顺序 " + before + " → " + order.join(",") + "）");
   }
 }
 
@@ -1628,20 +1630,20 @@ else bad("「结束我的回合」没有标 data-bg（后台离线时不会被�
 if (winGmHtml.indexOf("data-bg-soft") >= 0) ok("GM 的回合按钮带 data-bg-soft（后台离线只弱化外观）");
 else bad("GM 的回合按钮没有标 data-bg-soft");
 
-/* ---- v2.5.7：房间 16KB 治理（对角色卡 / 其它房间数据仍然有效；先攻已不占房间） ---- */
+/* ---- v2.5.8：房间 16KB 治理（对角色卡 / 其它房间数据仍然有效；先攻已不占房间） ---- */
 {
   const coreSrc = fs.readFileSync(path.join(ROOT, "assets", "background.core.js"), "utf8");
   if (api.roomWriteGuarded && api.roomAuditLog && coreSrc.indexOf("room meta total=") >= 0 &&
     coreSrc.indexOf("other=") >= 0 && coreSrc.indexOf("top=") >= 0 && coreSrc.indexOf("ROOM_WRITE_LIMIT = 15500") >= 0 && coreSrc.indexOf("TextEncoder") >= 0)
-    ok("v2.5.7：房间写入按整包 + UTF-8 字节计算（16KB-512），体检含 ours/other/top");
-  else bad("v2.5.7：整包预算 / 体检日志缺失");
-  if (!api.roomWriteGuarded) bad("v2.5.7：roomWriteGuarded 未暴露");
+    ok("v2.5.8：房间写入按整包 + UTF-8 字节计算（16KB-512），体检含 ours/other/top");
+  else bad("v2.5.8：整包预算 / 体检日志缺失");
+  if (!api.roomWriteGuarded) bad("v2.5.8：roomWriteGuarded 未暴露");
   else {
     roomMeta = { [KEY_CARDS]: { v: 1, cards: [] }, ["com.other-plugin/blob"]: { blob: "x".repeat(20 * 1024) } };
     const res = await api.roomWriteGuarded(KEY_ROLLS, { v: 1, updatedAt: 1, rows: [] });
     if (res.ok && res.store === "scene" && res.other > 15 * 1024 && sceneMeta[KEY_ROLLS])
-      ok("v2.5.7：其它插件占满整包时本插件改写场景，并回报 ours/other");
-    else bad("v2.5.7：整包超限未回退场景：" + JSON.stringify({ ok: res.ok, store: res.store, other: res.other }));
+      ok("v2.5.8：其它插件占满整包时本插件改写场景，并回报 ours/other");
+    else bad("v2.5.8：整包超限未回退场景：" + JSON.stringify({ ok: res.ok, store: res.store, other: res.other }));
   }
   const initAddSrc = coreSrc.slice(coreSrc.indexOf("async function initAdd"), coreSrc.indexOf("function initRemove"));
   if (initAddSrc.indexOf("persisted: !next.local") >= 0 && coreSrc.indexOf("if (!res.persisted)") >= 0)
@@ -1658,7 +1660,7 @@ else bad("GM 的回合按钮没有标 data-bg-soft");
   else bad("房间写满预算 / 文案被误删");
 }
 
-/* ---- v2.5.7 旧整份名单：只读回退（迁移前过渡） ---- */
+/* ---- v2.5.8 旧整份名单：只读回退（迁移前过渡） ---- */
 {
   clearInitStorage();
   roomMeta = { [KEY_INITIATIVE]: { updatedAt: 10, entries: [{ tokenId: "room", name: "旧", init: 1, bonus: 0 }] } };
@@ -1676,7 +1678,7 @@ else bad("GM 的回合按钮没有标 data-bg-soft");
   clearInitStorage();
 }
 
-/* ---- v2.5.7 场景订阅（v2.5 起 scene metadata 里放的是 combat） ---- */
+/* ---- v2.5.8 场景订阅（v2.5 起 scene metadata 里放的是 combat） ---- */
 {
   const bg = fs.readFileSync(path.join(ROOT, "assets", "background.core.js"), "utf8");
   const initJs = fs.readFileSync(path.join(ROOT, "assets", "initiative.js"), "utf8");

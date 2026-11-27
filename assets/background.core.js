@@ -58,7 +58,7 @@ var TOOL_SETTINGS_ID = NS + "/settings-tool";
 var CH_HELLO = NS + "/diag-hello";
 var CH_PING = NS + "/diag-ping";
 var CH_PONG = NS + "/diag-pong";
-var PLUGIN_VERSION = "2.5.7";
+var PLUGIN_VERSION = "2.5.8";
 var localStorageQuotaWarned = false;
 function safeLocalSet(key, value) {
   try { localStorage.setItem(key, value); return true; } catch (e) {
@@ -134,7 +134,7 @@ async function sceneMetaGet() {
 function roomQuotaError(e) {
   return /quota|too large|exceed.{0,30}(size|limit)|metadata.{0,30}(size|limit)|16\s*k/i.test(errText(e));
 }
-/** v2.5.7：整包字节超 15500 或房间 quota 报错 → 写场景 metadata；场景也失败 → 本机兜底（由调用方做）。 */
+/** v2.5.8：整包字节超 15500 或房间 quota 报错 → 写场景 metadata；场景也失败 → 本机兜底（由调用方做）。 */
 async function roomWriteGuarded(key, value) {
   var meta = {};
   try { meta = (await OBR.room.getMetadata()) || {}; } catch (e) { meta = {}; }
@@ -264,7 +264,7 @@ var INIT_MENU_ADD_HIDDEN = NS + "/init-add-hidden";
 var INIT_MENU_REMOVE = NS + "/init-remove";
 var KEY_INITIATIVE = NS + "/initiative";
 var CH_INIT_REQUEST = NS + "/init-request";
-/* v2.5.7：玩家右键「加入先攻」→ 请求 GM 代写（房间数据只有 GM 能写）。 */
+/* v2.5.8：玩家右键「加入先攻」→ 请求 GM 代写（房间数据只有 GM 能写）。 */
 var CH_INIT_JOIN = NS + "/init-join";
 var CH_INIT_JOIN_ACK = NS + "/init-join-ack";
 var initJoinLastAt = 0;
@@ -274,8 +274,8 @@ var BUTTON_SIZE = 64;
 var RIGHT_OFFSET = 12;
 var BOTTOM_OFFSET = 92;
 
-/* v2.5.7：紧凑模式 400；右键「速览」的完整模式仍用老的 660，不能挤成一条。 */
-var INFO_W_COMPACT = 460; /* v2.5.7：左右各放宽 30，保证所有行单行且左右对齐 */
+/* v2.5.8：紧凑模式 400；右键「速览」的完整模式仍用老的 660，不能挤成一条。 */
+var INFO_W_COMPACT = 460; /* v2.5.8：左右各放宽 30，保证所有行单行且左右对齐 */
 var INFO_W_FULL = 660;
 var INFO_W = 460; /* 兼容旧引用；完整模式用 INFO_W_FULL */
 var INFO_H = 700;
@@ -290,7 +290,7 @@ var CH_INFO_DRAG = NS + "/info-drag";
 var CH_INFO_SIZE = NS + "/info-size";
 var CH_DICE_ROLL = NS + "/dice-roll";
 var CH_DICE_CLEAR = NS + "/dice-clear";
-var diceFxOpen = {}; /* rollId -> { id, timer } —— v2.5.7 照 Full Suite：不再排队/计数，每投直接开一个唯一 modal */
+var diceFxOpen = {}; /* rollId -> { id, timer } —— v2.5.8 照 Full Suite：不再排队/计数，每投直接开一个唯一 modal */
 var diceFxSeen = {};
 var DICE_ROLL_MIN_MS = 800;
 var DICE_ROLL_MAX_BYTES = 6144;
@@ -352,9 +352,9 @@ var CH_DICE_HIST_STATE = NS + "/dice-hist-state";
 var CH_HP_EDIT_TARGET = NS + "/hp-edit-target";
 var CH_HP_EDIT_READY = NS + "/hp-edit-ready";
 var CH_HP_EDIT_SAVED = NS + "/hp-edit-saved";
-/* v2.5.7：页面切换/载入完成回 ack（单窗换目标确认；600ms 无 ack 兜底重开一次）。 */
+/* v2.5.8：页面切换/载入完成回 ack（单窗换目标确认；600ms 无 ack 兜底重开一次）。 */
 var CH_HP_EDIT_ACK = NS + "/hp-edit-ack";
-/* v2.5.7：血条编辑窗「重绘」按钮 → 后台强制重算这张 token 的血条环 / 四防盾 / 资源徽记。 */
+/* v2.5.8：血条编辑窗「重绘」按钮 → 后台强制重算这张 token 的血条环 / 四防盾 / 资源徽记。 */
 var CH_HP_REPAINT = NS + "/hp-repaint";
 var CH_HPEDIT_LOG = NS + "/hpedit-log";
 /* v1.8.9：信息窗单次挂载 —— 目标租约（换 token 只广播 target，不重开 popover）+ ready 握手。 */
@@ -400,7 +400,7 @@ var CH_ROLL = NS + "/roll";
 var CH_ROLL_CLEAR = NS + "/roll-clear";
 var CH_ROLL_SAVED = NS + "/roll-saved";
 var KEY_ROLLS = NS + "/rolls";
-var ROLL_MAX_ROWS = 100; /* v2.5.7：对齐 Full Suite DICE_HISTORY_LIMIT=100 */
+var ROLL_MAX_ROWS = 100; /* v2.5.8：对齐 Full Suite DICE_HISTORY_LIMIT=100 */
 var ROLL_MAX_DICE = 30;
 var ROLL_LABEL_MAX = 40;
 var ROLL_EXPR_MAX = 200;
@@ -441,7 +441,7 @@ var URL_SETTINGS = pageUrl("settings.html");
 var URL_BIND = pageUrl("bind.html");
 var URL_BUTTON = pageUrl("button.html");
 
-/* v2.5.7：传送门（核心）。 */
+/* v2.5.8：传送门（核心）。 */
 var KEY_PORTAL = NS + "/portal";
 var TOOL_PORTAL_ID = NS + "/portal-tool";
 var TOOL_PORTAL_MODE_ID = NS + "/portal-mode";
@@ -673,7 +673,7 @@ function winPopoverOptions(def, pos, size, url) {
   };
 }
 
-/** v2.5.7：窗口页 HTML 自身也带缓存，打开 URL 统一补 ?v=<PLUGIN_VERSION>（已有 v= 不重复）。 */
+/** v2.5.8：窗口页 HTML 自身也带缓存，打开 URL 统一补 ?v=<PLUGIN_VERSION>（已有 v= 不重复）。 */
 function withWindowVersion(url) {
   var u = String(url || "");
   if (/[?&]v=[^&]*/.test(u)) return u;
@@ -698,7 +698,7 @@ async function openDiceFx(payload) {
   setTimeout(function () { delete diceFxSeen[payload.id]; }, 5000);
   return runDiceFx(payload);
 }
-/* v2.5.7（照 Full Suite dice/index.ts）：**不排队、不计数**，每次投掷直接开唯一 id 的 modal，
+/* v2.5.8（照 Full Suite dice/index.ts）：**不排队、不计数**，每次投掷直接开唯一 id 的 modal，
  * 由 effect 页自己关；这里只保留 6s 兜底 close，避免页面异常时留下透明层。
  * 旧实现「队列上限 2 + 3200ms 定时器 + active 计数」在高频投掷时会让动画排队/丢失。 */
 async function runDiceFx(payload) {
@@ -758,7 +758,7 @@ async function onWinResize(ev) {
   var w = Math.max(minW, Math.min(maxW, Math.round(Number(d.w) || def.width)));
   var h = Math.max(minH, Math.min(maxH, Math.round(Number(d.h) || def.height)));
   if (name === "hpEdit") {
-    /* v2.5.7：血条编辑窗高度固定（内容只有 126px），拉高只会露出黑色空底。 */
+    /* v2.5.8：血条编辑窗高度固定（内容只有 126px），拉高只会露出黑色空底。 */
     h = HPE_H;
     w = Math.max(400, Math.min(560, w));
   }
@@ -779,7 +779,7 @@ async function onWinResize(ev) {
 async function openWin(name, urlOverride) {
   var def = winDef(name);
   if (!def) throw new Error("未知窗口：" + name);
-  /* v2.5.7：内存状态可能过期（iframe 已关但 winOpen 还在）。先探测真实 popover。 */
+  /* v2.5.8：内存状态可能过期（iframe 已关但 winOpen 还在）。先探测真实 popover。 */
   if (winOpen[name]) {
     var alive = true;
     if (OBR.popover && typeof OBR.popover.getWidth === "function") {
@@ -797,7 +797,7 @@ async function openWin(name, urlOverride) {
   var size = winSize(def, vp);
   var mem = readWinSize(name);
   if (name === "hpEdit") {
-    /* v2.5.7：血条窗高度固定，历史被拉高的尺寸不再沿用（否则一打开就是大片黑底）。 */
+    /* v2.5.8：血条窗高度固定，历史被拉高的尺寸不再沿用（否则一打开就是大片黑底）。 */
     mem = null;
     try { localStorage.removeItem("4enext/win-size/hpEdit"); } catch (eClr) { /* 忽略 */ }
   }
@@ -875,7 +875,7 @@ function onWinClose(ev) {
     pageLog("info", "CH_WIN_CLOSE data=" + JSON.stringify(data) + " from=" +
       (ev && (ev.playerId || ev.connectionId || "?")) + " winOpen=" + Object.keys(winOpen).join(","));
   } catch (eLog) { /* 忽略 */ }
-  /* v2.5.7：刚打开 1.5s 内忽略关闭广播（旧 iframe / launcher 收尾误发）；只有页面 ✕ 也在这之后才有效。 */
+  /* v2.5.8：刚打开 1.5s 内忽略关闭广播（旧 iframe / launcher 收尾误发）；只有页面 ✕ 也在这之后才有效。 */
   var age = winOpenedAt[data.name] ? Date.now() - winOpenedAt[data.name] : Infinity;
   if (age < 1500) {
     pageLog("info", "win close ignore（刚打开）name=" + data.name + " age=" + age);
@@ -967,7 +967,7 @@ function endWinDrag(name) {
   st.drag = null;
 }
 
-/* v2.5.7：拖动改用「start 时最新视口 + 本轮 base/size」模型（照 Full Suite panelDrag/panelLayout）。
+/* v2.5.8：拖动改用「start 时最新视口 + 本轮 base/size」模型（照 Full Suite panelDrag/panelLayout）。
  * 旧实现用 st.geom.vp（打开窗口时的快照）clamp，视口变大后向下拖会卡在旧下限。 */
 async function beginWinDrag(name, st) {
   var vp = await infoViewport();
@@ -1316,7 +1316,7 @@ function publishHpEditTarget(itemId, pending) {
   return sendHello(CH_HP_EDIT_TARGET, hpEditTarget);
 }
 
-/* v2.5.7：单窗常驻的 ack 等待（照 info 的 700ms 模式，这里 600ms）。
+/* v2.5.8：单窗常驻的 ack 等待（照 info 的 700ms 模式，这里 600ms）。
  * 页面收到 target → commit 未保存输入 → load → 回 CH_HP_EDIT_ACK {session,version,itemId}。 */
 var hpEditAckWait = null;
 function waitHpEditAck(session, version, itemId, ms) {
@@ -1355,7 +1355,7 @@ async function openHpEdit(itemId) {
   hpAutoPopped[itemId] = true;
   if (winOpen["hpEdit"] && hpEditTarget.itemId === itemId && !hpEditTarget.pending) return true;
   if (!hpEditSession) hpEditSession = newHpEditSession();
-  /* v2.5.7：窗口已挂载 → 不重开 iframe；广播 target 换目标，等页面 ack；600ms 没 ack 兜底重开一次。 */
+  /* v2.5.8：窗口已挂载 → 不重开 iframe；广播 target 换目标，等页面 ack；600ms 没 ack 兜底重开一次。 */
   if (winOpen["hpEdit"]) {
     var expectVersion = hpEditTarget.version + 1;
     var ackP = waitHpEditAck(hpEditSession, expectVersion, itemId, 600);
@@ -1401,12 +1401,12 @@ function onHpEditSaved(ev) {
   stepOk("血条编辑窗已保存：" + itemId);
 }
 
-/* v2.5.7：编辑窗「钉住」偏好（默认关）——钉住后选中变化 / 取消选中不自动关窗。 */
+/* v2.5.8：编辑窗「钉住」偏好（默认关）——钉住后选中变化 / 取消选中不自动关窗。 */
 function hpEditPinned() {
   try { return localStorage.getItem("4enext/hp-edit/pinned") === "1"; } catch (e) { return false; }
 }
 
-/* v2.5.7：编辑窗「重绘」→ 丢掉这张 token 的血条缓存，下一次 scheduleBars 强制重建（环 / 盾 / 徽记）。 */
+/* v2.5.8：编辑窗「重绘」→ 丢掉这张 token 的血条缓存，下一次 scheduleBars 强制重建（环 / 盾 / 徽记）。 */
 function onHpRepaint(ev) {
   var data = ev && ev.data !== undefined ? ev.data : ev;
   var itemId = data && typeof data.itemId === "string" ? data.itemId : "";
@@ -1558,7 +1558,7 @@ async function closeStrip() {
   try { await OBR.popover.close(ID_STRIP); } catch (e) {  }
 }
 
-/* v2.5.7：关闭状态用 sessionStorage（刷新/重进房间恢复自动打开）；
+/* v2.5.8：关闭状态用 sessionStorage（刷新/重进房间恢复自动打开）；
  * 测试环境没有 sessionStorage 时回退 localStorage。旧的 localStorage 值不再作为真机判据。 */
 function closedFlagGet(key) {
   try { if (typeof sessionStorage !== "undefined") return sessionStorage.getItem(key) === "1"; } catch (e) { /* 忽略 */ }
@@ -1583,7 +1583,7 @@ function stripAutostartOn() {
 }
 
 function stripClosedThisSession() {
-  /* v2.5.7：关掉只是「本页面会话」，刷新/重进房间应重新自动打开。 */
+  /* v2.5.8：关掉只是「本页面会话」，刷新/重进房间应重新自动打开。 */
   return closedFlagGet(STRIP_CLOSED_KEY);
 }
 
@@ -1831,7 +1831,7 @@ async function closeButton() {
   buttonOpen = false;
 }
 
-/* v2.5.7：移植 Full Suite viewportAnchor —— OBR SDK **没有 viewport.onChange**，
+/* v2.5.8：移植 Full Suite viewportAnchor —— OBR SDK **没有 viewport.onChange**，
  * 所以用后台 500ms 轮询 getWidth/getHeight；变化时回调（按钮重锚 + 窗口 reclamp）。
  * 只在有监听者时跑；读失败退避 2s；首读只记 baseline 不触发。 */
 var vpAnchorTimer = null;
@@ -1855,7 +1855,7 @@ async function readViewportSize() {
 }
 
 async function pollViewportAnchor() {
-  if (typeof document !== "undefined" && document.hidden) return false; /* v2.5.7：后台标签页跳过 */
+  if (typeof document !== "undefined" && document.hidden) return false; /* v2.5.8：后台标签页跳过 */
   if (vpAnchorBusy) return false;
   if (!vpAnchorListeners.length) {
     if (vpAnchorTimer) { clearInterval(vpAnchorTimer); vpAnchorTimer = null; }
@@ -1984,9 +1984,9 @@ async function registerTools() {
       return false;
     }
   });
-  /* v2.5.7：传送门工具（GM 拖动画圆；玩家点工具给提示，不进入绘制模式）。 */
+  /* v2.5.8：传送门工具（GM 拖动画圆；玩家点工具给提示，不进入绘制模式）。 */
   await registerPortalTool();
-  /* v2.5.7：骰子工具按钮 → 普通可拖动窗口（替代已删除的 manifest action / launcher）。 */
+  /* v2.5.8：骰子工具按钮 → 普通可拖动窗口（替代已删除的 manifest action / launcher）。 */
   await registerOneTool({
     id: TOOL_DICE_ID,
     icons: [{ icon: TOOL_DICE_ICON_URL, label: "4eNEXT to owlbear：骰子" }],
@@ -2016,7 +2016,7 @@ var KEY_IN_INIT = NS + "/in-init";
 
 /* ---- 5. 先攻菜单互斥（按 token metadata[KEY_INIT].v === 2）+ token 删除自动清理 ---- */
 function initMenuFilter(mode, gmOnly) {
-  /* v2.5.7：不再按 metadata 过滤右键项 —— OBR 对「键缺失」的 filter 在不同客户端表现不一致，
+  /* v2.5.8：不再按 metadata 过滤右键项 —— OBR 对「键缺失」的 filter 在不同客户端表现不一致，
    * 之前导致玩家整套先攻菜单消失。现在「加入/移出」都对所有 IMAGE token 显示，
    * 状态由 onClick 里判断并提示（已在先攻 / 不在先攻）。 */
   var filter = { every: [{ key: "type", value: "IMAGE" }], max: 1 };
@@ -2115,7 +2115,7 @@ async function registerContextMenu() {
         notify("没有读到选中的 token，右键请对着一个图片 token 再试", "WARNING");
         return;
       }
-      /* v2.5.7：玩家也能绑定自己的 token（FS 同款）；别人的 token 仍只 GM 能绑。 */
+      /* v2.5.8：玩家也能绑定自己的 token（FS 同款）；别人的 token 仍只 GM 能绑。 */
       try {
         var bindRole = await OBR.player.getRole();
         if (bindRole !== "GM") {
@@ -2189,7 +2189,7 @@ async function registerContextMenu() {
     onClick: function (context) { return onHpBarEdit(context); }
   });
 
-  /* v2.5.7：速览右键入口（GM / 玩家都可；单枚 IMAGE）。 */
+  /* v2.5.8：速览右键入口（GM / 玩家都可；单枚 IMAGE）。 */
   await createContextMenu({
     id: NS + "/glance-menu",
     icons: [{
@@ -2200,7 +2200,7 @@ async function registerContextMenu() {
     onClick: function () { void openGlance("右键「速览」"); }
   });
 
-  /* v2.5.7：GM 右键 → 编辑传送门。filter 不能按 metadata 值相等（值对象，永远不匹配），
+  /* v2.5.8：GM 右键 → 编辑传送门。filter 不能按 metadata 值相等（值对象，永远不匹配），
    * 只在 onClick 里检查 metadata[KEY_PORTAL]；正常路径还有「GM 选中单枚门自动弹编辑窗」。 */
   await createContextMenu({
     id: NS + "/portal-edit",
@@ -2232,7 +2232,7 @@ var infoCardId = null;
  * 不 reload iframe。session 内的 version 必须严格递增；页面 READY 时后台重发当前 target（防丢首条）。 */
 var infoSession = "";
 var infoTarget = { session: "", version: 0, itemId: null, cardId: null };
-var infoMode = "compact"; /* v2.5.7：compact=点token自动弹；full=右键/工具栏速览 */
+var infoMode = "compact"; /* v2.5.8：compact=点token自动弹；full=右键/工具栏速览 */
 var infoAckRetries = 0;
 /* v1.9.0：target 广播后的 ack 兜底 —— 700ms 没收到页面 ack 就关闭重开一次（只记日志、不弹通知）。 */
 var infoAckTimer = null;
@@ -2274,7 +2274,7 @@ function publishInfoTarget(itemId, cardId, expectAck) {
       var pend = infoAckPending;
       infoAckPending = null;
       if (!pend || !infoOpen) return;
-      /* v2.5.7：最多兜底重开 2 次，避免页面加载失败时无限开关把宿主拖到卡死。 */
+      /* v2.5.8：最多兜底重开 2 次，避免页面加载失败时无限开关把宿主拖到卡死。 */
       if (infoAckRetries >= 2) {
         pageLog("err", "速览 target 连续 " + infoAckRetries + " 次无 ack，已停止兜底重开（页面可能加载失败）");
         return;
@@ -2311,7 +2311,7 @@ function armInfoReadyWatchdog() {
   infoReadyTimer = setTimeout(function () {
     infoReadyTimer = null;
     if (!infoOpen) return;
-    /* v2.5.7：不再 5 秒超时就关窗（GitHub Pages 偶发连接重置时，模块晚到几秒很常见，
+    /* v2.5.8：不再 5 秒超时就关窗（GitHub Pages 偶发连接重置时，模块晚到几秒很常见，
      * 关窗反而更烦）。只提示一次并保留窗口，页面自己会在加载完成后正常渲染。 */
     pageLog("warn", "速览页 15s 未 ready（网络慢 / 模块未加载完），保留窗口等待");
     try { notify("速览页加载较慢（网络问题，仍在加载）：可稍等或关闭重开", "WARNING"); } catch (eN) { /* 忽略 */ }
@@ -2421,7 +2421,7 @@ async function anchorOf(itemId) {
   }
 }
 
-/* v2.5.7：最近一次成功读到的视口尺寸（轮询 / infoViewport 都更新），供拖动 start / clamp 参考。 */
+/* v2.5.8：最近一次成功读到的视口尺寸（轮询 / infoViewport 都更新），供拖动 start / clamp 参考。 */
 var lastVp = { width: 0, height: 0 };
 async function infoViewport() {
   var vp = { width: 0, height: 0 };
@@ -2442,7 +2442,7 @@ async function infoViewport() {
 /* ---- 6. 速览弹窗 /info：尺寸 / 位置记忆 / 拖动 ---- */
 function infoSize(vp, mode) {
   var wantW = mode === "full" ? INFO_W_FULL : INFO_W_COMPACT;
-  /* v2.5.7：初始高度只给骨架大小（compact 200 / full 420），页面渲染后自己 setHeight 长高；
+  /* v2.5.8：初始高度只给骨架大小（compact 200 / full 420），页面渲染后自己 setHeight 长高；
    * 以前一上来 700，页面若加载慢/失败就是一大片「加载中…」空窗。 */
   var initH = mode === "full" ? 420 : 200;
   var availH = (vp.height || 760) - 40;
@@ -2552,7 +2552,7 @@ async function infoAutoPos(itemId, size, vp) {
 }
 
 var INFO_MODE_AUTO = "compact";
-/* v2.5.7：页面自动收高后同步给后台，拖动/重开用真实高度，否则会弹回 700 空窗。 */
+/* v2.5.8：页面自动收高后同步给后台，拖动/重开用真实高度，否则会弹回 700 空窗。 */
 function onInfoSize(ev) {
   var d = ev && ev.data !== undefined ? ev.data : ev;
   if (!d || !infoGeom) return;
@@ -2564,7 +2564,7 @@ function onInfoSize(ev) {
 
 async function openInfo(itemId, cardId, mode) {
   var wantMode = mode === "full" ? "full" : INFO_MODE_AUTO;
-  /* v2.5.7 bugfix：复用单窗时必须确认**模式一致**。旧代码直接复用紧凑窗当完整窗用，
+  /* v2.5.8 bugfix：复用单窗时必须确认**模式一致**。旧代码直接复用紧凑窗当完整窗用，
    * 右键「速览」会把完整界面挤进 400px；反过来完整窗开着时点 token 也不会回到紧凑。 */
   if (infoOpen && infoMode !== wantMode) {
     await closeInfo();
@@ -2703,7 +2703,7 @@ async function resetInfoToToken() {
   var itemId = infoItemId;
   var cardId = infoCardId;
   var vp = await infoViewport();
-  /* v2.5.7 bugfix：重锚必须用**当前窗口真实尺寸**（紧凑 400 或完整 660、以及自动收高后的高度），
+  /* v2.5.8 bugfix：重锚必须用**当前窗口真实尺寸**（紧凑 400 或完整 660、以及自动收高后的高度），
    * 旧代码用 infoSize(vp) 默认 compact+700，点了「回到 token 上方」会弹回大空窗。 */
   var size = infoGeom
     ? { width: infoGeom.width, height: infoGeom.height }
@@ -2826,7 +2826,7 @@ async function openGlance(where) {
     return false;
   }
   try {
-    /* v2.5.7：已经是「完整模式 + 同一枚 token」→ 直接复用，不再关掉重开（省一次 iframe 加载）。 */
+    /* v2.5.8：已经是「完整模式 + 同一枚 token」→ 直接复用，不再关掉重开（省一次 iframe 加载）。 */
     if (infoOpen && infoMode === "full" && infoItemId === bind.itemId && infoCardId === bind.cardId) {
       stepOk(label + "：完整速览已打开（复用）");
       return true;
@@ -2861,7 +2861,7 @@ async function refreshInfo() {
     pageLog("info", "选中变化 → " + (selId || "无") + "（自动弹窗记录已重置）");
   }
   if (!item) {
-    /* v2.5.7：点地图 / 取消选中 → 速览保持当前内容，不关窗；只关自动打开的血条编辑窗（钉住则保留）。 */
+    /* v2.5.8：点地图 / 取消选中 → 速览保持当前内容，不关窗；只关自动打开的血条编辑窗（钉住则保留）。 */
     if (winOpen["hpEdit"] && !hpEditPinned()) await closeWin("hpEdit");
     if (infoOpen) pageLog("info", "info keep（取消选中）");
     return;
@@ -2872,7 +2872,7 @@ async function refreshInfo() {
 
   var cardId = await boundCardId(item);
   if (cardId) {
-    /* v2.5.7：选了绑定卡的 token → 速览接管；未钉住时关掉血条编辑窗（钉住则保持当前 token）。 */
+    /* v2.5.8：选了绑定卡的 token → 速览接管；未钉住时关掉血条编辑窗（钉住则保持当前 token）。 */
     if (winOpen["hpEdit"] && !hpEditPinned() && hpEditTarget.itemId !== item.id) {
       await closeWin("hpEdit");
     }
@@ -2894,9 +2894,9 @@ async function refreshInfo() {
     return;
   }
 
-  /* v2.5.7：选中非绑卡 token / 多选 → 速览保持当前内容，不关闭。 */
+  /* v2.5.8：选中非绑卡 token / 多选 → 速览保持当前内容，不关闭。 */
   if (infoOpen) pageLog("info", "info keep（选中无卡）");
-  /* v2.5.7：非 GM 不再自动弹血条编辑窗；locked/hide 对非 GM 一律不弹。 */
+  /* v2.5.8：非 GM 不再自动弹血条编辑窗；locked/hide 对非 GM 一律不弹。 */
   var hpRole = "";
   var hpPid = "";
   try { hpRole = await OBR.player.getRole(); } catch (eRole) { hpRole = ""; }
@@ -2917,7 +2917,7 @@ async function refreshInfo() {
     pageLog("info", "hpEdit skip（非GM/非owner）token=" + item.id);
     return;
   }
-  /* v2.5.7：钉住时保持当前编辑的 token，不换 target。 */
+  /* v2.5.8：钉住时保持当前编辑的 token，不换 target。 */
   if (hpEditPinned() && winOpen["hpEdit"]) return;
   if (!hasHpBarData(item)) {
     if (winOpen["hpEdit"] && hpEditTarget.itemId !== item.id) await closeWin("hpEdit");
@@ -3052,7 +3052,7 @@ async function sceneDpi() {
   return cachedDpi;
 }
 
-/* v2.5.7：用户样板布局 —— 底部比例横条 + 左侧三圆（强/反/意）+ 右下 AC 盾，不再用环形。
+/* v2.5.8：用户样板布局 —— 底部比例横条 + 左侧三圆（强/反/意）+ 右下 AC 盾，不再用环形。
  * 坐标全部相对 token 包围盒（宽 64%、高 10% 短边），s = min(w,h)/dpi 沿用旧缩放。 */
 
 /** 圆角矩形多边形（以中心为原点，24 段近似；血条 / 填充都用它）。 */
@@ -3332,7 +3332,7 @@ function buildBarItems(tokenId, L) {
   var bar = L.bar;
   var i;
 
-  /* v2.5.7 底部圆角横条：深红轨道 + 按 cur/max 比例的左→右填充。 */
+  /* v2.5.8 底部圆角横条：深红轨道 + 按 cur/max 比例的左→右填充。 */
   items.push(barCurveItem(tokenId, "bar-bg",
     roundedRectPoints(bar.width, bar.height, bar.radius, 24), bar.cx, bar.cy,
     { fill: bar.track, fillOpacity: bar.trackOpacity }));
@@ -3514,7 +3514,7 @@ async function syncBars() {
     for (var i = 0; i < items.length; i++) {
       var it = items[i];
       if (it.type !== "IMAGE") continue;
-      if (it.visible === false) continue; /* v2.5.7：隐藏 token 不画血条 */
+      if (it.visible === false) continue; /* v2.5.8：隐藏 token 不画血条 */
 
       if (!hpBarEnabled(it)) continue;
       var hp = readHpMeta(it);
@@ -3893,8 +3893,22 @@ async function initPersistOnce(next, items) {
           var itd = drafts[d];
           if (!itd || !itd.id) continue;
           if (!itd.metadata || typeof itd.metadata !== "object") itd.metadata = {};
-          if (want[itd.id]) itd.metadata[KEY_INIT] = want[itd.id];
-          else delete itd.metadata[KEY_INIT];
+          if (want[itd.id]) {
+            itd.metadata[KEY_INIT] = want[itd.id];
+          } else {
+            var prevInit = itd.metadata[KEY_INIT];
+            if (prevInit && typeof prevInit === "object" && prevInit.v === INIT_META_V) {
+              /* v2.5.8：移出先攻时把加值留成旧版缓存（{bonus,cardId}），
+               * 否则重新加入时会丢角色卡先攻加值（变成 0）。 */
+              itd.metadata[KEY_INIT] = {
+                bonus: Math.round(Number(prevInit.bonus) || 0),
+                cardId: itd.metadata[KEY_BIND] || "",
+                updatedAt: Date.now()
+              };
+            } else {
+              delete itd.metadata[KEY_INIT];
+            }
+          }
         }
       });
     } catch (eTok) {
@@ -3971,7 +3985,7 @@ async function initWrite(state) {
   return next;
 }
 
-/* v2.5.7：把「是否已在先攻」布尔镜像写回 token metadata（右键菜单互斥用，2 段 key 稳定）。
+/* v2.5.8：把「是否已在先攻」布尔镜像写回 token metadata（右键菜单互斥用，2 段 key 稳定）。
  * GM 可写全桌；玩家只写自己创建的 token（场景 item 权限所致）。 */
 async function syncInitFlagMirror(state) {
   try {
@@ -4139,7 +4153,7 @@ function initBonusOf(item) {
   return 0;
 }
 
-/* v2.5.7：token 上没有先攻加值缓存（玩家自己新加 token / 旧数据）时，从绑定角色卡现算。
+/* v2.5.8：token 上没有先攻加值缓存（玩家自己新加 token / 旧数据）时，从绑定角色卡现算。
  * 复用页面里的 initiativeBonus（动态 import 同一份 glance.js + rules.js），失败就返回 null。 */
 async function cardInitBonusOf(cardId) {
   if (!cardId) return null;
@@ -4147,8 +4161,8 @@ async function cardInitBonusOf(cardId) {
     var cards = await getCards();
     var card = findCard(cards, cardId);
     if (!card || !card.char) return null;
-    var base = new URL("glance.js?v=" + encodeURIComponent(PLUGIN_VERSION), location.href).href;
-    var rulesUrl = new URL("../data/rules.js?v=" + encodeURIComponent(PLUGIN_VERSION), location.href).href;
+    var base = new URL("assets/glance.js?v=" + encodeURIComponent(PLUGIN_VERSION), location.href).href;
+    var rulesUrl = new URL("data/rules.js?v=" + encodeURIComponent(PLUGIN_VERSION), location.href).href;
     var mod = await import(base);
     var rulesMod = await import(rulesUrl);
     if (!mod || typeof mod.initiativeBonus !== "function") return null;
@@ -4160,7 +4174,7 @@ async function cardInitBonusOf(cardId) {
   }
 }
 
-/* v2.5.7：token 上「备团先攻预设」（血条编辑窗填写，合计值）；没有则 null。 */
+/* v2.5.8：token 上「备团先攻预设」（血条编辑窗填写，合计值）；没有则 null。 */
 var KEY_INIT_PRESET = NS + "/init-preset";
 function initPresetOf(item) {
   try {
@@ -4179,7 +4193,7 @@ async function initAdd(item, hidden) {
   var card = typeof cardId === "string" ? findCard(cards, cardId) : null;
   var name = String(item.name || (card && card.name) || "未命名").trim().slice(0, 40) || "未命名";
   var bonus = initBonusOf(item);
-  var preset = initPresetOf(item); /* v2.5.7：血条窗里存的备团**先攻加值** */
+  var preset = initPresetOf(item); /* v2.5.8：血条窗里存的备团**先攻加值** */
   if (preset != null) bonus = preset;
   if (preset == null && !bonus && cardId) {
     var cardBonus = await cardInitBonusOf(cardId);
@@ -4338,7 +4352,7 @@ async function pruneMissingInitEntries() {
   }
 }
 
-/* v2.5.7：GM 收到玩家的「加入先攻」请求 —— 校验 token 归属后代写。 */
+/* v2.5.8：GM 收到玩家的「加入先攻」请求 —— 校验 token 归属后代写。 */
 async function onInitJoinRequest(ev) {
   try {
     var role = await OBR.player.getRole();
@@ -4410,7 +4424,7 @@ async function onInitRemoveClick(context) {
   try {
     var role = await OBR.player.getRole();
     var picked = context && context.items && context.items[0] ? context.items[0] : null;
-    /* v2.5.7（照 Full Suite）：玩家也能移出自己的 token —— 直接删自己 token 上的先攻元数据，
+    /* v2.5.8（照 Full Suite）：玩家也能移出自己的 token —— 直接删自己 token 上的先攻元数据，
      * 写不进再请求城主代删。别人的 token 仍然只能 GM 动。 */
     if (role !== "GM") {
       if (!picked || !picked.id) { notify("没有读到选中的 token", "WARNING"); return; }
@@ -4470,7 +4484,7 @@ async function onInitMenuClick(context, hidden) {
       notify("没有读到选中的 token，右键请对着一个图片 token 再试", "WARNING");
       return;
     }
-    /* v2.5.7（照 Full Suite）：玩家也能右键「加入先攻」→ 广播给 GM 代写；
+    /* v2.5.8（照 Full Suite）：玩家也能右键「加入先攻」→ 广播给 GM 代写；
      * 只允许自己的 token（GM 端会按 createdUserId 再校验一次）。隐形加入仍 GM 专属。 */
     if (role !== "GM") {
       if (hidden) {
@@ -4491,7 +4505,7 @@ async function onInitMenuClick(context, hidden) {
         return;
       }
       initJoinLastAt = nowJoin;
-      /* v2.5.7（对齐 Full Suite）：先**尝试玩家直接写**。v2.5 起先攻就存在 token 元数据里
+      /* v2.5.8（对齐 Full Suite）：先**尝试玩家直接写**。v2.5 起先攻就存在 token 元数据里
        * （Full Suite 同款），OBR 允许玩家写自己的 token 就直接成功；不允许（权限）再退回「请求城主代写」。 */
       try {
         var freshP = null;
@@ -4512,16 +4526,16 @@ async function onInitMenuClick(context, hidden) {
         notify("加入先攻的请求发送失败：" + errText(eJoin), "ERROR");
         return;
       }
-      /* v2.5.7：6 秒没收到 GM 回执 → 明确提示（GM 未更新插件 / 不在线 / 写入失败）。 */
+      /* v2.5.8：6 秒没收到 GM 回执 → 明确提示（GM 未更新插件 / 不在线 / 写入失败）。 */
       if (initJoinTimer) clearTimeout(initJoinTimer);
       initJoinTimer = setTimeout(function () {
         initJoinTimer = null;
-        notify("加入先攻：城主没有响应（GM 可能不在线或插件未更新到 2.5.7）", "WARNING");
+        notify("加入先攻：城主没有响应（GM 可能不在线或插件未更新到 2.5.8）", "WARNING");
       }, 6000);
       return;
     }
 
-    /* v2.5.7：GM 点「加入先攻」时，token 已经在先攻里就明确提示 ——
+    /* v2.5.8：GM 点「加入先攻」时，token 已经在先攻里就明确提示 ——
      * 旧代码会静默更新同一条（条上没变化），看起来就是「点了没反应」。 */
     try {
       var st0 = await initRead();
@@ -4549,7 +4563,7 @@ async function onInitMenuClick(context, hidden) {
       notify("先攻只写到了本机（token 元数据写不进去，可能没有权限）：其他人看不到这次加入", "WARNING");
       return;
     }
-    /* v2.5.7：写回后再核对一次，防止「函数返回成功但实际没进列表」的静默失败。 */
+    /* v2.5.8：写回后再核对一次，防止「函数返回成功但实际没进列表」的静默失败。 */
     try {
       var verify = await initRead();
       var inList = false;
@@ -4847,7 +4861,7 @@ async function onRollClear() {
 }
 
 /* =====================================================================
- * v2.5.7：传送门（核心）
+ * v2.5.8：传送门（核心）
  *   GM 拖动画圆建门 → 同 tag 互联；玩家拖动自己 token 进门 → 目的地选择 →
  *   六边形螺旋落点 + 原生 WALL 避让；传送后 700ms 抑制重复触发。
  * 数据：metadata com.4enext-owlbear/portal = { name, tag, radius, showName, visible, locked }
@@ -5029,7 +5043,7 @@ var portalRadiusInflight = {};
 var portalTeleportLanded = {};
 var portalWritingIds = {};
 var portalSkipLogAt = 0;
-/** v2.5.7：GM 拖缩放手柄 → 把 item.scale 反算回 metadata.radius（只 GM 写，inflight 防自触发循环）。 */
+/** v2.5.8：GM 拖缩放手柄 → 把 item.scale 反算回 metadata.radius（只 GM 写，inflight 防自触发循环）。 */
 async function portalScaleRadiusSync(all) {
   var role = "";
   try { role = await OBR.player.getRole(); } catch (e) { role = ""; }
@@ -5067,7 +5081,7 @@ async function portalScaleRadiusSync(all) {
   return wrote;
 }
 
-/** v2.5.7 诊断：对比已知传送门 id 集合，打印 added / removed / hidden，区分「被删」还是「没画出来」。 */
+/** v2.5.8 诊断：对比已知传送门 id 集合，打印 added / removed / hidden，区分「被删」还是「没画出来」。 */
 function portalLifecycleSync(all) {
   var current = {};
   var count = 0;
@@ -5365,7 +5379,7 @@ async function registerPortalTool() {
     catch (e3) { pageLog("err", "传送门 mode 创建失败（重试后）：" + errText(e3)); return; }
   }
 
-  /* v2.5.7：成对创建 mode（tool 下第二个 mode）。 */
+  /* v2.5.8：成对创建 mode（tool 下第二个 mode）。 */
   try {
     await OBR.tool.createMode({
       id: TOOL_PORTAL_PAIR_MODE_ID,
@@ -5419,7 +5433,7 @@ async function syncPortalEditFromSelection() {
   var sel = [];
   try { sel = (await OBR.player.getSelection()) || []; } catch (e2) { sel = []; }
 
-  /* v2.5.7 修复：打开 popover 后选区会变成「无」（焦点变化），不能当成取消选中去关窗，
+  /* v2.5.8 修复：打开 popover 后选区会变成「无」（焦点变化），不能当成取消选中去关窗，
    * 否则用户看到一闪。空选中 / 多选 / 选中非门 → 都保持现有编辑窗。 */
   if (sel.length === 0) {
     if (portalEditItemId) pageLog("info", "传送门 编辑窗保持（选中 0 项）");
@@ -5463,7 +5477,7 @@ async function onPortalEditClosed(ev) {
 async function openPortalEdit(itemId) {
   if (!itemId) return false;
   try {
-    /* v2.5.7：编辑窗接进通用窗口框架（可拖动 / 位置记忆 / 视口 reclamp）。
+    /* v2.5.8：编辑窗接进通用窗口框架（可拖动 / 位置记忆 / 视口 reclamp）。
      * URL 带 ?item=<id>；同一 popover id 重复打开会原地更新，不会重开。 */
     await openWin("portalEdit", URL_PORTAL_EDIT + "?item=" + encodeURIComponent(itemId));
     return true;
@@ -5486,7 +5500,7 @@ async function onPortalSave(ev) {
       for (var i = 0; i < drafts.length; i++) {
         if (!drafts[i].metadata || typeof drafts[i].metadata !== "object") drafts[i].metadata = {};
         var oldMeta = drafts[i].metadata[KEY_PORTAL] ? portalMeta(drafts[i].metadata[KEY_PORTAL]) : null;
-        /* v2.5.7：半径不再由表单决定 —— 以当前 item.scale 反算（scale 缺失才退回旧 metadata.radius）。 */
+        /* v2.5.8：半径不再由表单决定 —— 以当前 item.scale 反算（scale 缺失才退回旧 metadata.radius）。 */
         var r = drafts[i].scale
           ? portalRadiusFromScale(drafts[i].scale, saveDpi)
           : (oldMeta ? oldMeta.radius : meta.radius);
@@ -5503,7 +5517,7 @@ async function onPortalSave(ev) {
     notify("保存传送门失败：" + errText(e3), "ERROR");
   }
 }
-/** v2.5.7：传送时临时绕过 Dynamic Fog / Smoke 等插件的穿墙校验：
+/** v2.5.8：传送时临时绕过 Dynamic Fog / Smoke 等插件的穿墙校验：
  * 快照并剥离 token 上的雾效 metadata、隐藏 token 与其 attachment，写位置后逐字恢复。失败不阻塞传送。 */
 function portalFogMetaKey(key, val) {
   var k = String(key || "").toLowerCase();
@@ -5636,7 +5650,7 @@ async function onPortalTeleport(ev) {
     if (!dest) return;
     var tokens = all.filter(function (it) { return tokenIds.indexOf(it.id) >= 0; });
     if (!tokens.length) return;
-    /* v2.5.7：传送显式授权 —— 仅 GM 或所有目标 token 的创建者。 */
+    /* v2.5.8：传送显式授权 —— 仅 GM 或所有目标 token 的创建者。 */
     var teleRole = "";
     var telePid = "";
     try { teleRole = await OBR.player.getRole(); } catch (eRole) { teleRole = ""; }
@@ -5702,8 +5716,8 @@ async function onPortalItemsChange() {
     void portalDetectDragEnd();
   }, 200);
 }
-/** v2.5.7：目的地选择窗接进通用窗口框架（可拖动 / 位置记忆 / reclamp）。 */
-/* ---------- v2.5.7：隐形门 GM ghost ---------- */
+/** v2.5.8：目的地选择窗接进通用窗口框架（可拖动 / 位置记忆 / reclamp）。 */
+/* ---------- v2.5.8：隐形门 GM ghost ---------- */
 var portalGhostSig = "";
 async function portalGhostSync(all) {
   var role = "";
@@ -5760,7 +5774,7 @@ async function portalGhostSync(all) {
   return ghosts.length;
 }
 
-/* ---------- v2.5.7：成对创建（第二个 mode） ---------- */
+/* ---------- v2.5.8：成对创建（第二个 mode） ---------- */
 var portalPairFirst = null;
 var portalPairPreviewId = null;
 var portalPairLineId = null;
@@ -6132,7 +6146,7 @@ async function boot() {
   await attempt("订阅 " + CH_INFO_ACK + "（速览页刷新 ack）", function () {
     OBR.broadcast.onMessage(CH_INFO_ACK, onInfoAck);
   });
-  /* v2.5.7：OBR SDK 没有 viewport.onChange → 安装 500ms 轮询重锚。
+  /* v2.5.8：OBR SDK 没有 viewport.onChange → 安装 500ms 轮询重锚。
    * 视口变化时：按钮重新 open 到右下角（同 id+url），各窗口 / 先攻条用新 vp reclamp。 */
   await attempt("重建传送门 ghost（启动）", async function () {
     try {
@@ -6161,7 +6175,7 @@ async function boot() {
     return true;
   });
 
-  /* v2.5.7：传送门频道 + 拖动进门侦测。 */
+  /* v2.5.8：传送门频道 + 拖动进门侦测。 */
   await attempt("订阅 " + CH_OPEN_SETTINGS + "（浮动按钮 → 设置）", function () {
     OBR.broadcast.onMessage(CH_OPEN_SETTINGS, function () { void openWinOrNotify("settings", "右下角设置按钮"); });
   });
