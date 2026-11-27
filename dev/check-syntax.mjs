@@ -1,5 +1,5 @@
 // 模块语法检查：对 assets/*.js 逐个按 ESM 解析（vm.SourceTextModule）。
-// 目的：抓「import 名与本地 function 重名」这类重复声明 / 语法错误（v2.4.21 编辑窗白屏事故）。
+// 目的：抓「import 名与本地 function 重名」这类重复声明 / 语法错误（v2.4.22 编辑窗白屏事故）。
 // 用法：node dev/check-syntax.mjs（内部需要 --experimental-vm-modules，会自己 re-exec）
 import fs from "node:fs";
 import path from "node:path";

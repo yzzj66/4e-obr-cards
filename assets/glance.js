@@ -32,7 +32,7 @@
 
 import { RULES } from "../data/rules.js";
 
-/* v2.4.21：用户提供的矢量图标（钉住 / 锁定 / 解锁），内联 SVG 用 currentColor 跟随主题。 */
+/* v2.4.22：用户提供的矢量图标（钉住 / 锁定 / 解锁），内联 SVG 用 currentColor 跟随主题。 */
 const SHARE_ICON_LOCK = '<svg viewBox="0 0 613 772" width="12" height="12" fill="currentColor" aria-hidden="true"><g transform="translate(0,771) scale(1,-1)"><path fill="currentColor" fill-rule="nonzero" d="M205.414 462.384 L102.297 462.384 L102.297 582.689 C102.297 608.876 107.48 633.29 117.848 655.931 C128.215 678.576 142.535 698.49 160.812 715.673 C179.09 732.861 200.641 746.365 225.465 756.185 C250.289 766.005 277.43 770.915 306.895 770.915 C333.082 770.915 358.316 766.005 382.594 756.185 C406.871 746.365 428.422 732.861 447.246 715.673 C466.066 698.49 481.07 678.576 492.258 655.931 C503.441 633.29 509.035 608.876 509.035 582.689 L509.035 462.384 L410.008 462.384 L410.008 559.775 C410.008 594.146 400.461 620.744 381.367 639.564 C362.27 658.388 336.355 667.798 303.621 667.798 C274.156 667.798 250.426 658.388 232.422 639.564 C214.414 620.744 205.414 594.146 205.414 559.775 Z M558.137 413.283 C572.867 413.283 585.551 407.962 596.191 397.326 C606.828 386.685 612.148 374.001 612.148 359.271 L612.148 105.572 C612.148 90.841 609.559 77.064 604.375 64.244 C599.191 51.423 592.098 40.236 583.098 30.689 C574.094 21.142 563.457 13.638 551.18 8.185 C538.902 2.728 525.402 0.001 510.672 0.001 L97.387 0.001 C82.656 0.001 69.289 2.728 57.285 8.185 C45.285 13.638 35.055 20.869 26.598 29.872 C18.141 38.872 11.594 49.376 6.957 61.38 C2.32 73.38 0 86.205 0 99.841 L0 359.271 C0 374.001 5.184 386.685 15.551 397.326 C25.914 407.962 38.465 413.283 53.195 413.283 Z M558.137 413.283"/></g></svg>';
 const SHARE_ICON_UNLOCK = '<svg viewBox="0 0 814 769" width="12" height="12" fill="currentColor" aria-hidden="true"><g transform="translate(0,768) scale(1,-1)"><path fill="currentColor" fill-rule="nonzero" d="M611.758 767.949 C637.789 767.949 662.871 763.066 687.004 753.305 C711.141 743.543 732.562 730.121 751.273 713.039 C769.984 695.953 785.031 676.023 796.422 653.246 C807.812 630.465 813.504 606.062 813.504 580.031 L813.504 459.629 L715.07 459.629 L715.07 557.25 C715.07 591.418 705.445 617.992 686.191 636.977 C666.938 655.957 641.043 665.449 608.504 665.449 C579.215 665.449 555.625 655.957 537.727 636.977 C519.828 617.992 510.883 591.418 510.883 557.25 L510.883 458.004 L408.379 458.004 L408.379 580.031 C408.379 606.062 413.531 630.465 423.836 653.246 C434.141 676.023 448.379 695.953 466.547 713.039 C484.715 730.121 506.137 743.543 530.812 753.305 C555.488 763.066 582.469 767.949 611.758 767.949 Z M610.129 213.137 L610.129 104.941 C610.129 90.301 607.555 76.469 602.402 63.453 C597.25 50.437 590.199 39.32 581.25 30.102 C572.301 20.879 561.727 13.559 549.523 8.137 C537.32 2.711 523.898 0 509.254 0 L97.621 0 C82.977 0 69.691 2.574 57.758 7.727 C45.828 12.879 35.523 19.93 26.844 28.879 C18.168 37.828 11.523 48.269 6.914 60.199 C2.305 72.133 0 84.875 0 98.434 L0 357.129 C0 372.312 5.289 385.059 15.863 395.363 C26.438 405.668 38.777 410.82 52.879 410.82 L556.438 410.82 C571.625 410.82 584.367 405.668 594.672 395.363 C604.977 385.059 610.129 372.312 610.129 357.129 Z M610.129 213.137"/></g></svg>';
 
@@ -120,7 +120,7 @@ export function esc(s) {
 }
 const n0 = (v) => (typeof v === "number" && isFinite(v) ? v : 0);
 
-/* v2.4.21：4E NEXT 新版导出 combatMods.damages[].dieUp —— 提高武器伤害骰。
+/* v2.4.22：4E NEXT 新版导出 combatMods.damages[].dieUp —— 提高武器伤害骰。
  * 提升表（用户原话，单骰阶梯）：1d4 → 1d6 → 1d8 → 1d10 → 1d12 → 2d6 → 2d8 → 2d10 → 2d12。
  * 武器原始骰本身就在阶梯里（含 2d6/2d8）→ 按阶梯继续升；不在阶梯里（非常规骰）→ 原样返回。
  * dieUp 为提升级数（缺省 / 0 = 不变；负值反向降级；超出范围取端点）。 */
@@ -317,7 +317,7 @@ export function initiativeBonus(char, rules) {
  * live（可选）：{ hp:{cur,max,temp,surges}, state:{powerUsed,featUsed,equipmentUsed,itemDailyUsed,actionPoints,milestones} }
  *   带 live 时用实时值覆盖导出快照里的对应字段；不带就是纯粹的只读推导（老行为）。
  */
-/** v2.4.21：职业防御特性（目前只有野蛮人「蛮族机敏」；狂战士与未选天赋的混职野蛮人不享有）。 */
+/** v2.4.22：职业防御特性（目前只有野蛮人「蛮族机敏」；狂战士与未选天赋的混职野蛮人不享有）。 */
 function classDefenseFeature(char, rules, level, heavy) {
   const out = { ac: 0, ref: 0, label: "" };
   if (heavy) return out; /* 蛮族机敏：未穿重甲才生效 */
@@ -633,7 +633,7 @@ function counter(label, value, act, title) {
 
 function renderHpBlock(d, ed, temps, compact) {
   temps = temps || stateTemps(null);
-  const masked = !!d.hpMasked; /* v2.4.21：非 GM 且 locked → 数字掩码，条仍按比例 */
+  const masked = !!d.hpMasked; /* v2.4.22：非 GM 且 locked → 数字掩码，条仍按比例 */
   const dying = d.hpCur <= 0;
   const bloodied = !dying && d.hpCur <= d.bloodied;
   const state = dying ? "濒死" : bloodied ? "重伤" : "健康";
@@ -646,7 +646,7 @@ function renderHpBlock(d, ed, temps, compact) {
 
   let pad = "";
   if (ed.hp) {
-    /* v2.4.21：紧凑模式只保留「数值 + 受伤/治疗」；快捷 ±1/±5/±10 与重复的临时生命行都撤掉
+    /* v2.4.22：紧凑模式只保留「数值 + 受伤/治疗」；快捷 ±1/±5/±10 与重复的临时生命行都撤掉
      * （临时生命已并入 HP 行右侧，见 gl4-hp-temp）。 */
     pad = '<div class="gl4-hp-pad">' +
       (compact ? "" : '<div class="gl4-pad-row">' +
@@ -764,7 +764,7 @@ export function renderGlanceHTML(char, opts) {
   const d = deriveGlance(char, opts.rules, live);
   d.hpMasked = !!opts.maskHp;
   if (d.hpMasked) {
-    /* v2.4.21：非 GM + locked/hide → HP 与四防（含 AC）全部掩码，仅保留条形比例。 */
+    /* v2.4.22：非 GM + locked/hide → HP 与四防（含 AC）全部掩码，仅保留条形比例。 */
     d.defenses = (d.defenses || []).map(function (x) {
       return Object.assign({}, x, { value: "?", parts: [], masked: true });
     });
@@ -800,7 +800,7 @@ export function renderGlanceHTML(char, opts) {
         '" data-d="1" aria-label="' + esc(x.label) + ' 临时 ＋1">＋</button></span>'
       : (t ? '<em class="gl4-def-delta">' + signed(t) + "</em>" : "");
     const tip = x.masked ? "已隐藏" : partsText(x.parts) + (t ? "  临时 " + signed(t) : "");
-    /* v2.4.21：紧凑模式按图例做成**单行**「AC 21 强韧 18 …」，标签和数字同一行；
+    /* v2.4.22：紧凑模式按图例做成**单行**「AC 21 强韧 18 …」，标签和数字同一行；
      * 完整模式保留原来的竖排卡片。 */
     if (compact) {
       return '<span class="gl4-def-i" title="' + esc(tip) + '"><i>' + esc(x.label) + '</i><b class="gl4-def-val">' + val + "</b>" + delta + "</span>";
@@ -823,7 +823,7 @@ export function renderGlanceHTML(char, opts) {
   const attacks = (function () {
     const rows = Math.max(d.attacks.length, d.damages.length);
     if (!rows) return '<section class="gl4-card"><h3 class="gl4-h">攻击与伤害</h3><p class="gl4-empty">攻击面板没有可用行。</p></section>';
-    /* v2.4.21（用户定稿）：每行一条 —— 名称 / 命中 数值 + 小号临时加值 / 伤害 数值 + 小号临时加值，
+    /* v2.4.22（用户定稿）：每行一条 —— 名称 / 命中 数值 + 小号临时加值 / 伤害 数值 + 小号临时加值，
      * 不再单独占一行表头。 */
     let html = '<section class="gl4-card gl4-atks"><h3 class="gl4-h">攻击与伤害</h3>';
     for (let i = 0; i < rows; i++) {
@@ -895,7 +895,7 @@ export function renderGlanceHTML(char, opts) {
       '<span class="gl4-rest-hint">长休会同时清空全部「已用」标记并回满生命</span></div>'
     : "";
 
-  /* v2.4.21：底部「数值由插件离线推导…」整段删掉（用户早就要求去掉，完整模式也不要）。 */
+  /* v2.4.22：底部「数值由插件离线推导…」整段删掉（用户早就要求去掉，完整模式也不要）。 */
   const note = "";
 
   /* v1.7.12：共享数据开关 —— 原「玩家端隐藏数字」，从 HP 区挪到顶部标题区右侧。
