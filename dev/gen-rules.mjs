@@ -29,7 +29,7 @@ function parseClassStats(text) {
     surges: num(text, /每日回复力：[^0-9]*(\d+(?:\.\d+)?)/),
     fort: 0, ref: 0, will: 0
   };
-  /* v2.4.33：只认「防御加值：+N强韧/反射/意志」，不要把正文里其它 +N 误当职业防御。
+  /* v2.4.34：只认「防御加值：+N强韧/反射/意志」，不要把正文里其它 +N 误当职业防御。
    * 带「或」的选择型（如混职督军 +1强韧或意志）按 4E NEXT 当前卡（费兹）取第一个。 */
   const line = /防御加值[：:]\s*''?\s*\+(\d+)\s*([^\n''"]+)/.exec(text);
   if (!line) return out;
@@ -49,7 +49,7 @@ function parseBuiltinTrainedSkills(text) {
 }
 function parseRaceDefenses(text) {
   const out = {};
-  /* v2.4.33：人类写作「人类防御奖励：你在强韧、反射和意志上获得+1种族加值」，需合并解析。 */
+  /* v2.4.34：人类写作「人类防御奖励：你在强韧、反射和意志上获得+1种族加值」，需合并解析。 */
   const all = /(?:防御奖励|防御加值)[：:]?[^\n]{0,20}?你在([^\n。]{0,40}?)上获得\s*\+?(\d+)\s*种族加值/.exec(text);
   if (all) {
     const n = parseInt(all[2], 10);

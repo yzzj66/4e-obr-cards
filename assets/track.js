@@ -129,7 +129,7 @@ async function readRoomState(cardId) {
     const rawScene = scene[KEY_STATE_PREFIX + cardId];
     const a = rawRoom && typeof rawRoom === "object" ? normalizeState(rawRoom) : null;
     const b = rawScene && typeof rawScene === "object" ? normalizeState(rawScene) : null;
-    if (a && b) return b.updatedAt > a.updatedAt ? b : a; /* v2.4.33：scene/room 取新 */
+    if (a && b) return b.updatedAt > a.updatedAt ? b : a; /* v2.4.34：scene/room 取新 */
     return a || b;
   } catch (e) {
     return null;
@@ -214,7 +214,7 @@ export async function loadState(cardId) {
   const stored = await readRoomState(cardId);
   let picked = stored || defaultState();
   let pickedScope = stored ? (scopeOverride[cardId] === "scene" ? "scene" : "room") : "room";
-  /* v2.4.33：本机兜底若更新更晚则恢复本机（下次打开不回到旧状态）。 */
+  /* v2.4.34：本机兜底若更新更晚则恢复本机（下次打开不回到旧状态）。 */
   if (local && (!stored || local.updatedAt > stored.updatedAt)) {
     picked = local;
     pickedScope = "local";
@@ -418,7 +418,7 @@ export async function syncTokenStats(itemId, hp, ctx) {
   if (barOff) return false;
   const needHp = !!wantMax && !barOff && !(typeof rawHp.max === "number" && rawHp.max > 0);
   const wantSurge = ctx.surgesMax > 0 ? Math.round(ctx.surgesMax) : null;
-  /* v2.4.33：wantDef 必须包含速览临时四防，否则 base+temp 会被误判成「与卡片基础不一致」
+  /* v2.4.34：wantDef 必须包含速览临时四防，否则 base+temp 会被误判成「与卡片基础不一致」
    * 又写回基础值，真机表现为「地图数字变一下又变回去」。合并规则与 syncDefTempToTokens 共用 combineDefenses。 */
   const wantDef = combineDefenses(defensesFromDerived(ctx.defenses), ctx.defTemp);
   const curDef = hp.defenses || null;
@@ -502,7 +502,7 @@ export async function applyAction(act, el, ctx) {
       n = step;
       if (n <= 0) return hpResult(null, "没有读到数值", "WARNING");
     } else if (act === "temp-set") {
-      /* v2.4.33 bugfix：紧凑速览把临时生命输入挪到 HP 行（.gl4-hp-line），不在 .gl4-hp-pad 里；
+      /* v2.4.34 bugfix：紧凑速览把临时生命输入挪到 HP 行（.gl4-hp-line），不在 .gl4-hp-pad 里；
        * 旧的 amountFrom 只查 .gl4-hp-pad → 读不到值，永远写 0。这里直接读触发事件的输入框。 */
       n = parseInt(String((el && el.value) || "0"), 10);
       if (!isFinite(n) || n < 0) n = 0;
@@ -666,7 +666,7 @@ export function scopeText(scope) {
   return scope === "local" ? "本机记录（未同步到房间）" : "全桌同步";
 }
 
-/* v2.4.33：血条/HP 显示策略（地图条、速览、先攻共用同一语义；background 有同实现副本）。 */
+/* v2.4.34：血条/HP 显示策略（地图条、速览、先攻共用同一语义；background 有同实现副本）。 */
 export function computeViewMode(opts) {
   const o = opts || {};
   const role = o.role || "";
