@@ -1,9 +1,9 @@
 {
   "name": "4eNEXT to owlbear",
-  "version": "2.4.16",
+  "version": "2.4.17",
   "manifest_version": 1,
   "author": "4E NEXT 玩家自制",
   "description": "基于4eNEXT的4e跑团适配mod",
-  "icon": "icon.svg?v=2.4.16",
-  "background_url": "background.html?v=2.4.16"
+  "icon": "icon.svg?v=2.4.17",
+  "background_url": "background.html?v=2.4.17"
 }
