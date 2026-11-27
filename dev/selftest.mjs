@@ -78,9 +78,9 @@ const STEPS = [
   "dev/test-import.mjs",
   /* v1.8.0：速览对齐 4E NEXT（动作类型标签 / 专长每日 / 装备等级 / 临时值 / 短休）。 */
   "dev/test-glance2.mjs",
-  /* v2.4.34：传送门核心（纯函数几何 / 墙避让 / 多选 / 抑制 / 权限）。 */
+  /* v2.4.35：传送门核心（纯函数几何 / 墙避让 / 多选 / 抑制 / 权限）。 */
   "dev/test-portal.mjs",
-  /* v2.4.34：assets/*.js 逐个按 ESM 解析（抓重复声明 / 语法错误，防编辑窗白屏回归）。 */
+  /* v2.4.35：assets/*.js 逐个按 ESM 解析（抓重复声明 / 语法错误，防编辑窗白屏回归）。 */
   "dev/check-syntax.mjs"
 ];
 
