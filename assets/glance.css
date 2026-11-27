@@ -474,3 +474,16 @@ body.info-body input {
 .gl4-compact .gl4-def-i .gl4-def-temp { gap: 0; margin-left: 0; }
 .gl4-compact .gl4-def-temp .gl4-step { width: 13px; height: 15px; padding: 0; font-size: 10px; border-radius: 4px; }
 .gl4-compact .gl4-def-temp em { font-size: 9.5px; min-width: 10px; text-align: center; }
+
+/* v2.4.16：攻击表头 = 命中/伤害 + 临时加值同排，列与数据行对齐。 */
+.gl4-compact .gl4-atks .gl4-atk-head.compact {
+  display: grid; grid-template-columns: 1fr 96px 120px; gap: 6px;
+  align-items: center; font-size: 11px; color: var(--gl4-muted);
+}
+.gl4-compact .gl4-atks .gl4-atk-head.compact .gl4-atk-h { display: inline-flex; align-items: center; gap: 3px; }
+.gl4-compact .gl4-atks .gl4-atk-head.compact .gl4-counter { padding: 0; }
+.gl4-compact .gl4-atks .gl4-atk-head.compact .gl4-counter i { display: none; }
+.gl4-compact .gl4-atks .gl4-atk-head.compact .gl4-step { width: 14px; height: 16px; padding: 0; font-size: 10px; border-radius: 4px; }
+.gl4-compact .gl4-atks .gl4-atk-head.compact .gl4-counter b { font-size: 11px; min-width: 12px; text-align: center; }
+.gl4-compact .gl4-atks .gl4-atk-row { grid-template-columns: 1fr 96px 120px; gap: 6px; }
+.gl4-compact .gl4-atks .gl4-atk-hit, .gl4-compact .gl4-atks .gl4-atk-dmg { text-align: right; }
