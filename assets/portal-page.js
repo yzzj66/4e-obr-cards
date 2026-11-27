@@ -1,4 +1,4 @@
-// v2.5.0：传送门编辑窗（GM）。读取 item metadata，保存时广播 CH_PORTAL_SAVE 回后台写 item。
+// v2.5.1：传送门编辑窗（GM）。读取 item metadata，保存时广播 CH_PORTAL_SAVE 回后台写 item。
 import OBR from "../vendor/obr-sdk.js";
 import { CH_PORTAL_EDIT_CLOSE, CH_PORTAL_SAVE, ID_PORTAL_EDIT, KEY_PORTAL, onReady } from "./common.js";
 import { closeSelf, createWindow } from "./window.js";
@@ -16,7 +16,7 @@ var els = {
 };
 var state = { portal: null, canEdit: false };
 
-/* v2.5.0：标准窗口页（拖动标题栏 / 位置记忆 / 视口 reclamp 都走 assets/window.js）。 */
+/* v2.5.1：标准窗口页（拖动标题栏 / 位置记忆 / 视口 reclamp 都走 assets/window.js）。 */
 var win = createWindow({ name: "portalEdit", head: document.getElementById("head") });
 
 function closePortalEdit() {

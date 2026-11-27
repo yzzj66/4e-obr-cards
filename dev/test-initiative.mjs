@@ -142,7 +142,7 @@ const OBR = {
   }
 };
 
-/* v2.5.0：场景 metadata 兜底 */
+/* v2.5.1：场景 metadata 兜底 */
 OBR.scene.getMetadata = async () => sceneMeta;
 OBR.scene.setMetadata = async (update) => { Object.assign(sceneMeta, update); };
 
@@ -1138,7 +1138,7 @@ const filterOf = (m) => (m && m.icons && m.icons[0] ? m.icons[0].filter : null);
 const initCond = (m) => {
   const f = filterOf(m);
   const every = (f && f.every) || [];
-  return every.filter((c) => Array.isArray(c.key) && c.key[0] === "metadata" && c.key[1] === KEY_INIT)[0] || null;
+  return every.filter((c) => Array.isArray(c.key) && c.key[0] === "metadata" && c.key[1] === KEY_IN_INIT)[0] || null;
 };
 
 /* 1) 三项都在 + filter 按 token metadata[KEY_INIT].v 互斥 */
@@ -1151,13 +1151,13 @@ const initCond = (m) => {
   else bad("右键三项没注册齐（" + [!!addM, !!hidM, !!rmM].join("/") + "）");
   const addC = initCond(addM);
   const rmC = initCond(rmM);
-  if (addC && addC.operator === "!=" && addC.value === 2 && rmC && rmC.value === 2 && !rmC.operator &&
-    Array.isArray(addC.key) && addC.key[2] === "v") {
-    ok("菜单 filter 互斥：加入两项要求 token metadata[" + KEY_INIT + "].v「!= 2」，移出要求「== 2」（同一枚 token 只出现一种）");
-  } else bad("菜单 filter 不是按 init.v 互斥：" + JSON.stringify({ addC, rmC }));
-  if (!/d\.metadata\[KEY_IN_INIT\]\s*=/.test(CORE) && CORE.indexOf('var KEY_IN_INIT = NS + "/in-init";') >= 0)
-    ok("v2.5：旧 in-init 旗标只留常量做兼容，运行代码不再写（菜单由宿主按 metadata 现算）");
-  else bad("后台还在写 in-init 镜像旗标 / 删掉了兼容常量");
+  if (addC && addC.operator === "!=" && addC.value === true && rmC && rmC.value === true && !rmC.operator &&
+    Array.isArray(addC.key) && addC.key[1] === KEY_IN_INIT) {
+    ok("菜单 filter 互斥：按 in-init 布尔镜像（移出 == true / 加入 != true）");
+  } else bad("菜单 filter 不是按 in-init 镜像互斥：" + JSON.stringify({ addC, rmC }));
+  if (CORE.indexOf("syncInitFlagMirror(") >= 0 && CORE.indexOf('var KEY_IN_INIT = NS + "/in-init";') >= 0)
+    ok("v2.5.1：in-init 布尔镜像由 syncInitFlagMirror 维护（菜单 2 段 key 稳定）");
+  else bad("后台缺少 in-init 镜像同步 / 兼容常量");
   if (addM && !addM.icons[0].filter.roles && hidM.icons[0].filter.roles.indexOf("GM") >= 0 &&
     addM.icons[0].filter.max === 1 && addM.icons[0].filter.every[0].value === "IMAGE")
     ok("「加入先攻」对玩家开放（无 roles），隐形/移出仍 GM，都限定单个 IMAGE token");
@@ -1174,9 +1174,9 @@ const initCond = (m) => {
   if (m1 && m1.v === 2)
     ok("加入先攻后 token metadata[" + KEY_INIT + "] = v2 条目（菜单随之换成「移出先攻」）");
   else bad("加入后 token metadata 不是 v2 条目：" + JSON.stringify(m1));
-  if (!("in-init" in itemById("tok-1").metadata) && itemById("tok-1").metadata[KEY_IN_INIT] === undefined)
-    ok("加入后不再写 in-init 旗标（v2.5：菜单按 token metadata 现算）");
-  else bad("加入后还写了 in-init：" + JSON.stringify(itemById("tok-1").metadata[KEY_IN_INIT]));
+  if (itemById("tok-1").metadata[KEY_IN_INIT] === true)
+    ok("加入后同步写 in-init=true（菜单互斥用）");
+  else bad("加入后没有写 in-init：" + JSON.stringify(itemById("tok-1").metadata[KEY_IN_INIT]));
 
   const rmMenu = latestMenu(MENU_REMOVE);
   const noteBefore = notifications.length;
@@ -1514,8 +1514,8 @@ console.log("== v1.7.10 先攻加值可编辑 + 无卡 token 加入先攻");
 
 console.log("== 静态检查");
 const man = JSON.parse(fs.readFileSync(path.join(ROOT, "manifest.json"), "utf8"));
-if (!man.action) man.action = { icon: "https://example.invalid/icon.svg", popover: "https://example.invalid/dice.html?v=2.5.0" };
-if (man.name === "4eNEXT to owlbear" && man.version === "2.5.0") ok("manifest 名称 / 版本 = 4eNEXT to owlbear 2.5.0");
+if (!man.action) man.action = { icon: "https://example.invalid/icon.svg", popover: "https://example.invalid/dice.html?v=2.5.1" };
+if (man.name === "4eNEXT to owlbear" && man.version === "2.5.1") ok("manifest 名称 / 版本 = 4eNEXT to owlbear 2.5.1");
 else bad("manifest 名称 / 版本不对：" + man.name + " " + man.version);
 if (man.action && /^https:\/\//.test(man.action.popover) && /\/dice(?:-entry)?\.html(?:\?v=[0-9.]+)?$/.test(man.action.popover))
   ok("manifest.action = 骰子入口 launcher（dice-entry.html，绝对 URL）");
@@ -1572,11 +1572,11 @@ if (initPageSrc.indexOf("CH_GLANCE_SUPPRESS") >= 0 &&
   initPageSrc.indexOf("sendMessage(CH_GLANCE_SUPPRESS") < initPageSrc.indexOf("OBR.player.select"))
   ok("点先攻条卡片：先广播 CH_GLANCE_SUPPRESS 再 OBR.player.select（地图高亮保留、不再弹速览）");
 else bad("点卡片没有先广播 CH_GLANCE_SUPPRESS / 顺序不对（速览还是会弹）");
-/* v2.5.0：动态顺序断言 —— 抑制广播的 promise resolve 之前，player.select 绝不能被调用。 */
+/* v2.5.1：动态顺序断言 —— 抑制广播的 promise resolve 之前，player.select 绝不能被调用。 */
 {
   const start = initPageSrc.indexOf("async function onCardClick(tokenId) {");
   const end = initPageSrc.indexOf("\n\n/** 玩家「结束我的回合」", start);
-  if (start < 0 || end < 0) bad("v2.5.0：抽不出 onCardClick()（页面结构变了）");
+  if (start < 0 || end < 0) bad("v2.5.1：抽不出 onCardClick()（页面结构变了）");
   else {
     const snippet = initPageSrc.slice(start, end);
     const order = [];
@@ -1602,8 +1602,8 @@ else bad("点卡片没有先广播 CH_GLANCE_SUPPRESS / 顺序不对（速览还
     if (release) release();
     await pending;
     if (before === "send" && order.join(",") === "send,select")
-      ok("v2.5.0：先 await 抑制广播送达，再 player.select（旧写法会在广播 resolve 前就 select → 偶发弹速览）");
-    else bad("v2.5.0：抑制广播未 await 就 select（顺序 " + before + " → " + order.join(",") + "）");
+      ok("v2.5.1：先 await 抑制广播送达，再 player.select（旧写法会在广播 resolve 前就 select → 偶发弹速览）");
+    else bad("v2.5.1：抑制广播未 await 就 select（顺序 " + before + " → " + order.join(",") + "）");
   }
 }
 
@@ -1632,20 +1632,20 @@ else bad("「结束我的回合」没有标 data-bg（后台离线时不会被�
 if (winGmHtml.indexOf("data-bg-soft") >= 0) ok("GM 的回合按钮带 data-bg-soft（后台离线只弱化外观）");
 else bad("GM 的回合按钮没有标 data-bg-soft");
 
-/* ---- v2.5.0：房间 16KB 治理（对角色卡 / 其它房间数据仍然有效；先攻已不占房间） ---- */
+/* ---- v2.5.1：房间 16KB 治理（对角色卡 / 其它房间数据仍然有效；先攻已不占房间） ---- */
 {
   const coreSrc = fs.readFileSync(path.join(ROOT, "assets", "background.core.js"), "utf8");
   if (api.roomWriteGuarded && api.roomAuditLog && coreSrc.indexOf("room meta total=") >= 0 &&
     coreSrc.indexOf("other=") >= 0 && coreSrc.indexOf("top=") >= 0 && coreSrc.indexOf("ROOM_WRITE_LIMIT = 15500") >= 0 && coreSrc.indexOf("TextEncoder") >= 0)
-    ok("v2.5.0：房间写入按整包 + UTF-8 字节计算（16KB-512），体检含 ours/other/top");
-  else bad("v2.5.0：整包预算 / 体检日志缺失");
-  if (!api.roomWriteGuarded) bad("v2.5.0：roomWriteGuarded 未暴露");
+    ok("v2.5.1：房间写入按整包 + UTF-8 字节计算（16KB-512），体检含 ours/other/top");
+  else bad("v2.5.1：整包预算 / 体检日志缺失");
+  if (!api.roomWriteGuarded) bad("v2.5.1：roomWriteGuarded 未暴露");
   else {
     roomMeta = { [KEY_CARDS]: { v: 1, cards: [] }, ["com.other-plugin/blob"]: { blob: "x".repeat(20 * 1024) } };
     const res = await api.roomWriteGuarded(KEY_ROLLS, { v: 1, updatedAt: 1, rows: [] });
     if (res.ok && res.store === "scene" && res.other > 15 * 1024 && sceneMeta[KEY_ROLLS])
-      ok("v2.5.0：其它插件占满整包时本插件改写场景，并回报 ours/other");
-    else bad("v2.5.0：整包超限未回退场景：" + JSON.stringify({ ok: res.ok, store: res.store, other: res.other }));
+      ok("v2.5.1：其它插件占满整包时本插件改写场景，并回报 ours/other");
+    else bad("v2.5.1：整包超限未回退场景：" + JSON.stringify({ ok: res.ok, store: res.store, other: res.other }));
   }
   const initAddSrc = coreSrc.slice(coreSrc.indexOf("async function initAdd"), coreSrc.indexOf("function initRemove"));
   if (initAddSrc.indexOf("persisted: !next.local") >= 0 && coreSrc.indexOf("if (!res.persisted)") >= 0)
@@ -1662,7 +1662,7 @@ else bad("GM 的回合按钮没有标 data-bg-soft");
   else bad("房间写满预算 / 文案被误删");
 }
 
-/* ---- v2.5.0 旧整份名单：只读回退（迁移前过渡） ---- */
+/* ---- v2.5.1 旧整份名单：只读回退（迁移前过渡） ---- */
 {
   clearInitStorage();
   roomMeta = { [KEY_INITIATIVE]: { updatedAt: 10, entries: [{ tokenId: "room", name: "旧", init: 1, bonus: 0 }] } };
@@ -1680,7 +1680,7 @@ else bad("GM 的回合按钮没有标 data-bg-soft");
   clearInitStorage();
 }
 
-/* ---- v2.5.0 场景订阅（v2.5 起 scene metadata 里放的是 combat） ---- */
+/* ---- v2.5.1 场景订阅（v2.5 起 scene metadata 里放的是 combat） ---- */
 {
   const bg = fs.readFileSync(path.join(ROOT, "assets", "background.core.js"), "utf8");
   const initJs = fs.readFileSync(path.join(ROOT, "assets", "initiative.js"), "utf8");
