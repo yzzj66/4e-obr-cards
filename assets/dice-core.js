@@ -23,7 +23,7 @@ export const DIE_SIDES = { d4: 4, d6: 6, d8: 8, d10: 10, d12: 12, d20: 20, d100:
 export const DIE_SIZE_FACTOR = { d4: 0.78, d6: 0.85, d8: 0.9, d10: 0.93, d12: 0.96, d20: 1, d100: 1.06 };
 
 /** 房间数据 com.4enext-owlbear/rolls 的 rows 上限（v1.8.0：40 → 20，≈4 KB；Full Suite 同类策略 slice(0,LIMIT)）。 */
-export const ROLL_MAX_ROWS = 100; /* v2.5.4：对齐 Full Suite DICE_HISTORY_LIMIT=100 */
+export const ROLL_MAX_ROWS = 100; /* v2.5.5：对齐 Full Suite DICE_HISTORY_LIMIT=100 */
 /** 单条记录里最多保留多少颗骰子（超出截断并标记 truncated）。 */
 export const ROLL_MAX_DICE = 30;
 /** 备注 / 公式在房间数据里的截断长度（规格 §1.6）。 */
@@ -306,7 +306,7 @@ function formatWrapper(w, innerText) {
     return w.kind + "(" + innerText + (w.param != null ? "," + w.param : "") + ")";
   }
   const p = w.param != null ? w.param : 0;
-  /* v2.5.4：repeat 的参数在前（repeat(N,inner)），其它 wrapper 保持 (inner,param)。 */
+  /* v2.5.5：repeat 的参数在前（repeat(N,inner)），其它 wrapper 保持 (inner,param)。 */
   if (w.kind === "repeat") return "repeat(" + p + "," + innerText + ")";
   return w.kind + "(" + innerText + "," + p + ")";
 }
@@ -987,7 +987,7 @@ export function fxQuery(row, origin) {
   return parts.join("&");
 }
 
-/** v2.5.4：把表达式包成 repeat(N, expr) 或替换已有 N（clamp 1..20；空表达式返回错误）。 */
+/** v2.5.5：把表达式包成 repeat(N, expr) 或替换已有 N（clamp 1..20；空表达式返回错误）。 */
 export function repeatExpr(expr, n) {
   const raw = String(expr == null ? "" : expr).trim();
   if (!raw) return { ok: false, error: "empty", expr: raw, n: 0 };
@@ -997,7 +997,7 @@ export function repeatExpr(expr, n) {
   return { ok: true, expr: out, n: count };
 }
 
-/** v2.5.4：repeat 每行展示文本：r<inner> = 骰面 + 修正 = 行总和；无 repeat 返回 []。 */
+/** v2.5.5：repeat 每行展示文本：r<inner> = 骰面 + 修正 = 行总和；无 repeat 返回 []。 */
 export function repeatRowLines(row) {
   if (!row) return [];
   const expr = String(row.expression || "");
@@ -1027,7 +1027,7 @@ export function repeatRowLines(row) {
   return out;
 }
 
-/** v2.5.4：普通投掷的可读等式：<表达式> = 骰面 + 修正 = 总和（repeat 用 repeatRowLines）。 */
+/** v2.5.5：普通投掷的可读等式：<表达式> = 骰面 + 修正 = 总和（repeat 用 repeatRowLines）。 */
 export function rollLine(row) {
   if (!row) return "";
   const expr = String(row.expression || "");
@@ -1047,7 +1047,7 @@ export function rollLine(row) {
   return left + " = " + body + " = " + total;
 }
 
-/* v2.5.4：投掷限制（面板先校验；后台兜底同一套文案）。 */
+/* v2.5.5：投掷限制（面板先校验；后台兜底同一套文案）。 */
 export const DICE_ROLL_MAX_DICE = 40;
 export const DICE_ROLL_MAX_BYTES = 6144;
 export const DICE_ROLL_MIN_MS = 800;
