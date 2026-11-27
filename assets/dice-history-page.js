@@ -22,7 +22,7 @@ import {
   CH_DICE_HIST_CMD, CH_ROLL, CH_ROLL_CLEAR, HIST_VISIBLE_ROWS, ID_DICE_HIST, LS_DICE_LOCAL, ROLL_MAX_ROWS,
   appendDiceHistoryRow, clearDiceHistory, esc, onReady, readDiceHistoryRows, writeDiceHistoryRows
 } from "./common.js";
-import { repeatRowLines, rollLine } from "./dice-core.js?v=2.5.6";
+import { repeatRowLines, rollLine } from "./dice-core.js?v=2.5.7";
 import { closeSelf, createWindow, feedback } from "./window.js";
 import { mergeRollRows, rowsFromRaw, sidesOf } from "./dice-core.js";
 

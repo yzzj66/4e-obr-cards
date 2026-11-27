@@ -2,7 +2,7 @@
 
 > 这份文件是历史更新记录。安装与使用请看 [README](README.md)。
 
-**v2.5.6：骰子历史上限对齐 FS**（2026-11-27）—— 本机骰子历史 20 → 100 条（对齐 FullSuite DICE_HISTORY_LIMIT=100），仍按房间隔离、rollId 去重。
+**v2.5.7：骰子历史上限对齐 FS**（2026-11-27）—— 本机骰子历史 20 → 100 条（对齐 FullSuite DICE_HISTORY_LIMIT=100），仍按房间隔离、rollId 去重。
 
 **v2.4.36：先攻掷骰补动画/记录**（2026-11-27）—— 对齐 Full Suite：先攻 d20 也广播 CH_DICE_ROLL/CH_ROLL，全桌播放骰子动画并写入骰子记录，不再只是条上数字变化。
 

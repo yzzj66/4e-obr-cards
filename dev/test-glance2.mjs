@@ -269,13 +269,13 @@ await T.applyAction("hurt-amount", elOf({}, 8), await ctxNow());
 hpNow = T.hpView(token.metadata[KEY_HP], { maxHp: 171, surges: 8 });
 if (hpNow.temp === 0 && hpNow.cur === 163) ok("数值受伤 8：先扣临时 5，再扣血 3（HP 166 → 163）");
 else bad("数值受伤结算不对：HP " + hpNow.cur + " / 临时 " + hpNow.temp);
-  /* v2.5.6：紧凑速览的临时生命输入在 HP 行（不在 .gl4-hp-pad），必须能写入 */
+  /* v2.5.7：紧凑速览的临时生命输入在 HP 行（不在 .gl4-hp-pad），必须能写入 */
   {
     const inlineEl = { dataset: {}, value: "7", closest: () => null, querySelector: () => null, getAttribute: () => null };
     await T.applyAction("temp-set", inlineEl, await ctxNow());
     const now = T.hpView(token.metadata[KEY_HP], { maxHp: 171, surges: 8 });
-    if (now.temp === 7) ok("v2.5.6：inline 临时生命输入（不在 hp-pad）能写入 7");
-    else bad("v2.5.6：inline 临时生命没有写入（temp=" + now.temp + "）");
+    if (now.temp === 7) ok("v2.5.7：inline 临时生命输入（不在 hp-pad）能写入 7");
+    else bad("v2.5.7：inline 临时生命没有写入（temp=" + now.temp + "）");
     token.metadata[KEY_HP] = Object.assign({}, token.metadata[KEY_HP], { temp: 0 });
   }
 
@@ -358,7 +358,7 @@ if (oldState.atkTemp === 0 && oldState.dmgTemp === 0 && oldState.surgeTemp === 0
   ok("旧状态兼容：缺临时字段 = 0（向后兼容）");
 } else bad("旧状态兼容失败：" + JSON.stringify(oldState));
 
-/* ---- v2.5.6：四防临时加值单向写回绑定 token（地图血条联动） ---- */
+/* ---- v2.5.7：四防临时加值单向写回绑定 token（地图血条联动） ---- */
 {
   const dBase = G.deriveGlance(char);
   const base = {};
@@ -374,29 +374,29 @@ if (oldState.atkTemp === 0 && oldState.dmgTemp === 0 && oldState.surgeTemp === 0
   if (n === 1 && hpNow.defenses.ac === base.ac && hpNow.defenses.fort === base.fort + 2 &&
     hpNow.defenses.reflex === base.reflex + 1 && hpNow.defenses.will === base.will &&
     hpNow.cur === 5 && hpNow.max === 20 && hpNow.temp === 2 && hpNow.surges === 3 && hpNow.locked === false) {
-    ok("v2.5.6：def-temp fort+2 / reflex+1 → token hp.defenses = 卡片基础+临时，cur/max/temp/surges/locked 全保留");
-  } else bad("v2.5.6：临时四防没有正确写回 token：" + JSON.stringify(hpNow));
+    ok("v2.5.7：def-temp fort+2 / reflex+1 → token hp.defenses = 卡片基础+临时，cur/max/temp/surges/locked 全保留");
+  } else bad("v2.5.7：临时四防没有正确写回 token：" + JSON.stringify(hpNow));
   const sameAgain = await C.syncDefTempToTokens(CARD_ID, { ac: 0, fort: 2, ref: 1, will: 0 });
-  if (sameAgain === 0) ok("v2.5.6：同一组临时值再次同步 → 值没变不写（返回 0）");
-  else bad("v2.5.6：同值仍然写盘（返回 " + sameAgain + "）");
+  if (sameAgain === 0) ok("v2.5.7：同一组临时值再次同步 → 值没变不写（返回 0）");
+  else bad("v2.5.7：同值仍然写盘（返回 " + sameAgain + "）");
   const restored = await C.syncDefTempToTokens(CARD_ID, { ac: 0, fort: 0, ref: 0, will: 0 });
   hpNow = token.metadata[KEY_HP];
   if (restored === 1 && hpNow.defenses.ac === base.ac && hpNow.defenses.fort === base.fort &&
     hpNow.defenses.reflex === base.reflex && hpNow.defenses.will === base.will) {
-    ok("v2.5.6：临时值清零（短/长休）→ 四防写回卡片基础值，地图圆/盾还原");
-  } else bad("v2.5.6：清零后四防没有还原：" + JSON.stringify(hpNow.defenses));
+    ok("v2.5.7：临时值清零（短/长休）→ 四防写回卡片基础值，地图圆/盾还原");
+  } else bad("v2.5.7：清零后四防没有还原：" + JSON.stringify(hpNow.defenses));
   /* 无权限：非 GM 且非创建者 → 跳过、一个字节都不写 */
   token.createdUserId = "someone-else";
   token.metadata[KEY_HP] = JSON.parse(JSON.stringify(baseHp));
   roleNow = "PLAYER"; idNow = "user-me";
   const denied = await C.syncDefTempToTokens(CARD_ID, { ac: 0, fort: 2, ref: 0, will: 0 });
-  if (denied === 0 && token.metadata[KEY_HP].defenses.fort === 1) ok("v2.5.6：无权限 token 跳过（不写别人的 token）");
-  else bad("v2.5.6：无权限 token 仍然被写：" + JSON.stringify(token.metadata[KEY_HP].defenses));
+  if (denied === 0 && token.metadata[KEY_HP].defenses.fort === 1) ok("v2.5.7：无权限 token 跳过（不写别人的 token）");
+  else bad("v2.5.7：无权限 token 仍然被写：" + JSON.stringify(token.metadata[KEY_HP].defenses));
   roleNow = "GM"; idNow = "user-gm";
   token.createdUserId = "user-gm";
 }
 
-/* ---- v2.5.6：端到端顺序 —— 临时四防写 token 后，紧随的 syncTokenStats 不能回写 base ---- */
+/* ---- v2.5.7：端到端顺序 —— 临时四防写 token 后，紧随的 syncTokenStats 不能回写 base ---- */
 {
   const dBase = G.deriveGlance(char);
   const base = {};
@@ -413,23 +413,23 @@ if (oldState.atkTemp === 0 && oldState.dmgTemp === 0 && oldState.surgeTemp === 0
   await C.syncDefTempToTokens("c-test", st.defTemp);
   let hpNow = token.metadata[KEY_HP];
   if (hpNow.defenses.fort === base.fort + 2 && hpNow.defenses.reflex === base.reflex + 1)
-    ok("v2.5.6：def-temp 后 token 四防 = 卡片基础 + 临时（fort+" + 2 + " / reflex+" + 1 + "）");
-  else bad("v2.5.6：def-temp 后 token 四防不对：" + JSON.stringify(hpNow.defenses));
+    ok("v2.5.7：def-temp 后 token 四防 = 卡片基础 + 临时（fort+" + 2 + " / reflex+" + 1 + "）");
+  else bad("v2.5.7：def-temp 后 token 四防不对：" + JSON.stringify(hpNow.defenses));
   const wrote = await T.syncTokenStats(token.id, T.hpView(hpNow, { maxHp: 20, surges: 4 }), {
     maxHp: 20, surgesMax: 4, defenses: dBase.defenses, defTemp: st.defTemp
   });
   hpNow = token.metadata[KEY_HP];
   if (wrote === false && hpNow.defenses.fort === base.fort + 2 && hpNow.defenses.reflex === base.reflex + 1)
-    ok("v2.5.6：紧随的 syncTokenStats 带 ctx.defTemp → 返回 false、不回写基础值（修复「变一下又变回去」）");
-  else bad("v2.5.6：syncTokenStats 又把临时四防写回去了：" + JSON.stringify({ wrote, def: hpNow.defenses }));
+    ok("v2.5.7：紧随的 syncTokenStats 带 ctx.defTemp → 返回 false、不回写基础值（修复「变一下又变回去」）");
+  else bad("v2.5.7：syncTokenStats 又把临时四防写回去了：" + JSON.stringify({ wrote, def: hpNow.defenses }));
   await C.syncDefTempToTokens("c-test", { ac: 0, fort: 0, ref: 0, will: 0 });
   hpNow = token.metadata[KEY_HP];
   if (hpNow.defenses.fort === base.fort && hpNow.defenses.reflex === base.reflex)
-    ok("v2.5.6：临时四防清零 → token 写回卡片基础值（短/长休还原）");
-  else bad("v2.5.6：清零后没有写回基础值：" + JSON.stringify(hpNow.defenses));
+    ok("v2.5.7：临时四防清零 → token 写回卡片基础值（短/长休还原）");
+  else bad("v2.5.7：清零后没有写回基础值：" + JSON.stringify(hpNow.defenses));
 }
 
-/* ---- v2.5.6：combatMods.damages[].dieUp（武器伤害骰提升 1d4→…→2d12） ---- */
+/* ---- v2.5.7：combatMods.damages[].dieUp（武器伤害骰提升 1d4→…→2d12） ---- */
 {
   const synth = {
     name: "dieUp 合成",
@@ -449,11 +449,11 @@ if (oldState.atkTemp === 0 && oldState.dmgTemp === 0 && oldState.surgeTemp === 0
   };
   const cases = [[1, "1d6"], [2, "1d8"], [3, "1d10"], [4, "1d12"], [5, "2d6"], [8, "2d12"], [9, "2d12"], [-1, "1d4"]];
   const wrong = cases.filter(([n, want]) => dieOf(n) !== want);
-  if (!wrong.length) ok("v2.5.6：匕首 dieUp 1/2/3/4/5/8/9/-1 → 1d6/1d8/1d10/1d12/2d6/2d12/2d12/1d4（端点 clamp）");
-  else bad("v2.5.6：dieUp 提升序列不对：" + wrong.map(([n, want]) => n + "→" + dieOf(n) + "（要 " + want + "）").join(" / "));
+  if (!wrong.length) ok("v2.5.7：匕首 dieUp 1/2/3/4/5/8/9/-1 → 1d6/1d8/1d10/1d12/2d6/2d12/2d12/1d4（端点 clamp）");
+  else bad("v2.5.7：dieUp 提升序列不对：" + wrong.map(([n, want]) => n + "→" + dieOf(n) + "（要 " + want + "）").join(" / "));
   if (dieOf(undefined) === "1d4" && dieOf(0) === "1d4")
-    ok("v2.5.6：dieUp 缺失 / 0 时伤害骰保持武器原始 1d4（旧导出逐字节不变）");
-  else bad("v2.5.6：dieUp 缺失/0 改变了旧伤害骰");
+    ok("v2.5.7：dieUp 缺失 / 0 时伤害骰保持武器原始 1d4（旧导出逐字节不变）");
+  else bad("v2.5.7：dieUp 缺失/0 改变了旧伤害骰");
   /* 旧 fixture（无 dieUp）→ 每个伤害骰仍等于规则里的武器原始 d（逐项核对） */
   const oldChar = char;
   const hasDieUp = JSON.stringify((oldChar.combatMods || {}).damages || []).indexOf("dieUp") >= 0;
@@ -470,12 +470,12 @@ if (oldState.atkTemp === 0 && oldState.dmgTemp === 0 && oldState.surgeTemp === 0
   const sameOld = oldDmg.length === expectedOld.length &&
     oldDmg.every((d, i) => d.dice === expectedOld[i]);
   if (!hasDieUp && sameOld)
-    ok("v2.5.6：旧 fixture（无 dieUp）伤害骰逐项仍等于规则武器原始 d（零变化）");
-  else bad("v2.5.6：旧 fixture 的伤害骰被 dieUp 逻辑改了 / 旧 fixture 意外含 dieUp：" + JSON.stringify({ hasDieUp, got: oldDmg.map((d) => d.dice), want: expectedOld }));
+    ok("v2.5.7：旧 fixture（无 dieUp）伤害骰逐项仍等于规则武器原始 d（零变化）");
+  else bad("v2.5.7：旧 fixture 的伤害骰被 dieUp 逻辑改了 / 旧 fixture 意外含 dieUp：" + JSON.stringify({ hasDieUp, got: oldDmg.map((d) => d.dice), want: expectedOld }));
   /* 武器原始骰本身在阶梯里（2d6 / 2d8）→ 按阶梯继续升；非常规骰原样 */
   const weapons2d = RR.weapons.filter((w) => w.d === "2d6")[0];
   if (!weapons2d) {
-    ok("v2.5.6：rules 没有 2d6 武器 → 跳过 2d6 提升断言");
+    ok("v2.5.7：rules 没有 2d6 武器 → 跳过 2d6 提升断言");
   } else {
     const synth2 = JSON.parse(JSON.stringify(synth));
     synth2.baseItems = { 0: "w:" + weapons2d.n };
@@ -486,29 +486,29 @@ if (oldState.atkTemp === 0 && oldState.dmgTemp === 0 && oldState.surgeTemp === 0
     synth2.combatMods.damages[0].dieUp = 4;
     const d4 = G.deriveGlance(synth2).damages[0].dice;
     if (d1 === "2d8" && d3 === "2d12" && d4 === "2d12")
-      ok("v2.5.6：原始 2d6 武器 dieUp 1/3/4 → 2d8/2d12/2d12（2dX 也按阶梯继续升）");
-    else bad("v2.5.6：2d6 原始骰提升不对：" + JSON.stringify({ d1, d3, d4 }));
+      ok("v2.5.7：原始 2d6 武器 dieUp 1/3/4 → 2d8/2d12/2d12（2dX 也按阶梯继续升）");
+    else bad("v2.5.7：2d6 原始骰提升不对：" + JSON.stringify({ d1, d3, d4 }));
   }
 
   /* 真实新 fixture（存在时）：应能 derive，且第一项伤害骰为 1d6（匕首 dieUp=1） */
   const newFixture = path.join(ROOT, "dev", "fixtures", "申比软软-new.json");
   if (!fs.existsSync(newFixture)) {
-    ok("v2.5.6：真实新 fixture 不存在 → 跳过（不依赖用户文件）");
+    ok("v2.5.7：真实新 fixture 不存在 → 跳过（不依赖用户文件）");
   } else {
     try {
       const saveNew = JSON.parse(fs.readFileSync(newFixture, "utf8"));
       const charNew = (saveNew.pages && saveNew.pages.character) || saveNew.character || saveNew;
       const dNew = G.deriveGlance(charNew);
       const firstDie = dNew.damages[0] ? dNew.damages[0].dice : "";
-      if (firstDie === "1d6") ok("v2.5.6：真实新 fixture 可 derive，第一项伤害骰 = 1d6（dieUp=1 生效）");
-      else bad("v2.5.6：真实新 fixture 第一项伤害骰 = " + firstDie + "（应为 1d6）");
+      if (firstDie === "1d6") ok("v2.5.7：真实新 fixture 可 derive，第一项伤害骰 = 1d6（dieUp=1 生效）");
+      else bad("v2.5.7：真实新 fixture 第一项伤害骰 = " + firstDie + "（应为 1d6）");
     } catch (eNew) {
-      bad("v2.5.6：真实新 fixture 无法 derive：" + (eNew && eNew.message ? eNew.message : eNew));
+      bad("v2.5.7：真实新 fixture 无法 derive：" + (eNew && eNew.message ? eNew.message : eNew));
     }
   }
 }
 
-/* ---- v2.5.6：血条编辑窗权限兜底（GM / createdUserId 缺失） ---- */
+/* ---- v2.5.7：血条编辑窗权限兜底（GM / createdUserId 缺失） ---- */
 {
   const tokOther = { id: "t1", createdUserId: "other" };
   const tokMissing = { id: "t2" };
@@ -519,13 +519,13 @@ if (oldState.atkTemp === 0 && oldState.dmgTemp === 0 && oldState.surgeTemp === 0
     H.mayEditToken(tokMissing, "PLAYER", "me") === true &&
     H.mayEditToken(tokMissingEmpty, "PLAYER", "me") === true &&
     H.mayEditToken(tokMine, "PLAYER", "me") === true)
-    ok("v2.5.6：GM 始终可编辑；非 GM 在 createdUserId 缺失/空时可编辑；不匹配只读；自己的可编辑");
-  else bad("v2.5.6：hp 编辑权限兜底不对");
+    ok("v2.5.7：GM 始终可编辑；非 GM 在 createdUserId 缺失/空时可编辑；不匹配只读；自己的可编辑");
+  else bad("v2.5.7：hp 编辑权限兜底不对");
   const lockedMeta = { locked: true };
   if (H.hpEditReadOnly(lockedMeta, "GM") === false && H.hpEditReadOnly(lockedMeta, "PLAYER") === true &&
     H.hpEditReadOnly({ locked: false }, "PLAYER") === false)
-    ok("v2.5.6：lockedForPlayer 只对非 GM 生效（GM 永远不被 lock 卡住）");
-  else bad("v2.5.6：lockedForPlayer 判定不对");
+    ok("v2.5.7：lockedForPlayer 只对非 GM 生效（GM 永远不被 lock 卡住）");
+  else bad("v2.5.7：lockedForPlayer 判定不对");
   const pageSrc = fs.readFileSync(path.join(ROOT, "assets", "hp-edit-page.js"), "utf8");
   if (pageSrc.indexOf("focus id=") >= 0 &&
     pageSrc.indexOf("key=") >= 0 &&
@@ -543,16 +543,16 @@ if (oldState.atkTemp === 0 && oldState.dmgTemp === 0 && oldState.surgeTemp === 0
     pageSrc.indexOf("ok=") >= 0 && pageSrc.indexOf("patch=") >= 0 &&
     pageSrc.indexOf("document.activeElement") >= 0 &&
     !/if \(!built\.ok\)[\s\S]{0,240}?fillOne\(/.test(pageSrc))
-    ok("v2.5.6/2.5.6：hpEdit 输入诊断 + fillForm 跳过焦点 / dirty 保护 / 可见诊断 / loaded 版本 URL 齐全");
-  else bad("v2.5.6：hpEdit 输入诊断日志不完整");
+    ok("v2.5.7/2.5.7：hpEdit 输入诊断 + fillForm 跳过焦点 / dirty 保护 / 可见诊断 / loaded 版本 URL 齐全");
+  else bad("v2.5.7：hpEdit 输入诊断日志不完整");
   if (pageSrc.indexOf("[4enext][hpEdit] role=") >= 0 &&
     pageSrc.indexOf("applyDisabled dis=") >= 0 &&
     pageSrc.indexOf("state.role === \"GM\"") >= 0)
-    ok("v2.5.6：hpEdit 诊断日志（role/pid/createdUserId/editable/locked + applyDisabled）与 GM 优先兜底存在");
-  else bad("v2.5.6：hpEdit 诊断日志 / GM 兜底缺失");
+    ok("v2.5.7：hpEdit 诊断日志（role/pid/createdUserId/editable/locked + applyDisabled）与 GM 优先兜底存在");
+  else bad("v2.5.7：hpEdit 诊断日志 / GM 兜底缺失");
 }
 
-/* ---- v2.5.6：编辑窗预览 ↔ 速览卡 HP 显示（共享颜色/阈值；无徽章；地图条不动） ---- */
+/* ---- v2.5.7：编辑窗预览 ↔ 速览卡 HP 显示（共享颜色/阈值；无徽章；地图条不动） ---- */
 {
   const healthy = C.hpBarVisual({ cur: 100, max: 100 });
   const wounded = C.hpBarVisual({ cur: 40, max: 100 });
@@ -563,8 +563,8 @@ if (oldState.atkTemp === 0 && oldState.dmgTemp === 0 && oldState.surgeTemp === 0
     wounded.status.key === "wounded" && wounded.color === "#e3b341" && wounded.label === "重伤" &&
     critical.status.key === "critical" && critical.color === "#f85149" &&
     temp.tempText === "+5" && full.display === "100/100")
-    ok("v2.5.6：hpBarVisual 与速览卡同色（100% 绿 / ≤50% 重伤黄 / 0 濒死红）、临时 +5、cur 缺省满血");
-  else bad("v2.5.6：hpBarVisual 阈值/配色不对：" + JSON.stringify({ healthy, wounded, critical, temp, full }));
+    ok("v2.5.7：hpBarVisual 与速览卡同色（100% 绿 / ≤50% 重伤黄 / 0 濒死红）、临时 +5、cur 缺省满血");
+  else bad("v2.5.7：hpBarVisual 阈值/配色不对：" + JSON.stringify({ healthy, wounded, critical, temp, full }));
   const commonSrc = fs.readFileSync(path.join(ROOT, "assets", "common.js"), "utf8");
   const uiSrc = fs.readFileSync(path.join(ROOT, "assets", "ui.css"), "utf8");
   const hpSrc = fs.readFileSync(path.join(ROOT, "assets", "hp-edit-page.js"), "utf8");
@@ -576,79 +576,79 @@ if (oldState.atkTemp === 0 && oldState.dmgTemp === 0 && oldState.surgeTemp === 0
     hpSrc.indexOf("hpBarVisual") >= 0 && hpSrc.indexOf("--hp-color") >= 0 &&
     hpHtml.indexOf("hpe-hp-badge") < 0 &&
     glanceCss.indexOf("#56d364") >= 0 && glanceCss.indexOf("#e3b341") >= 0 && glanceCss.indexOf("#f85149") >= 0)
-    ok("v2.5.6：编辑窗预览引用共享 hpBarVisual / ui 变量；速览卡保留原徽章与同色；编辑窗无徽章");
-  else bad("v2.5.6：编辑窗与速览卡视觉没有统一 / 徽章未移除");
+    ok("v2.5.7：编辑窗预览引用共享 hpBarVisual / ui 变量；速览卡保留原徽章与同色；编辑窗无徽章");
+  else bad("v2.5.7：编辑窗与速览卡视觉没有统一 / 徽章未移除");
   if (bgSrc.indexOf('color: bloodied ? COLOR_HP_BLOODIED : "#b00000"') >= 0 &&
     bgSrc.indexOf("hpStatusOf(cur, max).color") < 0)
-    ok("v2.5.6：地图 token 血条保持原设计（本轮未改地图条）");
-  else bad("v2.5.6：地图血条被误改");
+    ok("v2.5.7：地图 token 血条保持原设计（本轮未改地图条）");
+  else bad("v2.5.7：地图血条被误改");
   if (hpHtml.indexOf("hpe-status") < 0 && hpHtml.indexOf("hpe-note") < 0 &&
     hpHtml.indexOf('id="win-flash"') < hpHtml.indexOf('class="hpe-body"') &&
     (hpHtml.match(/id="win-flash"/g) || []).length === 1)
-    ok("v2.5.6：底部区域完全干净（无 hpe-status/hpe-note）；flash 只在标题栏");
-  else bad("v2.5.6：底部仍有文本/提示，或 flash 不在标题栏");
+    ok("v2.5.7：底部区域完全干净（无 hpe-status/hpe-note）；flash 只在标题栏");
+  else bad("v2.5.7：底部仍有文本/提示，或 flash 不在标题栏");
   if (hpHtml.indexOf("hpe-note") < 0 && hpSrc.indexOf("留空的四防") < 0 &&
     hpSrc.indexOf("els.flash.textContent") >= 0 && hpSrc.indexOf("1500") >= 0)
-    ok("v2.5.6：底部固定提示行已移除；保存/校验反馈走标题栏 #win-flash（1.5s）");
-  else bad("v2.5.6：底部提示行仍存在 / flash 反馈未接");
+    ok("v2.5.7：底部固定提示行已移除；保存/校验反馈走标题栏 #win-flash（1.5s）");
+  else bad("v2.5.7：底部提示行仍存在 / flash 反馈未接");
   if (uiSrc.indexOf(".hpe-hp-bar-row") >= 0 && /height: 12px/.test(uiSrc) &&
     hpHtml.indexOf("width: 420px; height: 126px") >= 0 &&
     hpHtml.indexOf("hpe-pills") < hpHtml.indexOf("hpe-hp-bar-row") &&
     hpHtml.indexOf("hpe-hp-bar-row") < hpHtml.indexOf("hpe-defs") &&
     uiSrc.indexOf("repeating-linear-gradient") < 0)
-    ok("v2.5.6：编辑窗 420×126 三行（数字行 → 整行 12px 进度条 → 四防行），无分割线");
-  else bad("v2.5.6：编辑窗三行布局 / 窗口尺寸不对");
+    ok("v2.5.7：编辑窗 420×126 三行（数字行 → 整行 12px 进度条 → 四防行），无分割线");
+  else bad("v2.5.7：编辑窗三行布局 / 窗口尺寸不对");
   if (uiSrc.indexOf(".hpe-bar-fill") >= 0 && uiSrc.indexOf(".hpe-hp-pill::before") < 0 &&
     uiSrc.indexOf(".hpe-hp-track") >= 0 && uiSrc.indexOf("repeating-linear-gradient") < 0 &&
     hpHtml.indexOf("hpe-hp-fill") >= 0 && hpHtml.indexOf("hpe-hp-track") >= 0 &&
     hpSrc.indexOf("els.hpFill.style.width") >= 0 &&
     /#hpe-cur \{[^}]*background: #0b0f14/.test(uiSrc) && /#hpe-max \{[^}]*background: #0b0f14/.test(uiSrc))
-    ok("v2.5.6：HP 行=数字 + 临时 + 右侧深色轨道，填充一整条实色（无分割线/条纹），数字有独立深色底");
-  else bad("v2.5.6：HP 轨道/填充结构仍不对");
+    ok("v2.5.7：HP 行=数字 + 临时 + 右侧深色轨道，填充一整条实色（无分割线/条纹），数字有独立深色底");
+  else bad("v2.5.7：HP 轨道/填充结构仍不对");
 }
 
-/* ---- v2.5.6：速览常驻 / 隐藏血条 UI ---- */
+/* ---- v2.5.7：速览常驻 / 隐藏血条 UI ---- */
 {
   const coreK = fs.readFileSync(path.join(ROOT, "assets", "background.core.js"), "utf8");
   const hpHtml = fs.readFileSync(path.join(ROOT, "hp-edit.html"), "utf8");
   const hpCore = fs.readFileSync(path.join(ROOT, "assets", "hp-edit-core.js"), "utf8");
   if (coreK.indexOf("info keep（取消选中）") >= 0 && coreK.indexOf("info switch target=") >= 0)
-    ok("v2.5.6：取消选中 / 非绑卡不关速览，切绑卡 token 只切 target");
-  else bad("v2.5.6：速览常驻日志缺失");
+    ok("v2.5.7：取消选中 / 非绑卡不关速览，切绑卡 token 只切 target");
+  else bad("v2.5.7：速览常驻日志缺失");
   if (hpHtml.indexOf('id="hpe-hide"') >= 0 && hpHtml.indexOf("对玩家隐藏血条（GM 仍可见）") >= 0 &&
     hpCore.indexOf("hide: m.hide === true") >= 0)
-    ok("v2.5.6：编辑窗有「隐藏」勾选，默认 false，接 hp.hide");
-  else bad("v2.5.6：隐藏勾选缺失");
+    ok("v2.5.7：编辑窗有「隐藏」勾选，默认 false，接 hp.hide");
+  else bad("v2.5.7：隐藏勾选缺失");
 }
 
-/* ---- v2.5.6 非 GM 锁定隐藏 ---- */
+/* ---- v2.5.7 非 GM 锁定隐藏 ---- */
 {
   const bg = fs.readFileSync(path.join(ROOT, "assets", "background.core.js"), "utf8");
   const g = fs.readFileSync(path.join(ROOT, "assets", "glance.js"), "utf8");
   if (bg.indexOf("hpEdit skip（非GM/锁定/隐藏）") >= 0 && bg.indexOf("hpEdit skip（非GM/非owner）") >= 0)
-    ok("v2.5.6：非 GM / 非 owner / locked / hide 不自动弹编辑窗");
-  else bad("v2.5.6：编辑窗弹窗守卫缺失");
+    ok("v2.5.7：非 GM / 非 owner / locked / hide 不自动弹编辑窗");
+  else bad("v2.5.7：编辑窗弹窗守卫缺失");
   if (g.indexOf("value: \"?\"") >= 0 && g.indexOf("locked/hide → HP 与四防（含 AC）全部掩码") >= 0)
-    ok("v2.5.6：速览非 GM locked/hide 时 HP+四防（含 AC）全掩码");
-  else bad("v2.5.6：速览全掩码缺失");
+    ok("v2.5.7：速览非 GM locked/hide 时 HP+四防（含 AC）全掩码");
+  else bad("v2.5.7：速览全掩码缺失");
 }
 
-/* ---- v2.5.6：非 GM locked/hide 速览四防+AC 掩码 ---- */
+/* ---- v2.5.7：非 GM locked/hide 速览四防+AC 掩码 ---- */
 {
   const hpMask = Object.assign({}, token.metadata[KEY_HP], { locked: true, hide: false });
   const maskedHtml = G.renderGlanceHTML(char, { mode: "compact", live: liveOf(hpMask, state), maskHp: true });
   const shownHtml = G.renderGlanceHTML(char, { mode: "compact", live: liveOf(hpMask, state), maskHp: false });
   const qCount = (maskedHtml.match(/class="gl4-def-val">\?</g) || []).length;
   if (qCount >= 4 && maskedHtml.indexOf("已隐藏") >= 0)
-    ok("v2.5.6：非 GM + locked/hide → AC/强韧/反射/意志全部渲染为 ?（" + qCount + " 个）");
-  else bad("v2.5.6：四防掩码不完整：" + qCount);
+    ok("v2.5.7：非 GM + locked/hide → AC/强韧/反射/意志全部渲染为 ?（" + qCount + " 个）");
+  else bad("v2.5.7：四防掩码不完整：" + qCount);
   if (shownHtml.indexOf("class=\"gl4-def-val\">?") < 0 && /class="gl4-def-val">\d+/.test(shownHtml))
-    ok("v2.5.6：GM / 未掩码时四防显示正常数字");
-  else bad("v2.5.6：未掩码时数字异常");
+    ok("v2.5.7：GM / 未掩码时四防显示正常数字");
+  else bad("v2.5.7：未掩码时数字异常");
   const hpPage = fs.readFileSync(path.join(ROOT, "assets", "hp-edit-page.js"), "utf8");
   if (hpPage.indexOf("closeSelf(ID_HP_EDIT, \"hpEdit\")") >= 0 && hpPage.indexOf("state.role !== \"GM\" && (lockedForPlayer || viewForGuard.hide") >= 0)
-    ok("v2.5.6：血条编辑窗非 GM + locked/hide → 自动关闭（不是只读显示数字）");
-  else bad("v2.5.6：编辑窗非 GM 自动关闭缺失");
+    ok("v2.5.7：血条编辑窗非 GM + locked/hide → 自动关闭（不是只读显示数字）");
+  else bad("v2.5.7：编辑窗非 GM 自动关闭缺失");
 }
 
 console.log(fail ? "\n" + fail + " 个问题" : "\n全部通过（v1.8.6 速览：动作标签 / 可用总数 / 无专长区块 / 无装备等级 / HP·回复力·临时加值 / 短休 / 索引 ≤350KB）");
